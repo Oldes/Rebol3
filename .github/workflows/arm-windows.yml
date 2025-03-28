@@ -17,3 +17,18 @@ jobs:
 
     - name: Install Siskin Builder
       uses: oldes/install-siskin@v0.18.5
+      with:
+        arch: arm64
+
+    - name: Build 64bit Rebol/Bulk using MSVC
+      run: |
+        ./siskin -V
+        ./siskin make/rebol3.nest -o . --msvc rebol3-bulk-windows-arm64
+
+
+    ###############################################################################
+    # Collecting build artifacts...
+    - uses: actions/upload-artifact@v4
+      with:
+        name: Rebol-CI-${{github.run_id}}-windows-arm
+        path: ./rebol3-*.exe
