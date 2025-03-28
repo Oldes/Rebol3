@@ -17,6 +17,19 @@ jobs:
     - name: Install Siskin Builder
       uses: oldes/install-siskin@v0.18.5
 
+    - name: Install components
+      run: |
+              Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
+              $InstallPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
+              $componentsToRemove= @(
+                "Microsoft.VisualStudio.Component.VC.Tools.ARM64"
+              )
+              [string]$workloadArgs = $componentsToRemove | ForEach-Object {" --add " +  $_}
+              $Arguments = ('/c', "vs_installer.exe", 'modify', '--installPath', "`"$InstallPath`"",$workloadArgs, '--quiet', '--norestart', '--nocache')
+              # should be run twice
+              $process = Start-Process -FilePath cmd.exe -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden
+              $process = Start-Process -FilePath cmd.exe -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden
+
     - name: Build 64bit Rebol/Bulk using MSVC
       run: ./siskin make/rebol3.nest -d -o . --msvc rebol3-bulk-windows-arm64
 
