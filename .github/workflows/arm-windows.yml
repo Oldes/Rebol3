@@ -21,12 +21,13 @@ jobs:
       run: Get-ChildItem "HKLM:\SOFTWARE\Microsoft\Windows Kits\Installed Roots" | ForEach-Object { $_.GetValue("KitsRoot10") }
 
     - name: Build 64bit Rebol/Bulk using MSVC
+      shell: cmd
       run: |
         ./siskin make/rebol3.nest --test --msvc rebol3-bulk-windows-arm64
         call "c:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat" x64_arm64
-        cd ./msvc
+        cd .\msvc
         msbuild "rebol3-bulk-windows-arm64.sln" /p:Configuration=Release /p:Platform="ARM" /p:WindowsTargetPlatformVersion=10.0.22621.0
-        MOVE ./msvc/Release-ARM/rebol3-bulk-windows-arm64.exe ./
+        MOVE .\msvc\Release-ARM\rebol3-bulk-windows-arm64.exe .\
 
     ###############################################################################
     # Collecting build artifacts...
