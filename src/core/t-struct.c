@@ -684,7 +684,7 @@ static void parse_field_type(REBSTF *field, REBVAL *spec, REBVAL *inner, REBVAL 
 
 		VAL_STRUCT_ID(out) = hash;
 
-		REBVAL *blk = VAL_BLK_DATA(data);
+		REBVAL *blk = VAL_BLK_DATA(&spec);
 		REBINT field_idx = 1; /* for field index */
 		REBU64 offset = 0;    /* offset in data */
 //TODO: init is unused now (and also inner defined later!)
@@ -720,6 +720,7 @@ static void parse_field_type(REBSTF *field, REBVAL *spec, REBVAL *inner, REBVAL 
 				Trap_Type(blk);
 			}
 			field->sym = VAL_WORD_SYM(blk);
+			VAL_SET_LINE(blk);
 			++blk;
 
 			if (!IS_BLOCK(blk)) {
@@ -727,10 +728,14 @@ static void parse_field_type(REBSTF *field, REBVAL *spec, REBVAL *inner, REBVAL 
 			}
 
 			parse_field_type(field, blk, inner, &init); // may throw an error!
+			VAL_CLR_LINE(blk);
 			++blk;
 
 			// skip optional doc strings
-			while (IS_STRING(blk)) ++blk; 
+			while (IS_STRING(blk)) {
+				VAL_CLR_LINE(blk);
+				++blk;
+			}
 
 			STATIC_ASSERT(sizeof(field->size) <= 4);
 			STATIC_ASSERT(sizeof(field->dimension) <= 4);

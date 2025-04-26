@@ -1433,15 +1433,20 @@ STOID Mold_Error(REBVAL *value, REB_MOLD *mold, REBFLG molded)
 	case REB_STRUCT:
 	{
 		REBVAL blk;
-		Get_Struct_Reflect(&blk, &VAL_STRUCT(value), SYM_BODY);
+		
 		Emit(mold, "#(T ", value);
-		if (VAL_STRUCT_NAME(value)) {
+		if (GET_MOPT(mold, MOPT_MOLD_ALL)) {
+			Set_Block(&blk, VAL_STRUCT_SPEC(value));
+			Emit(mold, "V", &blk);
+		}
+		else if (VAL_STRUCT_NAME(value)) {
 			Append_UTF8(ser, Get_Sym_Name(VAL_STRUCT_NAME(value)), -1);
 		}
 		else {
 			Form_Integer(buf, VAL_STRUCT_ID(value));
 			Append_UTF8(ser, buf, -1);
 		}
+		Get_Struct_Reflect(&blk, &VAL_STRUCT(value), SYM_BODY);
 		Emit(mold, " V)", &blk);
 		break;
 	}
