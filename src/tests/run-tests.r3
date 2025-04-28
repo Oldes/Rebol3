@@ -21,7 +21,7 @@ dt [ ;- delta time
 ;		%units/codecs-test.r3
 ;		%units/codecs-test-pdf.r3
 ;		%units/compare-test.r3
-		%units/compress-test.r3
+;		%units/compress-test.r3
 ;		%units/conditional-test.r3
 ;		%units/copy-test.r3
 ;		%units/crash-test.r3
@@ -63,7 +63,7 @@ dt [ ;- delta time
 ;		%units/power-test.r3
 ;		%units/protect-test.r3
 ;		%units/series-test.r3
-;		%units/struct-test.r3
+		%units/struct-test.r3
 ;		%units/task-test.r3
 ;		%units/time-test.r3
 ;		%units/tuple-test.r3
@@ -95,7 +95,7 @@ dt [ ;- delta time
 		]
 	]
 
-
+	print "Recycle torture..."
 	recycle/torture
 	recycle
 	stats/show
