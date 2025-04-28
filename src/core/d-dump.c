@@ -60,7 +60,7 @@
 {
 	if (!series) return;
 	Dump_Series_Fmt(series, memo);
-	if (SERIES_WIDE(series) == sizeof(REBVAL)) {
+	if (SERIES_WIDE(series) == sizeof(REBVAL) && !IS_BARE_SERIES(series)) {
 		Dump_Values(BLK_HEAD(series), SERIES_TAIL(series));
 	} else
 		Dump_Bytes(series->data, (SERIES_TAIL(series)+1) * SERIES_WIDE(series));
