@@ -141,6 +141,32 @@ if system/version >= 3.19.1 [
 		[0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0] = values-of s
 	]
 
+--test-- "Struct with Rebol values"
+	--assert not error? try [
+		s: make struct! [a [rebval] b [rebval]]
+		s/a: str: "Hello" s/b: now
+	]
+	--assert s/a == str
+	--assert date? s/b
+	--assert all [
+		;; It is not allowed to modify struct's binary when there are Rebol values
+		error? e: try [change s #{FF}]
+		e/id == 'protected
+	]
+	--assert all [
+		;; It is possible to modify series in struct's Rebol values
+		not error? try [clear s/a]
+		s/a == ""
+		str == ""
+	]
+	--assert all [
+		;; It is allowed to clear the struct with Rebol values
+		not error? try [clear s]
+		none? s/a
+		none? s/b
+	]
+
+
 ===end-group===
 
 
