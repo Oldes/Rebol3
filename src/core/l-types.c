@@ -3,6 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
+**  Copyright 2021-2025 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -1162,7 +1163,7 @@ base16:
 			return TRUE;
 				
 		default:
-			if (type >= SYM_I8X && type < SYM_DATATYPES) {
+			if (type >= SYM_I8X && type < SYM_REBVALX) {
 				if (MT_Vector(value, val, REB_VECTOR)) return TRUE;
 			}
 			return FALSE;

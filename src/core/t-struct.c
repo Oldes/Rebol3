@@ -55,7 +55,7 @@ static const REBINT type_to_sym [STRUCT_TYPE_MAX] = {
 	SYM_POINTER,
 	-1, //SYM_STRUCT
 	SYM_WORD_TYPE,
-	SYM_REBVAL
+	SYM_REBVALX
 };
 
 static REBFLG get_scalar(REBSTU *stu,
@@ -572,7 +572,7 @@ static REBOOL parse_field_type(REBSTF *field, REBVAL *spec)
 				field->type = STRUCT_TYPE_WORD;
 				field->size = 4;
 				break;
-			case SYM_REBVAL:
+			case SYM_REBVALX:
 				field->type = STRUCT_TYPE_REBVAL;
 				field->size = sizeof(REBVAL);
 				break;

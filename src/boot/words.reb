@@ -57,7 +57,8 @@ uint64!
 float!
 double!
 byte!
-; end of numeric types (code in l-types.c expects, that next word is `datatypes`)
+; end of numeric types (code in l-types.c expects, that next word is `rebval!`)
+rebval!
 
 datatypes 
 
