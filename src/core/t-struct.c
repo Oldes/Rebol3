@@ -55,8 +55,7 @@ static const REBINT type_to_sym [STRUCT_TYPE_MAX] = {
 	SYM_POINTER,
 	-1, //SYM_STRUCT
 	SYM_WORD_TYPE,
-	//SYM_REBVAL // unused
-	//STRUCT_TYPE_MAX
+	SYM_REBVAL
 };
 
 static REBFLG get_scalar(REBSTU *stu,
@@ -114,13 +113,17 @@ static REBFLG get_scalar(REBSTU *stu,
 			break;
 #endif
 		case STRUCT_TYPE_WORD:
-			Set_Word(val, *(REBINT *)data, NULL, 0);
+			if (*(REBINT *)data == NULL)
+				SET_NONE(val);
+			else 
+				Set_Word(val, *(REBINT *)data, NULL, 0);
 			break;
-#ifdef unused
 		case STRUCT_TYPE_REBVAL:
-			memcpy(val, data, sizeof(REBVAL));
+			if (*(REBINT *)data == NULL)
+				SET_NONE(val);
+			else
+				COPY_MEM(val, data, sizeof(REBVAL));
 			break;
-#endif
 		default:
 			/* should never be here */
 			return FALSE;
@@ -248,7 +251,7 @@ static REBOOL assign_scalar(REBSTU *stu,
 	void *data = STRUCT_DATA_BIN(stu) + field->offset + n * field->size;
 
 	if (field->type == STRUCT_TYPE_REBVAL) {
-		memcpy(data, val, sizeof(REBVAL));
+		COPY_MEM(data, val, sizeof(REBVAL));
 		return TRUE;
 	}
 
@@ -492,7 +495,7 @@ static void set_ext_storage (REBVAL *out, REBINT raw_size, REBUPT raw_addr)
 }
 #endif
 
-static void parse_field_type(REBSTF *field, REBVAL *spec, REBVAL *inner, REBVAL **init)
+static REBOOL parse_field_type(REBSTF *field, REBVAL *spec)
 {
 	REBVAL *val = VAL_BLK_DATA(spec);
 
@@ -569,14 +572,12 @@ static void parse_field_type(REBSTF *field, REBVAL *spec, REBVAL *inner, REBVAL 
 				field->type = STRUCT_TYPE_WORD;
 				field->size = 4;
 				break;
-#ifdef unused
 			case SYM_REBVAL:
 				field->type = STRUCT_TYPE_REBVAL;
 				field->size = sizeof(REBVAL);
 				break;
-#endif
 			default:
-				Trap_Type(val);
+				return FALSE;
 		}
 	}
 #ifdef TODO
@@ -589,18 +590,15 @@ static void parse_field_type(REBSTF *field, REBVAL *spec, REBVAL *inner, REBVAL 
 	}
 #endif
 	else {
-		Trap_Type(val);
+		return FALSE;
 	}
 	++ val;
 
 	if (IS_BLOCK(val)) {// make struct! [a: [int32! [2]] [0 0]]
-
-		REBVAL *ret = Do_Blk(VAL_SERIES(val), 0);
-
-		if (!IS_INTEGER(ret)) {
-			Trap_Types(RE_EXPECT_VAL, REB_INTEGER, VAL_TYPE(val));
+		if (!IS_INTEGER(VAL_BLK_DATA(val))) {
+			return FALSE;
 		}
-		field->dimension = (REBCNT)VAL_INT64(ret);
+		field->dimension = (REBCNT)VAL_INT64(VAL_BLK_DATA(val));
 		field->array = TRUE;
 		++ val;
 	} else {
@@ -609,8 +607,9 @@ static void parse_field_type(REBSTF *field, REBVAL *spec, REBVAL *inner, REBVAL 
 	}
 
 	if (NOT_END(val)) {
-		Trap_Type(val);
+		return FALSE;
 	}
+	return TRUE;
 }
 
 /***********************************************************************
@@ -625,7 +624,6 @@ static void parse_field_type(REBSTF *field, REBVAL *spec, REBVAL *inner, REBVAL 
  * ]
 ***********************************************************************/
 {
-	//RL_Print("%s\n", __func__);
 	REBVAL key;
 	REBVAL spec;
 	REBVAL *struct_specs = Get_System(SYS_CATALOG, CAT_STRUCTS);
@@ -655,6 +653,7 @@ static void parse_field_type(REBSTF *field, REBVAL *spec, REBVAL *inner, REBVAL 
 			Trap_Arg(data);
 		}
 		Set_Block(&spec, Clone_Block(VAL_SERIES(data)));
+		LABEL_SERIES(VAL_SERIES(&spec), "struct_spec");
 		// make sure that user cannot modify it
 		Protect_Series(&spec, FLAGIT(PROT_SET) | FLAGIT(PROT_LOCK) | FLAGIT(PROT_DEEP));
 		new_spec = TRUE;
@@ -666,6 +665,7 @@ static void parse_field_type(REBSTF *field, REBVAL *spec, REBVAL *inner, REBVAL 
 	REBSTU *stu = &VAL_STRUCT(out);
 	VAL_STRUCT_SPEC(out) = VAL_SERIES(&spec);
 	VAL_STRUCT_DATA(out) = NULL;
+	VAL_STRUCT_FIELDS(out) = NULL;
 	VAL_STRUCT_OFFSET(out) = 0;
 	/* set type early such that GC will handle it correctly, i.e, not collect series in the struct */
 	SET_TYPE(out, REB_STRUCT);
@@ -676,58 +676,64 @@ static void parse_field_type(REBSTF *field, REBVAL *spec, REBVAL *inner, REBVAL 
 		REBCNT num_spec_values = VAL_TAIL(data) - VAL_INDEX(data);
 		REBCNT min_fileds = num_spec_values >> 1;
 		/* Don't allow empty struct! */
-		if (min_fileds == 0) Trap_Arg(data);
+		if (min_fileds == 0) Trap1(RE_MALCONSTRUCT, data);
 
-		VAL_STRUCT_FIELDS(out) = Make_Series(min_fileds, sizeof(REBSTF), FALSE); // keeps info at its head
+		VAL_STRUCT_FIELDS(out) = Make_Series(1 + min_fileds, sizeof(REBSTF), FALSE); // keeps info at its head
 		BARE_SERIES(VAL_STRUCT_FIELDS(out));
-		EXPAND_SERIES_TAIL(VAL_STRUCT_FIELDS(out), 1);
+		LABEL_SERIES(VAL_STRUCT_FIELDS(out), "struct_fields");
+		SERIES_TAIL(VAL_STRUCT_FIELDS(out)) = 1; // info at the head
+
+		REBSTI *info = (REBSTI *)BLK_HEAD(VAL_STRUCT_FIELDS(out));
 
 		VAL_STRUCT_ID(out) = hash;
 
 		REBVAL *blk = VAL_BLK_DATA(&spec);
 		REBINT field_idx = 1; /* for field index */
 		REBU64 offset = 0;    /* offset in data */
-//TODO: init is unused now (and also inner defined later!)
-		REBVAL *init = NULL;  /* for result to save in data */
-//		REBOOL expect_init = FALSE;
-		//	REBINT raw_size = -1;
-		//	REBUPT raw_addr = 0;
-		//	REBCNT alignment = 0;
+		REBCNT error = 0;
 
 		// skip optional doc strings
 		while (IS_STRING(blk)) ++blk;
 
 		// optional attributes
-		//if (IS_BLOCK(blk)) {
+		if (IS_BLOCK(blk)) {
+			//TODO: ignored now!
 		//	parse_attr(blk, &raw_size, &raw_addr);
-		//	++blk;
-		//}
+			++blk;
+		}
 
+		//!!! IMPORTANT NOTE !!!
+		//!!! Don't throw an error from this loop!
+		//!!! VAL_STRUCT_FIELDS(out) must be freed in case of error!
+#define FIELD_ERROR_MALCONSTRUCT 1
+#define FIELD_ERROR_SIZE_LIMIT   2
+#define FIELD_ERROR_INVALID_SPEC 3
 		while (NOT_END(blk)) {
-			REBVAL *inner;
 			REBSTF *field = NULL;
 			REBU64 step = 0;
 
 			EXPAND_SERIES_TAIL(VAL_STRUCT_FIELDS(out), 1);
 
-			DS_PUSH_NONE;
-			inner = DS_TOP; /* save in stack so that it won't be GC'ed when MT_Struct is recursively called */
-
 			field = (REBSTF *)SERIES_SKIP(VAL_STRUCT_FIELDS(out), field_idx);
 			field->offset = (REBCNT)offset;
 
 			if (!IS_WORD(blk)) {
-				Trap_Type(blk);
+				error = FIELD_ERROR_MALCONSTRUCT;
+				break;
 			}
 			field->sym = VAL_WORD_SYM(blk);
 			VAL_SET_LINE(blk);
 			++blk;
 
 			if (!IS_BLOCK(blk)) {
-				Trap_Arg(blk);
+				error = FIELD_ERROR_MALCONSTRUCT;
+				break;
 			}
 
-			parse_field_type(field, blk, inner, &init); // may throw an error!
+			if (!parse_field_type(field, blk)) {
+				error = FIELD_ERROR_INVALID_SPEC;
+				break;
+			}
 			VAL_CLR_LINE(blk);
 			++blk;
 
@@ -742,7 +748,8 @@ static void parse_field_type(REBSTF *field, REBVAL *spec, REBVAL *inner, REBVAL 
 
 			step = (REBU64)field->size * (REBU64)field->dimension;
 			if (step > VAL_STRUCT_LIMIT) {
-				Trap1(RE_SIZE_LIMIT, out);
+				error = FIELD_ERROR_SIZE_LIMIT;
+				break;
 			}
 
 			offset += step;
@@ -754,15 +761,30 @@ static void parse_field_type(REBSTF *field, REBVAL *spec, REBVAL *inner, REBVAL 
 			}
 			*/
 			if (offset > VAL_STRUCT_LIMIT) {
-				Trap1(RE_SIZE_LIMIT, out);
+				error = FIELD_ERROR_SIZE_LIMIT;
+				break;
 			}
 
 			field->done = TRUE;
+			if (field->type == STRUCT_TYPE_REBVAL)
+				info->flags |= 1;
+
 
 			++field_idx;
-
-			DS_POP; /* pop up the inner struct*/
 		}
+
+		if (error) {
+			//puts("MT_Struct error");
+			SET_UNSET(out);
+			Free_Series(VAL_STRUCT_FIELDS(out));
+			switch (error) {
+			case FIELD_ERROR_MALCONSTRUCT: Trap1(RE_MALCONSTRUCT, data);
+			case FIELD_ERROR_SIZE_LIMIT:   Trap1(RE_SIZE_LIMIT, out);
+			case FIELD_ERROR_INVALID_SPEC: Trap_Arg(blk);
+			}
+		}
+
+		//Dump_Series(VAL_STRUCT_FIELDS(out), "struct_fields");
 
 		// Store complete length of the struct
 		STRUCT_LEN(stu) = (REBCNT)offset;
@@ -788,6 +810,7 @@ static void parse_field_type(REBSTF *field, REBVAL *spec, REBVAL *inner, REBVAL 
 	}
 	
 	STRUCT_DATA(stu) = Make_Binary(STRUCT_LEN(stu));
+	LABEL_SERIES(VAL_STRUCT_FIELDS(out), "struct_data");
 	SERIES_TAIL(STRUCT_DATA(stu)) = STRUCT_LEN(stu);
 	
 	if (IS_BLOCK(values)) {
@@ -1021,6 +1044,7 @@ static void init_fields(REBVAL *ret, REBVAL *spec)
 
 		case A_CHANGE:
 			{
+				if (VAL_STRUCT_NEEDS_MARK(val)) Trap0(RE_PROTECTED);
 				if (!IS_BINARY(arg)) {
 					Trap_Types(RE_EXPECT_VAL, REB_BINARY, VAL_TYPE(arg));
 				}

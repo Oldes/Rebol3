@@ -7,7 +7,9 @@ Rebol [
 ]
 
 ~~~start-file~~~ "STRUCT"
-
+;; Struct datatype was reimplemented and so this test is only
+;; for the recent version!
+if system/version >= 3.19.1 [
 ===start-group=== "Struct construction"
 --test-- "Struct single value construction"
 	--assert not error? try [
@@ -34,18 +36,17 @@ Rebol [
 	--assert 4 = length? f32
 	--assert 8 = length? f64
 	--assert 4 = length? w
-	--assert (mold/flat i8 ) = "make struct! [a: [int8!] 0]"
-	--assert (mold/flat i16) = "make struct! [a: [int16!] 0]"
-	--assert (mold/flat i32) = "make struct! [a: [int32!] 0]"
-	--assert (mold/flat i64) = "make struct! [a: [int64!] 0]"
-	--assert (mold/flat u8 ) = "make struct! [a: [uint8!] 0]"
-	--assert (mold/flat u16) = "make struct! [a: [uint16!] 0]"
-	--assert (mold/flat u32) = "make struct! [a: [uint32!] 0]"
-	--assert (mold/flat u64) = "make struct! [a: [uint64!] 0]"
-	--assert (mold/flat f32) = "make struct! [a: [float!] 0.0]"
-	--assert (mold/flat f64) = "make struct! [a: [double!] 0.0]"
-	--assert (mold/flat w)   = "make struct! [a: [word!] none]"
-
+	--assert (mold/all/flat i8 ) = "#(struct! [a [int8!]] [a: 0])"
+	--assert (mold/all/flat i16) = "#(struct! [a [int16!]] [a: 0])"
+	--assert (mold/all/flat i32) = "#(struct! [a [int32!]] [a: 0])"
+	--assert (mold/all/flat i64) = "#(struct! [a [int64!]] [a: 0])"
+	--assert (mold/all/flat u8 ) = "#(struct! [a [uint8!]] [a: 0])"
+	--assert (mold/all/flat u16) = "#(struct! [a [uint16!]] [a: 0])"
+	--assert (mold/all/flat u32) = "#(struct! [a [uint32!]] [a: 0])"
+	--assert (mold/all/flat u64) = "#(struct! [a [uint64!]] [a: 0])"
+	--assert (mold/all/flat f32) = "#(struct! [a [float!]] [a: 0.0])"
+	--assert (mold/all/flat f64) = "#(struct! [a [double!]] [a: 0.0])"
+	--assert (mold/all/flat w)   = "#(struct! [a [word!]] [a: #(none)])"
 
 --test-- "Struct single value (dimensional) construction"
 	--assert not error? try [
@@ -84,45 +85,45 @@ Rebol [
 	--assert 8  = length? f32x2
 	--assert 16 = length? f64x2
 	--assert 8  = length? wx2
-	--assert (mold/flat i8x2 ) = "make struct! [a: [int8! [2]] [0 0]]"
-	--assert (mold/flat i16x2) = "make struct! [a: [int16! [2]] [0 0]]"
-	--assert (mold/flat i32x2) = "make struct! [a: [int32! [2]] [0 0]]"
-	--assert (mold/flat i64x2) = "make struct! [a: [int64! [2]] [0 0]]"
-	--assert (mold/flat u8x2 ) = "make struct! [a: [uint8! [2]] [0 0]]"
-	--assert (mold/flat u16x2) = "make struct! [a: [uint16! [2]] [0 0]]"
-	--assert (mold/flat u32x2) = "make struct! [a: [uint32! [2]] [0 0]]"
-	--assert (mold/flat u64x2) = "make struct! [a: [uint64! [2]] [0 0]]"
-	--assert (mold/flat f32x2) = "make struct! [a: [float! [2]] [0.0 0.0]]"
-	--assert (mold/flat f64x2) = "make struct! [a: [double! [2]] [0.0 0.0]]"
-	--assert (mold/flat wx2)   = "make struct! [a: [word! [2]] [none none]]"
+	--assert (mold/all/flat i8x2 ) = "#(struct! [a [int8! [2]]] [a: [0 0]])"
+	--assert (mold/all/flat i16x2) = "#(struct! [a [int16! [2]]] [a: [0 0]])"
+	--assert (mold/all/flat i32x2) = "#(struct! [a [int32! [2]]] [a: [0 0]])"
+	--assert (mold/all/flat i64x2) = "#(struct! [a [int64! [2]]] [a: [0 0]])"
+	--assert (mold/all/flat u8x2 ) = "#(struct! [a [uint8! [2]]] [a: [0 0]])"
+	--assert (mold/all/flat u16x2) = "#(struct! [a [uint16! [2]]] [a: [0 0]])"
+	--assert (mold/all/flat u32x2) = "#(struct! [a [uint32! [2]]] [a: [0 0]])"
+	--assert (mold/all/flat u64x2) = "#(struct! [a [uint64! [2]]] [a: [0 0]])"
+	--assert (mold/all/flat f32x2) = "#(struct! [a [float! [2]]] [a: [0.0 0.0]])"
+	--assert (mold/all/flat f64x2) = "#(struct! [a [double! [2]]] [a: [0.0 0.0]])"
+	--assert (mold/all/flat wx2)   = "#(struct! [a [word! [2]]] [a: [#(none) #(none)]])"
 
 --test-- "Struct construction with initial value"
-	--assert all [struct? i8:  make struct! [a: [int8!]   23 b [int8!]]  i8/a  = 23  i8/b  = 0 ]
-	--assert all [struct? i16: make struct! [a: [int16!]  23 b [int8!]]  i16/a = 23  i16/b = 0 ]
-	--assert all [struct? i32: make struct! [a: [int32!]  23 b [int8!]]  i32/a = 23  i32/b = 0 ]
-	--assert all [struct? i64: make struct! [a: [int64!]  23 b [int8!]]  i64/a = 23  i64/b = 0 ]
-	--assert all [struct? u8:  make struct! [a: [uint8!]  23 b [int8!]]  u8/a  = 23  u8/b  = 0 ]
-	--assert all [struct? u16: make struct! [a: [uint16!] 23 b [int8!]]  u16/a = 23  u16/b = 0 ]
-	--assert all [struct? u32: make struct! [a: [uint32!] 23 b [int8!]]  u32/a = 23  u32/b = 0 ]
-	--assert all [struct? u64: make struct! [a: [uint64!] 23 b [int8!]]  u64/a = 23  u64/b = 0 ]
-	--assert all [struct? f32: make struct! [a: [float!]  23 b [int8!]]  f32/a = 23  f32/b = 0 ]
-	--assert all [struct? f64: make struct! [a: [double!] 23 b [int8!]]  f64/a = 23  f64/b = 0 ]
-	--assert all [struct? w:   make struct! [a: [word!]  foo b [int8!]]  w/a = 'foo  w/b   = 0 ]
+	--assert all [struct? i8:  #(struct! [a [int8!]   b [int8!]] [a:  23 ])  i8/a  = 23  i8/b  = 0 ]
+	--assert all [struct? i16: #(struct! [a [int16!]  b [int8!]] [a:  23 ])  i16/a = 23  i16/b = 0 ]
+	--assert all [struct? i32: #(struct! [a [int32!]  b [int8!]] [a:  23 ])  i32/a = 23  i32/b = 0 ]
+	--assert all [struct? i64: #(struct! [a [int64!]  b [int8!]] [a:  23 ])  i64/a = 23  i64/b = 0 ]
+	--assert all [struct? u8:  #(struct! [a [uint8!]  b [int8!]] [a:  23 ])  u8/a  = 23  u8/b  = 0 ]
+	--assert all [struct? u16: #(struct! [a [uint16!] b [int8!]] [a:  23 ])  u16/a = 23  u16/b = 0 ]
+	--assert all [struct? u32: #(struct! [a [uint32!] b [int8!]] [a:  23 ])  u32/a = 23  u32/b = 0 ]
+	--assert all [struct? u64: #(struct! [a [uint64!] b [int8!]] [a:  23 ])  u64/a = 23  u64/b = 0 ]
+	--assert all [struct? f32: #(struct! [a [float!]  b [int8!]] [a:  23 ])  f32/a = 23  f32/b = 0 ]
+	--assert all [struct? f64: #(struct! [a [double!] b [int8!]] [a:  23 ])  f64/a = 23  f64/b = 0 ]
+	--assert all [struct? w:   #(struct! [a [word!]   b [int8!]] [a: foo ])  w/a = 'foo  w/b   = 0 ]
 
-	--assert (mold/flat i8 ) = "make struct! [a: [int8!] 23 b: [int8!] 0]"
-	--assert (mold/flat i16) = "make struct! [a: [int16!] 23 b: [int8!] 0]"
-	--assert (mold/flat i32) = "make struct! [a: [int32!] 23 b: [int8!] 0]"
-	--assert (mold/flat i64) = "make struct! [a: [int64!] 23 b: [int8!] 0]"
-	--assert (mold/flat u8 ) = "make struct! [a: [uint8!] 23 b: [int8!] 0]"
-	--assert (mold/flat u16) = "make struct! [a: [uint16!] 23 b: [int8!] 0]"
-	--assert (mold/flat u32) = "make struct! [a: [uint32!] 23 b: [int8!] 0]"
-	--assert (mold/flat u64) = "make struct! [a: [uint64!] 23 b: [int8!] 0]"
-	--assert (mold/flat f32) = "make struct! [a: [float!] 23.0 b: [int8!] 0]"
-	--assert (mold/flat f64) = "make struct! [a: [double!] 23.0 b: [int8!] 0]"
-	--assert (mold/flat w)   = "make struct! [a: [word!] foo b: [int8!] 0]"
+	--assert (mold/all/flat i8 ) = "#(struct! [a [int8!] b [int8!]] [a: 23 b: 0])"
+	--assert (mold/all/flat i16) = "#(struct! [a [int16!] b [int8!]] [a: 23 b: 0])"
+	--assert (mold/all/flat i32) = "#(struct! [a [int32!] b [int8!]] [a: 23 b: 0])"
+	--assert (mold/all/flat i64) = "#(struct! [a [int64!] b [int8!]] [a: 23 b: 0])"
+	--assert (mold/all/flat u8 ) = "#(struct! [a [uint8!] b [int8!]] [a: 23 b: 0])"
+	--assert (mold/all/flat u16) = "#(struct! [a [uint16!] b [int8!]] [a: 23 b: 0])"
+	--assert (mold/all/flat u32) = "#(struct! [a [uint32!] b [int8!]] [a: 23 b: 0])"
+	--assert (mold/all/flat u64) = "#(struct! [a [uint64!] b [int8!]] [a: 23 b: 0])"
+	--assert (mold/all/flat f32) = "#(struct! [a [float!] b [int8!]] [a: 23.0 b: 0])"
+	--assert (mold/all/flat f64) = "#(struct! [a [double!] b [int8!]] [a: 23.0 b: 0])"
+	--assert (mold/all/flat w)   = "#(struct! [a [word!] b [int8!]] [a: foo b: 0])"
 
 --test-- "Construction from struct prototype"
-	proto!: make struct! [a: [uint8!] 1 b: [uint8!] 2]
+	proto!: #(struct! [a [uint8!] b [uint8!]] [a: 1 b: 2])
 	--assert all [proto!/a = 1 proto!/b = 2]
 	s1: make proto! [a: 10]
 	s2: make proto! [b: 20]
@@ -145,63 +146,89 @@ Rebol [
 
 ===start-group=== "Struct reflection"
 ;@@ https://github.com/Oldes/Rebol-issues/issues/2577
-s: make struct! spec: [a: [uint16!] 1 b: [int32!] -1 c: [word!] foo d [uint8! [2]]]
+s: #(struct! [
+	a [uint16!]
+	b [int32!]
+	c [word!]
+	d [uint8! [2]]
+] [a: 1 b: -1 c: foo])
 --test-- "spec-of struct"
-	--assert spec = spec-of s
+	--assert [a [uint16!] b [int32!] c [word!] d [uint8! [2]]] == spec-of s
 --test-- "body-of struct"
-	--assert [a: 1 b: -1 c: foo d: [0 0]] = body-of s
+	--assert [a: 1 b: -1 c: foo d: [0 0]] == body-of s
 --test-- "words-of struct"
-	--assert [a b c d] = words-of s
-	--assert [a b c d] = keys-of s
+	--assert [a b c d] == words-of s
+	--assert [a b c d] == keys-of s
 --test-- "values-of struct"
-	--assert [1 -1 foo [0 0]] = values-of s
+	--assert [1 -1 foo [0 0]] == values-of s
 ===end-group===
 
 
 ===start-group=== "Struct conversion"
 --test-- "to binary! struct!"
-	s: make struct! [a: [uint16!] 1 b: [int32!] -1]
+	s: #(struct! [a [uint16!] b [int32!]] [a: 1 b: -1])
 	--assert #{0100FFFFFFFF} = to binary! s
 ===end-group===
-
+] ;>= 3.19.1
 
 ===start-group=== "Invalid struct construction"
---test-- "Missing struct init value"
-;@@ https://github.com/zsx/r3/issues/50
-	--assert all [
-		error? e: try [make struct! [ c: [struct! [a [uint8!]]] ]]
-		e/id = 'expect-val
-	]
---test-- "Don't allow evaluation inside struct construction"
-;@@ https://github.com/zsx/r3/issues/51
-	--assert all [
-		error? e: try [make struct! [ a: [uint8!] probe random 100 ]]
-		e/id = 'invalid-type
-	]
---test-- "Invalid array type initialisation"
-;@@ https://github.com/Oldes/Rebol-issues/issues/2567
-	--assert all [
-		error? e: try [ make struct! [a: [int8! [2]] 1] ] ;- No crash!
-		e/id = 'expect-val
-	]
-
---test-- "Empty struct not allowed"
-	--assert all [
-		error? e: try [make struct! []]
-		e/id = 'invalid-arg
-	]
-	--assert all [
-		error? e: try [make struct! [a]]
-		e/id = 'invalid-arg
-	]
-	--assert all [
-		error? e: try [make struct! [[]]]
-		e/id = 'invalid-arg
-	]
-	--assert all [
-		error? e: try [make struct! [[] a]]
-		e/id = 'invalid-arg
-	]
+either system/version < 3.19.1 [
+	;; this syntax is no longer supported
+	--test-- "Missing struct init value"
+	;@@ https://github.com/zsx/r3/issues/50
+		--assert all [
+			error? e: try [make struct! [ c: [struct! [a [uint8!]]] ]]
+			e/id = 'expect-val
+		]
+	--test-- "Don't allow evaluation inside struct construction"
+	;@@ https://github.com/zsx/r3/issues/51
+		--assert all [
+			error? e: try [make struct! [ a: [uint8!] probe random 100 ]]
+			e/id = 'invalid-type
+		]
+	--test-- "Invalid array type initialisation"
+	;@@ https://github.com/Oldes/Rebol-issues/issues/2567
+		--assert all [
+			error? e: try [ make struct! [a: [int8! [2]] 1] ] ;- No crash!
+			e/id = 'expect-val
+		]
+][
+	--test-- "Empty struct not allowed"
+		--assert all [
+			error? e: try [make struct! []]
+			e/id = 'malconstruct
+		]
+		--assert all [
+			error? e: try [make struct! [[]]]
+			e/id = 'malconstruct
+		]
+	--test-- "No field specification"
+		--assert all [
+			error? e: try [make struct! [a]]
+			e/id = 'malconstruct
+		]
+		--assert all [
+			error? e: try [make struct! [[] a]]
+			e/id = 'malconstruct
+		]
+	--test-- "Invalid field specification"
+		--assert all [
+			error? e: try [make struct! [a [23]]]
+			e/id = 'invalid-arg
+		]
+		--assert all [
+			error? e: try [make struct! [a [int8! foo]]]
+			e/id = 'invalid-arg
+		]
+		--assert all [
+			error? e: try [make struct! [a [int8! 23]]]
+			e/id = 'invalid-arg
+		]
+		--assert all [
+			error? e: try [make struct! [a [int8! [foo]]]]
+			e/id = 'invalid-arg
+		]
+]
 ===end-group===
 
 

@@ -48,6 +48,7 @@
 #include "reb-host.h"
 #include "host-lib.h"
 #include "sys-value.h"
+#include "reb-struct.h"
 
 extern RL_LIB *RL; // Link back to reb-lib from embedded extensions
 
@@ -88,6 +89,7 @@ enum test_cmd_words {
 	CMD_str0,
 	CMD_echo,
 	CMD_path,
+	CMD_stru,
 };
 char *RX_Spec =
 	"REBOL [\n"
@@ -119,11 +121,12 @@ char *RX_Spec =
 	"str0:   command [{return a constructed string}]\n"
 	"echo:   command [{return the input value} value]\n"
 	"path:   command [{converts Rebol file to OS file as string or binary} f [file!] /full {full path} /utf8]\n"
+	"stru:   command [{test struct passing} val [struct!]]\n"
 
 	"init-words [id data length] protect/hide 'init-words\n"
 	"a: b: c: h: x: y: none\n"
 	"i: make image! 2x2\n"
-	"s: #(struct! [r [uint8!]])\n"
+	"s: #(struct! [a [uint8!]])\n"
 	"xtest: does [\n"
 		"foreach blk [\n"
 			"[x: hob1 #{0102}]"
@@ -174,6 +177,8 @@ char *RX_Spec =
 
 			"[{foo} == path %foo]\n"
 			"[#{66C3AD6B} == path/utf8 to file! #{66C3AD6B}]\n"
+
+			"[probe s stru s]\n"
 		"][\n"
 			"print [{^/^[[7mtest:^[[0m^[[1;32m} mold blk {^[[0m}]\n"
 			//"replace {x} {x} {y}\n"
@@ -448,9 +453,16 @@ RXIEXT int RX_Call(int cmd, RXIFRM *frm, void *ctx) {
 		RXA_SERIES(frm, 1) = ser;
 		RXA_TYPE(frm, 1) = RXA_REF(frm, 3) ? RXT_BINARY : RXT_STRING;
 		RXA_INDEX(frm, 1) = 0;
-	}
 		break;
+	}
 
+	case CMD_stru: //command [{test struct passing} val [struct!]]
+	{
+		RXIARG arg = RXA_ARG(frm, 1);
+		REBYTE *bin = SERIES_DATA(arg.structure.data);
+		bin[0] = bin[0] + 1;
+		return RXR_VALUE;
+	}
 	case CMD_init: // init words
 		x_arg_words = RL_MAP_WORDS(RXA_SERIES(frm,1));
 		return RXR_TRUE;

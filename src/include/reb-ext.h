@@ -103,7 +103,8 @@ typedef union rxi_arg_val {
 	};
 	struct {
 		REBSER *data;
-		REBSER *fields;
+		REBCNT id;
+		REBCNT offset;
 	} structure;
 
 } RXIARG;

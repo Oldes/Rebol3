@@ -696,6 +696,7 @@ clear_header:
 	}
 	series->sizes = 0; // includes bias and width
 	series->flags = 0;
+	series->series = 0;
 	//series->data = BAD_MEM_PTR;
 	//series->tail = 0xBAD2BAD2;
 	//series->size = 0xBAD3BAD3;
@@ -1043,9 +1044,6 @@ crash:
 	REBCNT  str_size, uni_size, blk_size, odd_size, seg_size, fre_size;
 	REBFLG  f = 0;
 	REBINT  pool_num;
-#ifdef SERIES_LABELS
-	REBYTE  *kind;
-#endif
 	REBU64  tot_size;
 
 	segs = tot = blks = strs = unis = nons = odds = fre = 0;
@@ -1073,16 +1071,16 @@ crash:
 			}
 
 #ifdef SERIES_LABELS
-			kind = "----";
-			if (SERIES_GET_FLAG(series, SER_KEEP)) kind = "KEEP";
-			//if (Find_Root(series)) kind = "ROOT";
-			if (!SERIES_FREED(series) && series->label) {
-				Debug_Fmt_("%08x: %16s %s ", series, series->label, kind);
-				f = 1;
-			} else if (!SERIES_FREED(series) && (flags & 0x100)) {
-				Debug_Fmt_("%08x: %s ", series, kind);
-				f = 1;
-			}
+//			REBYTE  *kind = "----";
+//			if (SERIES_GET_FLAG(series, SER_KEEP)) kind = "KEEP";
+//			//if (Find_Root(series)) kind = "ROOT";
+//			if (!SERIES_FREED(series) && series->label) {
+//				Debug_Fmt_("%08x: %16s %s ", series, series->label, kind);
+//				f = 1;
+//			} else if (!SERIES_FREED(series) && (flags & 0x100)) {
+//				Debug_Fmt_("%08x: %s ", series, kind);
+//				f = 1;
+//			}
 #endif
 			if (SERIES_WIDE(series) == sizeof(REBVAL)) {
 				blks++;

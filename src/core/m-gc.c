@@ -112,7 +112,7 @@ REBVAL *N_watch(REBFRM *frame, REBVAL **inter_block)
 #endif
 
 static void Mark_Series(REBSER *series, REBCNT depth);
-//static void Mark_Value(REBVAL *val, REBCNT depth);
+static void Mark_Value(REBVAL *val, REBCNT depth);
 
 /***********************************************************************
 **
@@ -149,14 +149,25 @@ static void Mark_Series(REBSER *series, REBCNT depth);
 		CHECK_MARK(GOB_DATA(gob), depth);
 	}
 }
-
-#ifdef TODO
+#ifdef unused
 /***********************************************************************
 **
-*/	static void Mark_Struct_Field(REBSTU *stu, struct Struct_Field *field, REBCNT depth)
+*/	static void Mark_Struct_Field(REBSTU *stu, REBSTF *field, REBCNT depth)
 /*
 ***********************************************************************/
 {
+	if (field->type == STRUCT_TYPE_REBVAL) {
+		REBCNT i;
+		ASSERT2(field->size == sizeof(REBVAL), RP_BAD_SIZE);
+		for (i = 0; i < field->dimension; i++) {
+			REBVAL *data = (REBVAL *)SERIES_SKIP(STRUCT_DATA_BIN(stu),
+				STRUCT_OFFSET(stu) + field->offset + i * field->size);
+			if (field->done) {
+				Mark_Value(data, depth);
+			}
+		}
+	}
+#ifdef todo
 	if (field->type == STRUCT_TYPE_STRUCT) {
 		REBCNT len = 0;
 		REBSER *series = NULL;
@@ -167,18 +178,6 @@ static void Mark_Series(REBSER *series, REBCNT depth);
 		series = field->fields;
 		for (len = 0; len < series->tail; len++) {
 			Mark_Struct_Field(stu, (struct Struct_Field *)SERIES_SKIP(series, len), depth + 1);
-		}
-	}
-#ifdef unused
-	else if (field->type == STRUCT_TYPE_REBVAL) {
-		REBCNT i;
-		ASSERT2(field->size == sizeof(REBVAL), RP_BAD_SIZE);
-		for (i = 0; i < field->dimension; i++) {
-			REBVAL *data = (REBVAL *)SERIES_SKIP(STRUCT_DATA_BIN(stu),
-				STRUCT_OFFSET(stu) + field->offset + i * field->size);
-			if (field->done) {
-				Mark_Value(data, depth);
-			}
 		}
 	}
 #endif
@@ -193,22 +192,32 @@ static void Mark_Series(REBSER *series, REBCNT depth);
 ***********************************************************************/
 {
 	REBCNT len = 0;
-	REBSER *series = NULL;
 //	if (IS_MARK_SERIES(STRUCT_DATA_BIN(stu))) return;
 
 	CHECK_MARK(STRUCT_SPEC(stu), depth);
-	CHECK_MARK(STRUCT_FIELDS_SER(stu), depth);
+	if (STRUCT_FIELDS_SER(stu)) CHECK_MARK(STRUCT_FIELDS_SER(stu), depth);
+	if (!STRUCT_DATA(stu)) return;
 	CHECK_MARK(STRUCT_DATA(stu), depth);
 	ASSERT2(IS_BARE_SERIES(stu->data), RP_BAD_SERIES);
 	ASSERT2(!IS_EXT_SERIES(stu->data), RP_BAD_SERIES);
 	ASSERT2(SERIES_TAIL(stu->data) == 1, RP_BAD_SERIES);
-#ifdef TODO
-	series = stu->fields;
-	for (len = 0; len < series->tail; len++) {
-		struct Struct_Field *field = (struct Struct_Field *)SERIES_SKIP(series, len);
-		Mark_Struct_Field(stu, field, depth + 1);
+
+	if (STRUCT_NEEDS_MARK(stu)) {
+		REBCNT n;
+		REBVAL *val;
+		REBSTF *field = STRUCT_FIELDS(stu);
+		for (REBCNT i = 0; i < STRUCT_FIELDS_NUM(stu); i++, field++) {
+			if (field->done) {
+				if (field->type == STRUCT_TYPE_REBVAL) {
+					ASSERT2(field->size == sizeof(REBVAL), RP_BAD_SIZE);
+					for (n = 0; n < field->dimension; n++) {
+						val = (REBVAL *)STRUCT_DATA_BIN(stu) + field->offset + n * field->size;
+						if (!IS_END(val)) Mark_Value(val, depth + 1);
+					}
+				}
+			}
+		}
 	}
-#endif
 }
 
 
@@ -310,7 +319,7 @@ static void Mark_Series(REBSER *series, REBCNT depth);
 
 	//Moved to end: ASSERT1(IS_END(BLK_TAIL(series)), RP_MISSING_END);
 
-	//if (depth == 1 && series->label) Print("Marking %s", series->label);
+	//if (depth == 1 && series->label) RL_Print("Marking %s\n", series->label);
 
 	depth++;
 
@@ -320,175 +329,14 @@ static void Mark_Series(REBSER *series, REBCNT depth);
 		if (ANY_SCALAR(val)) {
 			continue;
 		}
-		if (ANY_WORD(val)) {
-			// Special word used in word frame, stack, or errors:
-			if (VAL_GET_OPT(val, OPTS_UNWORD)) continue;
-			// Mark its context, if it has one:
-			if (VAL_WORD_INDEX(val) > 0 && NZ(ser = VAL_WORD_FRAME(val))) {
-				//if (SERIES_TAIL(ser) > 100) Dump_Word_Value(val);
-				CHECK_MARK(ser, depth);
-			}
-			// Possible bug above!!! We cannot mark relative words (negative
-			// index) because the frame pointer does not point to a context,
-			// it may point to a function body, native code, or action number.
-			// But, what if a function is GC'd during it's own evaluation, what
-			// keeps the function's code block from being GC'd?
-			continue;
-		}
-		if (ANY_BLOCK(val)) {
-			ser = VAL_SERIES(val);
-			ASSERT(ser != 0, RP_NULL_SERIES);
-			if (IS_BARE_SERIES(ser)) {
-				MARK_SERIES(ser);
-				continue;
-			}
-#if (ALEVEL>0)
-			if (!IS_END(BLK_SKIP(ser, SERIES_TAIL(ser))) && ser != DS_Series)
-				Crash(RP_MISSING_END);
-#endif
-			if (SERIES_WIDE(ser) != sizeof(REBVAL) && SERIES_WIDE(ser) != 4 && SERIES_WIDE(ser) != 0)
-				Crash(RP_BAD_WIDTH, 16, SERIES_WIDE(ser), VAL_TYPE(val));
-			QUEUE_CHECK_MARK(ser, depth);
-			continue;
-		}
-		if (VAL_TYPE(val) >= REB_BINARY && VAL_TYPE(val) <= REB_BITSET) {
-			ser = VAL_SERIES(val);
-				if (SERIES_WIDE(ser) > sizeof(REBUNI))
-					Crash(RP_BAD_WIDTH, sizeof(REBUNI), SERIES_WIDE(ser), VAL_TYPE(val));
-			MARK_SERIES(ser);
-			continue;
-		}
 
-		switch (VAL_TYPE(val)) {
-		case REB_HANDLE:
-			if (IS_CONTEXT_HANDLE(val)) {
-				hob = VAL_HANDLE_CTX(val);
-				//printf("marked hob: %p %p\n", hob, val);
-				MARK_HANDLE_CONTEXT(val);
-				if (hob->series) {
-					Mark_Series(hob->series, depth);
-				}
-			}	
-			else if (IS_SERIES_HANDLE(val) && !HANDLE_GET_FLAG(val, HANDLE_RELEASABLE)) {
-				//printf("markserhandle %0xh val: %0xh %s \n", (void*)val, VAL_HANDLE(val), VAL_HANDLE_NAME(val));
-				Mark_Series(VAL_HANDLE_DATA(val), depth);
-			}
-			break;
-
-		case REB_DATATYPE:
-			if (VAL_TYPE_SPEC(val)) {	// allow it to be zero
-				CHECK_MARK(VAL_TYPE_SPEC(val), depth); // check typespec.reb file
-			}
-			break;
-		case REB_TYPESET:
-			break;
-
-		case REB_ERROR:
-			// If it has an actual error object, then mark it. Otherwise,
-			// it is a THROW, and GC of a THROW value is invalid because
-			// it contains temporary values on the stack that could be
-			// above the current DSP (where the THROW was done).
-			if (VAL_ERR_NUM(val) > RE_THROW_MAX) {
-				if (VAL_ERR_OBJECT(val)) CHECK_MARK(VAL_ERR_OBJECT(val), depth);
-			}
-			// else Crash(RP_THROW_IN_GC); // !!!! in question - is it true?
-			break;
-
-		case REB_TASK: // not yet implemented
-			break;
-
-		case REB_FRAME:
-			// Mark special word list. Contains no pointers because
-			// these are special word bindings (to typesets if used).
-			if (VAL_FRM_WORDS(val)) MARK_SERIES(VAL_FRM_WORDS(val));
-			if (VAL_FRM_SPEC(val)) {CHECK_MARK(VAL_FRM_SPEC(val), depth);}
-			break;
-
-		case REB_PORT:
-			// Debug_Fmt("\n\nmark port: %x %d", val, VAL_TAIL(val));
-			// Debug_Values(VAL_OBJ_VALUE(val,1), VAL_TAIL(val)-1, 100);
-			goto mark_obj;
-
-		case REB_MODULE:
-			if (VAL_MOD_BODY(val)) CHECK_MARK(VAL_MOD_BODY(val), depth);
-		case REB_OBJECT:
-			// Object is just a block with special first value (context):
-mark_obj:
-			if (!IS_MARK_SERIES(VAL_OBJ_FRAME(val))) {
-				if (depth < 64) Mark_Series(VAL_OBJ_FRAME(val), depth);
-				else Queue_Mark_Series(VAL_OBJ_FRAME(val));
-				//if (SERIES_TAIL(VAL_OBJ_FRAME(val)) >= 1)
-				//	Dump_Frame(VAL_OBJ_FRAME(val), 4);
-			}
-			break;
-
-		case REB_FUNCTION:
-		case REB_COMMAND:
-		case REB_CLOSURE:
-		case REB_REBCODE:
-			CHECK_MARK(VAL_FUNC_BODY(val), depth);
-			/* no break */
-		case REB_NATIVE:
-		case REB_ACTION:
-		case REB_OP:
-			CHECK_MARK(VAL_FUNC_SPEC(val), depth);
-			MARK_SERIES(VAL_FUNC_ARGS(val));
-			// There is a problem for user define function operators !!!
-			// Their bodies are not GC'd!
-			break;
-
-		case REB_IMAGE:
-		case REB_VECTOR:
-			MARK_SERIES(VAL_SERIES(val));
-			break;
-
-		case REB_MAP:
-			ser = VAL_SERIES(val);
-			QUEUE_CHECK_MARK(ser, depth);
-			if (ser->series) {
-				MARK_SERIES(ser->series);
-			}
-			break;
-
-#ifdef ndef
-		case REB_ROUTINE:
-		  // Deal with the co-joined struct value...
-			CHECK_MARK(VAL_STRUCT_SPEC(VAL_ROUTINE_SPEC(val)), depth);
-			CHECK_MARK(VAL_STRUCT_VALS(VAL_ROUTINE_SPEC(val)), depth);
-			MARK_SERIES(VAL_STRUCT_DATA(VAL_ROUTINE_SPEC(val)));
-			MARK_SERIES(VAL_ROUTINE_SPEC_SER(val));
-//!!!			if (Current_Closing_Library && VAL_ROUTINE_ID(val) == Current_Closing_Library)
-				VAL_ROUTINE_ID(val) = 0; // Invalidate the routine
-			break;
-#endif
-
-		case REB_LIBRARY:
-			MARK_SERIES(VAL_LIBRARY_NAME(val));
-//!!!			if (Current_Closing_Library && VAL_LIBRARY_ID(val) == Current_Closing_Library)
-				VAL_LIBRARY_ID(val) = 0; // Invalidate the library
-			break;
-
-		case REB_STRUCT:
-			Mark_Struct(&VAL_STRUCT(val), depth);
-			break;
-
-		case REB_GOB:
-			Mark_Gob(VAL_GOB(val), depth);
-			break;
-
-		case REB_EVENT:
-			Mark_Event(val, depth);
-			break;
-
-		case REB_END:
+		if (IS_END(val)) {
 			// We should never reach the end before len above.
 			// Exception is the stack itself.
 			if (series != DS_Series) Crash(RP_UNEXPECTED_END);
 			break;
-
-		default:
-			Crash(RP_DATATYPE+1, VAL_TYPE(val));
 		}
+		Mark_Value(val, depth);
 	}
 
 #if (ALEVEL>0)
@@ -497,6 +345,184 @@ mark_obj:
 #endif
 }
 
+
+/***********************************************************************
+**
+*/	static void Mark_Value(REBVAL *val, REBCNT depth)
+/*
+**
+***********************************************************************/
+{
+	REBSER *ser;
+	REBHOB *hob;
+
+	if (ANY_SCALAR(val)) {
+		return;
+	}
+	if (ANY_WORD(val)) {
+		// Special word used in word frame, stack, or errors:
+		if (VAL_GET_OPT(val, OPTS_UNWORD)) return;
+		// Mark its context, if it has one:
+		if (VAL_WORD_INDEX(val) > 0 && NZ(ser = VAL_WORD_FRAME(val))) {
+			//if (SERIES_TAIL(ser) > 100) Dump_Word_Value(val);
+			CHECK_MARK(ser, depth);
+		}
+		// Possible bug above!!! We cannot mark relative words (negative
+		// index) because the frame pointer does not point to a context,
+		// it may point to a function body, native code, or action number.
+		// But, what if a function is GC'd during it's own evaluation, what
+		// keeps the function's code block from being GC'd?
+		return;
+	}
+	if (ANY_BLOCK(val)) {
+		ser = VAL_SERIES(val);
+		ASSERT(ser != 0, RP_NULL_SERIES);
+		if (IS_BARE_SERIES(ser)) {
+			MARK_SERIES(ser);
+			return;
+		}
+#if (ALEVEL>0)
+		if (!IS_END(BLK_SKIP(ser, SERIES_TAIL(ser))) && ser != DS_Series)
+			Crash(RP_MISSING_END);
+#endif
+		if (SERIES_WIDE(ser) != sizeof(REBVAL) && SERIES_WIDE(ser) != 4 && SERIES_WIDE(ser) != 0)
+			Crash(RP_BAD_WIDTH, 16, SERIES_WIDE(ser), VAL_TYPE(val));
+		QUEUE_CHECK_MARK(ser, depth);
+		return;
+	}
+	if (VAL_TYPE(val) >= REB_BINARY && VAL_TYPE(val) <= REB_BITSET) {
+		ser = VAL_SERIES(val);
+		if (SERIES_WIDE(ser) > sizeof(REBUNI))
+			Crash(RP_BAD_WIDTH, sizeof(REBUNI), SERIES_WIDE(ser), VAL_TYPE(val));
+		MARK_SERIES(ser);
+		return;
+	}
+
+	switch (VAL_TYPE(val)) {
+	case REB_HANDLE:
+		if (IS_CONTEXT_HANDLE(val)) {
+			hob = VAL_HANDLE_CTX(val);
+			//printf("marked hob: %p %p\n", hob, val);
+			MARK_HANDLE_CONTEXT(val);
+			if (hob->series) {
+				Mark_Series(hob->series, depth);
+			}
+		}
+		else if (IS_SERIES_HANDLE(val) && !HANDLE_GET_FLAG(val, HANDLE_RELEASABLE)) {
+			//printf("markserhandle %0xh val: %0xh %s \n", (void*)val, VAL_HANDLE(val), VAL_HANDLE_NAME(val));
+			Mark_Series(VAL_HANDLE_DATA(val), depth);
+		}
+		break;
+
+	case REB_DATATYPE:
+		if (VAL_TYPE_SPEC(val)) {	// allow it to be zero
+			CHECK_MARK(VAL_TYPE_SPEC(val), depth); // check typespec.reb file
+		}
+		break;
+	case REB_TYPESET:
+		break;
+
+	case REB_ERROR:
+		// If it has an actual error object, then mark it. Otherwise,
+		// it is a THROW, and GC of a THROW value is invalid because
+		// it contains temporary values on the stack that could be
+		// above the current DSP (where the THROW was done).
+		if (VAL_ERR_NUM(val) > RE_THROW_MAX) {
+			if (VAL_ERR_OBJECT(val)) CHECK_MARK(VAL_ERR_OBJECT(val), depth);
+		}
+		// else Crash(RP_THROW_IN_GC); // !!!! in question - is it true?
+		break;
+
+	case REB_TASK: // not yet implemented
+		break;
+
+	case REB_FRAME:
+		// Mark special word list. Contains no pointers because
+		// these are special word bindings (to typesets if used).
+		if (VAL_FRM_WORDS(val)) MARK_SERIES(VAL_FRM_WORDS(val));
+		if (VAL_FRM_SPEC(val)) { CHECK_MARK(VAL_FRM_SPEC(val), depth); }
+		break;
+
+	case REB_PORT:
+		// Debug_Fmt("\n\nmark port: %x %d", val, VAL_TAIL(val));
+		// Debug_Values(VAL_OBJ_VALUE(val,1), VAL_TAIL(val)-1, 100);
+		goto mark_obj;
+
+	case REB_MODULE:
+		if (VAL_MOD_BODY(val)) CHECK_MARK(VAL_MOD_BODY(val), depth);
+	case REB_OBJECT:
+		// Object is just a block with special first value (context):
+	mark_obj:
+		if (!IS_MARK_SERIES(VAL_OBJ_FRAME(val))) {
+			if (depth < 64) Mark_Series(VAL_OBJ_FRAME(val), depth);
+			else Queue_Mark_Series(VAL_OBJ_FRAME(val));
+			//if (SERIES_TAIL(VAL_OBJ_FRAME(val)) >= 1)
+			//	Dump_Frame(VAL_OBJ_FRAME(val), 4);
+		}
+		break;
+
+	case REB_FUNCTION:
+	case REB_COMMAND:
+	case REB_CLOSURE:
+	case REB_REBCODE:
+		CHECK_MARK(VAL_FUNC_BODY(val), depth);
+		/* no break */
+	case REB_NATIVE:
+	case REB_ACTION:
+	case REB_OP:
+		CHECK_MARK(VAL_FUNC_SPEC(val), depth);
+		MARK_SERIES(VAL_FUNC_ARGS(val));
+		// There is a problem for user define function operators !!!
+		// Their bodies are not GC'd!
+		break;
+
+	case REB_IMAGE:
+	case REB_VECTOR:
+		MARK_SERIES(VAL_SERIES(val));
+		break;
+
+	case REB_MAP:
+		ser = VAL_SERIES(val);
+		QUEUE_CHECK_MARK(ser, depth);
+		if (ser->series) {
+			MARK_SERIES(ser->series);
+		}
+		break;
+
+	case REB_STRUCT:
+		Mark_Struct(&VAL_STRUCT(val), depth);
+		break;
+
+	case REB_GOB:
+		Mark_Gob(VAL_GOB(val), depth);
+		break;
+
+	case REB_EVENT:
+		Mark_Event(val, depth);
+		break;
+
+#ifdef ndef
+	case REB_ROUTINE:
+		// Deal with the co-joined struct value...
+		CHECK_MARK(VAL_STRUCT_SPEC(VAL_ROUTINE_SPEC(val)), depth);
+		CHECK_MARK(VAL_STRUCT_VALS(VAL_ROUTINE_SPEC(val)), depth);
+		MARK_SERIES(VAL_STRUCT_DATA(VAL_ROUTINE_SPEC(val)));
+		MARK_SERIES(VAL_ROUTINE_SPEC_SER(val));
+		//!!!			if (Current_Closing_Library && VAL_ROUTINE_ID(val) == Current_Closing_Library)
+		VAL_ROUTINE_ID(val) = 0; // Invalidate the routine
+		break;
+#endif
+
+	case REB_LIBRARY:
+		MARK_SERIES(VAL_LIBRARY_NAME(val));
+		//!!!			if (Current_Closing_Library && VAL_LIBRARY_ID(val) == Current_Closing_Library)
+		VAL_LIBRARY_ID(val) = 0; // Invalidate the library
+		break;
+
+	default:
+		Crash(RP_DATATYPE + 1, VAL_TYPE(val));
+	}
+}
 
 /***********************************************************************
 **

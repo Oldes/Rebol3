@@ -1259,6 +1259,7 @@ typedef struct Reb_Struct_Info {
 	REBCNT id;
 	REBCNT len;
 	REBCNT name;
+	REBCNT flags;
 } REBSTI;
 
 #define STRUCT_OFFSET(s)     ((s)->offset)
@@ -1273,6 +1274,7 @@ typedef struct Reb_Struct_Info {
 #define STRUCT_ID(s)         (STRUCT_INFO(s)->id)
 #define STRUCT_LEN(s)        (STRUCT_INFO(s)->len)
 #define STRUCT_NAME(s)       (STRUCT_INFO(s)->name)
+#define STRUCT_NEEDS_MARK(s) (((STRUCT_INFO(s)->flags) & 1) != 0)
 
 #define VAL_STRUCT(v)        (v->data.structure)
 #define VAL_STRUCT_SPEC(v)   (v->data.structure.spec)
@@ -1283,6 +1285,7 @@ typedef struct Reb_Struct_Info {
 #define VAL_STRUCT_LEN(v)    (((REBSTI *)BLK_HEAD(VAL_STRUCT_FIELDS(v)))->len)
 #define VAL_STRUCT_ID(v)     (((REBSTI *)BLK_HEAD(VAL_STRUCT_FIELDS(v)))->id)
 #define VAL_STRUCT_NAME(v)   (((REBSTI *)BLK_HEAD(VAL_STRUCT_FIELDS(v)))->name)
+#define VAL_STRUCT_NEEDS_MARK(v) ((((REBSTI *)BLK_HEAD(VAL_STRUCT_FIELDS(v)))->flags & 1) != 0)
 
 /***********************************************************************
 **

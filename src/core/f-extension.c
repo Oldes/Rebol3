@@ -125,7 +125,8 @@ x*/	RXIARG Value_To_RXI(REBVAL *val)
 		break;
 	case RXE_STRUCT:
 		arg.structure.data = VAL_STRUCT_DATA(val);
-		arg.structure.fields = VAL_STRUCT_FIELDS(val);
+		arg.structure.id   = VAL_STRUCT_ID(val);
+		arg.structure.offset = VAL_STRUCT_OFFSET(val);
 		break;
 	case RXE_NULL:
 	default:
@@ -183,11 +184,19 @@ x*/	void RXI_To_Value(REBVAL *val, RXIARG arg, REBCNT type)
 		COPY_MEM(VAL_TUPLE(val), arg.tuple_bytes, MAX_TUPLE);
 		break;
 	case RXE_STRUCT:
-		//TODO: review!
-		// There is no room in RXIARG to pass the spec part of the struct!
+	{
+		// RXIARG is too small to hold all neccessary values...
+		// so we must use central struct spec container when creating a struct value from external source
+		REBVAL *struct_specs = Get_System(SYS_CATALOG, CAT_STRUCTS);
+		REBVAL key;
+		SET_INTEGER(&key, arg.structure.id);
+		REBCNT n = Find_Entry(VAL_SERIES(struct_specs), &key, 0, TRUE);
+		if (n == NOT_FOUND) { SET_NONE(val); break; } // or error instead?!
+		VAL_STRUCT_SPEC(val) = VAL_SERIES(VAL_BLK_SKIP(struct_specs, n));
 		VAL_STRUCT_DATA(val) = arg.structure.data;
-		VAL_STRUCT_FIELDS(val) = arg.structure.fields;
+		VAL_STRUCT_OFFSET(val) = arg.structure.offset;
 		break;
+	}
 	case RXE_NULL:
 		VAL_INT64(val) = 0;
 		break;
