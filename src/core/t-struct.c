@@ -916,77 +916,71 @@ static void Copy_Struct_Val(REBVAL *src, REBVAL *dst)
 	Copy_Struct(&VAL_STRUCT(src), &VAL_STRUCT(dst));
 }
 
+static void init_field(REBVAL *ret, REBSTF *fld, REBVAL *value) {
+	if (fld->dimension > 1) {
+		if (IS_BLOCK(value)) {
+			if (VAL_LEN(value) != fld->dimension) {
+				Trap_Arg(value);
+			}
+			for (REBCNT n = 0; n < fld->dimension; n++) {
+				if (!assign_scalar(&VAL_STRUCT(ret), fld, n, VAL_BLK_SKIP(value, n))) {
+					Trap_Arg(value);
+				}
+			}
+		}
+		else {
+			Trap_Arg(value);
+		}
+	}
+	else {
+		if (!assign_scalar(&VAL_STRUCT(ret), fld, 0, value)) {
+			Trap_Arg(value);
+		}
+	}
+}
+
 /* a: make struct! [i: [uint8!] 1]
  * b: make a [i: 10]
  */
 static void init_fields(REBVAL *ret, REBVAL *spec)
 {
-	REBVAL *blk = NULL;
+	REBVAL *blk = VAL_BLK_DATA(spec);
+	REBVAL *word;
+	REBVAL *fld_val;
+	REBSTF *fld = NULL;
+	REBSER *fields = VAL_STRUCT_FIELDS(ret);
 
-	for (blk = VAL_BLK_DATA(spec); NOT_END(blk); blk += 2) {
-		REBSTF *fld = NULL;
-		REBSER *fields = VAL_STRUCT_FIELDS(ret);
-		REBCNT i = 0;
-		REBVAL *word = blk;
-		REBVAL *fld_val = blk + 1;
+	if (IS_SET_WORD(blk)) {
+		// Specification in format like: [a: 1 b: 2]
+		for (; NOT_END(blk); blk += 2) {
+			REBCNT i = 0;
+			word = blk;
+			fld_val = blk + 1;
 
-		if (IS_BLOCK(word)) { /* options: raw-memory, etc */
-			Trap_Arg(word); // not supported!
-			if (VAL_TAIL(spec) != 1) { /* make sure no other field initialization */
-				Trap_Arg(spec);
+			if (IS_END(fld_val)) {
+				Trap1(RE_NEED_VALUE, word);
 			}
-#ifdef unused_struct
-			REBINT raw_size = -1;
-			REBUPT raw_addr = 0;
-			parse_attr(word, &raw_size, &raw_addr);
-			set_ext_storage(ret, raw_size, raw_addr);
-#endif
-			break;
-		} else if (! IS_SET_WORD(word)) {
-			Trap_Arg(word);
-		}
-
-		if (IS_END(fld_val)) {
-			Trap1(RE_NEED_VALUE, fld_val);
-		}
-		// first value is used for info!
-		for (i = 1; i < SERIES_TAIL(fields); i ++) {
-			fld = (REBSTF*)SERIES_SKIP(fields, i);
-			if (fld->sym == VAL_WORD_CANON(word)) {
-				if (fld->dimension > 1) {
-					REBCNT n = 0;
-					if (IS_BLOCK(fld_val)) {
-						if (VAL_LEN(fld_val) != fld->dimension) {
-							Trap_Arg(fld_val);
-						}
-						for(n = 0; n < fld->dimension; n ++) {
-							if (!assign_scalar(&VAL_STRUCT(ret), fld, n, VAL_BLK_SKIP(fld_val, n))) {
-								Trap_Arg(fld_val);
-							}
-						}
-					}
-#ifdef unused_struct
-					else if (IS_INTEGER(fld_val)) {
-						void *ptr = (void *)VAL_INT64(fld_val);
-
-						/* assuming it's an valid pointer and holding enough space */
-						memcpy(SERIES_SKIP(VAL_STRUCT_DATA_BIN(ret), fld->offset), ptr, fld->size * fld->dimension);
-					}
-#endif
-					else {
-						Trap_Arg(fld_val);
-					}
-				} else {
-					if (!assign_scalar(&VAL_STRUCT(ret), fld, 0, fld_val)) {
-						Trap_Arg(fld_val);
-					}
+			// Iterate all fields (first value is used for info)
+			for (i = 1; i < SERIES_TAIL(fields); i++) {
+				fld = (REBSTF *)SERIES_SKIP(fields, i);
+				if (fld->sym == VAL_WORD_CANON(word)) {
+					init_field(ret, fld, fld_val);
+					break;
 				}
-				break;
+			}
+
+			if (i == SERIES_TAIL(fields)) {
+				Trap_Arg(word); /* field not found in the parent struct */
 			}
 		}
-
-		if (i == SERIES_TAIL(fields)) {
-			Trap_Arg(word); /* field not found in the parent struct */
+	}
+	else {
+		// Only values...
+		for (REBCNT i = 1; i < SERIES_TAIL(fields); i++) {
+			if (IS_END(blk)) return;
+			fld = (REBSTF *)SERIES_SKIP(fields, i);
+			init_field(ret, fld, blk);
+			++blk;
 		}
 	}
 }

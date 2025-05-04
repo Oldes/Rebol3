@@ -97,7 +97,7 @@ if system/version >= 3.19.1 [
 	--assert (mold/all/flat f64x2) = "#(struct! [a [double! [2]]] [a: [0.0 0.0]])"
 	--assert (mold/all/flat wx2)   = "#(struct! [a [word! [2]]] [a: [#(none) #(none)]])"
 
---test-- "Struct construction with initial value"
+--test-- "Struct construction with initial value (using named fields)"
 	--assert all [struct? i8:  #(struct! [a [int8!]   b [int8!]] [a:  23 ])  i8/a  = 23  i8/b  = 0 ]
 	--assert all [struct? i16: #(struct! [a [int16!]  b [int8!]] [a:  23 ])  i16/a = 23  i16/b = 0 ]
 	--assert all [struct? i32: #(struct! [a [int32!]  b [int8!]] [a:  23 ])  i32/a = 23  i32/b = 0 ]
@@ -122,7 +122,32 @@ if system/version >= 3.19.1 [
 	--assert (mold/all/flat f64) = "#(struct! [a [double!] b [int8!]] [a: 23.0 b: 0])"
 	--assert (mold/all/flat w)   = "#(struct! [a [word!] b [int8!]] [a: foo b: 0])"
 
---test-- "Construction from struct prototype"
+--test-- "Struct construction with initial value (using values only)"
+	--assert all [struct? i8:  #(struct! [a [int8!]   b [int8!]] [ 23 ])  i8/a  = 23  i8/b  = 0 ]
+	--assert all [struct? i16: #(struct! [a [int16!]  b [int8!]] [ 23 ])  i16/a = 23  i16/b = 0 ]
+	--assert all [struct? i32: #(struct! [a [int32!]  b [int8!]] [ 23 ])  i32/a = 23  i32/b = 0 ]
+	--assert all [struct? i64: #(struct! [a [int64!]  b [int8!]] [ 23 ])  i64/a = 23  i64/b = 0 ]
+	--assert all [struct? u8:  #(struct! [a [uint8!]  b [int8!]] [ 23 ])  u8/a  = 23  u8/b  = 0 ]
+	--assert all [struct? u16: #(struct! [a [uint16!] b [int8!]] [ 23 ])  u16/a = 23  u16/b = 0 ]
+	--assert all [struct? u32: #(struct! [a [uint32!] b [int8!]] [ 23 ])  u32/a = 23  u32/b = 0 ]
+	--assert all [struct? u64: #(struct! [a [uint64!] b [int8!]] [ 23 ])  u64/a = 23  u64/b = 0 ]
+	--assert all [struct? f32: #(struct! [a [float!]  b [int8!]] [ 23 ])  f32/a = 23  f32/b = 0 ]
+	--assert all [struct? f64: #(struct! [a [double!] b [int8!]] [ 23 ])  f64/a = 23  f64/b = 0 ]
+	--assert all [struct? w:   #(struct! [a [word!]   b [int8!]] [foo ])  w/a = 'foo  w/b   = 0 ]
+
+	--assert (mold/all/flat i8 ) = "#(struct! [a [int8!] b [int8!]] [a: 23 b: 0])"
+	--assert (mold/all/flat i16) = "#(struct! [a [int16!] b [int8!]] [a: 23 b: 0])"
+	--assert (mold/all/flat i32) = "#(struct! [a [int32!] b [int8!]] [a: 23 b: 0])"
+	--assert (mold/all/flat i64) = "#(struct! [a [int64!] b [int8!]] [a: 23 b: 0])"
+	--assert (mold/all/flat u8 ) = "#(struct! [a [uint8!] b [int8!]] [a: 23 b: 0])"
+	--assert (mold/all/flat u16) = "#(struct! [a [uint16!] b [int8!]] [a: 23 b: 0])"
+	--assert (mold/all/flat u32) = "#(struct! [a [uint32!] b [int8!]] [a: 23 b: 0])"
+	--assert (mold/all/flat u64) = "#(struct! [a [uint64!] b [int8!]] [a: 23 b: 0])"
+	--assert (mold/all/flat f32) = "#(struct! [a [float!] b [int8!]] [a: 23.0 b: 0])"
+	--assert (mold/all/flat f64) = "#(struct! [a [double!] b [int8!]] [a: 23.0 b: 0])"
+	--assert (mold/all/flat w)   = "#(struct! [a [word!] b [int8!]] [a: foo b: 0])"
+
+--test-- "Construction from struct prototype (using named fields)"
 	proto!: #(struct! [a [uint8!] b [uint8!]] [a: 1 b: 2])
 	--assert all [proto!/a = 1 proto!/b = 2]
 	s1: make proto! [a: 10]
@@ -131,6 +156,12 @@ if system/version >= 3.19.1 [
 	--assert all [s1/a = 10 s1/b = 2 ]
 	--assert all [s2/a = 1  s2/b = 20]
 	--assert all [s3/a = 10 s3/b = 20]
+
+--test-- "Construction from struct prototype (using values only)"
+	proto!: #(struct! [a [uint8!] b [uint8!]] [1 2])
+	--assert all [proto!/a = 1 proto!/b = 2]
+	s1: make proto! [10]
+	--assert all [s1/a = 10 s1/b = 2 ]
 
 --test-- "Struct with many fields"
 	blk: copy []
@@ -143,7 +174,7 @@ if system/version >= 3.19.1 [
 
 --test-- "Struct with Rebol values"
 	--assert not error? try [
-		s: make struct! [a [rebval] b [rebval]]
+		s: make struct! [a [rebval!] b [rebval!]]
 		s/a: str: "Hello" s/b: now
 	]
 	--assert s/a == str
@@ -151,7 +182,7 @@ if system/version >= 3.19.1 [
 	--assert all [
 		;; It is not allowed to modify struct's binary when there are Rebol values
 		error? e: try [change s #{FF}]
-		e/id == 'protected
+		e/id = 'protected
 	]
 	--assert all [
 		;; It is possible to modify series in struct's Rebol values
@@ -192,7 +223,7 @@ s: #(struct! [
 
 ===start-group=== "Struct conversion"
 --test-- "to binary! struct!"
-	s: #(struct! [a [uint16!] b [int32!]] [a: 1 b: -1])
+	s: #(struct! [a [uint16!] b [int32!]] [1 -1])
 	--assert #{0100FFFFFFFF} = to binary! s
 ===end-group===
 ] ;>= 3.19.1
