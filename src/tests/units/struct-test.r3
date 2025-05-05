@@ -197,6 +197,61 @@ if system/version >= 3.19.1 [
 		none? s/b
 	]
 
+--test-- "Registering a struct"
+	--assert not error? try [
+		register pair8!: make struct! [x [uint8!] y [uint8!]]
+	]
+
+--test-- "Nested structs"
+
+	--assert all [
+		not error? try [
+			s1: make struct! [
+				id  [uint16!]
+				pos [struct! pair8!] ;; 8bit pair
+			]
+		]
+		#{0000 00 00} == to binary! s1
+		not error? try [change s1 #{0100 02 03}]
+		s1/id == 1
+		s1/pos/x == 2
+		s1/pos/y == 3
+		s1/pos/x: 22
+		s1/pos/y: 33
+		s1/pos/x == 22
+		s1/pos/y == 33
+		{#(struct! [id [uint16!] pos [struct! pair8!]] [id: 1 pos: #(struct! [x [uint8!] y [uint8!]] [x: 22 y: 33])])} = mold/flat/all s1
+	]
+
+	--assert all [
+		not error? try [
+			s2: make struct! [
+				id  [uint16!]
+				pos [struct! pair8! [2]] ;; to 8bit pairs
+			]
+		]
+		s2/id: 2
+		not error? try [s2/pos/1: s1/pos]
+		not error? try [change s2/pos/2 #{0102}]
+		#{0200 1621 0102} == to binary! s2
+		s2/pos/2: s2/pos/1
+		s2/pos/1 = s2/pos/2
+		s2/pos/1/x: 222
+		s2/pos/1/x = 222
+	]
+
+	--assert all [
+		not error? try [s3: make s1 [3 #(struct! [x [uint8!] y [uint8!]] [3 4])]]
+		#{0300 0304} == to binary! s3
+		s3/pos/x == 3
+		not error? try [change s3 #{0400 0506}]
+		s3/id == 4
+		s3/pos/x == 5
+		s3/pos/y == 6
+		not error? try [change s3 #{0500}]
+		#{0500 0506} == to binary! s3
+	]
+
 
 ===end-group===
 

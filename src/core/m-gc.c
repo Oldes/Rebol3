@@ -302,9 +302,7 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 ***********************************************************************/
 {
 	REBCNT len;
-	REBSER *ser;
 	REBVAL *val;
-	REBHOB *hob;
 
 	ASSERT(series != 0, RP_NULL_MARK_SERIES);
 
