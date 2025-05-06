@@ -252,6 +252,33 @@ if system/version >= 3.19.1 [
 		#{0500 0506} == to binary! s3
 	]
 
+--test-- "Nested structs with Rebol values"
+	--assert all [
+		attempt [s: make struct! [val [rebval!] pos [struct! pair8!]]]
+		s/val: "Hello"
+		s/val == "Hello"
+		;; it is possible to change inner struct using raw binary data
+		attempt [change s/pos #{0102}]
+		s/pos/x == 1
+		s/pos/y == 2
+		;; but not the main struct with Rebol value
+		error? e: try [change s #{0102}]
+		e/id = 'protected
+	]
+	--assert all [
+		attempt [
+			s: make struct! [
+				id    [uint8!]
+				inner [struct! [val [rebval!]]]
+			]
+		]
+		error? e: try [change s/inner #{0102}]
+		e/id = 'protected
+		error? e: try [change s #{0102}]
+		e/id = 'protected
+	]
+
+
 
 ===end-group===
 
@@ -321,6 +348,14 @@ either system/version < 3.19.1 [
 		]
 		--assert all [
 			error? e: try [make struct! [[] a]]
+			e/id = 'malconstruct
+		]
+		--assert all [
+			error? e: try [make struct! ["test" []]]
+			e/id = 'malconstruct
+		]
+		--assert all [
+			error? e: try [make struct! ["test" "test"]]
 			e/id = 'malconstruct
 		]
 	--test-- "Invalid field specification"

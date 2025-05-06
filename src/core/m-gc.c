@@ -191,22 +191,23 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 /*
 ***********************************************************************/
 {
-	REBCNT len = 0;
-//	if (IS_MARK_SERIES(STRUCT_DATA_BIN(stu))) return;
-
-	CHECK_MARK(STRUCT_SPEC(stu), depth);
-	if (STRUCT_FIELDS_SER(stu)) CHECK_MARK(STRUCT_FIELDS_SER(stu), depth);
-	if (!STRUCT_DATA(stu)) return;
-	CHECK_MARK(STRUCT_DATA(stu), depth);
+	// STRUCT_SPEC is shared and persistently stored in system/catalog/structs
+	// so it is marked from there.
+	//CHECK_MARK(STRUCT_SPEC(stu), depth);
+	if (!STRUCT_DATA(stu) || !STRUCT_FIELDS_SER(stu)) return;
+	if (IS_MARK_SERIES(STRUCT_FIELDS_SER(stu)))
+		return;
+	MARK_SERIES(STRUCT_DATA(stu));
+	MARK_SERIES(STRUCT_FIELDS_SER(stu));
 	ASSERT2(IS_BARE_SERIES(stu->data), RP_BAD_SERIES);
 	ASSERT2(!IS_EXT_SERIES(stu->data), RP_BAD_SERIES);
 	ASSERT2(SERIES_TAIL(stu->data) == 1, RP_BAD_SERIES);
 
 	if (STRUCT_NEEDS_MARK(stu)) {
-		REBCNT n;
+		REBCNT n, i;
 		REBVAL *val;
 		REBSTF *field = STRUCT_FIELDS(stu);
-		for (REBCNT i = 0; i < STRUCT_FIELDS_NUM(stu); i++, field++) {
+		for (i = 0; i < STRUCT_FIELDS_NUM(stu); i++, field++) {
 			if (field->done) {
 				if (field->type == STRUCT_TYPE_REBVAL) {
 					ASSERT2(field->size == sizeof(REBVAL), RP_BAD_SIZE);

@@ -1448,6 +1448,7 @@ STOID Mold_Error(REBVAL *value, REB_MOLD *mold, REBFLG molded)
 		}
 		Get_Struct_Reflect(&blk, &VAL_STRUCT(value), SYM_BODY);
 		Emit(mold, " V)", &blk);
+		Free_Series(VAL_SERIES(&blk));
 		break;
 	}
 

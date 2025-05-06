@@ -80,6 +80,7 @@ enum reb_panics {
 	RP_MAX_SCHEMES,			// Too many native schemes
 	RP_BIND_BOUNDS,			// Bind is out of bounds for the frame
 	RP_SERIES_OVERFLOW,		// Tail has gone past end of series
+	RP_NO_STRUCT_REGISTER,  // Failed to append struct spec to system/catalog/structs
 
 //  Datatype Errors (300 + N --indicates location)
 	RP_DATATYPE = 1300,

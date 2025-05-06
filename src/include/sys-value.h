@@ -1270,11 +1270,12 @@ typedef struct Reb_Struct_Info {
 #define STRUCT_INFO(s)       ((REBSTI *)BLK_HEAD(STRUCT_FIELDS_SER(s)))
 #define STRUCT_DATA(s)       ((s)->data)
 #define STRUCT_DATA_BIN(s)   (BIN_SKIP(STRUCT_DATA(s), STRUCT_OFFSET(s)))
-//#define STRUCT_FLAGS(s)  ((s)->flags)
 #define STRUCT_ID(s)         (STRUCT_INFO(s)->id)
 #define STRUCT_LEN(s)        (STRUCT_INFO(s)->len)
 #define STRUCT_NAME(s)       (STRUCT_INFO(s)->name)
-#define STRUCT_NEEDS_MARK(s) (((STRUCT_INFO(s)->flags) & 1) != 0)
+#define STRUCT_FLAGS(s)      (STRUCT_INFO(s)->flags)
+#define STRUCT_NEEDS_MARK(s) ((STRUCT_FLAGS(s) & 1) != 0)
+#define STRUCT_PROTECTED(s)  ((STRUCT_FLAGS(s) & 2) != 0)
 
 #define VAL_STRUCT(v)        (v->data.structure)
 #define VAL_STRUCT_SPEC(v)   (v->data.structure.spec)
@@ -1282,10 +1283,13 @@ typedef struct Reb_Struct_Info {
 #define VAL_STRUCT_FIELDS(v) (VAL_STRUCT_SPEC(v)->series)
 #define VAL_STRUCT_DATA(v)   (v->data.structure.data)
 #define VAL_STRUCT_DATA_BIN(v) (BIN_SKIP(VAL_STRUCT_DATA(v), v->data.structure.offset))
+#define VAL_STRUCT_INFO(v)   ((REBSTI *)BLK_HEAD(VAL_STRUCT_FIELDS(v)))
 #define VAL_STRUCT_LEN(v)    (((REBSTI *)BLK_HEAD(VAL_STRUCT_FIELDS(v)))->len)
 #define VAL_STRUCT_ID(v)     (((REBSTI *)BLK_HEAD(VAL_STRUCT_FIELDS(v)))->id)
 #define VAL_STRUCT_NAME(v)   (((REBSTI *)BLK_HEAD(VAL_STRUCT_FIELDS(v)))->name)
+#define VAL_STRUCT_FLAGS(v)  (((REBSTI *)BLK_HEAD(VAL_STRUCT_FIELDS(v)))->flags)
 #define VAL_STRUCT_NEEDS_MARK(v) ((((REBSTI *)BLK_HEAD(VAL_STRUCT_FIELDS(v)))->flags & 1) != 0)
+#define VAL_STRUCT_PROTECTED(v) ((((REBSTI *)BLK_HEAD(VAL_STRUCT_FIELDS(v)))->flags & 2) != 0)
 
 /***********************************************************************
 **
