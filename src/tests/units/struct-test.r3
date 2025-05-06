@@ -278,6 +278,26 @@ if system/version >= 3.19.1 [
 		e/id = 'protected
 	]
 
+--test-- "Setting inner struct"
+	s: make struct! [
+		id  [uint16!]
+		pos [struct! pair8!] 
+	]
+	--assert all [
+		attempt [s/pos: [1 2]]
+		s/pos/x == 1
+		s/pos/y == 2
+	]
+	--assert all [
+		attempt [s/pos: [y: 1 x: 2]]
+		s/pos/x == 2
+		s/pos/y == 1
+	]
+	--assert all [
+		attempt [s/pos: #(struct! pair8! [3 4])]
+		s/pos/x == 3
+		s/pos/y == 4
+	]
 
 
 ===end-group===

@@ -279,6 +279,19 @@ static REBOOL assign_scalar(REBSTU *stu,
 			}
 			i = (u64)VAL_WORD_SYM(val);
 			break;
+		case REB_BLOCK:
+			if (STRUCT_TYPE_STRUCT == field->type) {
+				DS_PUSH_NONE;
+				SET_TYPE(DS_TOP, REB_STRUCT);
+				VAL_STRUCT_SPEC(DS_TOP) = field->spec;
+				VAL_STRUCT_DATA(DS_TOP) = stu->data;
+				VAL_STRUCT_OFFSET(DS_TOP) = field->offset + n * field->size;
+				VAL_STRUCT_LEN(DS_TOP) = field->size;
+				init_fields(DS_TOP, val);
+				DS_POP;
+			}
+			else Trap_Type(val);
+			return TRUE;
 		default:
 			Trap_Type(val);
 	}
