@@ -139,13 +139,26 @@ static REBFLG get_scalar(REBSTU *stu,
 	for (i = 0; i < STRUCT_FIELDS_NUM(stu); i ++, field ++) {
 		if (VAL_WORD_CANON(word) == VAL_SYM_CANON(BLK_SKIP(PG_Word_Table.series, field->sym))) {
 			if (field->array) {
-				REBSER *ser = Make_Block(field->dimension);
-				REBCNT n = 0;
-				SET_TYPE(val, REB_BLOCK);
-				for (n = 0; n < field->dimension; n ++) {
-					REBVAL elem;
-					get_scalar(stu, field, n, &elem);
-					Append_Val(ser, &elem);
+				REBSER *ser;
+				REBINT type = field->type;
+				REBCNT sym = (REBCNT)type_to_sym[type];
+
+				if (type > STRUCT_TYPE_DOUBLE || sym == NOT_FOUND) {
+					// Using block as a result...
+					ser = Make_Block(field->dimension);
+					REBCNT n = 0;
+					SET_TYPE(val, REB_BLOCK);
+					for (n = 0; n < field->dimension; n++) {
+						REBVAL elem;
+						get_scalar(stu, field, n, &elem);
+						Append_Val(ser, &elem);
+					}
+				}
+				else {
+					// Using vector as a result...
+					ser = Make_Vector_From_Word(sym, field->dimension);
+					COPY_MEM(SERIES_DATA(ser), STRUCT_DATA_BIN(stu) + field->offset, field->dimension * field->size);
+					SET_TYPE(val, REB_VECTOR);
 				}
 				VAL_SERIES(val) = ser;
 				VAL_INDEX(val) = 0;

@@ -560,6 +560,49 @@ void Find_Maximum_Of_Vector(REBSER *vect, REBVAL *ret) {
 	return ser;
 }
 
+REBOOL Get_Vector_Spec_From_Symbol(REBCNT sym, REBINT *type, REBINT *sign, REBINT *bits) {
+	switch (sym) {
+	case SYM_I8X:
+	case SYM_INT8X:   *type = 0; *sign = 0; *bits = 8; break;
+	case SYM_U8X:
+	case SYM_BYTEX:
+	case SYM_UINT8X:  *type = 0; *sign = 1; *bits = 8; break;
+	case SYM_I16X:
+	case SYM_INT16X:  *type = 0; *sign = 0; *bits = 16; break;
+	case SYM_U16X:
+	case SYM_UINT16X: *type = 0; *sign = 1; *bits = 16; break;
+	case SYM_I32X:
+	case SYM_INT32X:  *type = 0; *sign = 0; *bits = 32; break;
+	case SYM_U32X:
+	case SYM_UINT32X: *type = 0; *sign = 1; *bits = 32; break;
+	case SYM_I64X:
+	case SYM_INT64X:  *type = 0; *sign = 0; *bits = 64; break;
+	case SYM_U64X:
+	case SYM_UINT64X: *type = 0; *sign = 1; *bits = 64; break;
+	case SYM_F32X:
+	case SYM_FLOATX:  *type = 1; *sign = 0; *bits = 32; break;
+	case SYM_F64X:
+	case SYM_DOUBLEX: *type = 1; *sign = 0; *bits = 64; break;
+	default: return FALSE;
+	}
+	return TRUE;
+}
+
+/***********************************************************************
+**
+*/	REBSER *Make_Vector_From_Word(REBCNT sym, REBINT size)
+/*
+**	Make a vector from a type name.
+**
+***********************************************************************/
+{
+	REBINT type, sign, bits;
+	if (Get_Vector_Spec_From_Symbol(sym, &type, &sign, &bits)) {
+		return Make_Vector(type, sign, 1, bits, size);
+	}
+	return NULL;	
+}
+
 /***********************************************************************
 **
 */	REBVAL *Make_Vector_Spec(REBVAL *bp, REBVAL *value)
@@ -589,29 +632,11 @@ void Find_Maximum_Of_Vector(REBSER *vect, REBVAL *ret) {
 
 	// SIGNED / UNSIGNED
 	if (IS_WORD(bp)) {
+		if (Get_Vector_Spec_From_Symbol(VAL_WORD_CANON(bp), &type, &sign, &bits)) {
+			bp++;
+			goto size_spec;
+		}
 		switch (VAL_WORD_CANON(bp)) {
-		case SYM_I8X:
-		case SYM_INT8X:   type = 0; sign = 0; bits =  8; bp++; goto size_spec;
-		case SYM_U8X:
-		case SYM_BYTEX:
-		case SYM_UINT8X:  type = 0; sign = 1; bits =  8; bp++; goto size_spec;
-		case SYM_I16X:
-		case SYM_INT16X:  type = 0; sign = 0; bits = 16; bp++; goto size_spec;
-		case SYM_U16X:
-		case SYM_UINT16X: type = 0; sign = 1; bits = 16; bp++; goto size_spec;
-		case SYM_I32X:
-		case SYM_INT32X:  type = 0; sign = 0; bits = 32; bp++; goto size_spec;
-		case SYM_U32X:
-		case SYM_UINT32X: type = 0; sign = 1; bits = 32; bp++; goto size_spec;
-		case SYM_I64X:
-		case SYM_INT64X:  type = 0; sign = 0; bits = 64; bp++; goto size_spec;
-		case SYM_U64X:
-		case SYM_UINT64X: type = 0; sign = 1; bits = 64; bp++; goto size_spec;
-		case SYM_F32X:
-		case SYM_FLOATX:  type = 1; sign = 0; bits = 32; bp++; goto size_spec;
-		case SYM_F64X:
-		case SYM_DOUBLEX: type = 1; sign = 0; bits = 64; bp++; goto size_spec;
-
 		case SYM_UNSIGNED: sign = 1; bp++; break;
 		case SYM_SIGNED:   sign = 0; bp++; break;
 		}

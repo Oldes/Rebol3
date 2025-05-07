@@ -97,6 +97,21 @@ if system/version >= 3.19.1 [
 	--assert (mold/all/flat f64x2) = "#(struct! [a [double! [2]]] [a: [0.0 0.0]])"
 	--assert (mold/all/flat wx2)   = "#(struct! [a [word! [2]]] [a: [#(none) #(none)]])"
 
+--test-- "Resolving multi-dimensional value"
+	;; vectors for numeric values
+	--assert i8x2/a  = #(i8!  [0 0])
+	--assert i16x2/a = #(i16! [0 0])
+	--assert i32x2/a = #(i32! [0 0])
+	--assert i64x2/a = #(i64! [0 0])
+	--assert u8x2/a  = #(u8!  [0 0])
+	--assert u16x2/a = #(u16! [0 0])
+	--assert u32x2/a = #(u32! [0 0])
+	--assert u64x2/a = #(u64! [0 0])
+	--assert f32x2/a = #(f32! [0.0 0.0])
+	--assert f64x2/a = #(f64! [0.0 0.0])
+	;; block for other types
+	--assert wx2/a   = [#(none) #(none)]	
+
 --test-- "Struct construction with initial value (using named fields)"
 	--assert all [struct? i8:  #(struct! [a [int8!]   b [int8!]] [a:  23 ])  i8/a  = 23  i8/b  = 0 ]
 	--assert all [struct? i16: #(struct! [a [int16!]  b [int8!]] [a:  23 ])  i16/a = 23  i16/b = 0 ]
@@ -294,7 +309,7 @@ if system/version >= 3.19.1 [
 		s/pos/y == 1
 	]
 	--assert all [
-		attempt [s/pos: #(struct! pair8! [3 4])]
+		attempt [s/pos: make pair8! [3 4]]
 		s/pos/x == 3
 		s/pos/y == 4
 	]
