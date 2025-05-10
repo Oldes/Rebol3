@@ -110,7 +110,19 @@ if system/version >= 3.19.1 [
 	--assert f32x2/a = #(f32! [0.0 0.0])
 	--assert f64x2/a = #(f64! [0.0 0.0])
 	;; block for other types
-	--assert wx2/a   = [#(none) #(none)]	
+	--assert wx2/a   = [#(none) #(none)]
+
+--test-- "Setting multi-dimensional value using vectors"
+	--assert all [attempt [i8x2/a:  #(i8!  [1 2])]      i8x2/a ==  #(i8!  [1 2])]
+	--assert all [attempt [i16x2/a: #(i16! [1 2])]      i16x2/a == #(i16! [1 2])]
+	--assert all [attempt [i32x2/a: #(i32! [1 2])]      i32x2/a == #(i32! [1 2])]
+	--assert all [attempt [i64x2/a: #(i64! [1 2])]      i64x2/a == #(i64! [1 2])]
+	--assert all [attempt [u8x2/a:  #(u8!  [1 2])]      u8x2/a ==  #(u8!  [1 2])]
+	--assert all [attempt [u16x2/a: #(u16! [1 2])]      u16x2/a == #(u16! [1 2])]
+	--assert all [attempt [u32x2/a: #(u32! [1 2])]      u32x2/a == #(u32! [1 2])]
+	--assert all [attempt [u64x2/a: #(u64! [1 2])]      u64x2/a == #(u64! [1 2])]
+	--assert all [attempt [f32x2/a: #(f32! [1.0 2.0])]  f32x2/a == #(f32! [1.0 2.0])]
+	--assert all [attempt [f64x2/a: #(f64! [1.0 2.0])]  f64x2/a == #(f64! [1.0 2.0])]
 
 --test-- "Struct construction with initial value (using named fields)"
 	--assert all [struct? i8:  #(struct! [a [int8!]   b [int8!]] [a:  23 ])  i8/a  = 23  i8/b  = 0 ]

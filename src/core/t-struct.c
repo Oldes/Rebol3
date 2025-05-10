@@ -374,14 +374,22 @@ static REBOOL assign_scalar(REBSTU *stu,
 		if (VAL_WORD_CANON(word) == VAL_SYM_CANON(BLK_SKIP(PG_Word_Table.series, field->sym))) {
 			if (field->array) {
 				if (elem == NULL) { //set the whole array
-					REBCNT n = 0;
-					if ((!IS_BLOCK(val) || field->dimension != VAL_LEN(val))) {
+					// Must be a block or vector with the same number of values as the array.
+					if (!(IS_VECTOR(val) || IS_BLOCK(val)) || field->dimension != VAL_LEN(val)) {
 						return FALSE;
 					}
-
-					for(n = 0; n < field->dimension; n ++) {
-						if (!assign_scalar(stu, field, n, VAL_BLK_SKIP(val, n))) {
+					if (IS_VECTOR(val)) {
+						if (field->size != VAL_VEC_WIDTH(val)) {
 							return FALSE;
+						}
+						COPY_MEM(STRUCT_DATA_BIN(stu) + field->offset, VAL_BIN_DATA(val), field->dimension * field->size);
+					}
+					else {
+						// data in a block
+						for (REBCNT n = 0; n < field->dimension; n++) {
+							if (!assign_scalar(stu, field, n, VAL_BLK_SKIP(val, n))) {
+								return FALSE;
+							}
 						}
 					}
 
