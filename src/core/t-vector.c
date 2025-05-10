@@ -67,8 +67,8 @@ REBU64 get_vect(REBCNT bits, REBYTE *data, REBCNT n)
 	case VTUI64:
 		return (REBU64) ((i64*)data)[n];
 
-	case VTSF08:
-	case VTSF16:
+//	case VTSF08:
+//	case VTSF16:
 	case VTSF32:
 		return f_to_u64(((float*)data)[n]);
 	
@@ -114,8 +114,8 @@ void set_vect(REBCNT bits, REBYTE *data, REBCNT n, REBI64 i, REBDEC f) {
 		((i64*)data)[n] = (u64)i;
 		break;
 
-	case VTSF08:
-	case VTSF16:
+//	case VTSF08:
+//	case VTSF16:
 	case VTSF32:
 		((float*)data)[n] = (float)f;
 		break;
@@ -391,8 +391,8 @@ void Find_Maximum_Of_Vector(REBSER *vect, REBVAL *ret) {
 			case VTUI16: for (; n<len; n++)	((u16*)data)[n] += (u16)i; break;
 			case VTUI32: for (; n<len; n++) ((u32*)data)[n] += (u32)i; break;
 			case VTUI64: for (; n<len; n++)	((i64*)data)[n] += (u64)i; break;
-			case VTSF08:
-			case VTSF16:
+//			case VTSF08:
+//			case VTSF16:
 			case VTSF32: for (; n<len; n++) (( float*)data)[n] += (float)f; break;
 			case VTSF64: for (; n<len; n++) ((double*)data)[n] += f; break;
 			}
@@ -407,8 +407,8 @@ void Find_Maximum_Of_Vector(REBSER *vect, REBVAL *ret) {
 			case VTUI16: for (; n<len; n++)	((u16*)data)[n] -= (u16)i; break;
 			case VTUI32: for (; n<len; n++) ((u32*)data)[n] -= (u32)i; break;
 			case VTUI64: for (; n<len; n++)	((i64*)data)[n] -= (u64)i; break;
-			case VTSF08:
-			case VTSF16:
+//			case VTSF08:
+//			case VTSF16:
 			case VTSF32: for (; n<len; n++) (( float*)data)[n] -= (float)f; break;
 			case VTSF64: for (; n<len; n++) ((double*)data)[n] -= f; break;
 			}
@@ -423,8 +423,8 @@ void Find_Maximum_Of_Vector(REBSER *vect, REBVAL *ret) {
 			case VTUI16: for (; n<len; n++)	((u16*)data)[n] *= (u16)i; break;
 			case VTUI32: for (; n<len; n++) ((u32*)data)[n] *= (u32)i; break;
 			case VTUI64: for (; n<len; n++)	((i64*)data)[n] *= (u64)i; break;
-			case VTSF08:
-			case VTSF16:
+//			case VTSF08:
+//			case VTSF16:
 			case VTSF32: for (; n<len; n++) (( float*)data)[n] *= (float)f; break;
 			case VTSF64: for (; n<len; n++) ((double*)data)[n] *= f; break;
 			}
@@ -440,8 +440,8 @@ void Find_Maximum_Of_Vector(REBSER *vect, REBVAL *ret) {
 			case VTUI16: for (; n<len; n++)	((u16*)data)[n] /= (u16)i; break;
 			case VTUI32: for (; n<len; n++) ((u32*)data)[n] /= (u32)i; break;
 			case VTUI64: for (; n<len; n++)	((i64*)data)[n] /= (u64)i; break;
-			case VTSF08:
-			case VTSF16:
+//			case VTSF08:
+//			case VTSF16:
 			case VTSF32: for (; n<len; n++) (( float*)data)[n] /= (float)f; break;
 			case VTSF64: for (; n<len; n++) ((double*)data)[n] /= f; break;
 			}
@@ -781,7 +781,7 @@ size_spec:
 
 		// Get element value:
 		pvs->store->data.integer = get_vect(bits, vp, n-1); // 64 bits
-		if (bits < VTSF08) {
+		if (bits < VTSF32) {
 			SET_TYPE(pvs->store, REB_INTEGER);
 		} else {
 			SET_TYPE(pvs->store, REB_DECIMAL);
@@ -1045,11 +1045,15 @@ bad_make:
 	}
 
 	if (molded) {
-		REBCNT type = (bits >= VTSF08) ? REB_DECIMAL : REB_INTEGER;
-		Pre_Mold(value, mold);
-		if (!GET_MOPT(mold, MOPT_MOLD_ALL)) Append_Byte(mold->series, '[');
-		if (bits >= VTUI08 && bits <= VTUI64) Append_Bytes(mold->series, "unsigned ");
-		Emit(mold, "N I I [", type+1, VECT_BIT_SIZE(bits), len);
+		REBCNT type = (bits >= VTSF32) ? REB_DECIMAL : REB_INTEGER;
+		if (GET_MOPT(mold, MOPT_MOLD_ALL)) {
+			Emit(mold, "#(T ", value);
+			if (bits >= VTUI08 && bits <= VTUI64) Append_Bytes(mold->series, "unsigned ");
+			Emit(mold, "N I I [", type + 1, VECT_BIT_SIZE(bits), len);
+		}
+		else {
+			Emit(mold, "#(S [", Get_Sym_Name(SYM_I8X + bits));
+		}
 		if (indented && len > 10) {
 			mold->indent++;
 			New_Indented_Line(mold);
@@ -1083,11 +1087,10 @@ bad_make:
 			New_Indented_Line(mold);
 		}
 		Append_Byte(mold->series, ']');
-		if (!GET_MOPT(mold, MOPT_MOLD_ALL)) {
-			Append_Byte(mold->series, ']');
+		if (GET_MOPT(mold, MOPT_MOLD_ALL) && VAL_INDEX(value)) {
+			Append_Byte(mold->series, ' ');
+			Append_Int(mold->series, VAL_INDEX(value) + 1);
 		}
-		else {
-			Post_Mold(value, mold);
-		}
+		Append_Byte(mold->series, ')');
 	}
 }

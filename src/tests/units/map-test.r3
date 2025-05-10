@@ -70,6 +70,13 @@ Rebol [
 		--assert 21 = m/(#"A")
 		;@@ https://github.com/Oldes/Rebol-issues/issues/471
 		--assert none? select m none 
+	
+	--test-- "protected series keys"
+		m: #["key" 1]
+		--assert all [
+			error? e: try [append first keys-of m "x"]
+			e/id = 'protected
+		]
 
 
 ===end-group===

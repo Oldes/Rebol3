@@ -362,6 +362,7 @@ new_entry:
 		set = Append_Value(series);
 		VAL_SERIES(set) = Copy_String(VAL_SERIES(key), VAL_INDEX(key), VAL_LEN(key));
 		VAL_TYPE(set) = VAL_TYPE(key);
+		PROTECT_SERIES(VAL_SERIES(set));
 	} else {
 		Append_Val(series, key);
 	}

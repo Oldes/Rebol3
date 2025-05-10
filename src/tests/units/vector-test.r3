@@ -133,28 +133,30 @@ Rebol [
 
 --test-- "MOLD of unsigned vector"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/756
-	--assert "make vector! [integer! 32 2 [0 0]]" = mold make vector! [signed integer! 32 2]
-	--assert "make vector! [unsigned integer! 32 2 [0 0]]" = mold make vector! [unsigned integer! 32 2]
+	--assert "#(i32! [0 0])" = mold make vector! [signed integer! 32 2]
+	--assert "#(u32! [0 0])" = mold make vector! [unsigned integer! 32 2]
+	--assert "#(vector! integer! 32 2 [0 0])" = mold/all make vector! [signed integer! 32 2]
+	--assert "#(vector! unsigned integer! 32 2 [0 0])" = mold/all make vector! [unsigned integer! 32 2]
 
 --test-- "MOLD/flat on vector"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2349
-	--assert (mold/flat make vector! [integer! 8 12]) = {make vector! [integer! 8 12 [0 0 0 0 0 0 0 0 0 0 0 0]]}
+	--assert (mold/flat make vector! [integer! 8 12]) = {#(i8! [0 0 0 0 0 0 0 0 0 0 0 0])}
 	--assert (mold/all/flat make vector! [integer! 8 12]) = "#(vector! integer! 8 12 [0 0 0 0 0 0 0 0 0 0 0 0])"
-	--assert (mold make vector! [integer! 8  2]) = {make vector! [integer! 8 2 [0 0]]}
-	--assert (mold make vector! [integer! 8 20]) = {make vector! [integer! 8 20 [
+	--assert (mold make vector! [integer! 8  2]) = "#(i8! [0 0])"
+	--assert (mold make vector! [integer! 8 20]) = {#(i8! [
     0 0 0 0 0 0 0 0 0 0
     0 0 0 0 0 0 0 0 0 0
-]]}
+])}
 	v: make vector! [integer! 8 20]
 	--assert (mold reduce [
 	1 2
 	v
 	3 4
 ]) = {[
-    1 2 make vector! [integer! 8 20 [
+    1 2 #(i8! [
         0 0 0 0 0 0 0 0 0 0
         0 0 0 0 0 0 0 0 0 0
-    ]]
+    ])
     3 4
 ]}
 
@@ -228,157 +230,157 @@ Rebol [
 ===start-group=== "VECTOR compact construction"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2396
 	--test-- "Compact construction syntax (empty)"
-		--assert (mold #(i8! )) = "make vector! [integer! 8 0 []]"
-		--assert (mold #(i16!)) = "make vector! [integer! 16 0 []]"
-		--assert (mold #(i32!)) = "make vector! [integer! 32 0 []]"
-		--assert (mold #(i64!)) = "make vector! [integer! 64 0 []]"
-		--assert (mold #(u8! )) = "make vector! [unsigned integer! 8 0 []]"
-		--assert (mold #(u16!)) = "make vector! [unsigned integer! 16 0 []]"
-		--assert (mold #(u32!)) = "make vector! [unsigned integer! 32 0 []]"
-		--assert (mold #(u64!)) = "make vector! [unsigned integer! 64 0 []]"
-		--assert (mold #(f32! )) = "make vector! [decimal! 32 0 []]"
-		--assert (mold #(f64! )) = "make vector! [decimal! 64 0 []]"
+		--assert (mold #(i8! ))  == "#(i8! [])"
+		--assert (mold #(i16!))  == "#(i16! [])"
+		--assert (mold #(i32!))  == "#(i32! [])"
+		--assert (mold #(i64!))  == "#(i64! [])"
+		--assert (mold #(u8! ))  == "#(u8! [])"
+		--assert (mold #(u16!))  == "#(u16! [])"
+		--assert (mold #(u32!))  == "#(u32! [])"
+		--assert (mold #(u64!))  == "#(u64! [])"
+		--assert (mold #(f32! )) == "#(f32! [])"
+		--assert (mold #(f64! )) == "#(f64! [])"
 
 	--test-- "Compact construction syntax (size)"
-		--assert (mold #(i8!  3)) = "make vector! [integer! 8 3 [0 0 0]]"
-		--assert (mold #(i16! 3)) = "make vector! [integer! 16 3 [0 0 0]]"
-		--assert (mold #(i32! 3)) = "make vector! [integer! 32 3 [0 0 0]]"
-		--assert (mold #(i64! 3)) = "make vector! [integer! 64 3 [0 0 0]]"
-		--assert (mold #(u8!  3)) = "make vector! [unsigned integer! 8 3 [0 0 0]]"
-		--assert (mold #(u16! 3)) = "make vector! [unsigned integer! 16 3 [0 0 0]]"
-		--assert (mold #(u32! 3)) = "make vector! [unsigned integer! 32 3 [0 0 0]]"
-		--assert (mold #(u64! 3)) = "make vector! [unsigned integer! 64 3 [0 0 0]]"
-		--assert (mold #(f32!  3)) = "make vector! [decimal! 32 3 [0.0 0.0 0.0]]"
-		--assert (mold #(f64!  3)) = "make vector! [decimal! 64 3 [0.0 0.0 0.0]]"
+		--assert (mold #(i8!  3)) == "#(i8! [0 0 0])"
+		--assert (mold #(i16! 3)) == "#(i16! [0 0 0])"
+		--assert (mold #(i32! 3)) == "#(i32! [0 0 0])"
+		--assert (mold #(i64! 3)) == "#(i64! [0 0 0])"
+		--assert (mold #(u8!  3)) == "#(u8! [0 0 0])"
+		--assert (mold #(u16! 3)) == "#(u16! [0 0 0])"
+		--assert (mold #(u32! 3)) == "#(u32! [0 0 0])"
+		--assert (mold #(u64! 3)) == "#(u64! [0 0 0])"
+		--assert (mold #(f32! 3)) == "#(f32! [0.0 0.0 0.0])"
+		--assert (mold #(f64! 3)) == "#(f64! [0.0 0.0 0.0])"
 
 	--test-- "Compact construction syntax (data)"
-		--assert (mold #(i8!  [1 2])) = "make vector! [integer! 8 2 [1 2]]"
-		--assert (mold #(i16! [1 2])) = "make vector! [integer! 16 2 [1 2]]"
-		--assert (mold #(i32! [1 2])) = "make vector! [integer! 32 2 [1 2]]"
-		--assert (mold #(i64! [1 2])) = "make vector! [integer! 64 2 [1 2]]"
-		--assert (mold #(u8!  [1 2])) = "make vector! [unsigned integer! 8 2 [1 2]]"
-		--assert (mold #(u16! [1 2])) = "make vector! [unsigned integer! 16 2 [1 2]]"
-		--assert (mold #(u32! [1 2])) = "make vector! [unsigned integer! 32 2 [1 2]]"
-		--assert (mold #(u64! [1 2])) = "make vector! [unsigned integer! 64 2 [1 2]]"
-		--assert (mold #(f32!  [1 2])) = "make vector! [decimal! 32 2 [1.0 2.0]]"
-		--assert (mold #(f64!  [1 2])) = "make vector! [decimal! 64 2 [1.0 2.0]]"
+		--assert (mold #(i8!  [1 2])) == "#(i8! [1 2])"
+		--assert (mold #(i16! [1 2])) == "#(i16! [1 2])"
+		--assert (mold #(i32! [1 2])) == "#(i32! [1 2])"
+		--assert (mold #(i64! [1 2])) == "#(i64! [1 2])"
+		--assert (mold #(u8!  [1 2])) == "#(u8! [1 2])"
+		--assert (mold #(u16! [1 2])) == "#(u16! [1 2])"
+		--assert (mold #(u32! [1 2])) == "#(u32! [1 2])"
+		--assert (mold #(u64! [1 2])) == "#(u64! [1 2])"
+		--assert (mold #(f32! [1 2])) == "#(f32! [1.0 2.0])"
+		--assert (mold #(f64! [1 2])) == "#(f64! [1.0 2.0])"
 
 	--test-- "Compact construction syntax (data with index)"
-		--assert (mold v: #(i8!  [1 2] 2)) = "make vector! [integer! 8 1 [2]]"
+		--assert (mold v: #(i8!  [1 2] 2)) == "#(i8! [2])"
 		--assert 2 = index? v
-		--assert (mold v: #(i16! [1 2] 2)) = "make vector! [integer! 16 1 [2]]"
+		--assert (mold v: #(i16! [1 2] 2)) == "#(i16! [2])"
 		--assert 2 = index? v
-		--assert (mold v: #(i32! [1 2] 2)) = "make vector! [integer! 32 1 [2]]"
+		--assert (mold v: #(i32! [1 2] 2)) == "#(i32! [2])"
 		--assert 2 = index? v
-		--assert (mold v: #(i64! [1 2] 2)) = "make vector! [integer! 64 1 [2]]"
+		--assert (mold v: #(i64! [1 2] 2)) == "#(i64! [2])"
 		--assert 2 = index? v
-		--assert (mold v: #(u8!  [1 2] 2)) = "make vector! [unsigned integer! 8 1 [2]]"
+		--assert (mold v: #(u8!  [1 2] 2)) == "#(u8! [2])"
 		--assert 2 = index? v
-		--assert (mold v: #(u16! [1 2] 2)) = "make vector! [unsigned integer! 16 1 [2]]"
+		--assert (mold v: #(u16! [1 2] 2)) == "#(u16! [2])"
 		--assert 2 = index? v
-		--assert (mold v: #(u32! [1 2] 2)) = "make vector! [unsigned integer! 32 1 [2]]"
+		--assert (mold v: #(u32! [1 2] 2)) == "#(u32! [2])"
 		--assert 2 = index? v
-		--assert (mold v: #(u64! [1 2] 2)) = "make vector! [unsigned integer! 64 1 [2]]"
+		--assert (mold v: #(u64! [1 2] 2)) == "#(u64! [2])"
 		--assert 2 = index? v
-		--assert (mold v: #(f32!  [1 2] 2)) = "make vector! [decimal! 32 1 [2.0]]"
+		--assert (mold v: #(f32!  [1 2] 2)) == "#(f32! [2.0])"
 		--assert 2 = index? v
-		--assert (mold v: #(f64!  [1 2] 2)) = "make vector! [decimal! 64 1 [2.0]]"
+		--assert (mold v: #(f64!  [1 2] 2)) == "#(f64! [2.0])"
 		--assert 2 = index? v
 ===end-group===
 
 ===start-group=== "VECTOR semi-compact construction"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2396
 	--test-- "Compact construction syntax (empty)"
-		--assert (mold make vector! [i8! ]) = "make vector! [integer! 8 0 []]"
-		--assert (mold make vector! [i16!]) = "make vector! [integer! 16 0 []]"
-		--assert (mold make vector! [i32!]) = "make vector! [integer! 32 0 []]"
-		--assert (mold make vector! [i64!]) = "make vector! [integer! 64 0 []]"
-		--assert (mold make vector! [u8! ]) = "make vector! [unsigned integer! 8 0 []]"
-		--assert (mold make vector! [u16!]) = "make vector! [unsigned integer! 16 0 []]"
-		--assert (mold make vector! [u32!]) = "make vector! [unsigned integer! 32 0 []]"
-		--assert (mold make vector! [u64!]) = "make vector! [unsigned integer! 64 0 []]"
-		--assert (mold make vector! [f32!]) = "make vector! [decimal! 32 0 []]"
-		--assert (mold make vector! [f64!]) = "make vector! [decimal! 64 0 []]"
+		--assert (mold make vector! [i8! ]) == "#(i8! [])"
+		--assert (mold make vector! [i16!]) == "#(i16! [])"
+		--assert (mold make vector! [i32!]) == "#(i32! [])"
+		--assert (mold make vector! [i64!]) == "#(i64! [])"
+		--assert (mold make vector! [u8! ]) == "#(u8! [])"
+		--assert (mold make vector! [u16!]) == "#(u16! [])"
+		--assert (mold make vector! [u32!]) == "#(u32! [])"
+		--assert (mold make vector! [u64!]) == "#(u64! [])"
+		--assert (mold make vector! [f32!]) == "#(f32! [])"
+		--assert (mold make vector! [f64!]) == "#(f64! [])"
 
 	--test-- "Compact construction syntax (empty, long names)"
-		--assert (mold make vector! [int8! ])  = "make vector! [integer! 8 0 []]"
-		--assert (mold make vector! [int16!])  = "make vector! [integer! 16 0 []]"
-		--assert (mold make vector! [int32!])  = "make vector! [integer! 32 0 []]"
-		--assert (mold make vector! [int64!])  = "make vector! [integer! 64 0 []]"
-		--assert (mold make vector! [uint8! ]) = "make vector! [unsigned integer! 8 0 []]"
-		--assert (mold make vector! [byte!  ]) = "make vector! [unsigned integer! 8 0 []]"
-		--assert (mold make vector! [uint16!]) = "make vector! [unsigned integer! 16 0 []]"
-		--assert (mold make vector! [uint32!]) = "make vector! [unsigned integer! 32 0 []]"
-		--assert (mold make vector! [uint64!]) = "make vector! [unsigned integer! 64 0 []]"
-		--assert (mold make vector! [float!])  = "make vector! [decimal! 32 0 []]"
-		--assert (mold make vector! [double!]) = "make vector! [decimal! 64 0 []]"
+		--assert (mold make vector! [int8! ])  == "#(i8! [])"
+		--assert (mold make vector! [int16!])  == "#(i16! [])"
+		--assert (mold make vector! [int32!])  == "#(i32! [])"
+		--assert (mold make vector! [int64!])  == "#(i64! [])"
+		--assert (mold make vector! [uint8! ]) == "#(u8! [])"
+		--assert (mold make vector! [byte!  ]) == "#(u8! [])"
+		--assert (mold make vector! [uint16!]) == "#(u16! [])"
+		--assert (mold make vector! [uint32!]) == "#(u32! [])"
+		--assert (mold make vector! [uint64!]) == "#(u64! [])"
+		--assert (mold make vector! [float!])  == "#(f32! [])"
+		--assert (mold make vector! [double!]) == "#(f64! [])"
 
 	--test-- "Compact construction syntax (size)"
-		--assert (mold make vector! [i8!  3]) = "make vector! [integer! 8 3 [0 0 0]]"
-		--assert (mold make vector! [i16! 3]) = "make vector! [integer! 16 3 [0 0 0]]"
-		--assert (mold make vector! [i32! 3]) = "make vector! [integer! 32 3 [0 0 0]]"
-		--assert (mold make vector! [i64! 3]) = "make vector! [integer! 64 3 [0 0 0]]"
-		--assert (mold make vector! [u8!  3]) = "make vector! [unsigned integer! 8 3 [0 0 0]]"
-		--assert (mold make vector! [u16! 3]) = "make vector! [unsigned integer! 16 3 [0 0 0]]"
-		--assert (mold make vector! [u32! 3]) = "make vector! [unsigned integer! 32 3 [0 0 0]]"
-		--assert (mold make vector! [u64! 3]) = "make vector! [unsigned integer! 64 3 [0 0 0]]"
-		--assert (mold make vector! [f32! 3]) = "make vector! [decimal! 32 3 [0.0 0.0 0.0]]"
-		--assert (mold make vector! [f64! 3]) = "make vector! [decimal! 64 3 [0.0 0.0 0.0]]"
+		--assert (mold make vector! [i8!  3]) == "#(i8! [0 0 0])"
+		--assert (mold make vector! [i16! 3]) == "#(i16! [0 0 0])"
+		--assert (mold make vector! [i32! 3]) == "#(i32! [0 0 0])"
+		--assert (mold make vector! [i64! 3]) == "#(i64! [0 0 0])"
+		--assert (mold make vector! [u8!  3]) == "#(u8! [0 0 0])"
+		--assert (mold make vector! [u16! 3]) == "#(u16! [0 0 0])"
+		--assert (mold make vector! [u32! 3]) == "#(u32! [0 0 0])"
+		--assert (mold make vector! [u64! 3]) == "#(u64! [0 0 0])"
+		--assert (mold make vector! [f32! 3]) == "#(f32! [0.0 0.0 0.0])"
+		--assert (mold make vector! [f64! 3]) == "#(f64! [0.0 0.0 0.0])"
 
 	--test-- "Compact construction syntax (data)"
-		--assert (mold make vector! [i8!  [1 2]]) = "make vector! [integer! 8 2 [1 2]]"
-		--assert (mold make vector! [i16! [1 2]]) = "make vector! [integer! 16 2 [1 2]]"
-		--assert (mold make vector! [i32! [1 2]]) = "make vector! [integer! 32 2 [1 2]]"
-		--assert (mold make vector! [i64! [1 2]]) = "make vector! [integer! 64 2 [1 2]]"
-		--assert (mold make vector! [u8!  [1 2]]) = "make vector! [unsigned integer! 8 2 [1 2]]"
-		--assert (mold make vector! [u16! [1 2]]) = "make vector! [unsigned integer! 16 2 [1 2]]"
-		--assert (mold make vector! [u32! [1 2]]) = "make vector! [unsigned integer! 32 2 [1 2]]"
-		--assert (mold make vector! [u64! [1 2]]) = "make vector! [unsigned integer! 64 2 [1 2]]"
-		--assert (mold make vector! [f32! [1 2]]) = "make vector! [decimal! 32 2 [1.0 2.0]]"
-		--assert (mold make vector! [f64! [1 2]]) = "make vector! [decimal! 64 2 [1.0 2.0]]"
+		--assert (mold make vector! [i8!  [1 2]]) == "#(i8! [1 2])"
+		--assert (mold make vector! [i16! [1 2]]) == "#(i16! [1 2])"
+		--assert (mold make vector! [i32! [1 2]]) == "#(i32! [1 2])"
+		--assert (mold make vector! [i64! [1 2]]) == "#(i64! [1 2])"
+		--assert (mold make vector! [u8!  [1 2]]) == "#(u8! [1 2])"
+		--assert (mold make vector! [u16! [1 2]]) == "#(u16! [1 2])"
+		--assert (mold make vector! [u32! [1 2]]) == "#(u32! [1 2])"
+		--assert (mold make vector! [u64! [1 2]]) == "#(u64! [1 2])"
+		--assert (mold make vector! [f32! [1 2]]) == "#(f32! [1.0 2.0])"
+		--assert (mold make vector! [f64! [1 2]]) == "#(f64! [1.0 2.0])"
 
 	--test-- "Compact construction syntax (data with index)"
-		--assert (mold v: make vector! [i8!  [1 2] 2]) = "make vector! [integer! 8 1 [2]]"
+		--assert (mold v: make vector! [i8!  [1 2] 2]) = "#(i8! [2])"
 		--assert 2 = index? v
-		--assert (mold v: make vector! [i16! [1 2] 2]) = "make vector! [integer! 16 1 [2]]"
+		--assert (mold v: make vector! [i16! [1 2] 2]) = "#(i16! [2])"
 		--assert 2 = index? v
-		--assert (mold v: make vector! [i32! [1 2] 2]) = "make vector! [integer! 32 1 [2]]"
+		--assert (mold v: make vector! [i32! [1 2] 2]) = "#(i32! [2])"
 		--assert 2 = index? v
-		--assert (mold v: make vector! [i64! [1 2] 2]) = "make vector! [integer! 64 1 [2]]"
+		--assert (mold v: make vector! [i64! [1 2] 2]) = "#(i64! [2])"
 		--assert 2 = index? v
-		--assert (mold v: make vector! [u8!  [1 2] 2]) = "make vector! [unsigned integer! 8 1 [2]]"
+		--assert (mold v: make vector! [u8!  [1 2] 2]) = "#(u8! [2])"
 		--assert 2 = index? v
-		--assert (mold v: make vector! [u16! [1 2] 2]) = "make vector! [unsigned integer! 16 1 [2]]"
+		--assert (mold v: make vector! [u16! [1 2] 2]) = "#(u16! [2])"
 		--assert 2 = index? v
-		--assert (mold v: make vector! [u32! [1 2] 2]) = "make vector! [unsigned integer! 32 1 [2]]"
+		--assert (mold v: make vector! [u32! [1 2] 2]) = "#(u32! [2])"
 		--assert 2 = index? v
-		--assert (mold v: make vector! [u64! [1 2] 2]) = "make vector! [unsigned integer! 64 1 [2]]"
+		--assert (mold v: make vector! [u64! [1 2] 2]) = "#(u64! [2])"
 		--assert 2 = index? v
-		--assert (mold v: make vector! [f32! [1 2] 2]) = "make vector! [decimal! 32 1 [2.0]]"
+		--assert (mold v: make vector! [f32! [1 2] 2]) = "#(f32! [2.0])"
 		--assert 2 = index? v
-		--assert (mold v: make vector! [f64! [1 2] 2]) = "make vector! [decimal! 64 1 [2.0]]"
+		--assert (mold v: make vector! [f64! [1 2] 2]) = "#(f64! [2.0])"
 		--assert 2 = index? v
 
 	--test-- "Construction syntax"
-		--assert (mold v: #(i8!  [1 2] 2)) = "make vector! [integer! 8 1 [2]]"
+		--assert (mold v: #(i8!  [1 2] 2)) = "#(i8! [2])"
 		--assert 2 = index? v
-		--assert (mold v: #(i16! [1 2] 2)) = "make vector! [integer! 16 1 [2]]"
+		--assert (mold v: #(i16! [1 2] 2)) = "#(i16! [2])"
 		--assert 2 = index? v
-		--assert (mold v: #(i32! [1 2] 2)) = "make vector! [integer! 32 1 [2]]"
+		--assert (mold v: #(i32! [1 2] 2)) = "#(i32! [2])"
 		--assert 2 = index? v
-		--assert (mold v: #(i64! [1 2] 2)) = "make vector! [integer! 64 1 [2]]"
+		--assert (mold v: #(i64! [1 2] 2)) = "#(i64! [2])"
 		--assert 2 = index? v
-		--assert (mold v: #(u8!  [1 2] 2)) = "make vector! [unsigned integer! 8 1 [2]]"
+		--assert (mold v: #(u8!  [1 2] 2)) = "#(u8! [2])"
 		--assert 2 = index? v
-		--assert (mold v: #(u16! [1 2] 2)) = "make vector! [unsigned integer! 16 1 [2]]"
+		--assert (mold v: #(u16! [1 2] 2)) = "#(u16! [2])"
 		--assert 2 = index? v
-		--assert (mold v: #(u32! [1 2] 2)) = "make vector! [unsigned integer! 32 1 [2]]"
+		--assert (mold v: #(u32! [1 2] 2)) = "#(u32! [2])"
 		--assert 2 = index? v
-		--assert (mold v: #(u64! [1 2] 2)) = "make vector! [unsigned integer! 64 1 [2]]"
+		--assert (mold v: #(u64! [1 2] 2)) = "#(u64! [2])"
 		--assert 2 = index? v
-		--assert (mold v: #(f32! [1 2] 2)) = "make vector! [decimal! 32 1 [2.0]]"
+		--assert (mold v: #(f32! [1 2] 2)) = "#(f32! [2.0])"
 		--assert 2 = index? v
-		--assert (mold v: #(f64! [1 2] 2)) = "make vector! [decimal! 64 1 [2.0]]"
+		--assert (mold v: #(f64! [1 2] 2)) = "#(f64! [2.0])"
 		--assert 2 = index? v
 ===end-group===
 

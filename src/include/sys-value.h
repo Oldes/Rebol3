@@ -367,6 +367,7 @@ enum {
 	VTSF16,		// not used
 	VTSF32,
 	VTSF64,
+	VT_MAX,
 };
 
 static REBCNT bit_sizes[4] = { 8, 16, 32, 64 };
