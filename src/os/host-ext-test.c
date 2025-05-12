@@ -458,9 +458,22 @@ RXIEXT int RX_Call(int cmd, RXIFRM *frm, void *ctx) {
 
 	case CMD_stru: //command [{test struct passing} val [struct!]]
 	{
-		RXIARG arg = RXA_ARG(frm, 1);
-		REBYTE *bin = SERIES_DATA(arg.structure.data);
-		bin[0] = bin[0] + 1;
+		REBYTE *bin = RXA_STRUCT_BIN(frm,1);
+		// Using any struct... just must have at least 1 byte
+		if (RXA_STRUCT_LEN(frm, 1) > 0) {
+			bin[0] = bin[0] + 1;
+		}
+		// Testing access to struct's specification...
+		REBSER *spec = RXA_STRUCT_SPEC(frm, 1);
+		if (spec && spec->series) {
+			REBSTI *info = (REBSTI *)BIN_HEAD(spec->series);
+			REBSTF *field = (REBSTF *)info + 1;
+			printf("struct id: %u fields: %u\n", info->id, info->len);
+			for (REBCNT i = 0; i < info->len; ++i, ++field) {
+				printf(" field name: %s\n", RL_WORD_STRING(field->sym));
+				printf("       type: %u size: %u\n", field->type, field->size);
+			}
+		}
 		return RXR_VALUE;
 	}
 	case CMD_init: // init words

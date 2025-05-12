@@ -1280,6 +1280,25 @@ RL_API REBCNT RL_Decode_UTF8_Char(const REBYTE *str, REBCNT *len)
 	return To_REBOL_Path(src, len, uni, 0);
 }
 
+RL_API REBSER* RL_Struct_Spec(REBCNT id)
+/*
+**	Get struct specification.
+**
+**	Returns:
+**		Returns a struct specification data.
+**	Arguments:
+**		id - unique struct id (counted as a hash of the specification)
+*/
+{
+	REBVAL *struct_specs = Get_System(SYS_CATALOG, CAT_STRUCTS);
+	REBVAL key;
+	REBCNT n;
+	SET_INTEGER(&key, id);
+	n = Find_Entry(VAL_SERIES(struct_specs), &key, 0, TRUE);
+	if (n == NOT_FOUND) return 0;
+	return VAL_SERIES(VAL_BLK_SKIP(struct_specs, n));
+}
+
 
 #include "reb-lib-lib.h"
 
