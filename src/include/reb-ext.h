@@ -102,9 +102,9 @@ typedef union rxi_arg_val {
 		REBYTE tuple_bytes[MAX_TUPLE];
 	};
 	struct {
-		REBSER *data;
-		REBCNT id;
-		REBCNT offset;
+		REBSER *series; // Rebol series where struct's data are stored
+		REBCNT offset;  // like series' index (used with nested structs)
+		REBCNT id;      // unique struct id counted as a hash of its specification
 	} structure;
 
 } RXIARG;
@@ -159,6 +159,10 @@ typedef int (*RXICAL)(int cmd, RXIFRM *args, REBCEC *ctx);
 #define RXA_IMAGE_BITS(f,n)     ((REBYTE *)RL_SERIES((RXA_ARG(f,n).image), RXI_SER_DATA))
 #define RXA_IMAGE_WIDTH(f,n)    (RXA_ARG(f,n).width)
 #define RXA_IMAGE_HEIGHT(f,n)   (RXA_ARG(f,n).height)
+#define RXA_STRUCT_SER(f,n)		((RXA_ARG(f,n).structure.series))
+#define RXA_STRUCT_BIN(f,n)     ((REBYTE *)(SERIES_DATA(RXA_STRUCT_SER(f,n))) + RXA_INDEX(f,n))
+#define RXA_STRUCT_LEN(f,n)     (SERIES_TAIL(RXA_STRUCT_SER(f,n)) - RXA_INDEX(f,n))
+#define RXA_STRUCT_ID(f,n)      (RXA_ARG(f,n).structure.id)
 
 // Command function return values:
 enum rxi_return {

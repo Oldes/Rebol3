@@ -124,8 +124,8 @@ x*/	RXIARG Value_To_RXI(REBVAL *val)
 		COPY_MEM(arg.tuple_bytes, VAL_TUPLE(val), MAX_TUPLE);
 		break;
 	case RXE_STRUCT:
-		arg.structure.data = VAL_STRUCT_DATA(val);
-		arg.structure.id   = VAL_STRUCT_ID(val);
+		arg.structure.series = VAL_STRUCT_DATA(val);
+		arg.structure.id     = VAL_STRUCT_ID(val);
 		arg.structure.offset = VAL_STRUCT_OFFSET(val);
 		break;
 	case RXE_NULL:
@@ -187,13 +187,14 @@ x*/	void RXI_To_Value(REBVAL *val, RXIARG arg, REBCNT type)
 	{
 		// RXIARG is too small to hold all neccessary values...
 		// so we must use central struct spec container when creating a struct value from external source
+		// Avoid returning structs from the extension unless they are newly created, to prevent this lookup.
 		REBVAL *struct_specs = Get_System(SYS_CATALOG, CAT_STRUCTS);
 		REBVAL key;
 		SET_INTEGER(&key, arg.structure.id);
 		REBCNT n = Find_Entry(VAL_SERIES(struct_specs), &key, 0, TRUE);
 		if (n == NOT_FOUND) { SET_NONE(val); break; } // or error instead?!
 		VAL_STRUCT_SPEC(val) = VAL_SERIES(VAL_BLK_SKIP(struct_specs, n));
-		VAL_STRUCT_DATA(val) = arg.structure.data;
+		VAL_STRUCT_DATA(val) = arg.structure.series;
 		VAL_STRUCT_OFFSET(val) = arg.structure.offset;
 		break;
 	}
