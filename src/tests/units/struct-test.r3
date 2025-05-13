@@ -229,6 +229,16 @@ if system/version >= 3.19.1 [
 		register pair8!: make struct! [x [uint8!] y [uint8!]]
 	]
 
+--test-- "Modifying field values using change"
+	s: make pair8! [1 2]
+	--assert all [attempt [change s [3 4]]       #{0304} == to binary! s]
+	--assert all [attempt [change s [y: 3 x: 4]] #{0403} == to binary! s]
+	--assert all [attempt [change s [5]]         #{0503} == to binary! s]
+	--assert all [attempt [change s [y: 6]]      #{0506} == to binary! s]
+	--assert all [attempt [change s #{07}]       #{0706} == to binary! s]
+	--assert all [attempt [change s #{0101}]     #{0101} == to binary! s]
+	--assert all [attempt [change s #{020202}]   #{0202} == to binary! s]
+
 --test-- "Nested structs"
 
 	--assert all [

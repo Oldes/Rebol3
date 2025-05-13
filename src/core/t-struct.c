@@ -104,7 +104,7 @@ static REBFLG get_scalar(REBSTU *stu,
 				VAL_STRUCT_SPEC(val) = field->spec;
 				VAL_STRUCT_DATA(val) = stu->data;
 				VAL_STRUCT_OFFSET(val) = field->offset + n * field->size;
-				VAL_STRUCT_LEN(val) = field->size;
+				VAL_STRUCT_SIZE(val) = field->size;
 			}
 			break;
 
@@ -228,7 +228,7 @@ static REBOOL same_fields(REBSER *tgt, REBSER *src)
 	REBSTI *src_info = (REBSTI*)src_fields;
 	REBCNT n;
 
-	if (src_info->id && tgt_info->id == src_info->id && tgt_info->len == src_info->len)
+	if (src_info->id && tgt_info->id == src_info->id && tgt_info->size == src_info->size)
 		return TRUE;
 
 	for(n = 1; n < SERIES_TAIL(src); n ++) {
@@ -299,7 +299,7 @@ static REBOOL assign_scalar(REBSTU *stu,
 				VAL_STRUCT_SPEC(DS_TOP) = field->spec;
 				VAL_STRUCT_DATA(DS_TOP) = stu->data;
 				VAL_STRUCT_OFFSET(DS_TOP) = field->offset + n * field->size;
-				VAL_STRUCT_LEN(DS_TOP) = field->size;
+				VAL_STRUCT_SIZE(DS_TOP) = field->size;
 				init_fields(DS_TOP, val);
 				DS_POP;
 			}
@@ -345,7 +345,7 @@ static REBOOL assign_scalar(REBSTU *stu,
 			*(double*)data = (double)d;
 			break;
 		case STRUCT_TYPE_STRUCT:
-			if (field->size != VAL_STRUCT_LEN(val)) {
+			if (field->size != VAL_STRUCT_SIZE(val)) {
 				Trap_Arg(val);
 			}
 			if (same_fields(field->spec->series, VAL_STRUCT_FIELDS(val))) {
@@ -510,7 +510,7 @@ static void set_ext_storage (REBVAL *out, REBINT raw_size, REBUPT raw_addr)
 {
 	REBSER *ser = NULL;
 
-	if (raw_size >= 0 && raw_size != VAL_STRUCT_LEN(out)) {
+	if (raw_size >= 0 && raw_size != VAL_STRUCT_SIZE(out)) {
 		Trap0(RE_INVALID_DATA);
 	}
 
@@ -582,7 +582,7 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 						//RL_Print("Failed to make nested struct!\n");
 						return FALSE;
 					}
-					field->size = VAL_STRUCT_LEN(inner);
+					field->size = VAL_STRUCT_SIZE(inner);
 					field->spec = VAL_STRUCT_SPEC(inner);
 					STRUCT_FLAGS(stu) |= VAL_STRUCT_FLAGS(inner);
 					DS_POP;
@@ -714,6 +714,7 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 		blk = VAL_BLK_DATA(&spec);
 		// Initialize series to store field metadata
 		VAL_STRUCT_FIELDS(out) = Make_Series(field_num+1, sizeof(REBSTF), FALSE); // keeps info at its head
+		VAL_STRUCT_COUNT(out) = field_num;
 		BARE_SERIES(VAL_STRUCT_FIELDS(out));                  // does not hold Rebol values
 		KEEP_SERIES(VAL_STRUCT_FIELDS(out), "struct_fields"); // protect from GC
 		SERIES_TAIL(VAL_STRUCT_FIELDS(out)) = field_num = 1;  // info at the head
@@ -802,7 +803,7 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 		//Dump_Series(VAL_STRUCT_FIELDS(out), "struct_fields");
 
 		// Store complete length of the struct
-		STRUCT_LEN(stu) = (REBCNT)offset;
+		STRUCT_SIZE(stu) = (REBCNT)offset;
 
 		// Append value to system/catalog/structs
 		n = Find_Entry(VAL_SERIES(struct_specs), &key, &spec, TRUE);
@@ -812,9 +813,9 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 	// At this point, the struct specification should be ready.
 
 	if (IS_BINARY(values)) {
-		if (VAL_BIN_LEN(values) < STRUCT_LEN(stu)) Trap_Arg(values);
+		if (VAL_BIN_LEN(values) < STRUCT_SIZE(stu)) Trap_Arg(values);
 		if (STRUCT_DATA(stu)) {
-			COPY_MEM(STRUCT_DATA_BIN(stu), VAL_BIN_DATA(values), STRUCT_LEN(stu));
+			COPY_MEM(STRUCT_DATA_BIN(stu), VAL_BIN_DATA(values), STRUCT_SIZE(stu));
 		}
 		else {
 			STRUCT_DATA(stu) = VAL_SERIES(values);
@@ -822,9 +823,9 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 		return TRUE;
 	}
 	
-	STRUCT_DATA(stu) = Make_Binary(STRUCT_LEN(stu));
+	STRUCT_DATA(stu) = Make_Binary(STRUCT_SIZE(stu));
 	LABEL_SERIES(VAL_STRUCT_FIELDS(out), "struct_data");
-	SERIES_TAIL(STRUCT_DATA(stu)) = STRUCT_LEN(stu);
+	SERIES_TAIL(STRUCT_DATA(stu)) = STRUCT_SIZE(stu);
 	
 	if (IS_BLOCK(values)) {
 		init_fields(out, values);
@@ -904,8 +905,8 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 			}
 			return IS_STRUCT(a) && IS_STRUCT(b)
 				 && same_fields(VAL_STRUCT_FIELDS(a), VAL_STRUCT_FIELDS(b))
-				 && VAL_STRUCT_LEN(a) == VAL_STRUCT_LEN(b)
-				 && !memcmp(VAL_STRUCT_DATA_BIN(a), VAL_STRUCT_DATA_BIN(b), VAL_STRUCT_LEN(a));
+				 && VAL_STRUCT_SIZE(a) == VAL_STRUCT_SIZE(b)
+				 && !memcmp(VAL_STRUCT_DATA_BIN(a), VAL_STRUCT_DATA_BIN(b), VAL_STRUCT_SIZE(a));
 		default:
 			return -1;
 	}
@@ -918,14 +919,15 @@ static void Copy_Struct(REBSTU *src, REBSTU *dst)
 	dst->spec = src->spec;
 
 	/* Writable field */
-	STRUCT_DATA(dst) = Make_Binary(STRUCT_LEN(src));
+	STRUCT_DATA(dst) = Make_Binary(STRUCT_SIZE(src));
 	BARE_SERIES(STRUCT_DATA(dst));
-	COPY_MEM(STRUCT_DATA_BIN(dst), STRUCT_DATA_BIN(src), STRUCT_LEN(src));
+	SERIES_TAIL(STRUCT_DATA(dst)) = STRUCT_SIZE(src);
+	COPY_MEM(STRUCT_DATA_BIN(dst), STRUCT_DATA_BIN(src), STRUCT_SIZE(src));
 }
 
 static void Copy_Struct_Val(REBVAL *src, REBVAL *dst)
 {
-	SET_TYPE(dst, REB_STRUCT);
+	SET_STRUCT(dst);
 	Copy_Struct(&VAL_STRUCT(src), &VAL_STRUCT(dst));
 }
 
@@ -1025,9 +1027,9 @@ static void init_fields(REBVAL *ret, REBVAL *spec)
 				if (IS_BLOCK(arg)) {
 					init_fields(ret, arg);
 				}
-				else if (IS_BINARY(arg) && VAL_BIN_LEN(arg) >= VAL_STRUCT_LEN(val)) {
+				else if (IS_BINARY(arg) && VAL_BIN_LEN(arg) >= VAL_STRUCT_SIZE(val)) {
 					//TODO: special error when data are not large enough?
-					COPY_MEM(VAL_STRUCT_DATA_BIN(ret), VAL_BIN_DATA(arg), VAL_STRUCT_LEN(val));
+					COPY_MEM(VAL_STRUCT_DATA_BIN(ret), VAL_BIN_DATA(arg), VAL_STRUCT_SIZE(val));
 				}
 				else {
 					Trap_Arg(arg);
@@ -1051,11 +1053,15 @@ static void init_fields(REBVAL *ret, REBVAL *spec)
 
 		case A_CHANGE:
 			{
+				if (IS_BLOCK(arg)) {
+					init_fields(val, arg);
+					return R_ARG1;
+				}
 				if (VAL_STRUCT_PROTECTED(val)) Trap0(RE_PROTECTED);
 				if (!IS_BINARY(arg)) {
 					Trap_Types(RE_EXPECT_VAL, REB_BINARY, VAL_TYPE(arg));
 				}
-				COPY_MEM(VAL_STRUCT_DATA_BIN(val), VAL_BIN_DATA(arg), min(VAL_BIN_LEN(arg),VAL_STRUCT_LEN(val)));
+				COPY_MEM(VAL_STRUCT_DATA_BIN(val), VAL_BIN_DATA(arg), min(VAL_BIN_LEN(arg),VAL_STRUCT_SIZE(val)));
 				return R_ARG1;
 			}
 			break;
@@ -1080,11 +1086,11 @@ static void init_fields(REBVAL *ret, REBVAL *spec)
 		//TODO: A_QUERY to access struct's name and id?
 
 		case A_LENGTHQ:
-			SET_INTEGER(ret, VAL_STRUCT_LEN(val));
+			SET_INTEGER(ret, VAL_STRUCT_SIZE(val));
 			break;
 
 		case A_CLEAR:
-			CLEAR(VAL_STRUCT_DATA_BIN(val), VAL_STRUCT_LEN(val))
+			CLEAR(VAL_STRUCT_DATA_BIN(val), VAL_STRUCT_SIZE(val))
 			return R_ARG1;
 
 		default:

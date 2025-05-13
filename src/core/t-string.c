@@ -280,7 +280,7 @@ static REBSER *make_binary(REBVAL *arg, REBOOL make)
 		break;
 
 	case REB_STRUCT:
-		ser = Copy_Series_Part(VAL_STRUCT_DATA(arg), VAL_STRUCT_OFFSET(arg), VAL_STRUCT_LEN(arg));
+		ser = Copy_Series_Part(VAL_STRUCT_DATA(arg), VAL_STRUCT_OFFSET(arg), VAL_STRUCT_SIZE(arg));
 		break;
 
 	default:
