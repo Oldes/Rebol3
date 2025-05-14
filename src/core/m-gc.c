@@ -194,8 +194,9 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 	// STRUCT_SPEC is shared and persistently stored in system/catalog/structs
 	// so it is marked from there.
 	//CHECK_MARK(STRUCT_SPEC(stu), depth);
-	if (!STRUCT_DATA(stu) || !STRUCT_FIELDS_SER(stu)) return;
-	if (IS_MARK_SERIES(STRUCT_FIELDS_SER(stu)))
+	if (!STRUCT_DATA(stu) || !STRUCT_FIELDS_SER(stu))
+		return;
+	if (IS_MARK_SERIES(STRUCT_DATA(stu)))
 		return;
 	MARK_SERIES(STRUCT_DATA(stu));
 	MARK_SERIES(STRUCT_FIELDS_SER(stu));
