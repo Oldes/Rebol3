@@ -183,6 +183,9 @@ if system/version >= 3.19.1 [
 	--assert all [s1/a = 10 s1/b = 2 ]
 	--assert all [s2/a = 1  s2/b = 20]
 	--assert all [s3/a = 10 s3/b = 20]
+	;; the block is evaluated like reduce/no-set
+	--assert all [attempt [s: make proto! [3 * 10 4 * 10]]        s/a = 30 s/b = 40]
+	--assert all [attempt [s: make proto! [b: 3 * 10 a: 4 * 10]]  s/b = 30 s/a = 40]
 
 --test-- "Construction from struct prototype (using values only)"
 	proto!: #(struct! [a [uint8!] b [uint8!]] [1 2])
@@ -241,8 +244,7 @@ if system/version >= 3.19.1 [
 
 --test-- "Copy structs"
 	s: make pair8! [1 2]
-	--assert attempt [s2: copy s]
-	--assert #{0102} == to binary! s2
+	--assert all [attempt [s2: copy s]  #{0102} == to binary! s2]
 	s/x: 3 ;; modified original struct
 	--assert s2/x == 1 ;; the new struct is unchanged
 	--assert all [error? e: try [copy/part s 1]  e/id = 'bad-refines]
@@ -440,6 +442,11 @@ either system/version < 3.19.1 [
 		--assert all [
 			error? e: try [make struct! [a [int8! [foo]]]]
 			e/id = 'invalid-arg
+		]
+	--test-- "Construction does not support evaluation"
+		--assert all [
+			error? e: transcode/one/error {#(struct [a [uint8!]] [random 10])}
+			e/id = 'malconstruct
 		]
 ]
 ===end-group===
