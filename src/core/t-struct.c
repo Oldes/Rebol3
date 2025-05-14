@@ -1093,6 +1093,13 @@ static void init_fields(REBVAL *ret, REBVAL *spec)
 			CLEAR(VAL_STRUCT_DATA_BIN(val), VAL_STRUCT_SIZE(val))
 			return R_ARG1;
 
+		case A_COPY:
+			// Allow only a simple copy without any refinements.
+			if (D_REF(ARG_COPY_PART) || D_REF(ARG_COPY_DEEP) || D_REF(ARG_COPY_TYPES))
+				Trap0(RE_BAD_REFINES);
+			Copy_Struct_Val(val, ret);
+			break;
+
 		default:
 			Trap_Action(REB_STRUCT, action);
 	}

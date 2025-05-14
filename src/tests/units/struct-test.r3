@@ -239,6 +239,15 @@ if system/version >= 3.19.1 [
 	--assert all [attempt [change s #{0101}]     #{0101} == to binary! s]
 	--assert all [attempt [change s #{020202}]   #{0202} == to binary! s]
 
+--test-- "Copy structs"
+	s: make pair8! [1 2]
+	--assert attempt [s2: copy s]
+	--assert #{0102} == to binary! s2
+	s/x: 3 ;; modified original struct
+	--assert s2/x == 1 ;; the new struct is unchanged
+	--assert all [error? e: try [copy/part s 1]  e/id = 'bad-refines]
+	--assert all [error? e: try [copy/deep s 1]  e/id = 'bad-refines]
+
 --test-- "Nested structs"
 
 	--assert all [
