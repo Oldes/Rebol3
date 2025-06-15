@@ -99,6 +99,8 @@ url-parser: make object! [
 	alpha:       system/catalog/bitsets/alpha
 	alpha-num:   system/catalog/bitsets/alpha-numeric
 	hex-digit:   system/catalog/bitsets/hex-digits
+	enhex-bits:  copy system/catalog/bitsets/uri
+	enhex-bits/(#"%"): true ;; ignore percentage char (it may be used for already escaped content)
 
 	;-- URL Character Sets
 	;URIs include components and subcomponents that are delimited by characters in the "reserved" set.
@@ -202,10 +204,10 @@ url-parser: make object! [
 		"Return object with URL components, or cause an error if not a valid URL"
 		url  [url! string!]
 	][
-		;@@ MOLD of the url! preserves (and also adds) the percent encoding.      
-		;@@ binary! is used to have `dehex` on results decode UTF8 chars correctly
-		;@@ see: https://github.com/Oldes/Rebol-issues/issues/1986                
-		result: either parse to binary! mold as url! url url-rules [
+		;; escape all not escaped chars of the url first
+		;; and convert it to binary, so it is treated as UTF-8 before parsing               
+		url: to binary! enhex/except url enhex-bits 
+		result: either parse url url-rules [
 			copy out
 		][
 			none

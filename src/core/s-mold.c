@@ -1687,6 +1687,8 @@ append:
 	// and also all chars which are a lexer delimiters + 3 common extra chars
 	dc = b_cast(";\"()[]{}<>\x5C\x5E\x7F");
 	for (c = (REBYTE)LEN_BYTES(dc); c > 0; c--) URL_Escapes[*dc++] = ESC_URL | ESC_FILE;
+	// % is not being escaped in URLs (it is expected that user already used it for escaping the input)
+	URL_Escapes['%'] |= ESC_FILE;
 	// RFC3986 allows unescaped only: ALPHA, DIGIT and "-._~:/?#[]@!$&'()*+,;="
 	// so include also folowing chars for url escaping...
 	URL_Escapes['\x60'] |= ESC_URL;
@@ -1694,8 +1696,7 @@ append:
 	// required file escaping... https://github.com/Oldes/Rebol-issues/issues/2491
 	URL_Escapes['\x3A'] |= ESC_FILE;
 	URL_Escapes['\x40'] |= ESC_FILE;
-	// % is not being escaped in URLs (it is expected that user already used it for escaping the input)
-	URL_Escapes['%'] |= ESC_FILE;
+	
 }
 
 
