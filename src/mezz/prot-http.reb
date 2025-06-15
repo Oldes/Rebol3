@@ -12,9 +12,9 @@ REBOL [
 		Licensed under the Apache License, Version 2.0
 		See: http://www.apache.org/licenses/LICENSE-2.0
 	}
-	Version: 0.7.2
+	Version: 0.7.3
 	Needs: 3.18.5 ;; because using the new log-* functions
-	Date: 14-Jun-2025
+	Date: 15-Jun-2025
 	File: %prot-http.r3
 	Purpose: {
 		This program defines the HTTP protocol scheme for REBOL 3.
@@ -292,7 +292,7 @@ make-http-request: func [
 
 	request: ajoin [
 		uppercase form :method SP
-		mold as url! :path        ;; `mold as url!` is used because it produces correct escaping
+		enhex/uri :path
 	]
 	if :target [append request mold as url! :target]
 	if :query  [append append request #"?" escape-query :query]
