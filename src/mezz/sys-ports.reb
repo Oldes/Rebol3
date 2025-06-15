@@ -182,7 +182,7 @@ url-parser: make object! [
 	ip-literal:    [copy value [[#"[" thru #"]"] | ["%5B" thru "%5D"]]] ; simplified from [IPv6address | IPvFuture]
 	port:          [copy value [1 5 digit] (emit port to integer! to string! :value)]
 	pct-encoded:   [#"%" 2 hex-digit]
-	pchar:         [unreserved | pct-encoded | sub-delims | #":" | #"@"]	; path characters
+	pchar:         [unreserved | pct-encoded | sub-delims | #":" | #"@" | #"%"]	; path characters (allows also %)
 	path-abempty:  [copy value any-segments | path-empty]
 	path-absolute: [copy value [#"/" opt [segment-nz any-segments]]]
 	path-rootless: [copy value [segment-nz any-segments]]

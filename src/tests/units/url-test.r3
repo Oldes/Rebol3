@@ -68,6 +68,11 @@ Rebol [
 		--assert url/host  = "host"
 		--assert url/query = "query"
 
+	--test-- "decode-url with not escaping %"
+		--assert (mold/flat decode-url meta:thing=100%) == "[scheme: 'meta target: %thing=100%25]"
+		--assert (mold/flat decode-url file:name/100%) == "[scheme: 'file path: %name/ target: %100%25]"
+		--assert (mold/flat decode-url url://name/?100%x) == {[scheme: 'url host: "name" path: %/ query: "100%x"]}
+
 	--test-- "query with encoded &"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/2012
 		u2: load molded: mold u1: to-url "http://a.b.c/d?e=f%26&g=h"
