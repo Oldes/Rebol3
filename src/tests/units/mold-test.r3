@@ -213,7 +213,7 @@ Rebol [
 	
 	--test-- "mold url"
 		--assert "ftp://"  = mold ftp://
-		--assert "ftp://%C5%A1" = mold ftp://š
+		--assert "ftp://š" = mold ftp://š
 		--assert "ftp://+" = mold ftp://+
 		--assert "ftp://%2b" = mold ftp://%2b
 		--assert "ftp://%2B" = mold ftp://%2B
@@ -221,15 +221,26 @@ Rebol [
 	--test-- "mold append url"
 		--assert "ftp://a" = mold append ftp:// #"a"
 		--assert "ftp://a" = mold append ftp://  "a"
-		--assert "ftp://%C5%A1" = mold append ftp://  "š"
+		--assert "ftp://š" = mold append ftp://  "š"
 		--assert "ftp://+" = mold append ftp://  "+"
 		--assert "ftp://%28" = mold append ftp:// "%28"
 		--assert "ftp://(" = dehex mold append ftp:// "%28"
 	--test-- "mold url escaping"
 		for i 0 255 1 [
-			f2: try [mold f1: append copy a:/ to char! i]
-			--assert f2 = mold f1
+			f2: try [load mold f1: append copy a:/ to char! i]
+			--assert f2 == f1
 		]
+	--test-- "url with construction syntax needed"
+		--assert {#(url! "")}  == mold clear ftp://
+		--assert {#(url! "a")} == mold as url! "a"
+		--assert {#(url! "a:")} == mold as url! "a:"
+		--assert {#(url! ":a")} == mold as url! ":a"
+		--assert {#(url! "::a")} == mold as url! "::a"
+		--assert "a::"  == mold as url! "a::"
+		--assert "a::a" == mold as url! "a::a"
+		--assert "a:a"  == mold as url! next "aa:a"
+		--assert {#(url! "aa:a" 2)} == mold/all as url! next "aa:a"
+		--assert {#(url! "a:a" 2)} == mold as url! next "a:a"
 
 ===end-group=== 
 
@@ -488,13 +499,21 @@ Rebol [
 ===start-group=== "mold email!"
 	--test-- "issue-159"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/159
-		--assert "a@b" = mold a@b
+		--assert "a@b" == mold a@b
 	--test-- "issue-2406"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2406
-		--assert "a@%C5%A1i%C5%A1ka" = mold a@šiška
-		--assert "a@šiška"           = form a@šiška
-		--assert "a@%C5%A1" = mold a@%C5%A1
-		--assert "a@š"      = form a@%C5%A1
+		--assert "a@šiška" == mold a@šiška
+		--assert "a@šiška" == form a@šiška
+		--assert "a@š"     == mold a@%C5%A1
+		--assert "a@š"     == form a@%C5%A1
+	--test-- "email with construction syntax needed"
+		--assert {#(email! "")}  == mold clear a@b
+		--assert {#(email! "a")} == mold as email! "a"
+		--assert {#(email! "@a")} == mold as email! "@a"
+		--assert {#(email! "a@")} == mold as email! "a@"
+		--assert {#(email! "a@/")} == mold as email! "a@/"
+		--assert {#(email! "a@@")} == mold as email! "a@@"
+		--assert {#(email! "a@b@")} == mold as email! "a@b@"
 ===end-group===
 
 ===start-group=== "mold ref!"

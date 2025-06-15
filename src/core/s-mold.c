@@ -496,72 +496,49 @@ STOID Mold_Issue(REBVAL *value, REB_MOLD *mold)
 }
 #endif
 
-/*
-	http://www.blooberry.com/indexdot/html/topics/urlencoding.htm
-
-	Only alphanumerics [0-9a-zA-Z], the special characters $-_.+!*'(),
-	and reserved characters used for their reserved purposes may be used
-	unencoded within a URL.
-*/
-
+/* Used also for emails at this moment! */
 STOID Mold_Url(REBVAL *value, REB_MOLD *mold)
 {
-	REBUNI *dp;
-	REBCNT n, i;
+	REBCNT n;
 	REBUNI c;
 	REBCNT len = VAL_LEN(value);
+	REBCNT idx = VAL_INDEX(value);
 	REBSER *ser = VAL_SERIES(value);
-	REBYTE buf[10];
-	REBCNT ulen;
-/*
 	REBUNI required = (REBUNI)(VAL_TYPE(value) == REB_EMAIL ? '@' : ':');
-	REBOOL found = FALSE;
+	REBCNT found = 0;
+	
 
+	// check if construction syntax is needed...
+	// 1. empty content
 	if (len == 0) {
-mold_all_url:
+mold_constr:
 		Mold_All_Constr_String(value, mold);
 		return;
 	}
-
-	for (n = VAL_INDEX(value); n < VAL_TAIL(value); n++) {
+	// 2. contains a delimiter or invalid required chars
+	for (n = idx; n < VAL_TAIL(value); n++) {
 		c = GET_ANY_CHAR(ser, n);
-		if (IS_LEX_DELIMIT(c) && c != '/') goto mold_all_url;
-		if (c == required) found = TRUE;
-	}
-	if (!found) goto mold_all_url;
-	Insert_String(mold->series, AT_TAIL, VAL_SERIES(value), VAL_INDEX(value), VAL_LEN(value), 0);
-	return;
-*/
-
-	// Compute extra space needed for hex encoded characters:
-	for (n = VAL_INDEX(value); n < VAL_TAIL(value); n++) {
-		c = GET_ANY_CHAR(ser, n);
-		if (IS_URL_ESC(c)) len += 2;
-		// unicode chars must be also encoded...
-		else if (c <  (REBCNT)0x80) continue;
-		//else if (c >= (REBCNT)0x0010FFFF) len += 14; // REBUNI is just 16bit, so this is useless now!
-		//else if (c >= (REBCNT)0x10000) len += 11;
-		else if (c >= (REBCNT)0x800) len += 8;
-		else if (c >= (REBCNT)0x80) len += 5;
-	}
-
-	dp = Prep_Uni_Series(mold, len);
-
-	for (n = VAL_INDEX(value); n < VAL_TAIL(value); n++) {
-		c = GET_ANY_CHAR(ser, n);
-		if (IS_URL_ESC(c)) dp = Form_Hex_Esc_Uni(dp, c);  // c => %xx
-		else if (c >= 0x80) {
-			// to avoid need to first convert whole url to utf8,
-			// use the temp buffer for any unicode char...
-			ulen = Encode_UTF8_Char((REBYTE*)&buf, c);
-			for (i = 0; i < ulen; i++) {
-				dp = Form_Hex_Esc_Uni(dp, (REBUNI)buf[i]);
-			}
+		if (IS_LEX_DELIMIT(c)) {
+			// allow / inside urls...
+			if (c == '/' && required == ':') continue;
+			goto mold_constr;
 		}
-		else *dp++ = c;
+		if (c == required) {
+			if (found) {
+				if (
+					required == '@' || // invalid email.. (only one @ allowed)
+					n == idx+1         // invalid word.. (starts with ::)
+				) goto mold_constr;
+				continue; // only first position is stored!
+			}
+			if (n == idx) goto mold_constr; // at head
+			found = n;
+		}
 	}
-
-	*dp = 0;
+	// 3. required char (@ or :) found on head or tail!
+	if (!found || found == n-1) goto mold_constr;
+	// else output as it is...
+	Insert_String(mold->series, AT_TAIL, VAL_SERIES(value), VAL_INDEX(value), VAL_LEN(value), 0);
 }
 
 STOID Mold_File(REBVAL *value, REB_MOLD *mold)
