@@ -85,30 +85,30 @@ REBU64 f_to_u64(float n) {
 }
 
 
-typedef void (*SetterFunc)(void *data, REBCNT n, REBVAL *val);
-typedef REBU64(*GetterFunc)(REBYTE *data, REBCNT n, REBVAL *val);
+typedef void (*SetterFunc)(const void *data, REBCNT n, REBVAL *val);
+typedef void (*GetterFunc)(const void *data, REBCNT n, REBVAL *val);
 
-static void set_i8(void *data, REBCNT n, REBVAL *val) { ((i8 *)data)[n] = (i8)VAL_INT64(val); }
-static void set_i16(void *data, REBCNT n, REBVAL *val) { ((i16 *)data)[n] = (i16)VAL_INT64(val); }
-static void set_i32(void *data, REBCNT n, REBVAL *val) { ((i32 *)data)[n] = (i32)VAL_INT64(val); }
-static void set_i64(void *data, REBCNT n, REBVAL *val) { ((i64 *)data)[n] = VAL_INT64(val); }
-static void set_u8(void *data, REBCNT n, REBVAL *val) { ((u8 *)data)[n] = (u8)VAL_UNT64(val); }
-static void set_u16(void *data, REBCNT n, REBVAL *val) { ((u16 *)data)[n] = (u16)VAL_UNT64(val); }
-static void set_u32(void *data, REBCNT n, REBVAL *val) { ((u32 *)data)[n] = (u32)VAL_UNT64(val); }
-static void set_u64(void *data, REBCNT n, REBVAL *val) { ((u64 *)data)[n] = VAL_UNT64(val); }
-static void set_float(void *data, REBCNT n, REBVAL *val) { ((float *)data)[n] = (float)VAL_DECIMAL(val); }
-static void set_double(void *data, REBCNT n, REBVAL *val) { ((double *)data)[n] = VAL_DECIMAL(val); }
+static void set_i8(const void *data, REBCNT n, REBVAL *val) { ((i8 *)data)[n] = (i8)VAL_INT64(val); }
+static void set_i16(const void *data, REBCNT n, REBVAL *val) { ((i16 *)data)[n] = (i16)VAL_INT64(val); }
+static void set_i32(const void *data, REBCNT n, REBVAL *val) { ((i32 *)data)[n] = (i32)VAL_INT64(val); }
+static void set_i64(const void *data, REBCNT n, REBVAL *val) { ((i64 *)data)[n] = VAL_INT64(val); }
+static void set_u8(const void *data, REBCNT n, REBVAL *val) { ((u8 *)data)[n] = (u8)VAL_UNT64(val); }
+static void set_u16(const void *data, REBCNT n, REBVAL *val) { ((u16 *)data)[n] = (u16)VAL_UNT64(val); }
+static void set_u32(const void *data, REBCNT n, REBVAL *val) { ((u32 *)data)[n] = (u32)VAL_UNT64(val); }
+static void set_u64(const void *data, REBCNT n, REBVAL *val) { ((u64 *)data)[n] = VAL_UNT64(val); }
+static void set_float(const void *data, REBCNT n, REBVAL *val) { ((float *)data)[n] = (float)VAL_DECIMAL(val); }
+static void set_double(const void *data, REBCNT n, REBVAL *val) { ((double *)data)[n] = VAL_DECIMAL(val); }
 
-static void get_i8(REBYTE *data, REBCNT n, REBVAL *val)  { VAL_INT64(val) = ((i8 *)data)[n]; }
-static void get_i16(REBYTE *data, REBCNT n, REBVAL *val) { VAL_INT64(val) = ((i16 *)data)[n]; }
-static void get_i32(REBYTE *data, REBCNT n, REBVAL *val) { VAL_INT64(val) = ((i32 *)data)[n]; }
-static void get_i64(REBYTE *data, REBCNT n, REBVAL *val) { VAL_INT64(val) = ((i64 *)data)[n]; }
-static void get_u8(REBYTE *data, REBCNT n, REBVAL *val)  { VAL_UNT64(val) = ((u8 *)data)[n]; }
-static void get_u16(REBYTE *data, REBCNT n, REBVAL *val) { VAL_UNT64(val) = ((u16 *)data)[n]; }
-static void get_u32(REBYTE *data, REBCNT n, REBVAL *val) { VAL_UNT64(val) = ((u32 *)data)[n]; }
-static void get_u64(REBYTE *data, REBCNT n, REBVAL *val) { VAL_UNT64(val) = ((u64 *)data)[n]; }
-static void get_float(REBYTE *data, REBCNT n, REBVAL *val)  { VAL_UNT64(val) = f_to_u64(((float *)data)[n]); }
-static void get_double(REBYTE *data, REBCNT n, REBVAL *val) { VAL_UNT64(val) = ((REBU64 *)data)[n]; }
+static void get_i8(const void *data, REBCNT n, REBVAL *val)  { VAL_INT64(val) = ((i8 *)data)[n]; }
+static void get_i16(const void *data, REBCNT n, REBVAL *val) { VAL_INT64(val) = ((i16 *)data)[n]; }
+static void get_i32(const void *data, REBCNT n, REBVAL *val) { VAL_INT64(val) = ((i32 *)data)[n]; }
+static void get_i64(const void *data, REBCNT n, REBVAL *val) { VAL_INT64(val) = ((i64 *)data)[n]; }
+static void get_u8(const void *data, REBCNT n, REBVAL *val)  { VAL_UNT64(val) = ((u8 *)data)[n]; }
+static void get_u16(const void *data, REBCNT n, REBVAL *val) { VAL_UNT64(val) = ((u16 *)data)[n]; }
+static void get_u32(const void *data, REBCNT n, REBVAL *val) { VAL_UNT64(val) = ((u32 *)data)[n]; }
+static void get_u64(const void *data, REBCNT n, REBVAL *val) { VAL_UNT64(val) = ((u64 *)data)[n]; }
+static void get_float(const void *data, REBCNT n, REBVAL *val)  { VAL_UNT64(val) = f_to_u64(((float *)data)[n]); }
+static void get_double(const void *data, REBCNT n, REBVAL *val) { VAL_UNT64(val) = ((REBU64 *)data)[n]; }
 
 // Comparison functions for qsort
 typedef int(*CompareFunc)(const void *a, const void *b);
@@ -192,9 +192,10 @@ static CompareFunc compares_rev[VTSF64 + 1] = {
 	[VTSF64] = cmp_double_rev
 };
 
+FORCE_INLINE
 void get_vect(REBCNT type, REBYTE *data, REBCNT n, REBVAL *val) {
 	ASSERT1(type <= VTSF64, RP_BAD_SIZE);
-	return getters[type](data, n, val);
+	getters[type](data, n, val);
 }
 
 FORCE_INLINE
@@ -207,6 +208,7 @@ REBDEC get_vect_decimal(REBCNT type, REBYTE *data, REBCNT n) {
 	return (REBDEC)VAL_UNT64(&val);
 }
 
+FORCE_INLINE
 void set_vect(REBCNT type, REBYTE *data, REBCNT n, REBVAL *val) {
 	ASSERT1(type <= VTSF64, RP_BAD_SIZE);
 	setters[type](data, n, val);
@@ -228,7 +230,6 @@ static void Query_Vector_Statictics(REBSER *vect, REBVQV *out) {
 	REBLEN len = SERIES_TAIL(vect);
 	REBCNT type = VECT_TYPE(vect);
 	REBCNT n = 0;
-	REBVAL val;
 	REBYTE *data = SERIES_DATA(vect);
 	REBDEC num, diff;
 
@@ -260,7 +261,7 @@ static REBDEC Query_Vector_Median(REBSER *vect) {
 	REBSER *sorted;
 	REBDEC median;
 
-	if (len == 0) return;
+	if (len == 0) return 0;
 	// Make a vector copy, because sorting modifies
 	sorted = Copy_Series(vect);
 	sorted->size = vect->size; // attributes
@@ -432,8 +433,6 @@ void Find_Maximum_Of_Vector(REBSER *vect, REBVAL *ret) {
 **
 ***********************************************************************/
 {
-	REBDEC num;
-
 #define RETURN_DECIMAL(v) {SET_DECIMAL(ret, v); return TRUE;}
 #define RETURN_NUMBER(v)  {SET_DECIMAL(ret, v); goto return_number;}
 
