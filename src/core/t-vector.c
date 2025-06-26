@@ -409,20 +409,18 @@ void Find_Maximum_Of_Vector(REBSER *vect, REBVAL *ret) {
 	REBYTE *data = VAL_SERIES(vect)->data;
 	REBCNT type = VECT_TYPE(VAL_SERIES(vect));
 	REBSER *ser = Make_Block(len);
-	REBCNT n;
 	REBVAL *val = NULL;
+	REBCNT reb_type = (type >= VTSF08) ? REB_DECIMAL : REB_INTEGER;
 
 	if (len > 0) {
 		val = BLK_HEAD(ser);
-		for (n = VAL_INDEX(vect); n < VAL_TAIL(vect); n++, val++) {
-			VAL_SET(val, (type >= VTSF08) ? REB_DECIMAL : REB_INTEGER);
-			VAL_INT64(val) = get_vect(type, data, n); // can be int or decimal
+		for (REBCNT n = VAL_INDEX(vect); n < VAL_TAIL(vect); n++, val++) {
+			VAL_SET(val, reb_type);
+			VAL_UNT64(val) = get_vect(type, data, n); // can be int or decimal
 		}
 		SET_END(val);
 	}
-
-	ser->tail = len;
-
+	SERIES_TAIL(ser) = len;
 	return ser;
 }
 
