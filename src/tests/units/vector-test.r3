@@ -172,7 +172,7 @@ Rebol [
 	--assert o/minimum = 0
 	--assert o/maximum = 0
 --test-- "QUERY on vector"
-	--assert [signed type size length minimum maximum] = query v none
+	--assert [signed type size length minimum maximum range sum mean median variance population-deviation sample-deviation] = query v none
 	--assert [16 integer!] = query v [:size :type]
 	--assert block? b: query v [signed length]
 	--assert all [not b/signed b/length = 2]
@@ -559,6 +559,94 @@ Rebol [
 		--assert none? vu64/max
 		--assert none? vf32/max
 		--assert none? vf64/max
+===end-group===
+
+
+===start-group=== "VECTOR statictics"
+;@@ https://github.com/Oldes/Rebol-issues/issues/2648
+	all-modes: [minimum maximum range sum mean median variance population-deviation sample-deviation]
+	all-get-modes: [:minimum :maximum :range :sum :mean :median :variance :population-deviation :sample-deviation]
+	--test-- "int8! vector statictics"
+	v: #(int8! [-2 -1 1 2 4])
+	--assert (query v all-modes) == [
+	    minimum: -2
+	    maximum: 4
+	    range: 6
+	    sum: 4
+	    mean: 0.8
+	    median: 1.0
+	    variance: 22.8
+	    population-deviation: 2.13541565040626
+	    sample-deviation: 2.38746727726266
+	]
+
+	--assert (query v all-get-modes) == [
+	    -2
+	    4
+	    6
+	    4
+	    0.8
+	    1.0
+	    22.8
+	    2.13541565040626
+	    2.38746727726266
+	]
+
+	--test-- "uint64! vector statictics"
+	v: #(uint64! [4 9 11 12 17])
+	--assert (query v all-modes) == [
+	    minimum: 4
+	    maximum: 17
+	    range: 13
+	    sum: 53
+	    mean: 10.6
+	    median: 11.0
+	    variance: 89.2
+	    population-deviation: 4.22374241638857
+	    sample-deviation: 4.72228758124704
+	]
+
+	--assert (query v all-get-modes) == [
+	    4
+	    17
+	    13
+	    53
+	    10.6
+	    11.0
+	    89.2
+	    4.22374241638857
+	    4.72228758124704
+	]
+
+	--test-- "float64! vector statictics"
+	v: #(float64! [1.62 1.72 1.64 1.7 1.78 1.64 1.65 1.64 1.66 1.74])
+	--assert (query v all-modes) == [
+	    minimum: 1.62
+	    maximum: 1.78
+	    range: 0.16
+	    sum: 16.79
+	    mean: 1.679
+	    median: 1.655
+	    variance: 0.02529
+	    population-deviation: 0.0502891638427207
+	    sample-deviation: 0.0530094331227943
+	]
+
+	--assert (query v all-get-modes) == [
+	    1.62
+	    1.78
+	    0.16
+	    16.79
+	    1.679
+	    1.655
+	    0.02529
+	    0.0502891638427207
+	    0.0530094331227943
+	]
+
+
+===end-group===
+
 
 ===start-group=== "VECTOR Compare"
 	--test-- "compare vectors"

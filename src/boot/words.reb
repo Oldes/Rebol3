@@ -387,3 +387,6 @@ file-checksum
 xaudio-voice
 
 port-state!
+
+population-deviation
+sample-deviation

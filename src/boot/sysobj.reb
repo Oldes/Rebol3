@@ -511,6 +511,13 @@ standard: object [
 		length:     ; number of values
 		minimum:
 		maximum:
+		range:      ; maximum - minimum
+		sum:
+		mean:       ; average
+		median:
+		variance:
+		population-deviation:
+		sample-deviation:
 	]
 
 	date-info: construct [
