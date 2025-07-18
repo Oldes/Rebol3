@@ -176,7 +176,7 @@ enum {
 
 /***********************************************************************
 **
-*/  REBUNI *Prep_Uni_Series(REB_MOLD *mold, REBCNT len)
+*/  REBYTE *Prep_Mold_Series(REB_MOLD *mold, REBCNT len)
 /*
 ***********************************************************************/
 {
@@ -184,7 +184,7 @@ enum {
 
 	EXPAND_SERIES_TAIL(mold->series, len);
 
-	return UNI_SKIP(mold->series, tail);
+	return STR_SKIP(mold->series, tail);
 }
 
 
@@ -246,11 +246,11 @@ enum {
 ***********************************************************************/
 {
 	REBINT n;
-	REBUNI *cp = 0;
+	REBYTE *cp = 0;
 
 	// Check output string has content already but no terminator:
 	if (mold->series->tail) {
-		cp = UNI_LAST(mold->series);
+		cp = STR_LAST(mold->series);
 		if (*cp == ' ' || *cp == '\t') *cp = '\n';
 		else cp = 0;
 	}
@@ -281,21 +281,61 @@ typedef struct REB_Str_Flags {
 	REBCNT newline;		// lf
 	REBCNT quote;		// "
 	REBCNT paren;		// (1234)
-	REBCNT chr1e;
 	REBCNT malign;
+	REBLEN chars;
+	REBLEN invalid;
 } REB_STRF;
+
 
 
 STOID Sniff_String(REBSER *ser, REBCNT idx, REB_STRF *sf)
 {
 	// Scan to find out what special chars the string contains?
-	REBYTE *bp = STR_HEAD(ser);
-	REBUNI *up = (REBUNI*)bp;
-	REBUNI c;
-	REBCNT n;
+	REBYTE *bp;
+	REBYTE *ep;
+	REBYTE *acc;
+	REBCNT c;
 
-	for (n = idx; n < SERIES_TAIL(ser); n++) {
-		c = (BYTE_SIZE(ser)) ? (REBUNI)(bp[n]) : up[n];
+	REBCNT state = 0;
+	REBCNT slen = 0;
+
+	bp = STR_SKIP(ser, idx);
+	ep = STR_TAIL(ser);
+
+	sf->invalid = 0;// NOT_FOUND;
+
+	while (bp < ep) {
+		acc = bp;
+		for (; bp < ep; ++bp) {
+			if (UTF8_Decode_Step(&state, &c, *bp)) {
+				if (state != UTF8_REJECT)
+					continue;
+			}
+			break;
+		}
+		if (state != UTF8_ACCEPT) {
+			// uncomplete or invalid
+			
+			if (state == 12) bp--;
+			REBINT e = bp - acc;
+			while (e-- > 0) {
+				c = bp[-e];
+				if (c >= 0x7f || c == 0x1e) {  // non ASCII or ^ must be (00) escaped
+					if (c < 0xA0 || c == 0x1e) { // do not AND with above
+						sf->invalid += 5;
+					}
+					else sf->invalid += UTF8_Codepoint_Size(c);
+				}
+				if (IS_CHR_ESC(c)) {
+					sf->invalid += 2;
+				}
+				else sf->invalid += 1;
+			}
+			state = UTF8_ACCEPT;
+			continue;
+		}
+		bp++;
+		sf->chars++;
 		switch (c) {
 		case '{':
 			sf->brace_in++;
@@ -311,93 +351,100 @@ STOID Sniff_String(REBSER *ser, REBCNT idx, REB_STRF *sf)
 			sf->newline++;
 			break;
 		default:
-			if (c == 0x1e) sf->chr1e += 4; // special case of ^(1e)
+			if (c == 0x7f || c == 0x1e)
+				sf->paren += 4; // ^(7f) - 1 byte is already as UTF-8 codepoint + 3 for additional ^ ()
+			else if (c > 0x7f && c < 0xA0)
+				sf->paren += 3; // ^(12) - 2 bytes are already as UTF-8 codepoint + 3 for additional ^()
 			else if (IS_CHR_ESC(c)) sf->escape++;
-			else if (c >= 0x7f && c < 0xA0) sf->paren += 4; // ^(12)
 		}
 	}
 	if (sf->brace_in != sf->brace_out) sf->malign++;
 }
 
-static REBUNI *Emit_Uni_Char(REBUNI *up, REBUNI chr)
+static REBYTE *Emit_Mold_Char(REBYTE *bp, REBU32 chr)
 {
 	if (chr >= 0x7f || chr == 0x1e) {  // non ASCII or ^ must be (00) escaped
 		if (chr < 0xA0 || chr == 0x1e) { // do not AND with above
-			*up++ = '^';
-			*up++ = '(';
-			up = Form_Uni_Hex(up, chr);
-			*up++ = ')';
-			return up;
+			*bp++ = '^';
+			*bp++ = '(';
+			bp = Form_Hex2(bp, chr);
+			*bp++ = ')';
+			return bp;
 		}
 	}
 	else if (IS_CHR_ESC(chr)) {
-		*up++ = '^';
-		*up++ = Char_Escapes[chr];
-		return up;
+		*bp++ = '^';
+		*bp++ = Char_Escapes[chr];
+		return bp;
 	}
 
-	*up++ = chr;
-	return up;
+	bp += Encode_UTF8_Char(bp, chr);
+	return bp;
 }
 
-STOID Mold_Uni_Char(REBSER *dst, REBUNI chr, REBOOL molded)
+STOID Mold_Char(REBSER *dst, REBU32 chr, REBOOL molded)
 {
 	REBCNT tail = SERIES_TAIL(dst);
-	REBUNI *up;
+	REBYTE *bp;
 
 	if (!molded) {
-		EXPAND_SERIES_TAIL(dst, 1);
-		*UNI_SKIP(dst, tail) = chr;
+		REBCNT len = UTF8_Codepoint_Size(chr);
+		EXPAND_SERIES_TAIL(dst, len);
+		Encode_UTF8_Char(BIN_TAIL(dst) - len, chr);
 	}
 	else {
 		EXPAND_SERIES_TAIL(dst, 10); // worst case: #"^(1234)"
-		up = UNI_SKIP(dst, tail);
-		*up++ = '#';
-		*up++ = '"';
-		up = Emit_Uni_Char(up, chr);
-		*up++ = '"';
-		dst->tail = up - UNI_HEAD(dst);
+		bp = BIN_SKIP(dst, tail);
+		*bp++ = '#';
+		*bp++ = '"';
+		bp = Emit_Mold_Char(bp, chr);
+		*bp++ = '"';
+		dst->tail = bp - STR_HEAD(dst);
 	}
-	UNI_TERM(dst);
+	STR_TERM(dst);
 }
 
 STOID Mold_String_Series(REBVAL *value, REB_MOLD *mold)
 {
-	REBCNT len = VAL_LEN(value);
 	REBSER *ser = VAL_SERIES(value);
 	REBCNT idx = VAL_INDEX(value);
 	REB_STRF sf = {0};
-	REBYTE *bp = NULL;
-	REBUNI *up = NULL;
-	REBUNI *dp;
+	const REBYTE *bp;
+	const REBYTE *ep;
+	REBYTE *dp;
 	REBOOL uni = !BYTE_SIZE(ser);
-	REBCNT n;
-	REBUNI c;
+	REBU32 c;
+	REBCNT len = VAL_LEN(value);
+	REBLEN dlen;
+	REBYTE *dend;
 
 	// Empty string:
 	if (idx >= VAL_TAIL(value)) {
 		Append_Bytes(mold->series, "\"\"");  //Trap0(RE_PAST_END);
 		return;
 	}
-
+	//TODO: check limit!!!
 	CHECK_MOLD_LIMIT(mold, len);
 
 	Sniff_String(ser, idx, &sf);
 
-	// Source can be 8 or 16 bits:
-	if (uni) up = UNI_HEAD(ser);
-	else bp = STR_HEAD(ser);
+	bp = STR_SKIP(ser, idx);
+	ep = STR_TAIL(ser);
+	REBCNT bytes = ep - bp;
 
 	// If it is a short quoted string, emit it as "string":
-	if (len <= MAX_QUOTED_STR && sf.quote == 0 && sf.newline < 3) {
+	if (sf.chars <= MAX_QUOTED_STR && sf.quote == 0 && sf.newline < 3) {
 
-		dp = Prep_Uni_Series(mold, len + sf.newline + sf.escape + sf.paren + sf.chr1e + 2);
+		dlen = len + sf.newline + sf.escape + sf.paren + 2 + sf.invalid;
+		dp = Prep_Mold_Series(mold, dlen);
+		dend = dp + dlen;
 
 		*dp++ = '"';
-
-		for (n = idx; n < VAL_TAIL(value); n++) {
-			c = uni ? up[n] : (REBUNI)(bp[n]);
-			dp = Emit_Uni_Char(dp, c);
+		while (bp < ep && dp < dend) {
+			c = UTF8_Decode_Codepoint(&bp, &bytes);
+			if (c == UNI_ERROR)
+				c = UNI_REPLACEMENT_CHAR;
+			dp = Emit_Mold_Char(dp, c);
 		}
 
 		*dp++ = '"';
@@ -408,13 +455,14 @@ STOID Mold_String_Series(REBVAL *value, REB_MOLD *mold)
 	// It is a braced string, emit it as {string}:
 	if (!sf.malign) sf.brace_in = sf.brace_out = 0;
 
-	dp = Prep_Uni_Series(mold, len + sf.brace_in + sf.brace_out + sf.escape + sf.paren + sf.chr1e + 2);
+	dlen = len + sf.brace_in + sf.brace_out + sf.escape + sf.paren + 2 + sf.invalid;
+	dp = Prep_Mold_Series(mold, dlen);
+	dend = dp + dlen;
 
 	*dp++ = '{';
 
-	for (n = idx; n < (len + idx); n++) {
-
-		c = uni ? up[n] : (REBUNI)(bp[n]);
+	while (bp < ep && dp < dend) {
+		c = UTF8_Decode_Codepoint(&bp, &bytes);
 		switch (c) {
 		case '{':
 		case '}':
@@ -427,8 +475,10 @@ STOID Mold_String_Series(REBVAL *value, REB_MOLD *mold)
 		case '"':
 			*dp++ = c;
 			break;
+		case '\0':
+			c = *bp++;
 		default:
-			dp = Emit_Uni_Char(dp, c);
+			dp = Emit_Mold_Char(dp, c);
 		}
 	}
 
@@ -500,13 +550,13 @@ STOID Mold_Issue(REBVAL *value, REB_MOLD *mold)
 STOID Mold_Url(REBVAL *value, REB_MOLD *mold)
 {
 	REBCNT n;
-	REBUNI c;
+	REBYTE c;
 	REBCNT len = VAL_LEN(value);
 	REBCNT idx = VAL_INDEX(value);
+	REBYTE *bp = VAL_BIN_HEAD(value);
 	REBSER *ser = VAL_SERIES(value);
-	REBUNI required = (REBUNI)(VAL_TYPE(value) == REB_EMAIL ? '@' : ':');
+	REBYTE required = (VAL_TYPE(value) == REB_EMAIL ? '@' : ':');
 	REBCNT found = 0;
-	
 
 	// check if construction syntax is needed...
 	// 1. empty content
@@ -517,8 +567,8 @@ mold_constr:
 	}
 	// 2. contains a delimiter or invalid required chars
 	for (n = idx; n < VAL_TAIL(value); n++) {
-		c = GET_ANY_CHAR(ser, n);
-		if (IS_LEX_DELIMIT(c)) {
+		c = bp[n];
+		if (c < 0x7F && IS_LEX_DELIMIT(c)) {
 			// allow / inside urls...
 			if (c == '/' && required == ':') continue;
 			goto mold_constr;
@@ -543,31 +593,36 @@ mold_constr:
 
 STOID Mold_File(REBVAL *value, REB_MOLD *mold)
 {
-	REBUNI *dp;
+	REBYTE *dp;
 	REBCNT n;
-	REBUNI c;
+	REBINT c;
 	REBCNT len = VAL_LEN(value);
 	REBSER *ser = VAL_SERIES(value);
+	const REBYTE *bp;
+	REBCNT bytes = len;
+
 
 	// Compute extra space needed for hex encoded characters:
-	for (n = VAL_INDEX(value); n < VAL_TAIL(value); n++) {
-		c = GET_ANY_CHAR(ser, n);
+	bp = VAL_DATA(value);
+	while (bytes > 0) {
+		c = UTF8_Decode_Codepoint(&bp, &bytes);
 		if (IS_FILE_ESC(c)) len += 2;
 	}
 
 	len++; // room for % at start
 
-	dp = Prep_Uni_Series(mold, len);
-
+	dp = Prep_Mold_Series(mold, len);
 	*dp++ = '%';
 
-	for (n = VAL_INDEX(value); n < VAL_TAIL(value); n++) {
-		c = GET_ANY_CHAR(ser, n);
-		if (IS_FILE_ESC(c)) dp = Form_Hex_Esc_Uni(dp, c);  // c => %xx
-		else *dp++ = c;
+	// reset input
+	bp = VAL_DATA(value);
+	bytes = VAL_LEN(value);
+	while (bytes > 0) {
+		c = UTF8_Decode_Codepoint(&bp, &bytes);
+		if (IS_FILE_ESC(c)) dp = Form_Hex_Esc(dp, c);  // c => %xx
+		else dp += Encode_UTF8_Char(dp, c);
 	}
-
-	*dp = 0;
+	*dp = 0; // tail already set from Prep.
 }
 
 STOID Mold_Tag(REBVAL *value, REB_MOLD *mold)
@@ -1196,7 +1251,7 @@ STOID Mold_Error(REBVAL *value, REB_MOLD *mold, REBFLG molded)
 		goto append;
 
 	case REB_CHAR:
-		Mold_Uni_Char(ser, VAL_CHAR(value), (REBOOL)molded);
+		Mold_Char(ser, VAL_CHAR(value), (REBOOL)molded);
 		break;
 
 	case REB_PAIR:
@@ -1595,6 +1650,7 @@ append:
 
 	BLK_RESET(MOLD_LOOP);
 	RESET_SERIES(buf);
+	SERIES_CLR_FLAG(buf, SER_UTF8);
 	mold->series = buf;
 
 	// This is not needed every time, but w/o a functional way to set the option,
@@ -1648,7 +1704,7 @@ append:
 	REBYTE *dc;
 
 	Set_Root_Series(TASK_MOLD_LOOP, Make_Block(size/10), cb_cast("mold loop"));
-	Set_Root_Series(TASK_BUF_MOLD, Make_Unicode(size), cb_cast("mold buffer"));
+	Set_Root_Series(TASK_BUF_MOLD, Make_Binary(size), cb_cast("mold buffer"));
 
 	// Create quoted char escape table:
 	Char_Escapes = cp = Make_CMem(MAX_ESC_CHAR+1); // cleared

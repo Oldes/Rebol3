@@ -75,7 +75,7 @@ typedef REBFLG (*MAKE_FUNC)(REBVAL *, REBVAL *, REBCNT);
 
 /***********************************************************************
 **
-*/	REBOOL Scan_Hex2(const REBYTE *bp, REBUNI *n, REBFLG uni)
+*/	REBOOL Scan_Hex2(const REBYTE *bp, REBU32 *n)
 /*
 **		Decode a %xx hex encoded byte into a char.
 **
@@ -86,18 +86,12 @@ typedef REBFLG (*MAKE_FUNC)(REBVAL *, REBVAL *, REBCNT);
 **
 ***********************************************************************/
 {
-	REBUNI c1, c2;
+	REBYTE c1, c2;
 	REBYTE d1, d2;
 	REBYTE lex;
 
-	if (uni) {
-	    REBUNI *up = (REBUNI*)bp;
-		c1 = up[0];
-		c2 = up[1];
-	} else {
-		c1 = bp[0];
-		c2 = bp[1];
-	}
+	c1 = bp[0];
+	c2 = bp[1];
 
 	lex = Lex_Map[c1];
 	d1 = lex & LEX_VALUE;
@@ -107,12 +101,12 @@ typedef REBFLG (*MAKE_FUNC)(REBVAL *, REBVAL *, REBCNT);
 	d2 = lex & LEX_VALUE;
 	if (lex < LEX_WORD || (!d2 && lex < LEX_NUMBER)) return FALSE;
 
-    *n = (REBUNI)((d1 << 4) + d2);
+    *n = (REBU32)((d1 << 4) + d2);
 
 	return TRUE;
 }
 
-
+#ifdef unused
 /***********************************************************************
 **
 */  REBINT Scan_Hex_Bytes(REBVAL *val, REBCNT maxlen, REBYTE *out)
@@ -126,14 +120,14 @@ typedef REBFLG (*MAKE_FUNC)(REBVAL *, REBVAL *, REBCNT);
 	REBCNT cnt;
 	REBYTE lex;
 	REBCNT len;
-	REBUNI c;
+	UTF32 c;
 	REBYTE *start = out;
 
 	len = VAL_LEN(val);
 	if (len > maxlen) return 0;
 
 	for (cnt = 0; cnt < len; cnt++) {
-		c = GET_ANY_CHAR(VAL_SERIES(val), VAL_INDEX(val)+cnt);
+		c = GET_UTF8_CHAR(VAL_SERIES(val), VAL_INDEX(val)+cnt);
 		if (c > 127) return 0;
 		lex = Lex_Map[c];
 		b = (REBYTE)(lex & LEX_VALUE);   /* char num encoded into lex */
@@ -144,7 +138,6 @@ typedef REBFLG (*MAKE_FUNC)(REBVAL *, REBVAL *, REBCNT);
 
 	return (out - start);
 }
-
 
 /***********************************************************************
 **
@@ -164,7 +157,6 @@ typedef REBFLG (*MAKE_FUNC)(REBVAL *, REBVAL *, REBCNT);
 	if (len > 8) goto bad_hex;
 
 	for (n = 0; n < len; n++) {
-
 		c = (REBUNI)(uni ? ((REBUNI*)src)[n] : ((REBYTE*)src)[n]);
 
 		if (c > 255) goto bad_hex;
@@ -181,7 +173,7 @@ bad_hex:	Trap0(RE_INVALID_CHARS);
 	}
 	return num;
 }
-
+#endif
 
 /***********************************************************************
 **
@@ -574,144 +566,18 @@ end_date:
 	return cp;
 }
 
-
-#ifdef moved
 /***********************************************************************
 **
-**/  REBCNT Scan_Word(const REBYTE *cp, REBCNT len)
-/*
-**		Scan word chars and make word symbol for it.
-**		Returns symbol number, or zero for errors.
-**
-***********************************************************************/
-{
-	REBCNT n;
-
-	if (
-		IS_LEX_WORD(*cp)
-		|| strchr("/+-<>.", *cp)
-	) {
-		// Special / and // cases:
-		if (*cp == '/') {
-			if (len == 1 || (len == 2 && cp[1] == '/'))
-				return Make_Word(cp, len);
-			else
-				return 0;
-		}
-
-		// Check other cases:
-		for (n = 1; n < len; n++) {
-			if (
-				!IS_LEX_AT_LEAST_SPECIAL(cp[n])
-				|| strchr(":/", cp[n])
-			) {
-				return 0;
-			}
-		}
-	}
-	else
-		return 0;
-
-	return Make_Word(cp, len);
-}
-#endif
-
-#ifdef not_used
-/***********************************************************************
-**
-*/  const REBYTE *Scan_String(const REBYTE *cp, REBCNT len, REBVAL *value)
-/*
-**		Scan and convert a string.  Return zero if error.
-**
-***********************************************************************/
-{
-	const REBYTE *ep;
-
-	Reset_Buffer(BUF_FORM, len);
-
-	if (!(ep = Scan_Quote(cp, BIN_HEAD(BUF_FORM), 0))) {
-		VAL_CLEAR(value);
-		return 0;
-	}
-
-	Set_String(value, Decode_UTF8_Value(BIN_HEAD(BUF_FORM), (REBCNT)(ep - BIN_HEAD(BUF_FORM))));
-
-	return ep;
-}
-#endif
-
-/***********************************************************************
-**
-*/	const REBYTE *Scan_File(const REBYTE *cp, REBCNT len, REBVAL *value)
-/*
-**		Scan and convert a file name.
-**
-***********************************************************************/
-{
-	REBUNI term = 0;
-	const REBYTE *invalid = cb_cast(":;()[]\"^");
-
-	if (*cp == '%') cp++, len--;
-	if (*cp == '"') {
-		cp++;
-		len--;
-		term = '"';
-		invalid = cb_cast(":;\"");
-	}
-	cp = Scan_Item(cp, cp+len, term, invalid);
-	if (cp)
-		Set_Series(REB_FILE, value, Copy_String(BUF_MOLD, 0, -1));
-	return cp;
-
-#ifdef ndef
-	extern REBYTE *Scan_Quote(REBYTE *src, SCAN_STATE *scan_state);
-
-	if (*cp == '%') cp++, len--;
-	if (len == 0) return 0;
-	if (*cp == '"') {
-		cp = Scan_Quote(cp, 0);
-		if (cp) {
-			int need_changes;
-			Set_String(value, Copy_String(BUF_MOLD, 0, -1));
-			VAL_SET(value, REB_FILE);
-		}
-		return cp;
-	}
-
-	VAL_SERIES(value) = Make_Binary(len);
-	VAL_INDEX(value) = 0;
-
-	str = VAL_BIN(value);
-	for (; len > 0; len--) {
-		if (*cp == '%' && len > 2 && Scan_Hex2(cp+1, &n, FALSE)) {
-			*str++ = n;
-			cp += 3;
-			len -= 2;
-		}
-		else if (*cp == '\\') cp++, *str++ = '/';
-		else if (strchr(":;()[]\"", *cp)) return 0;  // chars not allowed in files !!!
-		else *str++ = *cp++;
-	}
-	*str = 0;
-	VAL_TAIL(value) = (REBCNT)(str - VAL_BIN(value));
-	VAL_SET(value, REB_FILE);
-	return cp;
-#endif
-}
-
-
-/***********************************************************************
-**
-*/	const REBYTE *Scan_Email(const REBYTE *cp, REBCNT len, REBVAL *value)
+*/	const REBYTE *Scan_Email(const REBYTE *cp, REBLEN len, REBVAL *value)
 /*
 **		Scan and convert email.
 **
 ***********************************************************************/
 {
-	REBYTE *str = Reset_Buffer(BUF_FORM, len);
+	REBYTE *str = Reset_Buffer(BUF_SCAN, len);
 	REBOOL at = FALSE;
-	REBUNI n;
-	REBCNT cnt = len;
+	REBU32 n;
+	REBLEN cnt = len;
 
 	for (; len > 0; len--) {
 		if (*cp == '@') {
@@ -719,7 +585,7 @@ end_date:
 			at = TRUE;
 		}
 		if (*cp == '%') {
-			if (len <= 2 || !Scan_Hex2(cp+1, &n, FALSE)) return 0;
+			if (len <= 2 || !Scan_Hex2(cp+1, &n)) return 0;
 			*str++ = (REBYTE)n;
 			cp  += 3;
 			len -= 2;
@@ -730,33 +596,37 @@ end_date:
 	*str = 0;
 	if (!at) return 0;
 
-	VAL_SERIES(value) = Decode_UTF_String(BIN_DATA(BUF_FORM), cnt, 8, FALSE, FALSE);
+	VAL_SERIES(value) = Copy_Bytes(BIN_DATA(BUF_SCAN), cnt);
 	VAL_INDEX(value) = 0;
 	VAL_SET(value, REB_EMAIL);
+	if (!Is_ASCII(VAL_BIN(value), VAL_TAIL(value)))
+		UTF8_SERIES(VAL_SERIES(value));
 	return cp;
 }
 
 
 /***********************************************************************
 **
-*/	const REBYTE *Scan_Ref(const REBYTE *cp, REBCNT len, REBVAL *value)
+*/	const REBYTE *Scan_Ref(const REBYTE *cp, REBLEN len, REBVAL *value)
 /*
 **		Scan and convert ref!
 **
 ***********************************************************************/
 {
 	if (*cp != '@') return 0;
-	VAL_SERIES(value) = Decode_UTF_String(cp+1, len-1, 8, FALSE, FALSE);
+	VAL_SERIES(value) = Copy_Bytes(cp+1, len-1);
 	VAL_INDEX(value) = 0;
 	VAL_SET(value, REB_REF);
 	cp += len;
+	if (!Is_ASCII(VAL_BIN(value), VAL_TAIL(value)))
+		UTF8_SERIES(VAL_SERIES(value));
 	return cp;
 }
 
 
 /***********************************************************************
 **
-*/	const REBYTE *Scan_URL(const REBYTE *cp, REBCNT len, REBVAL *value)
+*/	const REBYTE *Scan_URL(const REBYTE *cp, REBLEN len, REBVAL *value)
 /*
 **		Scan and convert a URL.
 **
@@ -765,9 +635,10 @@ end_date:
 	// URLs are dumb strings that round-trip input-to-output
 	// and should only be resolved when passed to a scheme
 	// https://github.com/Oldes/Rebol3/discussions/109
-	VAL_SERIES(value) = Decode_UTF_String(cp, len, 8, FALSE, FALSE);
+	VAL_SERIES(value) = Copy_Bytes(cp, len);
 	VAL_INDEX(value) = 0;
 	VAL_SET(value, REB_URL);
+	if (!Is_ASCII(cp, len)) UTF8_SERIES(VAL_SERIES(value));
 	return cp;
 }
 

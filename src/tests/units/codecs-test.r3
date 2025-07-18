@@ -706,9 +706,9 @@ s te fabriquent pour te la vendre une =C3=A2me vulgaire.^M
 
 	--test-- "quoted-encode with spaces"
 		--assert "a b" = qp-encode "a b"
-		--assert "a_b" = qp-encode/no-space "a b"
+		--assert "a_b" = qp-encode/uri "a b"
 		--assert "a_b" = qp-decode "a_b"
-		--assert "a b" = qp-decode/space "a_b"
+		--assert "a b" = qp-decode/uri "a_b"
 
 	===end-group===
 	codecs/quoted-printable/max-line-length: :was-length

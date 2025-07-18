@@ -47,6 +47,7 @@
 
 extern int OS_Get_Current_Dir(REBCHR **lp);
 extern REBOOL OS_Get_Boot_Path(REBCHR **path);
+extern REBLEN OS_Wide_To_Multibyte(const REBCHR *wide, REBYTE **utf8, REBLEN len);
 
 // REBOL Option --Words:
 
@@ -145,7 +146,7 @@ const struct arg_chr arg_chars2[] = {
 **
 */	static int Get_Ext_Arg(int flag, REBARGS *rargs, REBCHR *arg)
 /*
-**		Get extended argument field.
+**		Get extended argument field. Always UTF-8 encoded!
 **
 ***********************************************************************/
 {
@@ -153,38 +154,46 @@ const struct arg_chr arg_chars2[] = {
 
 	flag &= ~RO_EXT;
 
+	REBYTE *value = NULL;
+
+#ifdef OS_WIDE_CHAR
+	OS_Wide_To_Multibyte(arg, &value, (REBLEN)-1);
+#else
+	value = arg;
+#endif
+
 	switch (flag) {
 
 	case RO_VERSION:
-		rargs->version = arg;
+		rargs->version = value;
 		break;
 
 	case RO_SCRIPT:
-		rargs->script = arg;
+		rargs->script = value;
 		break;
 
 	case RO_ARGS:
-		rargs->args = arg;
+		rargs->args = value;
 		break;
 
 	case RO_DO:
-		rargs->do_arg = arg;
+		rargs->do_arg = value;
 		break;
 
 	case RO_DEBUG:
-		rargs->debug = arg;
+		rargs->debug = value;
 		break;
 
 	case RO_SECURE:
-		rargs->secure = arg;
+		rargs->secure = value;
 		break;
 
 	case RO_IMPORT:
-		rargs->import = arg;
+		rargs->import = value;
 		break;
 
 	case RO_BOOT:
-		rargs->boot = arg;
+		rargs->boot = value;
 		break;
 	}
 
@@ -211,7 +220,11 @@ const struct arg_chr arg_chars2[] = {
 	rargs->argv = argv;
 	if (0 == OS_Get_Boot_Path(&rargs->exe_path)) {
 		// First arg is path to executable (on most systems):
-		if (argc > 0) rargs->exe_path = *argv;
+#ifdef OS_WIDE_CHAR
+		OS_Wide_To_Multibyte(*argv, &rargs->exe_path);
+#else
+		rargs->exe_path = *argv;
+#endif
 	}
 	OS_Get_Current_Dir(&rargs->current_dir);
 
@@ -225,7 +238,13 @@ const struct arg_chr arg_chars2[] = {
 	if (!OS_Get_Boot_Path(&rargs->exe_path)) {
 		// In case of fail...
 		// First arg is path to executable (on most systems):
-		if (argc > 0) rargs->exe_path = *argv;
+		if (argc > 0) {
+#ifdef OS_WIDE_CHAR
+			OS_Wide_To_Multibyte(*argv, &rargs->exe_path, -1);
+#else
+			rargs->exe_path = *argv;
+#endif
+		}
 	}
 
 	OS_Get_Current_Dir(&rargs->current_dir);
@@ -285,7 +304,11 @@ const struct arg_chr arg_chars2[] = {
 				--i; // revert the counter so this value is collected later
 			}
 			else {
+#ifdef OS_WIDE_CHAR
+				OS_Wide_To_Multibyte(arg, &rargs->script, -1);
+#else
 				rargs->script = arg;
+#endif
 				// after having processed a command-line argument as scriptname,
 				// all remaining arguments are passed as-is to the script (via system/options/args)
 			}

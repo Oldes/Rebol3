@@ -90,7 +90,7 @@ static REBSER *Read_All_File(char *fname)
 	if (IS_FILE(val))
 		ser = Value_To_OS_Path(val, TRUE);
 	else if (IS_LOGIC(val) && IS_TRUE(val))
-		ser = To_Local_Path("output.txt", 10, FALSE, TRUE);
+		ser = To_Local_Path("output.txt", 10, OS_WIDE, TRUE);
 
 	if (ser) {
 		err = Echo_File((REBCHR *)(ser->data));
@@ -453,7 +453,7 @@ chk_neg:
 	REBVAL *arg = D_ARG(1);
 	REBSER *ser;
 
-	ser = Value_To_REBOL_Path(arg, 0);
+	ser = To_REBOL_Path(VAL_DATA(arg), VAL_LEN(arg), FALSE, FALSE);
 	if (!ser) Trap_Arg(arg);
 	Set_Series(REB_FILE, D_RET, ser);
 
@@ -470,10 +470,9 @@ chk_neg:
 	REBVAL *arg = D_ARG(1);
 	REBSER *ser;
 
-	ser = Value_To_Local_Path(arg, D_REF(2));
+	ser = To_Local_Path(VAL_DATA(arg), VAL_LEN(arg), FALSE, D_REF(2));
 	if (!ser) Trap_Arg(arg);
 	Set_Series(REB_STRING, D_RET, ser);
-
 	return R_RET;
 }
 
@@ -489,36 +488,29 @@ chk_neg:
 {
 	REBVAL *path = D_ARG(1);
 	REBSER *ser = NULL;
-	REBSER *new;
-	REBCHR *tmp;
+	REBYTE *tmp;
+
 	// First normalize to OS native wide string
-	ser = Value_To_OS_Path(path, FALSE);
+	ser = Value_To_OS_Path(path, FALSE); // returns wide series on Windows!
 	// Above function does . and .. pre-processing, which does also the OS_REAL_PATH.
 	// So it could be replaced with version, which just prepares the input to required OS wide! 
 	if (!ser) {
-		FREE_SERIES(ser);
 		return R_NONE;
 	}
 	// Try to call realpath on posix or _fullpath on Windows
-	tmp = OS_REAL_PATH((REBCHR*)SERIES_DATA(ser));
+	tmp = OS_REAL_PATH(SERIES_DATA(ser)); // returns UTF-8 encoded data
+	Free_Series(ser);
 	if (!tmp) return R_NONE;
 
-	// Convert OS native wide string back to Rebol file type
-#ifdef OS_WIDE_CHAR
-	new = To_REBOL_Path(tmp, 0, OS_WIDE, FALSE);
-#else
+	// Convert OS native utf8 string back to Rebol file type
 	REBLEN len = LEN_BYTES(tmp);
-	if (Is_Not_ASCII(tmp, len)) {
-		// Result from the native call contains Unicode chars...
-		new = Decode_UTF_String(tmp, len, 8, FALSE, FALSE);
-		new = To_REBOL_Path(SERIES_DATA(new), SERIES_TAIL(new), -1, FALSE);
-	} else {
-		new = To_REBOL_Path(tmp, len, 0, FALSE);
-	}
+	ser = To_REBOL_Path(tmp, len, 0, FALSE);
+#ifdef TO_WINDOWS
+	free(tmp);
 #endif
-	if (!new) return R_NONE;
+	if (!ser) return R_NONE;
 	
-	Set_Series(REB_FILE, D_RET, new);
+	Set_Series(REB_FILE, D_RET, ser);
 	return R_RET;
 }
 
@@ -550,8 +542,9 @@ chk_neg:
 			file.file.path = (REBCHR*)(ser->data);
 			file.device = RDI_FILE;
 			len = OS_DO_DEVICE(&file, RDC_QUERY);
-			FREE_SERIES(ser);
+			Free_Series(ser);
 			if (len == DR_DONE && GET_FLAG(file.modes, RFM_DIR)) return R_TRUE;
+			// can still report FALSE, if it does not ends with / or \ char...
 		}
 	}
 	// without OS check
@@ -583,16 +576,12 @@ chk_neg:
 ***********************************************************************/
 {
 	REBSER *ser;
-	REBCHR *lpath;
+	REBYTE *lpath;
 	REBINT len;
 
 	len = OS_GET_CURRENT_DIR(&lpath);
-#ifdef TO_WINDOWS
-	ser = To_REBOL_Path(lpath, len, OS_WIDE, TRUE); // allocates extra for end /
-#else
-	ser = Decode_UTF_String(lpath, len, 8, 0, TRUE);
-	ser = To_REBOL_Path(BIN_HEAD(ser), SERIES_TAIL(ser), TRUE, TRUE);
-#endif
+	ser = To_REBOL_Path(lpath, len, 0, TRUE); // allocates extra for end /
+
 	ASSERT1(ser, RP_MISC); // should never happen
 	OS_FREE(lpath);
 	Set_Series(REB_FILE, D_RET, ser);
@@ -623,13 +612,8 @@ chk_neg:
 
 	// convert the full OS path back to Rebol format
 	// used in error or as a result
-#ifdef TO_WINDOWS
-	ser = Value_To_REBOL_Path(&val, TRUE);
-#else
-	ser = Decode_UTF_String(VAL_BIN(&val), VAL_LEN(&val), 8, 0, TRUE);
-	ser = To_REBOL_Path(BIN_HEAD(ser), SERIES_TAIL(ser), TRUE, TRUE);
-#endif
-
+	//ser = Value_To_REBOL_Path(&val, TRUE);
+	ser = To_REBOL_Path(BIN_HEAD(ser), BIN_LEN(ser), OS_WIDE, TRUE);
 	
 	SET_FILE(arg, ser);
 
@@ -859,32 +843,20 @@ chk_neg:
 						  output_type, &os_output, &output_len,
 						  err_type, &os_err, &err_len);
 
-	if (output_type == STRING_TYPE) {
-		if (output != NULL
-			&& output_len > 0) {
-			REBSER *ser = Copy_OS_Str(os_output, output_len);
-			Append_String(VAL_SERIES(output), ser, 0, SERIES_TAIL(ser));
-			OS_FREE(os_output);
-		}
-	} else if (output_type == BINARY_TYPE) {
-		if (output != NULL
-			&& output_len > 0) {
+	if (output_type == STRING_TYPE || output_type == BINARY_TYPE) {
+		if (output != NULL && output_len > 0) {
 			Append_Bytes_Len(VAL_SERIES(output), os_output, output_len);
+			if (output_type == STRING_TYPE && !IS_UTF8_SERIES(VAL_SERIES(output)) && !Is_ASCII(os_output, output_len))
+				UTF8_SERIES(VAL_SERIES(output));
 			OS_FREE(os_output);
 		}
 	}
 
-	if (err_type == STRING_TYPE) {
-		if (err != NULL
-			&& err_len > 0) {
-			REBSER *ser = Copy_OS_Str(os_err, err_len);
-			Append_String(VAL_SERIES(err), ser, 0, SERIES_TAIL(ser));
-			OS_FREE(os_err);
-		}
-	} else if (err_type == BINARY_TYPE) {
-		if (err != NULL
-			&& err_len > 0) {
+	if (err_type == STRING_TYPE || err_type == BINARY_TYPE) {
+		if (err != NULL	&& err_len > 0) {
 			Append_Bytes_Len(VAL_SERIES(err), os_err, err_len);
+			if (err_type == STRING_TYPE && !IS_UTF8_SERIES(VAL_SERIES(err)) && !Is_ASCII(os_err, err_len))
+				UTF8_SERIES(VAL_SERIES(err));
 			OS_FREE(os_err);
 		}
 	}
@@ -1045,11 +1017,11 @@ chk_neg:
 	n = (REBCNT)LEN_STR(str);
 
 	if (len == 1) {  // First is full file path
-		dir = To_REBOL_Path(str, n, -1, 0);
+		dir = To_REBOL_Path(str, n, OS_WIDE, 0);
 		Set_Series(REB_FILE, Append_Value(blk), dir);
 	}
 	else {  // First is dir path for the rest of the files
-		dir = To_REBOL_Path(str, n, -1, TRUE);
+		dir = To_REBOL_Path(str, n, OS_WIDE, TRUE);
 		str += n + 1; // next
 		len = dir->tail;
 		while ((n = (REBCNT)LEN_STR(str))) {
@@ -1198,7 +1170,8 @@ chk_neg:
 
 	if (req.data == NULL) return R_NONE;
 
-	str = Copy_OS_Str(req.data, req.actual);
+	//str = Copy_OS_Str(req.data, req.actual);
+	str = Copy_Bytes(req.data, req.actual);
 
 	FREE_MEM(req.data);
 	SET_STRING(D_RET, str);

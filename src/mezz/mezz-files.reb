@@ -202,10 +202,10 @@ dir-tree: func [
 	unless block? value [exit]
 
 	str: [
-		"^[[31;1m├───"
-		"^[[31;1m│   "
-		"^[[31;1m└───"
-		"^[[31;1m    "
+		"^[[31;1m    " ;├───"
+		"^[[31;1m    " ;│   "
+		"^[[31;1m    " ;└───"
+		"^[[31;1m    " ;    "
 	]
 
 	sort/compare value func[a b][

@@ -416,14 +416,7 @@ static void No_Nones_Or_Logic(REBVAL *arg) {
 	}
 
 	// make from string! or binary! with tokenization
-	if (IS_STRING(arg)) {
-		REBCNT index, len = 0;
-		VAL_SERIES(arg) = Prep_Bin_Str(arg, &index, &len); // (keeps safe)
-		ser = Scan_Source(VAL_BIN(arg), VAL_LEN(arg));
-		goto done;
-	}
-
-	if (IS_BINARY(arg)) {
+	if (IS_STRING(arg) || IS_BINARY(arg)) {
 		ser = Scan_Source(VAL_BIN_DATA(arg), VAL_LEN(arg));
 		goto done;
 	}

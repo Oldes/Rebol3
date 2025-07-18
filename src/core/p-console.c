@@ -101,7 +101,8 @@
 		// Convert to string or block of strings.
 		args = Find_Refines(ds, ALL_READ_REFS);
 		if (args & (AM_READ_STRING | AM_READ_LINES)) {
-			ser = Decode_UTF_String(req->data, req->actual, -1, TRUE, FALSE);
+			ser = Decode_UTF_String(req->data, req->actual, -1, TRUE, &req->error);
+			if (!ser) return R_NONE;
 			Set_String(ds, ser);
 			if (args & AM_READ_LINES) Set_Block(ds, Split_Lines(ds));
 		} else {

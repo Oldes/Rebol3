@@ -209,8 +209,9 @@ Rebol [
 	
 --test-- "block collect nested (known issues)"
 	;; following tests produces empty block at tail :-/
-	--assert [[1] [2]] = parse [1 2][collect some [collect keep integer!]]
-	--assert [[1] a [2] a] = parse [1 2][collect some [collect keep integer! keep ('a)]]
+	--assert [[1] [2]]     == parse [1 2][collect some [collect keep integer!]]
+	--assert [[1] a [2] a] == parse [1 2][collect some [collect keep integer! keep ('a)]]
+	--assert [[1 a] [2 a]] == parse [1 2][collect some [collect [keep integer! keep ('a)]]]
 
 --test-- "block collect bizzar"
 	--assert [[1 2] [3]] = parse [1 2 3] [collect [keep 2 integer!] collect [keep integer!]]
@@ -263,14 +264,23 @@ Rebol [
 	]
 
 --test-- "block collect after"
-	;; Inserts collected values into a series referred by a word, moves series' index past the insertion.
-	--assert all [a: [] parse [1] [collect after a [keep skip]] [] = a [1] = head a]
-	--assert all [a: [x] parse [1 2] [collect after a some [keep skip]] [x] = a [1 2 x] = head a]
+	;- This functionality is changed since version 3.19.5
+	;; appends collected values into a series referred by a word.
+	--assert all [a: []  parse [1]   [collect after a [keep skip]]      a == [1]     ]
+	--assert all [a: [x] parse [1 2] [collect after a some [keep skip]] a == [x 1 2] ]
+	--assert all [a: next [x] parse [1 2] [collect after a some [keep skip]] a == [1 2]  2 == index? a]
 	--assert all [
 		list: next [1 2 3]
 		parse [a 4 b 5 c] [collect after list [some [keep word! | skip]]]
-		list = [2 3]
-		[1 a b c 2 3] = head list
+		list == [2 3 a b c]
+		[1 2 3 a b c] == head list
+	]
+	;; compare with `into`
+	--assert all [
+		list: next [1 2 3]
+		parse [a 4 b 5 c] [collect into list [some [keep word! | skip]]]
+		list == [a b c 2 3]
+		[1 a b c 2 3] == head list
 	]
 
 --test-- "string collect/keep"
@@ -351,17 +361,18 @@ Rebol [
 	--assert all [a: "" parse "šo" [collect into a keep to end] a = "šo"]
 
 --test-- "string collect after"
-	;; Inserts collected values into a series referred by a word, moves series' index past the insertion.
-	--assert all [a: "" parse "1" [collect after a [keep skip]]  "" = a    "1"  = head a]
-	--assert all [a: [] parse "1" [collect after a [keep skip]]  [] = a  [#"1"] = head a]
+	;- This functionality is changed since version 3.19.5
+	;; appends collected values into a series referred by a word.
+	--assert all [a: "" parse "1" [collect after a [keep skip]]  a == "1"    ]
+	--assert all [a: [] parse "1" [collect after a [keep skip]]  a == [#"1"] ]
 	--assert all [
 		a: next "11"
 		b: next "22"
 		[x] = parse "ab" [collect [keep ('x) collect into a keep skip collect after b keep to end]]
-		a = "a1"
-		b =  "2"
-		"1a1" = head a
-		"2b2" = head b
+		a == "a1"
+		b == "2b"
+		"1a1" == head a
+		"22b" == head b
 	]
 
 --test-- "string collect into/after compatibility test"
@@ -429,6 +440,13 @@ Rebol [
 	--assert all [error? e: try [parse [1] [collect]     ] e/id = 'parse-end]
 	--assert all [error? e: try [parse [1] [collect integer! keep (1)]] e/id = 'parse-no-collect]
 	--assert all [error? e: try [collect [parse "abc" [any [keep 1 2 skip]]] e/id = 'parse-no-collect]] ;<--- requires parse's collect!
+
+--test-- "issue-2537"
+	;@@ https://github.com/Oldes/Rebol-issues/issues/2537
+	--assert all [o: [] parse "a11b22" [collect into  o any [keep skip keep 2 skip]]    o == [#"a" "11" #"b" "22"] ]
+	--assert all [o: [] parse "a11b22" [collect after o any [keep skip keep 2 skip]]    o == [#"a" "11" #"b" "22"] ]
+	--assert all [o: [] parse "a11b22" [some [collect into  o [keep skip keep 2 skip]]] o == [#"b" "22" #"a" "11"] ]
+	--assert all [o: [] parse "a11b22" [some [collect after o [keep skip keep 2 skip]]] o == [#"a" "11" #"b" "22"] ]
 
 ===end-group===
 

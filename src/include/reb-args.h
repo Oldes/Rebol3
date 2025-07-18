@@ -30,15 +30,15 @@
 // REBOL startup option structure:
 typedef struct rebol_args {
 	REBCNT options;
-	REBCHR *script;
-	REBCHR *do_arg;
-	REBCHR *version;
-	REBCHR *debug;
-	REBCHR *import;
-	REBCHR *secure;
-	REBCHR *boot;
-	REBCHR *exe_path;
-	REBCHR *current_dir;
+	REBYTE *script;
+	REBYTE *do_arg;
+	REBYTE *version;
+	REBYTE *debug;
+	REBYTE *import;
+	REBYTE *secure;
+	REBYTE *boot;
+	REBYTE *exe_path;
+	REBYTE *current_dir;
 	REBCHR *args;         // value for the --args option
 	REBCNT  argc;         // unprocessed argument count
 	REBCHR **argv;        // unprocessed arguments

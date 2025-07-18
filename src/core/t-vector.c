@@ -193,13 +193,13 @@ static CompareFunc compares_rev[VTSF64 + 1] = {
 };
 
 FORCE_INLINE
-void get_vect(REBCNT type, REBYTE *data, REBCNT n, REBVAL *val) {
+static void get_vect(REBCNT type, REBYTE *data, REBCNT n, REBVAL *val) {
 	ASSERT1(type <= VTSF64, RP_BAD_SIZE);
 	getters[type](data, n, val);
 }
 
 FORCE_INLINE
-REBDEC get_vect_decimal(REBCNT type, REBYTE *data, REBCNT n) {
+static REBDEC get_vect_decimal(REBCNT type, REBYTE *data, REBCNT n) {
 	ASSERT1(type <= VTSF64, RP_BAD_SIZE);
 	REBVAL val;
 	getters[type](data, n, &val);
@@ -209,7 +209,7 @@ REBDEC get_vect_decimal(REBCNT type, REBYTE *data, REBCNT n) {
 }
 
 FORCE_INLINE
-void set_vect(REBCNT type, REBYTE *data, REBCNT n, REBVAL *val) {
+static void set_vect(REBCNT type, REBYTE *data, REBCNT n, REBVAL *val) {
 	ASSERT1(type <= VTSF64, RP_BAD_SIZE);
 	setters[type](data, n, val);
 }
@@ -278,7 +278,7 @@ static REBDEC Query_Vector_Median(REBSER *vect) {
 
 
 FORCE_INLINE
-void Set_Vector_Value(REBCNT bits, REBYTE *data, REBCNT n, REBVAL *val) {
+static void Set_Vector_Value(REBCNT bits, REBYTE *data, REBCNT n, REBVAL *val) {
 	REBVAL num = *val; // because may be modified!
 	if (IS_DECIMAL(val)) {
 		// value is decimal

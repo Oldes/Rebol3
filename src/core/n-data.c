@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2024 Rebol Open Source Developers
+**  Copyright 2012-2025 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -893,7 +893,11 @@ static int Do_Ordinal(REBVAL *ds, REBINT n)
 	if (ANY_SERIES(val)) {
 		t = VAL_TAIL(val);
 		if (VAL_INDEX(val) >= t) return R_NONE;
-		VAL_INDEX(val) = 0;
+		if (IS_UTF8_SERIES(VAL_SERIES(val))) {
+			VAL_INDEX(val) = UTF8_Prev_Char_Position(VAL_BIN_HEAD(val), t);
+			t = 1;
+		}
+		else VAL_INDEX(val) = 0;
 	}
 	else if (IS_TUPLE(val)) t = VAL_TUPLE_LEN(val);
 	else if (IS_GOB(val)) {
@@ -929,7 +933,9 @@ static int Do_Ordinal(REBVAL *ds, REBINT n)
 
 	*D_ARG(1) = *value;
 	index = VAL_INDEX(value); // same for VAL_GOB_INDEX
-	if (index < tail) VAL_INDEX(value) = index + 1;
+	if (index < tail) {
+		VAL_INDEX(value) += IS_UTF8_SERIES(VAL_SERIES(value)) ? UTF8_Next_Char_Size(VAL_BIN_HEAD(value), index) : 1;
+	}
 	return Do_Ordinal(ds, 1);
 }
 
@@ -956,7 +962,9 @@ static int Do_Ordinal(REBVAL *ds, REBINT n)
 	}
 	else if (ANY_SERIES(value)) {
 		n = VAL_INDEX(value);
-		if (n < VAL_TAIL(value)) VAL_INDEX(value) = n + 1;
+		if (n < VAL_TAIL(value)) {
+			VAL_INDEX(value) += IS_UTF8_SERIES(VAL_SERIES(value)) ? UTF8_Next_Char_Size(VAL_BIN_HEAD(value), n) : 1;
+		}
 	}
 	else if (IS_DECIMAL(value)) {
 		VAL_DECIMAL(value) += 1.0;
@@ -990,7 +998,9 @@ static int Do_Ordinal(REBVAL *ds, REBINT n)
 	}
 	else if (ANY_SERIES(value)) {
 		n = VAL_INDEX(value);
-		if (n > 0) VAL_INDEX(value) = n - 1;
+		if (n > 0) {
+			VAL_INDEX(value) -= IS_UTF8_SERIES(VAL_SERIES(value)) ? UTF8_Prev_Char_Size(VAL_BIN_HEAD(value), n) : 1;
+		}
 	}
 	else if (IS_DECIMAL(value)) {
 		VAL_DECIMAL(value) -= 1.0;

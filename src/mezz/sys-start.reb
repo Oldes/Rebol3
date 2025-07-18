@@ -122,7 +122,6 @@ start: func [
 		sys/log/error 'REBOL "`date` field as a result from `query` on file ports is deprecated, use `modified`!"
 		self/module-paths: reduce [modules]
 	]
-
 	if file? script [ ; Get the path (needed for SECURE setup)
 		script: any [to-real-file script script]
 		script-path: split-path script

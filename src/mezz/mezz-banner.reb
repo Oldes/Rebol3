@@ -82,6 +82,8 @@ system/license: make-banner [
 	-
 ]
 
+;sys/boot-banner: ajoin ["REBOL/" system/product #" " system/version " (Oldes branch)"]
+;system/license: "Licensed under the Apache License, Version 2.0."
 
 append sys/boot-banner
 {^/^[[1;33mImportant notes^[[0m:

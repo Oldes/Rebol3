@@ -56,7 +56,11 @@ Rebol [
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1199
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1201
 		--assert all [error? e: try [make issue! "a a"] e/id = 'invalid-chars]
-		--assert all [error? e: try [make issue! "^(01)a"] e/id = 'invalid-chars]
+		--assert all [error? e: try [make issue! "a^(01)a"] e/id = 'invalid-chars]
+		--assert all [error? e: try [make issue! "     "] e/id = 'too-short]
+		--assert all [error? e: try [make issue! "^(01)"] e/id = 'too-short]
+		--assert #a = try [make issue! "^(01)a"] ;; because #"^(01)" is ignored at head as a space
+		--assert #a = try [make issue! "a^(01)"] ;; because #"^(01)" is ignored at tail as a space
 		
 
 ===end-group===

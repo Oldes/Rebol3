@@ -240,7 +240,6 @@ FORCE_INLINE
 
 }
 
-
 /***********************************************************************
 **
 */	REBCNT Hash_Word(const REBYTE* str, REBLEN len)
@@ -251,15 +250,14 @@ FORCE_INLINE
 {
 	REBCNT ch;
 	REBCNT hash=0;
+	REBLEN bytes;
 
 	if (len == UNKNOWN) len = LEN_BYTES(str);
+	bytes = len;
 
-	for (; len > 0; str++, len--) {
-		ch = *str;
-		if (ch > 127) {
-			ch = Decode_UTF8_Char(&str, &len); // mods str, ulen
-			if (!ch) Trap0(RE_INVALID_CHARS);
-		}
+	for (; bytes > 0; str++) {
+		ch = UTF8_Decode_Codepoint(&str, &bytes); // mods str, ulen
+		if (!ch) Trap0(RE_INVALID_CHARS);
 		if (ch < UNICODE_CASES) ch = LO_CASE(ch);
 		bmix(&hash, &ch);
 	}

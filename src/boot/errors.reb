@@ -199,6 +199,8 @@ Access: [
 	permission-denied: 	[{permission denied}]
 	process-not-found: 	[{process not found:} :arg1]
 
+	invalid-utf:		[{invalid Unicode encoding:} :arg1]
+
 ]
 
 Command: [

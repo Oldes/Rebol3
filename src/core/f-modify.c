@@ -107,10 +107,10 @@
 **		action: INSERT, APPEND, CHANGE
 **
 **		dst_ser:	target
-**		dst_idx:	position
+**		dst_idx:	position (in bytes)
 **		src_val:	source
 **		flags:		AN_PART
-**		dst_len:	length to remove
+**		dst_len:	length to remove (in bytes)
 **		dups:		dup count
 **
 **		return: new dst_idx
@@ -132,7 +132,7 @@
 			// use as it is
 		}
 		else if (IS_INTEGER(src_val)) {
-			src_ser = BUF_FORM;
+			src_ser = BUF_SCAN;
 			SERIES_DATA(src_ser)[0] = Int8u(src_val);
 			SERIES_TAIL(src_ser) = 1;
 		}
@@ -140,23 +140,18 @@
 			src_ser = Join_Binary(src_val); // NOTE: it's the shared FORM buffer!
 		}
 		else if (IS_CHAR(src_val)) {
-			src_ser = BUF_FORM;
+			src_ser = BUF_SCAN;
 			src_ser->tail = Encode_UTF8_Char(BIN_HEAD(src_ser), VAL_CHAR(src_val));
 		}
 		else if (ANY_STR(src_val)) {
-			// here is used temporary src_len, used to limit conversion of the string to binary
-			// If /part is used, not complete src is converted to binary (UTF8).
-			// This src_len is modified by purpose later so the result may be shorter.
-			// Like in this case: #{E1} == append/part #{} "^(1234)" 1
 			if (action != A_CHANGE && GET_FLAG(flags, AN_PART)) {
 				src_len = dst_len;
 			} else {
 				src_len = VAL_LEN(src_val);
 			}
-			src_ser = Encode_UTF8_Value(src_val, src_len, FALSE); // NOTE: uses shared FORM buffer!
 		}
 		else if (IS_TUPLE(src_val)) {
-			src_ser = BUF_FORM;
+			src_ser = BUF_SCAN;
 			src_len = VAL_TUPLE_LEN(src_val);
 			for (uint i = 0; i < src_len; i++) {
 				SERIES_DATA(src_ser)[i] = VAL_TUPLE(src_val)[i];
@@ -166,15 +161,10 @@
 		else Trap_Arg(src_val);
 	}
 	else if (IS_CHAR(src_val)) {
-		if (VAL_CHAR(src_val) < 128) {
-			src_ser = BUF_FORM;
-			*SERIES_DATA(src_ser) = (REBYTE)VAL_CHAR(src_val);
-		}
-		else {
-			src_ser = BUF_UTF8;
-			*(REBUNI*)SERIES_DATA(src_ser) = (REBUNI)VAL_CHAR(src_val);
-		}
-		SERIES_TAIL(src_ser) = 1;
+		src_ser = BUF_SCAN;
+		SERIES_TAIL(src_ser) = Encode_UTF8_Char(STR_HEAD(src_ser), VAL_CHAR(src_val));
+		TERM_SERIES(src_ser);
+		if (SERIES_TAIL(src_ser) > 1) UTF8_SERIES(src_ser);
 	}
 	else if (IS_BLOCK(src_val)) {
 		src_ser = Form_Tight_Block(src_val);
@@ -211,20 +201,38 @@
 		// Always expand dst_ser for INSERT and APPEND actions:
 		Expand_Series(dst_ser, dst_idx, size);
 	} else {
-		if (size > dst_len) 
+		// CHANGE action...
+		// Special case when source or target has Unicode chars and not used /part and target is not binary
+		if ((IS_UTF8_SERIES(src_ser) || IS_UTF8_SERIES(dst_ser)) && !GET_FLAGS(flags, AN_PART, AN_SERIES)) {
+			// src_len and dst_len are in bytes... so map it to real chars in the destination
+			REBCNT chr = dups * Length_As_UTF8_Code_Points(BIN_SKIP(src_ser, src_idx));
+			REBCNT idx = dst_idx;
+			while (chr-- > 0 && idx < tail) {
+				idx += UTF8_Next_Char_Size(BIN_HEAD(dst_ser), idx);
+			}
+			dst_len = idx - dst_idx;
+			SET_FLAG(flags, AN_PART);
+		}
+		if (size > dst_len)
 			Expand_Series(dst_ser, dst_idx, size - dst_len);
 		else if (size < dst_len && GET_FLAG(flags, AN_PART))
 			Remove_Series(dst_ser, dst_idx, dst_len - size);
-		else if (size + dst_idx > tail) {
-			EXPAND_SERIES_TAIL(dst_ser, size - (tail - dst_idx));
-		}
+		//else if (size + dst_idx > tail) {
+		//	EXPAND_SERIES_TAIL(dst_ser, size - (tail - dst_idx));
+		//}
 	}
 
 	// For dup count:
 	for (; dups > 0; dups--) {
-		Insert_String(dst_ser, dst_idx, src_ser, src_idx, src_len, TRUE);
+		// Don't use Insert_String as we may be inserting to a binary!
+		// Destination is already expanded above.
+		COPY_MEM(BIN_SKIP(dst_ser, dst_idx), BIN_SKIP(src_ser, src_idx), src_len);
 		dst_idx += src_len;
 	}
+
+	// Mark as UTF-8 only if destination is not a binary (AN_SERIES flag)
+	if (!GET_FLAG(flags, AN_SERIES) && !IS_UTF8_SERIES(dst_ser) && !Is_ASCII(STR_SKIP(src_ser, src_idx), src_len))
+		UTF8_SERIES(dst_ser);
 
 	TERM_SERIES(dst_ser);
 

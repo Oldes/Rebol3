@@ -42,11 +42,12 @@ register-codec [
 						;is ignored for the purposes of display.
 						[some whitespace e: "=?" | e:]
 						(
+							chr: to string! chr
 							txt: either enc = #"q" [
-								qp-decode/space txt
+								qp-decode/uri txt
 							][	debase txt 64 ]
 							if chr <> "utf-8" [
-								txt: iconv txt to string! chr
+								txt: iconv txt :chr
 							]
 							e: change/part s txt e
 						) :e

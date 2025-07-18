@@ -3,6 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
+**  Copyright 2012-2025 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -112,18 +113,16 @@
 		req->error = 40;
 		return DR_ERROR;
 	}
-
-	len = (REBINT)LEN_STR(cp); // wide chars
-	bin = OS_Make((len+1) * sizeof(REBCHR));
-	COPY_STR(bin, cp, len);
+	len = WideCharToMultiByte(CP_UTF8, 0, cp, (REBINT)LEN_STR(cp), NULL, 0, 0, 0);
+	bin = OS_Make(len+1);
+	WideCharToMultiByte(CP_UTF8, 0, cp, len, bin, len, 0, 0);
 
 	GlobalUnlock(data);
-
 	CloseClipboard();
 
-	SET_FLAG(req->flags, RRF_WIDE);
+	//SET_FLAG(req->flags, RRF_WIDE);
 	req->data = (REBYTE *)bin;
-	req->actual = len * sizeof(REBCHR);
+	req->actual = len;
 	return DR_DONE;
 }
 
@@ -139,28 +138,29 @@
 {
 	HANDLE data;
 	MSG msg;
-	REBYTE *bin;
+	REBCHR *text;
 	REBCNT ok;
-	REBINT len = req->length; // in bytes
+	SIZE_T len;
 
 	req->actual = 0;
 
-	data = GlobalAlloc(GHND, len + 4);
+	len = MultiByteToWideChar(CP_UTF8, 0, req->data, req->length, NULL, 0);
+
+	data = GlobalAlloc(GMEM_MOVEABLE, (len + 1) * sizeof(wchar_t));
 	if (data == NULL) {
 		req->error = 5;
 		return DR_ERROR;
 	}
 
 	// Lock and copy the string:
-	bin = GlobalLock(data);
-	if (bin == NULL) {
+	text = GlobalLock(data);
+	if (text == NULL) {
 		req->error = 10;
 		return DR_ERROR;
 	}
-
-	COPY_MEM(bin, req->data, len);
-	bin[len] = 0;
-
+	
+	len = MultiByteToWideChar(CP_UTF8, 0, req->data, req->length, text, len);
+	text[len] = 0;
 	
 	for (int i = 1; i < 4; i++) {
 		ok = OpenClipboard(NULL);
@@ -176,7 +176,7 @@
 
 	EmptyClipboard();
 
-	ok = (NULL != SetClipboardData(GET_FLAG(req->flags, RRF_WIDE) ? CF_UNICODETEXT : CF_TEXT, data));
+	ok = (NULL != SetClipboardData(CF_UNICODETEXT, data));
 	
 	GlobalUnlock(data);
 	CloseClipboard();

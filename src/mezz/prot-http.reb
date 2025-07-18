@@ -741,10 +741,13 @@ decode-result: func[
 			parse content-type [["text/" | "application/json"] to end]
 		]
 	][
-		code-page: any [code-page "utf-8"]
-		log-info 'HTTP ["Trying to decode from code-page:^[[m" code-page]
-		; using also deline to normalize possible CRLF to LF
-		try [result/3: deline iconv result/3 code-page]
+		either all [code-page code-page != "utf-8"] [
+			log-info 'HTTP ["Trying to decode from code-page:^[[m" code-page]
+			; using also deline to normalize possible CRLF to LF
+			try [result/3: deline iconv result/3 code-page]
+		][
+			result/3: to string! result/3
+		]
 	]
 	result
 ]

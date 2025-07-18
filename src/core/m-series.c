@@ -262,6 +262,7 @@
 	REBSER *series = Make_Series(len, SERIES_WIDE(source), FALSE);
 
 	COPY_MEM(series->data, source->data, len * SERIES_WIDE(source));
+	if (IS_UTF8_SERIES(source)) UTF8_SERIES(series);
 	series->tail = source->tail;
 	return series;
 }
@@ -279,6 +280,10 @@
 
 	COPY_MEM(series->data, source->data + index * SERIES_WIDE(source), (length+1) * SERIES_WIDE(source));
 	series->tail = length;
+	if (IS_UTF8_SERIES(source)) {
+
+		UTF8_SERIES(series);
+	}
 	return series;
 }
 

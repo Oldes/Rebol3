@@ -237,6 +237,7 @@ typedef struct rebol_scan_state {
 	const REBYTE *head_line;		// head of current line (used for errors)
 	REBCNT opts;
 	REBCNT errors;
+	const REBYTE *invalid_utf;
 } SCAN_STATE;
 
 #define ACCEPT_TOKEN(s) ((s)->begin = (s)->end)

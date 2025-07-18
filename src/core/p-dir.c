@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2024 Rebol Open Source Contributors
+**  Copyright 2012-2025 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -108,7 +108,7 @@
 
 	// We depend on To_Local_Path giving us 2 extra chars for / and *
 	ser = Value_To_OS_Path(path, TRUE);
-	len = ser->tail;
+	len = SERIES_TAIL(ser);
 	dir->file.path = (REBCHR*)(ser->data);
 
 	Secure_Port(SYM_FILE, dir, path, ser);

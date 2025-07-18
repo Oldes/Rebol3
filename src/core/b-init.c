@@ -696,7 +696,7 @@ extern const REBYTE Str_Banner[];
 	}
 
 	if (codi->action == CODI_DECODE) {
-		codi->other = (void*)Decode_UTF_String(codi->data, codi->len, -1, TRUE, FALSE);
+		codi->other = (void*)Decode_UTF_String(codi->data, codi->len, -1, TRUE, &codi->error);
 		return CODI_STRING;
 	}
 
@@ -786,7 +786,8 @@ static void Set_Option_String(REBCHR *str, REBCNT field)
 	REBVAL *val;
 	if (str) {
 		val = Get_System(SYS_OPTIONS, field);
-		Set_String(val, Copy_OS_Str(str, (REBINT)LEN_STR(str)));
+		// The string is UTF-8 encoded even on Windows!
+		Set_String(val, Copy_Str(str, LEN_BYTES(str)));
 	}
 }
 
@@ -813,13 +814,7 @@ static void Set_Option_File(REBCNT field, REBYTE* src, REBOOL dir )
 {
 	REBSER *ser;
 	REBVAL *val;
-	if (OS_WIDE) {
-		ser = To_REBOL_Path(src, 0, OS_WIDE, dir);
-	}
-	else {
-		ser = Decode_UTF_String(src, LEN_BYTES(src), 8, FALSE, FALSE);
-		ser = To_REBOL_Path(BIN_DATA(ser), BIN_LEN(ser), (REBOOL)!BYTE_SIZE(ser), dir);
-	}
+	ser = To_REBOL_Path(src, 0, 0, dir);
 	val = Get_System(SYS_OPTIONS, field);
 	Set_Series(REB_FILE, val, ser);
 }
@@ -1169,9 +1164,11 @@ static void Set_Option_File(REBCNT field, REBYTE* src, REBOOL dir )
 		Free_Series(VAL_SERIES(TASK_STACK));
 		Free_Series(VAL_SERIES(TASK_BUF_EMIT));
 		Free_Series(VAL_SERIES(TASK_BUF_WORDS));
-		Free_Series(VAL_SERIES(TASK_BUF_UTF8));
+		Free_Series(VAL_SERIES(TASK_BUF_SCAN));
+//		Free_Series(VAL_SERIES(TASK_BUF_UTF8));
+		Free_Series(VAL_SERIES(TASK_BUF_UCS2));
 		Free_Series(VAL_SERIES(TASK_BUF_PRINT));
-		Free_Series(VAL_SERIES(TASK_BUF_FORM));
+//		Free_Series(VAL_SERIES(TASK_BUF_FORM));
 		Free_Series(VAL_SERIES(TASK_BUF_MOLD));
 		Free_Series(VAL_SERIES(TASK_MOLD_LOOP));
 	}

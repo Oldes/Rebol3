@@ -53,7 +53,7 @@ context [
 		if all [
 			spec
 			not find spec "static"
-			not find spec "scan_state"
+			not find spec "SCAN_STATE"
 			not find spec "REBNATIVE"
 			find spec #"("
 		][

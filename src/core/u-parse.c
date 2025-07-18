@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2022 Rebol Open Source Developers
+**  Copyright 2012-2025 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -199,7 +199,7 @@ void Print_Parse_Index(REBCNT type, REBVAL *rules, REBSER *series, REBCNT index)
 	// !!! THIS CODE NEEDS CLEANUP AND REWRITE BASED ON OTHER CHANGES
 	REBSER *series = parse->series;
 	REBCNT flags = parse->flags | AM_FIND_MATCH | AM_FIND_TAIL;
-	REBUNI ch1, ch2;
+	REBCNT ch1, ch2, size;
 //	int rewrite_needed;
 
 	if (Trace_Level) {
@@ -215,15 +215,19 @@ void Print_Parse_Index(REBCNT type, REBVAL *rules, REBSER *series, REBCNT index)
 
 	// Do we match a single character?
 	case REB_CHAR:
-		if (HAS_CASE(parse))
-			index = (VAL_CHAR(item) == GET_ANY_CHAR(series, index)) ? index+1 : NOT_FOUND;
-		else {
-			ch1 = VAL_CHAR(item);
-			ch2 = GET_ANY_CHAR(series, index);
+		ch1 = VAL_CHAR(item);
+		if (IS_UTF8_SERIES(series)) {
+			ch2 = UTF8_Get_Codepoint(BIN_SKIP(series, index));
+			size = UTF8_Codepoint_Size(VAL_CHAR(item));
+		} else {
+			ch2 = BIN_HEAD(series)[index];
+			size = 1;
+		}
+		if (!HAS_CASE(parse)) {
 			if (ch1 < UNICODE_CASES) ch1 = UP_CASE(ch1);
 			if (ch2 < UNICODE_CASES) ch2 = UP_CASE(ch2);
-			index = (ch1 == ch2) ? index + 1 : NOT_FOUND;
 		}
+		index = (ch1 == ch2) ? index + size : NOT_FOUND;
 		break;
 
 	case REB_STRING:
@@ -237,8 +241,14 @@ void Print_Parse_Index(REBCNT type, REBVAL *rules, REBSER *series, REBCNT index)
 
 	// Do we match to a char set?
 	case REB_BITSET:
-		flags = Check_Bit(VAL_SERIES(item), GET_ANY_CHAR(series, index), !HAS_CASE(parse));
-		index = flags ? index + 1 : NOT_FOUND;
+		if (IS_UTF8_SERIES(series)) {
+			flags = Check_Bit(VAL_SERIES(item), UTF8_Get_Codepoint(BIN_SKIP(series, index)), !HAS_CASE(parse));
+			index = flags ? index + UTF8_Next_Char_Size(BIN_HEAD(series), index) : NOT_FOUND;
+		}
+		else {
+			flags = Check_Bit(VAL_SERIES(item), BIN_HEAD(series)[index], !HAS_CASE(parse));
+			index = flags ? index + 1 : NOT_FOUND;
+		}
 		break;
 /*
 	case REB_DATATYPE:	// Currently: integer!
@@ -541,26 +551,23 @@ bad_target:
 			i = Find_Block(series, index, series->tail, item, 1, HAS_CASE(parse)?AM_FIND_CASE:0, 1);
 			if (i != NOT_FOUND && is_thru) i++;
 		}
-		else {
-			// "str"
+		else {// "str"
+			REBCNT flags = (is_thru ? AM_FIND_TAIL : 0) | (HAS_CASE(parse) ? AM_FIND_CASE : 0);
+
 			//O: not using ANY_BINSTR as TAG is now handled separately
 			if (VAL_TYPE(item) >= REB_BINARY && VAL_TYPE(item) < REB_TAG) {
-				i = Find_Str_Str(series, 0, index, series->tail, 1, VAL_SERIES(item), VAL_INDEX(item), VAL_LEN(item), HAS_CASE(parse));
-				if (i != NOT_FOUND && is_thru) i += VAL_LEN(item);
+				i = Find_Str_Str(series, 0, index, series->tail, 1, VAL_SERIES(item), VAL_INDEX(item), VAL_LEN(item), flags);
 			}
 			// #"A"
 			else if (IS_CHAR(item)) {
-				i = Find_Str_Char(series, 0, index, series->tail, 1, VAL_CHAR(item), HAS_CASE(parse));
-				if (i != NOT_FOUND && is_thru) i++;
+				i = Find_Str_Char(series, 0, index, series->tail, 1, VAL_CHAR(item), flags);
 			}
 			// bitset
 			else if (IS_BITSET(item)) {
-				i = Find_Str_Bitset(series, 0, index, series->tail, 1, VAL_BITSET(item), HAS_CASE(parse));
-				if (i != NOT_FOUND && is_thru) i++;
+				i = Find_Str_Bitset(series, 0, index, series->tail, 1, VAL_BITSET(item), flags);
 			}
 			else if (IS_TAG(item)) {
-				i = Find_Str_Tag(series, 0, index, series->tail, 1, VAL_SERIES(item), VAL_INDEX(item), VAL_LEN(item), HAS_CASE(parse));
-				if (i != NOT_FOUND && is_thru) i += VAL_LEN(item) + 2;
+				i = Find_Str_Tag(series, 0, index, series->tail, 1, VAL_SERIES(item), VAL_INDEX(item), VAL_LEN(item), flags);
 			}
 			else
 				Trap1(RE_PARSE_RULE, item - 1);
@@ -677,9 +684,7 @@ bad_target:
 	// get the previous target block from the stack and use it
 	//printf("collect ends %u dsp: %i blk: %x\n", collect->depth, DSP, collect->block);
 	collect->mode = VAL_INT32(DS_POP);
-	if (collect->mode == SYM_INTO) {
-		VAL_INDEX(collect->value) = VAL_INT32(DS_POP);
-	}
+	VAL_INDEX(collect->value) = VAL_INT32(DS_POP);
 	collect->value = DS_POP;
 	collect->block = VAL_SERIES(collect->value);
 	collect->depth--;
@@ -693,138 +698,107 @@ bad_target:
 {
 	REBVAL *val;
 	REBINT i, e;
+	REBCNT c;
 	REBSER *ser;
 	REBSER *block = parse->collect->block; // Parse_Collect_Block(parse);
 	REBCNT index;
+
+	if (count == 0) return;
 
 	if (parse->collect->depth == 0)
 		Trap0(RE_PARSE_NO_COLLECT);
 
 	ASSERT2(block, RP_MISC); // should never happen
 
-	//printf("Keep from %i count: %i to: %x\n", begin, count, block);
+	index = VAL_INDEX(parse->collect->value);
+	
+	if (IS_BLOCK_INPUT(parse)) {
+		if (count == 1) {
+			Expand_Series(block, index, 1);
+			*BLK_SKIP(block, index) = *BLK_SKIP(series, begin);
+		}
+		else if (pick) {
+			Insert_Series(block, index, SERIES_SKIP(series, begin), count);
+		}
+		else {
+			Expand_Series(block, index, 1);
+			val = BLK_SKIP(block, index);
+			VAL_SERIES(val) = Copy_Block_Len(series, begin, count);
+			VAL_INDEX(val) = 0;
+			VAL_SET(val, parse->type);
+			count = 1;
+		}
+		VAL_INDEX(parse->collect->value) = index + count;
+		return;
+	}
+	
+	if (ANY_BINSTR(parse->collect->value)) {
+		// e.g.: str: "" parse "ábc" [collect into str some [keep skip]] str
+		Insert_String(block, index, series, begin, count, FALSE);
+		VAL_INDEX(parse->collect->value) += count;
+		return;
+	}
 
-	if (parse->collect->mode == BLOCK_COLLECT || parse->collect->mode == SYM_SET) {
-		// Collects into a new block (noname or named (set)).
-		// Always appends to tail, so may use faster code...
-		if (count > 1) {
-			if (IS_BLOCK_INPUT(parse)) {
-				if (pick) {
-					Insert_Series(block, AT_TAIL, SERIES_SKIP(series, begin), count);
-				}
-				else {
-					val = Append_Value(block);
-					Set_Block(val, Copy_Block_Len(series, begin, count));
-				}
-			}
-			else {
-				if (pick) {
-					e = begin + count;
-					if (parse->type == REB_BINARY) {
-						for (i = begin; i < e; i++) {
-							val = Append_Value(block);
-							SET_INTEGER(val, BIN_HEAD(series)[i]);
-						}
-					}
-					else {
-						for (i = begin; i < e; i++) {
-							val = Append_Value(block);
-							SET_CHAR(val, GET_ANY_CHAR(series, i));
-						}
-					}
-				}
-				else {
-					val = Append_Value(block);
-					VAL_SERIES(val) = Copy_String(series, begin, count);
-					VAL_INDEX(val) = 0;
-					VAL_SET(val, parse->type);
-				}
+	// collecting into block...
+
+	if (IS_UTF8_SERIES(series)) {
+		if (pick) {
+			// e.g.: blk: [] parse "ábc" [collect into blk some [keep pick skip]] blk
+			e = begin + count;
+			for (i = begin; i < e; i += UTF8_Codepoint_Size(c)) {
+				val = Append_Value(block);
+				c = UTF8_Get_Codepoint(BIN_SKIP(series, i));
+				SET_CHAR(val, c);
 			}
 		}
-		else if (count == 1) {
-			val = Append_Value(block);
-			if (IS_BLOCK_INPUT(parse)) {
-				*val = *BLK_SKIP(series, begin);
+		else {
+			// e.g.: blk: [] parse "ábc" [collect into blk some [keep skip]] blk
+			Expand_Series(block, index, 1);
+			val = BLK_SKIP(block, index);
+			// In UTF8 series count is number of bytes and not codepoints!
+			if (count == 1) {
+				SET_CHAR(val, BIN_HEAD(series)[begin]);
 			}
-			else if (parse->type == REB_BINARY) {
-				SET_INTEGER(val, BIN_HEAD(series)[begin]);
+			else if (count == UTF8_Next_Char_Size(BIN_HEAD(series), begin)) {
+				SET_CHAR(val, UTF8_Get_Codepoint(BIN_SKIP(series, begin)));
 			}
 			else {
-				SET_CHAR(val, GET_ANY_CHAR(series, begin));
+				VAL_SERIES(val) = Copy_String(series, begin, count);
+				VAL_INDEX(val) = 0;
+				VAL_SET(val, parse->type);
 			}
+			VAL_INDEX(parse->collect->value)++;
 		}
 	}
-	else {
-		// `collect into` and `collect after` keeps at any index, 
-		// so we must take care of it!
-		index = VAL_INDEX(parse->collect->value);
-		//printf("series %x index: %u\n", parse->collect->value, index);
-		if (count > 1) {
-			if (IS_BLOCK_INPUT(parse)) {
-				if (pick) {
-					Insert_Series(block, index, SERIES_SKIP(series, begin), count);
-				}
-				else {
-					ser = Copy_Block_Len(series, begin, count);
-					Expand_Series(block, index, 1);
-					val = BLK_SKIP(block, index);
-					VAL_SERIES(val) = ser;
-					VAL_INDEX(val) = 0;
-					VAL_SET(val, parse->type);
+	else { // Binary or ASCII string
+		if (pick) {
+			e = begin + count;
+			if (parse->type == REB_BINARY) {
+				for (i = begin; i < e; i++) {
+					val = Append_Value(block);
+					SET_INTEGER(val, BIN_HEAD(series)[i]);
 				}
 			}
 			else {
-				Expand_Series(block, index, count);
-				if (ANY_BLOCK(parse->collect->value)) {
-					if (pick) {
-						e = begin + count;
-						if (parse->type == REB_BINARY) {
-							for (i = begin; i < e; i++) {
-								val = Append_Value(block);
-								SET_INTEGER(val, BIN_HEAD(series)[i]);
-							}
-						}
-						else {
-							for (i = begin; i < e; i++) {
-								val = Append_Value(block);
-								SET_CHAR(val, GET_ANY_CHAR(series, i));
-							}
-						}
-					}
-					else {
-						val = BLK_SKIP(block, index);
-						VAL_SERIES(val) = Copy_String(series, begin, count);
-						VAL_INDEX(val) = 0;
-						VAL_SET(val, parse->type);
-					}
-				}
-				else {
-					// string like parse input into string value
-					Insert_String(block, index, series, begin, count, TRUE);
-					VAL_INDEX(parse->collect->value) += count;
+				for (i = begin; i < e; i++) {
+					val = Append_Value(block);
+					SET_CHAR(val, BIN_HEAD(series)[i]);
 				}
 			}
 		}
-		else if (count == 1) {
+		else {
+			// e.g.: blk: [] parse "abc" [collect into blk some [keep skip]] blk
 			Expand_Series(block, index, 1);
-			if (ANY_BLOCK(parse->collect->value)) {
-				// string like parse intput into block value
-				
-				val = BLK_SKIP(block, index);
-
-				if (IS_BLOCK_INPUT(parse)) {
-					*val = *BLK_SKIP(series, begin);
-				}
-				else if (parse->type == REB_BINARY) {
-					SET_INTEGER(val, BIN_HEAD(series)[begin]);
-				}
-				else {
-					SET_CHAR(val, GET_ANY_CHAR(series, begin));
-				}
+			val = BLK_SKIP(block, index);
+			// In UTF8 series count is number of bytes and not codepoints!
+			if (count == 1) {
+				VAL_SET(val, (parse->type == REB_BINARY) ? REB_INTEGER : REB_CHAR);
+				VAL_CHAR(val) = BIN_HEAD(series)[begin];
 			}
 			else {
-				// string like parse input into string value
-				Insert_String(block, index, series, begin, 1, TRUE);
+				VAL_SERIES(val) = Copy_String(series, begin, count);
+				VAL_INDEX(val) = 0;
+				VAL_SET(val, parse->type);
 			}
 			VAL_INDEX(parse->collect->value)++;
 		}
@@ -1010,6 +984,7 @@ bad_target:
 							collect->value = val;
 							collect->mode = SYM_SET;
 							DS_PUSH(val);
+							DS_PUSH_INTEGER(0); // index (will be restored)
 							DS_PUSH_INTEGER(SYM_SET); // store mode
 							rules++;
 						}
@@ -1035,9 +1010,12 @@ bad_target:
 							collect->block = VAL_SERIES(val);
 							collect->mode = wrd;
 							DS_PUSH(val);
-							if (wrd == SYM_INTO)
-								DS_PUSH_INTEGER(VAL_INDEX(val)); // store current index (will be restored)
+							DS_PUSH_INTEGER(VAL_INDEX(val)); // store current index (will be restored)
 							DS_PUSH_INTEGER(wrd); // store mode (into or after)
+
+							if (wrd == SYM_AFTER)
+								VAL_INDEX(val) = VAL_TAIL(val);
+
 							rules++;
 						}
 						else {
@@ -1062,6 +1040,7 @@ bad_target:
 								Set_Series(REB_BLOCK, val, collect->block);
 							}
 							collect->mode = BLOCK_COLLECT;
+							DS_PUSH_INTEGER(0); // index (will be restored)
 							DS_PUSH_INTEGER(BLOCK_COLLECT); // no special mode (block collect)
 						}
 						collect->depth++;
@@ -1227,7 +1206,14 @@ bad_target:
 				switch (cmd = VAL_WORD_CANON(item)) {
 
 				case SYM_SKIP:
-					i = (index < series->tail) ? index+1 : NOT_FOUND;
+					//O: this could be optimized to skip all values in one step!
+					if (index < series->tail) {
+						if (IS_UTF8_SERIES(series)) {
+							i = index + UTF8_Next_Char_Size(BIN_DATA(series), index);
+						}
+						else i = index + 1;
+					}
+					else i = NOT_FOUND;
 					break;
 
 				case SYM_END:
@@ -1382,7 +1368,7 @@ post:
 						item = Get_Var_Safe(word);
 						if (count == 0) SET_NONE(item);
 						else {
-							i = GET_ANY_CHAR(series, begin);
+							i = GET_UTF8_CHAR(series, begin);
 							if (parse->type == REB_BINARY) {
 								SET_INTEGER(item, i);
 							} else {

@@ -204,7 +204,10 @@ Rebol [
 			]
 		]
 		try [delete %tmp2574]
-		--assert {"�"} = mold to string! #{F09F989C}
+
+	--test-- "mold/form string with char above Basic Multilingual Plane"
+	;@@ https://github.com/Oldes/Rebol-issues/issues/683
+		--assert {"😜"} = mold to string! #{F09F989C}
 
 
 ===end-group=== 

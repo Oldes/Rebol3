@@ -746,6 +746,7 @@ Rebol [
 	--test-- "APPEND binary! binary!"
 		--assert #{0102}     = append #{01} #{02}
 		--assert #{0102}     = append next #{01} #{02}
+		--assert 5 == length? append #{} #{ff01000100}
 	--test-- "APPEND binary! string!"
 		--assert #{0001}     = append #{00} "^(01)"
 		--assert #{0001}     = append next #{00} "^(01)"
@@ -1713,19 +1714,34 @@ Rebol [
 	--assert %54321 == sort/compare %21543 :comp
 	--assert #{050403020100} == sort/compare #{000102030405} :comp
 	--assert "šřba" == sort/compare "ašbř" :comp
+	comp: func [a b] [a <= b]
+	--assert "abřš" == sort/compare "ašbř" :comp
+
+--test-- "SORT/compare string! with offset"
+	--assert "ab aa ba " == sort/compare/skip "ba ab aa " 1 3 ;; sort using 1st char
+	--assert "ba aa ab " == sort/compare/skip "ba ab aa " 2 3 ;; sort using 2nd char
+	--assert "ba ab aa " == sort/compare/skip "ba ab aa " 3 3 ;; sort using 3rd char
+	--assert "ba aA aa ab " == sort/compare/skip "ba ab aA aa " 2 3
+	--assert "aA ba aa ab " == sort/compare/skip/case "ba ab aA aa " 2 3
+	--assert error? try [sort/compare/skip "ba ab aa " 4 3] ;; invalid offset
+	--assert error? try [sort/compare/skip "ba ab aa " 0 3] ;; invalid offset
+	--assert error? try [sort/compare/skip/all "ba ab aa " 1 3] ;; all is not compatible
 
 --test-- "SORT/compare string! (nested)"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2621
 	s1: sort/compare "abcd" func[a b][s2: sort/compare/reverse "1234" func[a b][a < b] a < b]
 	--assert s1 == "abcd"
 	--assert s2 == "4321"
+try/with [
 	s1: sort/compare "abcdabcd" func[a b][s2: sort/compare "áéíáéíáéí" func[a b][a < b] a < b]
 	--assert s1 == "aabbccdd"
 	--assert s2 == "áááéééííí"
 	s1: sort/compare "abcdabcd" func[a b][s2: sort/compare "áéíáéíáéí" :greater? a < b]
 	--assert s1 == "aabbccdd"
 	--assert s2 == "íííéééááá"
-
+][
+	print as-purple "!!! Sorting of the unicode string is not available now!"
+]
 --test-- "SORT/compare block! (nested)"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2622
 	s1: sort/compare ["a" "b" "c" "d"] func[a b][s2: sort/compare/reverse [1 2 3 4] func[a b][a < b] a < b]
@@ -1741,6 +1757,12 @@ Rebol [
 	--assert s1 == [4 3 2 1]
 	--assert s2 == ["a" "a" "B" "b"]
 
+--test-- "SORT/compare binary!"
+	comp: func [a b] [x: a a <= b]
+	--assert #{010100010200020100020200} == sort/compare/skip/all #{010200 020100 010100 020200} :comp 3
+	--assert binary? x
+	--assert #{010100010200020200020100} == sort/compare/skip     #{010200 020100 010100 020200} :comp 3
+	--assert char? x
 
 --test-- "SORT/skip/compare"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1152
@@ -1774,6 +1796,18 @@ Rebol [
 		error? e: try [sort/skip/all/compare [4 3 4 1] 2 2]
 		e/id = 'bad-refines
 	]
+
+--test-- "SORT/skip/all"
+	;@@ https://github.com/Oldes/Rebol-issues/issues/2646
+	--assert "1234" == sort/skip/all "1234" 2
+	--assert "3412" == sort/skip/all/reverse "1234" 2
+	--assert "4143" == sort/skip/all "4341" 2
+	--assert "4341" == sort/skip/all/reverse "4341" 2
+	--assert "3241" == sort/skip/all "4132" 2
+	--assert "4132" == sort/skip/all/reverse "4132" 2
+	--assert "2143" == sort/skip/all "4321" 2
+	--assert "1234" == sort/skip/all "4321" 1
+	--assert "4321" == sort/skip/all/reverse "4321" 1
 
 --test-- "SORT with invalid compare function"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1766
@@ -2087,9 +2121,11 @@ Rebol [
 --test-- "invalid UTF8 char"
 ;@@ https://github.com/Oldes/Rebol-issues/issues/1064
 ;@@ https://github.com/Oldes/Rebol-issues/issues/1216
-	--assert 1 = length? str: to-string #{C2E0}
-	--assert "^(FFFD)" = str
-	--assert #{EFBFBD} = to-binary str
+	--assert all [error? e: try [to-string #{C2E0}] e/id = 'invalid-utf]
+	--assert all [error? e: try [to-string #{C3}] e/id = 'invalid-utf]
+	--assert all [error? e: try [to-string #{EF}] e/id = 'invalid-utf]
+	--assert all [error? e: try [to-string #{EFBF}] e/id = 'invalid-utf]
+
 	--assert #{C2E0} = invalid-utf? #{C2E0}
 	--assert #{C2E0} = invalid-utf? #{01C2E0}
 	--assert 2 = index? invalid-utf? #{20C2E030}
@@ -2097,17 +2133,21 @@ Rebol [
 	--assert none? invalid-utf? #{20C3A030}
 	--assert #{EF} = invalid-utf? #{20EF}
 	--assert #{EFBF} = invalid-utf? #{20EFBF}
-	--assert "^(FFFD)" = to-string #{C3}
-	--assert "^(FFFD)" = to-string #{EF}
-	--assert "^(FFFD)" = to-string #{EFBF}
 	--assert "^(FFFD)" = to-string #{EFBFBD}
+
 	;- using quickbrown.bin instead of quickbrown.txt beacause GIT modifies CRLF to LF on posix
 	--assert none? invalid-utf? bin: read %units/files/quickbrown.bin
 	--assert 13806406 = checksum str: to-string bin 'crc24 ; does not normalize CRLF
 	--assert  5367801 = checksum deline str 'crc24
 	--assert  5367801 = checksum read/string %units/files/quickbrown.bin 'crc24 ;converts CRLF to LF
 
+--test-- "invalid utf16"
+	--assert try ["á🙂" == to-string #{FEFF00E1D83DDE42}]
+	--assert all [error? e: try [to-string #{FEFF00E1D83D} e/id = 'invalid-utf]]
+	--assert all [error? e: try [to-string #{FEFF00E1D83DEE42} e/id = 'invalid-utf]]
+
 --test-- "LOAD Unicode encoded text with BOM"
+try/with [
 	--assert "Writer" = form load #{FEFF005700720069007400650072}     ;UTF-16BE
 	--assert "Writer" = form load #{FFFE570072006900740065007200}     ;UTF-16LE
 	--assert "ěšč"    = form load #{0000feff0000011b000001610000010d} ;UTF-32BE
@@ -2116,6 +2156,9 @@ Rebol [
 	--assert "esc"    = form load #{fffe0000650000007300000063000000} ;UTF-32LE
 	--assert [a b]    = load #{0000feff000000610000002000000062}
 	--assert [a b]    = load #{fffe0000610000002000000062000000}
+][
+	print as-purple "!!! Load now expects only UTF-8 encoded binary input"
+]
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2280
 	--assert "äöü"    = form load #{EFBBBFC3A4C3B6C3BC}               ;UTF-8
 	--assert "aou"    = form load #{EFBBBF616F75}                     ;UTF-8
@@ -2138,7 +2181,9 @@ Rebol [
 	--assert txt = iconv #{50F869686CE1736974} <ISO-8859-2>
 	--assert txt = iconv #{50F869686CE1736974} 28592
 	--assert txt = iconv #{50005901690068006C00E100730069007400} 1200
-	;--assert txt = iconv #{FFFE50005901690068006C00E100730069007400} 'UTF16
+	--assert txt = iconv #{0050015900690068006C00E1007300690074} 1201
+	--assert txt = iconv #{FFFE50005901690068006C00E100730069007400} 'UTF16
+	--assert txt = iconv #{FEFF0050015900690068006C00E1007300690074} 'UTF16
 	--assert (next txt) = iconv next #{50F869686CE1736974} 28592
 
 --test-- "ICONV from UTF-8"
@@ -2160,8 +2205,8 @@ Rebol [
 
 --test-- "ICONV from UTF-16 with BOM"
 	;@@ https://github.com/Oldes/Rebol3/issues/19
-	--assert "^(FEFF)Writer" = iconv #{FEFF005700720069007400650072} 'UTF-16BE
-	--assert "^(FEFF)Writer" = iconv #{FFFE570072006900740065007200} 'UTF-16LE
+	--assert "Writer" = iconv #{FEFF005700720069007400650072} 'UTF-16BE
+	--assert "Writer" = iconv #{FFFE570072006900740065007200} 'UTF-16LE
 	--assert "Writer" = decode 'text #{FEFF005700720069007400650072}
 	--assert "Writer" = decode 'text #{FFFE570072006900740065007200}
 
@@ -2180,8 +2225,16 @@ Rebol [
 	--assert "^(FEFF)ěšč" = iconv #{0000feff0000011b000001610000010d} 'UTF-32BE
 	--assert "^(FEFF)ěšč" = iconv #{fffe00001b010000610100000d010000} 'UTF-32LE
 --test-- "ICONV from UTF-32 to UTF-8"	
-	--assert #{C49BC5A1C48D} = iconv/to #{1b010000610100000d010000} 'UTF-32LE 'UTF-8
-	--assert #{C49BC5A1C48D} = iconv/to #{0000011b000001610000010d} 'UTF-32BE 'UTF-8
+	--assert "ěšč" = iconv/to #{1b010000610100000d010000} 'UTF-32LE 'UTF-8
+	--assert "ěšč" = iconv/to #{0000011b000001610000010d} 'UTF-32BE 'UTF-8
+
+--test-- "ICONV to UTF16"
+	--assert #{1B0161010D01} == iconv/to #{C49BC5A1C48D} 'utf-8 'utf-16le
+	--assert #{011B0161010D} == iconv/to #{C49BC5A1C48D} 'utf-8 'utf-16be
+--test-- "ICONV to UTF32"
+	--assert #{1b010000610100000d010000} == iconv/to #{C49BC5A1C48D} 'utf-8 'utf-32le
+	--assert #{0000011b000001610000010d} == iconv/to #{C49BC5A1C48D} 'utf-8 'utf-32be
+
 
 --test-- "ICONV/TO (conversion to different codepage - binary result)"
 	bin: to binary! txt ; normaly conversion is done to UTF-8
@@ -2244,13 +2297,13 @@ Rebol [
 	--assert ";,/?:@&=+$#" = form enhex as url! {;,/?:@&=+$#}
 	--assert "%3B%2C%2F%3F%3A%40%26%3D%2B%24%23" = enhex {;,/?:@&=+$#}
 	--assert "!'()*_.-~" = enhex {!'()*_.-~}
-	--assert http://a?b=%25C5%25A1 = enhex http://a?b=š
+	--assert http://a?b=%C5%A1 = enhex http://a?b=š
 	--assert "%C5%A1ik"  = to-string enhex %šik
 	--assert       "šik" = to-string dehex enhex to-binary "šik"
 	--assert       "šik" = dehex enhex "šik"
 	--assert       "%7F" = enhex to-string #{7F}
-	--assert "%EF%BF%BD" = enhex to-string #{80} ; #{80} is not valid UTF-8!
-	--assert "%EF%BF%BD" = enhex to-string #{81}
+	--assert error? try ["%EF%BF%BD" = enhex to-string #{80}] ; #{80} is not valid UTF-8!
+	--assert error? try ["%EF%BF%BD" = enhex to-string #{81}]
 	--assert "%E5%85%83" = enhex {元}
 
 --test-- "ENHEX/escape"

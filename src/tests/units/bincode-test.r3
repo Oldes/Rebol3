@@ -138,7 +138,11 @@ is-protected-error?: func[code][
 	     --assert 1 = binary/read #{0001} 'SI16BE
 
 	b: binary 32
+	--test-- "BinCode - strings"
+	     --assert object? binary/write b [%ščř%20 "- " http://foo " " e@foo.com]
+	     --assert "ščř - http://foo e@foo.com" = to string! b/buffer
 	--test-- "BinCode - BYTES"
+	b: binary 32
 	     --assert object? binary/write b [#{cafe}]
 	     --assert #{CAFE} = binary/read b 'bytes
 	     --assert object? binary/write b [BYTES %ščř%20 BYTES http://foo]

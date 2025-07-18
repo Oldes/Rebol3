@@ -118,7 +118,7 @@ Rebol [
 
 	--test-- "do needs"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/891
-		--assert all [error? e: try [do "rebol[needs: 255.8.5]"] e/id = 'needs]
+		--assert all [error? e: try [do to binary! "rebol[needs: 255.8.5]"] e/id = 'needs]
 
 ===end-group===
 

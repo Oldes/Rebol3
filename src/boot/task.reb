@@ -25,9 +25,11 @@ stack-error		; special stack error object
 this-context	; current context
 buf-emit		; temporary emit output block
 buf-words		; temporary word cache
-buf-utf8		; UTF8 reused buffer
+buf-scan		; UTF8 reused buffer
+;buf-utf8		; UTF8 reused buffer
+buf-ucs2		; UCS2 reused buffer
 buf-print		; temporary print output - used by raw print
-buf-form		; temporary form buffer - used by raw print
+;buf-form		; temporary form buffer - used by raw print
 buf-mold		; temporary mold buffer - used by mold
 mold-loop		; mold loop detection
 err-temps		; error temporaries

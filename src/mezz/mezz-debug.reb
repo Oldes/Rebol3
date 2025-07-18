@@ -112,7 +112,7 @@ format-time: function [
 	if time >= 0:00:01 [
 		return form round/to time 0:0.001
 	]
-	units: ["ms" "μs" "ns"]
+	units: ["ms" "us" "ns"] ;@@ using us so far to avoid Unicode use!!!
 	foreach u units [
 		time: time * 1000
 		if time >= 0:00:01 [

@@ -157,7 +157,7 @@ Rebol [
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1443
 		--assert all [error? e: try [load {a@%2h}] e/id = 'invalid]
 		--assert all [error? e: try [load {%a%2h}] e/id = 'invalid]
-		--assert all [error? e: try [load {url:a%2h}] e/id = 'invalid]
+		--assert try ["url:a%2h" == mold load {url:a%2h}] ;; valid now.
 
 	--test-- "Invalid serialized value"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1429

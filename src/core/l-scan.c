@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2022 Rebol Open Source Contributors
+**  Copyright 2012-2025 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -302,7 +302,7 @@
 
 /***********************************************************************
 **
-*/  static REBINT Scan_Char(const REBYTE **bp)
+*/  static REBINT Scan_Char(const REBYTE **bp, SCAN_STATE *state)
 /*
 **      Scan a char, handling ^A, ^/, ^(null), ^(1234)
 **
@@ -318,13 +318,15 @@
 	const REBYTE *cp;
 	REBYTE c;
 	REBYTE lex;
+	REBLEN len = 4;
 
 	c = **bp;
 
 	// Handle unicoded char:
 	if (c >= 0x80) {
-		n = Decode_UTF8_Char(bp, 0); // zero on error
-		(*bp)++; // skip char
+		n = UTF8_Decode_Codepoint(bp, &len);
+		if (n == UNI_ERROR && state)
+			state->invalid_utf = *bp;
 		return n;
 	}
 
@@ -368,7 +370,7 @@
 			n = (n << 4) + c;
 			cp++;
 		}
-		if ((cp - *bp) > 4) return -1;
+		if ((cp - *bp) > 8) return -1;
 		if (*cp == ')') {
 			cp++;
 			*bp = cp;
@@ -396,41 +398,62 @@
 	return n;
 }
 
-
 /***********************************************************************
 **
 */  const REBYTE *Scan_Quote(const REBYTE *src, SCAN_STATE *scan_state)
 /*
 **      Scan a quoted string, handling all the escape characters.
 **
-**		The result will be put into the temporary MOLD_BUF unistring.
+**		The result will be put into the temporary BUF_SCAN.
 **
 ***********************************************************************/
 {
-    REBINT nest = 0;
-	REBUNI term;
+	REBINT nest = 0;
+	REBYTE term;
 	REBINT chr;
 	REBCNT lines = 0;
-	REBSER *buf = BUF_MOLD;
+	REBSER *buf = BUF_SCAN;
+	REBCNT len = 0;
 
 	RESET_TAIL(buf);
-
 	term = (*src++ == '{') ? '}' : '"';	// pick termination
 
+	const REBYTE *start = src;
+
 	while (*src != term || nest > 0) {
+		switch (*src) {
 
-		chr = *src;
+		case CR:
+			if (src[1] == LF)
+				src++;
+			else
+				len++;
+			// fall thru
+		case LF:
+			if (term == '"') return 0;
+			lines++;
+			if (len > 0) {
+				Append_Bytes_Len(buf, start, len);
+			}
+			Append_Byte(buf, LF);
+			start = ++src;
+			len = 0;
+			continue;
 
-        switch (chr) {
-
-		case 0:
-			return 0; // Scan_state shows error location.
-        
 		case '^':
-			chr = Scan_Char(&src);
+			if (len > 0) {
+				Append_Bytes_Len(buf, start, len);
+			}
+			chr = Scan_Char(&src, scan_state);
 			if (chr == -1) return 0;
-			src--;
-            break;
+
+			len = UTF8_Codepoint_Size(chr);
+			Extend_Series(buf, len);
+			Encode_UTF8_Char(STR_TAIL(buf), chr);
+			buf->tail += len;
+			start = src;
+			len = 0;
+			continue;
 
 		case '{':
 			if (term != '"') nest++;
@@ -440,38 +463,18 @@
 			if (term != '"' && nest > 0) nest--;
 			break;
 
-		case CR:
-			if (src[1] == LF) src++;
-			// fall thru
-        case LF:
-			if (term == '"') return 0;
-			lines++;
-			chr = LF;
-			break;
-
-		default:
-			if (chr >= 0x80) {
-				chr = Decode_UTF8_Char(&src, 0); // zero on error
-				if (chr == 0) return 0;
-			}
+		case 0:
+			return 0; // Scan_state shows error location.
 		}
-
+		len++;
 		src++;
+	}
 
-		if (SERIES_FULL(buf))
-			Extend_Series(buf, 1);
-
-		*UNI_SKIP(buf, buf->tail) = chr;
-		buf->tail++;
-    }
-
-	src++; // Skip ending quote or brace.
-
+	if (len > 0) Append_Bytes_Len(buf, start, len);
 	if (scan_state) scan_state->line_count += lines;
 
-	UNI_TERM(buf);
-
-	return src;
+	STR_TERM(buf);
+	return ++src; // Skip ending quote or brace.
 }
 
 /***********************************************************************
@@ -480,14 +483,14 @@
 /*
 **      Scan a binary string, remove spaceces and comments.
 **
-**		The result will be put into the temporary MOLD_BUF binary.
+**		The result will be put into the temporary BUF_SCAN binary.
 **
 ***********************************************************************/
 {
 //    REBOOL comm = FALSE;
 	REBINT chr;
 	REBCNT lines = 0;
-	REBSER *buf = BUF_MOLD;
+	REBSER *buf = BUF_SCAN;
 
 	RESET_TAIL(buf);
 
@@ -501,7 +504,7 @@
 		case 0:
 			return 0; // Scan_state shows error location.
 		case '^':
-			chr = Scan_Char(&src);
+			chr = Scan_Char(&src, scan_state);
 			if (chr == -1) return 0;
 			src--;
             break;
@@ -509,7 +512,7 @@
 			while (chr != 0) {
 				chr = *++src;
 				if (chr == '^') {
-					chr = Scan_Char(&src);
+					chr = Scan_Char(&src, scan_state);
 					if (chr == -1) return 0;
 					src--;
 				}
@@ -560,40 +563,34 @@ new_line:
 **      Scan a raw string (without any modifications).
 **		Eliminates need of double escaping and allowes unmatched braces.
 **
-**		The result will be put into the temporary MOLD_BUF unistring.
+**		The result will be put into the temporary FORM_BUF string.
 **
 ***********************************************************************/
 {
 	REBCNT lines = 0;
-	REBSER *buf = BUF_MOLD;
-	const REBYTE *bp = src;
+	REBSER *buf = BUF_SCAN;
+	REBYTE *dst = BIN_HEAD(buf);
 	REBLEN n;
 	REBINT chr;
 
 	RESET_TAIL(buf);
 
-	while (*bp) {
-
-		//if (*bp == CR && bp[1] == LF) bp++; // replace CRLF with LF
-
-		chr = *bp;
+	while (*src) {
+		chr = *src++;
+		if (SERIES_FULL(buf)) Extend_Series(buf, 1);
 		if (chr == LF) lines++;
-		else if (chr == '}' && bp[1] == '%') {
+		else if (chr == '}' && src[0] == '%') {
 			n = 1;
-			while (bp[n] == '%') n++; n--;
+			while (src[n] == '%') n++;
 			if (num == n) {
 				// success
 				if (scan_state) scan_state->line_count += lines;
-				UNI_TERM(buf);
-				return bp + 1 + n; // Skip ending %
+				STR_TERM(buf);
+				return src + n; // Skip ending %
 			}
 			if (n > num) return 0;
 		}
-		bp++;
-		if (SERIES_FULL(buf))
-			Extend_Series(buf, 1);
-
-		*UNI_SKIP(buf, buf->tail) = chr;
+		*dst++ = chr;
 		buf->tail++;
 	}
 	return 0; // end of source intput without closing
@@ -602,76 +599,103 @@ new_line:
 
 /***********************************************************************
 **
-*/  const REBYTE *Scan_Item(const REBYTE *src, const REBYTE *end, REBUNI term, const REBYTE *invalid)
+*/  const REBYTE *Scan_Item(const REBYTE *src, const REBYTE *end, REBYTE term, const REBYTE *invalid, SCAN_STATE *state)
 /*
 **      Scan as UTF8 an item like a file or URL.
 **
 **		Returns continuation point or zero for error.
 **
-**		Put result into the MOLD_BUF as uni-chars.
+**		Put result into the BUF_SCAN as utf8-chars.
 **
 ***********************************************************************/
 {
-	REBUNI c;
 	REBSER *buf;
+	REBU32 chr;
+	REBLEN len;
+	REBLEN bytes;
+	REBYTE *dst;
 
-	buf = BUF_MOLD;
+	buf = BUF_SCAN;
 	RESET_TAIL(buf);
+	dst = BIN_HEAD(buf);
 
 	while (src < end && *src != term) {
+		len = UTF8_Next_Char_Size(src, 0);
+		if (SERIES_FULL(buf)) Extend_Series(buf, len);
+		
+		if (len == 1) {
+			chr = *src++;
 
-		c = *src;
+			// End of stream?
+			if (chr == 0) break;
 
-		// End of stream?
-		if (c == 0) break;
+			// If no term, then any white will terminate:
+			if (!term && IS_WHITE(chr)) break;
 
-		// If no term, then any white will terminate:
-		if (!term && IS_WHITE(c)) break;
+			// Ctrl chars are invalid:
+			if (chr < ' ') return 0;	// invalid char
 
-		// Ctrl chars are invalid:
-		if (c < ' ') return 0;	// invalid char
+			if (chr == '\\') chr = '/';
 
-		if (c == '\\') c = '/';
+			// Accept %xx encoded char:
+			else if (chr == '%') {
+				if (!Scan_Hex2(src, &chr)) return 0;
+				src += 2;
+			}
 
-		// Accept %xx encoded char:
-		else if (c == '%') {
-			if (!Scan_Hex2(src+1, &c, FALSE)) return 0;
-			src += 2;
+			// Accept ^X encoded char:
+			else if (chr == '^') {
+				// checks also if not used in file like: %a^b which must be invalid!
+				if (src + 1 == end || (invalid && strchr(cs_cast(invalid), chr)))
+					return 0; // nothing follows ^ or used in unquoted file
+				chr = Scan_Char(&src, state);
+				if (!term && IS_WHITE(chr)) break;
+				src--;
+			}
+
+			// Is char as literal valid? (e.g. () [] etc.)
+			else if (invalid && chr < 0x80 && strchr(cs_cast(invalid), chr)) return 0;
+		}
+		else {
+			bytes = end - src;
+			chr = UTF8_Decode_Codepoint(&src, &bytes);
 		}
 
-		// Accept ^X encoded char:
-		else if (c == '^') {
-			// checks also if not used in file like: %a^b which must be invalid!
-			if (src+1 == end || (invalid && strchr(cs_cast(invalid), c)))
-				return 0; // nothing follows ^ or used in unquoted file
-			c = Scan_Char(&src);
-			if (!term && IS_WHITE(c)) break;
-			src--;
-		}
-
-		// Accept UTF8 encoded char:
-		else if (c >= 0x80) {
-			c = Decode_UTF8_Char(&src, 0); // zero on error
-			if (c == 0) return 0;
-		}
-
-		// Is char as literal valid? (e.g. () [] etc.)
-		else if (invalid && strchr(cs_cast(invalid), c)) return 0;
-
-		src++;
-
-		if (SERIES_FULL(buf))
-			Extend_Series(buf, 1);
-
-		*UNI_SKIP(buf, buf->tail) = c;
-		buf->tail++;
+		len = Encode_UTF8_Char(dst, chr);
+		dst += len;
+		buf->tail += len;
     }
 
 	if (*src && *src == term) src++;
 
-	UNI_TERM(buf);
+	STR_TERM(buf);
 
 	return src;
+}
+
+
+/***********************************************************************
+**
+*/	const REBYTE *Scan_File(const REBYTE *cp, REBCNT len, REBVAL *value)
+/*
+**		Scan and convert a file name.
+**
+***********************************************************************/
+{
+	REBYTE term = 0;
+	const REBYTE *invalid = cb_cast(":;()[]\"^");
+
+	if (*cp == '%') cp++, len--;
+	if (*cp == '"') {
+		cp++;
+		len--;
+		term = '"';
+		invalid = cb_cast(":;\"");
+	}
+	cp = Scan_Item(cp, cp + len, term, invalid, NULL);
+	if (cp)
+		Set_Series(REB_FILE, value, Copy_String(BUF_SCAN, 0, NO_LIMIT));
+	return cp;
 }
 
 
@@ -841,7 +865,7 @@ new_line:
 	Append_Bytes(ser, ") ");
 	Append_Series(ser, bp, len);
 	Set_String(&error->nearest, ser);
-	Set_String(&error->arg1, Copy_Bytes(name, -1));
+	Set_String(&error->arg1, Copy_Bytes(name, UNKNOWN));
 	Set_String(&error->arg2, Copy_Bytes(arg, size));
 
 	if (relax) {
@@ -1010,7 +1034,7 @@ new_line:
             goto check_str;
 
         case LEX_DELIMIT_LEFT_BRACE:    /* { begin quote */
-            cp = Scan_Quote(cp, scan_state);  // stores result string in BUF_MOLD
+            cp = Scan_Quote(cp, scan_state);  // stores result string in BUF_SCAN
         check_str:
             if (cp) {
                 scan_state->end = cp;
@@ -1084,7 +1108,7 @@ new_line:
 			int n = 1;
 			while (*cp) {
 				if (cp[n] == '{') {
-					cp = Scan_Raw_String(cp+n+1, scan_state, n);  // stores result string in BUF_MOLD
+					cp = Scan_Raw_String(cp+n+1, scan_state, n);  // stores result string in BUF_SCAN
 					if (!cp) return -TOKEN_STRING;
 					scan_state->end = cp;
 					return TOKEN_STRING;
@@ -1095,7 +1119,7 @@ new_line:
 			cp = scan_state->end;
 			/* %"file name" or %filename */
             if (*cp == '"') {
-				cp = Scan_Quote(cp, scan_state);  // stores result string in BUF_MOLD
+				cp = Scan_Quote(cp, scan_state);  // stores result string in BUF_SCAN
 				if (!cp) return -TOKEN_FILE;
 				scan_state->end = cp;
 				return TOKEN_FILE;
@@ -1258,7 +1282,9 @@ new_line:
 			}
 			if (*cp == '"') { /* CHAR #"C" */
 				cp++;
-				type = Scan_Char(&cp); 
+				type = Scan_Char(&cp, scan_state);
+				if (scan_state->invalid_utf)
+					return TOKEN_EOF;
 				if (type >= 0 && *cp == '"') {
 					scan_state->end = cp+1;
 					return TOKEN_CHAR;
@@ -1272,11 +1298,7 @@ new_line:
 		scan_binary:
 				scan_state->end = scan_state->begin;  /* save start */
 				scan_state->begin = cp;
-				// Originally there was used Scan_Quote collecting into BUF_MOLD, but this was not used later.
-				// It was wasting resources, because Scan_Quote collects unicode (2 bytes per char).
-				// Scan_Quote_Binary collects ANSI and report invalit input (like unicode char) much sooner.
-				// It also skips spaces and line-comments so these should not have to be tested by Decode_Binary later.
-	            cp = Scan_Quote_Binary(cp, scan_state);  // stores result string in BUF_MOLD !!??
+	            cp = Scan_Quote_Binary(cp, scan_state);  // stores result string in BUF_SCAN !!??
 				scan_state->begin = scan_state->end;  /* restore start */
 				if (cp) {
 					scan_state->end = cp;
@@ -1431,7 +1453,7 @@ scanword:
         cp = scan_state->end;   /* then, must be a URL */
         while (*cp == '/') {    /* deal with path delimiter */
             cp++;
-            while (IS_LEX_AT_LEAST_SPECIAL(*cp) || *cp == '/') cp++;
+            while (IS_LEX_AT_LEAST_SPECIAL(*cp) || *cp == '/' || *cp == 0x7F) cp++;
         }
         scan_state->end = cp;
         return TOKEN_URL;
@@ -1493,6 +1515,7 @@ scan_arrow_word:
     scan_state->line_count = 1;
 	scan_state->opts = 0;
 	scan_state->errors = 0;
+	scan_state->invalid_utf = 0;
 //    scan_state->error_id = (REBYTE *)"";
 }
 
@@ -1801,21 +1824,20 @@ extern REBSER *Scan_Full_Block(SCAN_STATE *scan_state, REBYTE mode_char);
 
 		case TOKEN_CHAR:
 			bp += 2; // skip #"
-			VAL_CHAR(value) = Scan_Char(&bp);
+			VAL_CHAR(value) = Scan_Char(&bp, scan_state);
 			bp++; // skip end "
 			VAL_SET(value, REB_CHAR);
 			break;
 
 		case TOKEN_STRING:
-			// During scan above, string was stored in BUF_MOLD (with Uni width)
-			Set_String(value, Copy_String(BUF_MOLD, 0, -1));
+			Set_String(value, Copy_String(BUF_SCAN, 0, -1));
 			LABEL_SERIES(VAL_SERIES(value), "scan string");
 			break;
 
 		case TOKEN_BINARY:
-			// In BUF_MOLD is preprocessed ANSI result without comments and spaces
+			// In BUF_SCAN is preprocessed ANSI result without comments and spaces
 			// we just still need to resolve the binary base (like `64#{`) from the input
-			Scan_Binary(Scan_Binary_Base(bp, len), BIN_DATA(BUF_MOLD), BIN_LEN(BUF_MOLD), value);
+			Scan_Binary(Scan_Binary_Base(bp, len), BIN_DATA(BUF_SCAN), BIN_LEN(BUF_SCAN), value);
 			LABEL_SERIES(VAL_SERIES(value), "scan binary");
 			break;
 
@@ -1945,6 +1967,8 @@ extern REBSER *Scan_Full_Block(SCAN_STATE *scan_state, REBYTE mode_char);
 		// Added for load/next
 	    if (GET_FLAG(scan_state->opts, SCAN_ONLY) || just_once) goto exit_block;
 	}
+	if (scan_state->invalid_utf)
+		Trap0(RE_INVALID_CHARS);
 
     if (mode_char == ']' || mode_char == ')') goto missing_error;
 
@@ -2056,7 +2080,9 @@ exit_block:
 ***********************************************************************/
 {
 	Set_Root_Series(TASK_BUF_EMIT, Make_Block(511), cb_cast("emit block"));
-	Set_Root_Series(TASK_BUF_UTF8, Make_Unicode(1020), cb_cast("utf8 buffer"));
+//	Set_Root_Series(TASK_BUF_UTF8, Make_Binary(1020), cb_cast("utf8 buffer"));
+	Set_Root_Series(TASK_BUF_UCS2, Make_Unicode(1020), cb_cast("ucs2 buffer"));
+	Set_Root_Series(TASK_BUF_SCAN, Make_Binary(1020), cb_cast("scan buffer"));
 }
 
 
@@ -2084,16 +2110,11 @@ exit_block:
 	REBYTE end_char;
 	REBLEN end_pos = NO_LIMIT;
 	
-	if (VAL_BYTE_SIZE(src)) {
-		bin = VAL_BIN_DATA(src);
-		len = VAL_LEN(src);
-	} else {
-		// unicode string must be converted to UTF-8 first
-		// the result is temporary stored in the shared buffer (BUF_FORM)
-		ser = Encode_UTF8_String(VAL_UNI_DATA(src), VAL_LEN(src), TRUE, 0);
-		bin = BIN_HEAD(ser);
-		len = BIN_LEN(ser);
-	}
+	ASSERT1(VAL_BYTE_SIZE(src), RP_BAD_SIZE);
+
+	bin = VAL_BIN_DATA(src);
+	len = VAL_LEN(src);
+
 	if (D_REF(8)) { // /part
 		if (0 > VAL_INT64(length)) Trap1(RE_OUT_OF_RANGE, length);
 		if (VAL_UNT32(length) < len) {
@@ -2141,18 +2162,18 @@ exit_block:
 	if (next) {
 		// when used transcode with refinements /next, /only and /error
 		// the input series position must be updated
-		if (VAL_BYTE_SIZE(src)) {
+//		if (VAL_BYTE_SIZE(src)) {
 			VAL_INDEX(src) = scan_state.end - VAL_BIN(src);
-		} else {
-			// the scan state used the shared buffer, to get how many codepoints
-			// we advanced, we must first mark end...
-			len = scan_state.end - bin;
-			bin[len+1] = 0;
-			// ... and count the real length advanced
-			len = Length_As_UTF8_Code_Points(bin);
-			//printf("%i\n", len);
-			VAL_INDEX(src) = len;
-		}
+//		} else {
+//			// the scan state used the shared buffer, to get how many codepoints
+//			// we advanced, we must first mark end...
+//			len = scan_state.end - bin;
+//			bin[len+1] = 0;
+//			// ... and count the real length advanced
+//			len = Length_As_UTF8_Code_Points(bin);
+//			//printf("%i\n", len);
+//			VAL_INDEX(src) = len;
+//		}
 		Append_Val(blk, src);
 		if (line) {
 			SET_INTEGER(count, scan_state.line_count);

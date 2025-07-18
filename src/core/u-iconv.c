@@ -573,10 +573,11 @@ static REBYTE* get_codepage_name(REBVAL *cp)
 ***********************************************************************/
 {
 	//printf("Swap_Endianess_U16 len: %d\n", len);
-	REBCNT i;
-	for (i = 0; i < len; ++i) {
-		u16 num = data[i];
-		data[i] = (num>>8) | (num<<8);
+	u16 *ptr = data;
+	u16 *end = data + len;
+	while (ptr < end) {
+		u16 num = *ptr;
+		*ptr++ = (num >> 8) | (num << 8);
 	}
 }
 #else
@@ -621,119 +622,111 @@ static REBYTE* get_codepage_name(REBVAL *cp)
 	REBVAL *val_to   = D_ARG(4);
 
 	REBCNT  src_len = VAL_LEN(data);
-	REBSER *dst_wide;
-	
+	REBSER *dest;
 
 #ifdef TO_WINDOWS
-    REBINT  dst_len = 0;
-    REBSER *dest;
-	REBINT cp, tp;
-	  BOOL default_char_used;
+	REBSER *src_ser;
+	REBYTE *src_bin = VAL_BIN_AT(data);
+	REBSER *ucs2_ser;
+	REBCHR *ucs2_bin;
+	REBLEN  ucs2_len;
+	REBINT  dst_len = 0;
+	REBINT cp, tp = CP_UTF8;
 
 	cp = get_codepage_id(val_from);
 	if (cp < 0) {
 		Trap1(RE_INVALID_ARG, val_from);
 		return R_NONE;
 	}
-
-	REBYTE *bp;
-
-	if (cp == 1200 || cp == 1201) { // data are already wide (UTF-16LE or UTF-16BE)
-		bp = VAL_BIN_AT(data);
-		dst_len = src_len / 2;
-		dst_wide = Make_Series(dst_len + 1, 2, FALSE);
-		COPY_MEM(BIN_HEAD(dst_wide), bp, src_len);
-		dst_wide->tail = dst_len;
-		//No need to terminate the series, because Make_Series guarantees completely cleared memory.
-		//TERM_SERIES(dst_wide); 
-		if (ref_to) {
-			goto convert_to;
-		}
-		if (cp == 1201) {
-			Swap_Endianess_U16((u16*)BIN_HEAD(dst_wide), dst_wide->tail);
-		}
-		SET_STRING(D_RET, dst_wide);
-		return R_RET;
-	}
-	else if (cp == 12000 || cp == 12001) {  // data are UTF-32LE or UTF-32BE
-		// this codepage is not supported by `MultiByteToWideChar`
-		dst_wide = Decode_UTF_String(VAL_BIN_AT(data), src_len, cp == 12000 ? -32 : 32, FALSE, TRUE);
-		dst_len = SERIES_TAIL(dst_wide);
-		if (ref_to) {
-			goto convert_to;
-		}
-		SET_STRING(D_RET, dst_wide);
-		return R_RET;
-	}
-	
-	if (VAL_LEN(data) > 0) {
-		dst_len = MultiByteToWideChar(cp, 0, cs_cast(VAL_BIN_DATA(data)), src_len, NULL, 0);
-		if (dst_len <= 0) return R_NONE; //@@ or error?
-
-		dst_wide = Make_Series(dst_len, 2, FALSE);
-		dst_len = MultiByteToWideChar(cp, 0, cs_cast(VAL_BIN_DATA(data)), src_len, (REBCHR*)BIN_HEAD(dst_wide), dst_len);
-		dst_wide->tail = dst_len;
-	} else {
-		dst_wide = Make_Series(1, 2, FALSE);
-		dst_wide->tail = 0;
-	}
-	
 	if (ref_to) {
-	convert_to:
 		tp = get_codepage_id(val_to);
 		if (tp < 0) {
 			Trap1(RE_INVALID_ARG, val_to);
 			return R_NONE;
 		}
+	}
 
-		if (tp == 1200) { // UTF-16LE
-			if (cp == 1200) {
-				// we already have data in this format.
-				dest = dst_wide;
-			} else {
-				dest = Copy_Series(dst_wide);
-			}
-		} else if (tp == 1201) { // UTF-16BE
-			if (cp == 1201) {
-				// we already have data in this format.
-				dest = dst_wide;
-			} else {
-				dest = Copy_Series(dst_wide);
-			}
-		} else {
-			if (cp == 1201) {
-				Swap_Endianess_U16((u16*)BIN_HEAD(dst_wide), dst_wide->tail);
-			}
-			if (dst_wide->tail > 0) {
-				dst_len = WideCharToMultiByte(tp, 0, (REBCHR*)BIN_HEAD(dst_wide), dst_wide->tail, NULL, 0, 0, &default_char_used);
-				if (dst_len <= 0) return R_NONE; //@@ or error?
+	if (cp == 1200 || cp == 1201) { // data are already wide (UTF-16LE or UTF-16BE)
+		ucs2_len = src_len / 2;
+		ucs2_bin = (REBCHR *)Reset_Buffer(BUF_UCS2, ucs2_len);
+		COPY_MEM(ucs2_bin, src_bin, src_len);
+		// Skip the BOM if exists...
+		// https://github.com/Oldes/Rebol3/issues/19
+		if (ucs2_bin[0] == 0xFEFF || ucs2_bin[0] == 0xFFFE) {
+			cp = ucs2_bin[0] == 0xFEFF ? 1200 : 1201;
+			ucs2_bin++;
+			ucs2_len--;
+		}
+		if (cp == 1201) {
+			Swap_Endianess_U16(ucs2_bin, ucs2_len);
+		}
+		goto convert_to;
+	}
+	else if (cp == 12000 || cp == 12001) {  // data are UTF-32LE or UTF-32BE
+		// this codepage is not supported by `MultiByteToWideChar`
+		// so convert it first to UTF-8...
+		src_ser = Decode_UTF_String(src_bin, src_len, cp == 12000 ? -32 : 32, FALSE, NULL);
+		if (!src_ser) Trap1(RE_INVALID_DATA, data);
+		src_bin = BIN_HEAD(src_ser);
+		src_len = SERIES_TAIL(src_ser);
+		cp = CP_UTF8;
+		if (tp == CP_UTF8) {
+			SET_STRING(D_RET, src_ser);
+			return R_RET;
+		}
+	}
 
-				dest = Make_Series(dst_len, 1, FALSE);
-				dst_len = WideCharToMultiByte(tp, 0, (REBCHR*)BIN_HEAD(dst_wide), dst_wide->tail, s_cast(BIN_HEAD(dest)), dst_len, 0, &default_char_used);
-				dest->tail = dst_len;
+	if (cp == CP_UTF8 && (tp == 12000 || tp == 12001)) {
+		dest = UTF8_To_UTF32(NULL, src_bin, src_len, (tp == 12000));
+		SET_BINARY(D_RET, dest);
+		return R_RET;
+	}
+
+	if (src_len > 0) {
+		// Count number of UCS2 codepoints needed...
+		ucs2_len = MultiByteToWideChar(cp, 0, src_bin, src_len, NULL, 0);
+		if (ucs2_len <= 0) return R_NONE; //@@ or error?
+		// Convert input to UCS2...
+		ucs2_bin = (REBCHR *)Reset_Buffer(BUF_UCS2, ucs2_len);
+		ucs2_len = MultiByteToWideChar(cp, 0, src_bin, src_len, ucs2_bin, ucs2_len);
+	} else {
+		// Empty input...
+		ucs2_len = 0;
+		ucs2_bin = (REBCHR *)Reset_Buffer(BUF_UCS2, 0);
+	}
+	
+convert_to:
+	if (ucs2_len == 0) {
+		SET_STRING(D_RET, Make_Series(1, 1, FALSE));
+		return R_RET;
+	}
+	if (ref_to) {
+		// Convert to the target codepage...
+		if (tp == 1200 || tp ==  1201) {
+			if (tp == 1201) {
+				Swap_Endianess_U16(ucs2_bin, ucs2_len);
 			}
-			else {
-				dest = Make_Series(1, 1, FALSE);
-				dest->tail = 0;
-			}
+			dst_len = ucs2_len * 2;
+			dest = Make_Series(dst_len, 1, FALSE);
+			COPY_MEM(BIN_HEAD(dest), ucs2_bin, dst_len);
+			dest->tail = dst_len;
+			SET_BINARY(D_RET, dest);
+			return R_RET;
 		}
-		if(SERIES_WIDE(dest) == 2) {
-			// in case source was already UTF-16
-			// change series width to 1 (for binary result)
-			dest->sizes &= 0xFFFFFF00; // keeps bias and reserved unused bits unchanged
-			dest->sizes |= 0x00000001; // sets width to 1
-			dest->tail *= 2;
-		}
-		if (
-			dest->tail > 0 &&
-			((tp == 1201 && cp != 1201) ||  // result is UTF-16BE or
-			(tp == 1200 && cp == 1201))     // conversion from UTF-16BE to UTF-16LE
-		) {
-			Swap_Endianess_U16((u16*)BIN_HEAD(dest), dest->tail / 2);
-		}
+		dst_len = WideCharToMultiByte(tp, 0, ucs2_bin, ucs2_len, NULL, 0, 0, 0);
+		if (dst_len <= 0) return R_NONE; //@@ or error?
+		dest = Make_Series(dst_len, 1, FALSE);
+		dst_len = WideCharToMultiByte(tp, 0, ucs2_bin, ucs2_len, s_cast(BIN_HEAD(dest)), dst_len, 0, 0);
+		dest->tail = dst_len;
 		SET_BINARY(D_RET, dest);
 	} else {
-		SET_STRING(D_RET, dst_wide);
+		// Convert to UTF8...
+		dst_len = WideCharToMultiByte(CP_UTF8, 0, ucs2_bin, ucs2_len, NULL, 0, 0, 0);
+		dest = Make_Series(dst_len, 1, FALSE);
+		dest->tail = WideCharToMultiByte(CP_UTF8, 0, ucs2_bin, ucs2_len, BIN_HEAD(dest), dst_len, 0, 0);
+		// Mark result as series with UTF-8 encoding used, if needed!
+		if (!Is_ASCII(BIN_HEAD(dest), dst_len)) UTF8_SERIES(dest);
+		SET_STRING(D_RET, dest);
 	}
 	
 	return R_RET;
@@ -751,7 +744,6 @@ static REBYTE* get_codepage_name(REBVAL *cp)
 
 	const char *fromcode = cs_cast(norm_codepage_name(val_from));
 	const char *tocode;
-	int wide;
 
 	if (!fromcode) {
 		Trap1(RE_INVALID_ARG, val_from);
@@ -759,10 +751,8 @@ static REBYTE* get_codepage_name(REBVAL *cp)
 	if (ref_to) {
 		tocode = cs_cast(norm_codepage_name(val_to));
 		if (!tocode) Trap1(RE_INVALID_ARG, val_to);
-		wide = 1; // result is raw binary series
 	} else {
-		tocode = "UTF-16LE";
-		wide = 2; // result is string
+		tocode = "UTF-8";
 	}
 	//printf("iconv_open %s %s\n", tocode, fromcode);
 	cd = iconv_open(tocode, fromcode);
@@ -772,31 +762,31 @@ static REBYTE* get_codepage_name(REBVAL *cp)
 		Trap0(RE_FEATURE_NA);
 	}
 		
-	dst_wide = Make_Series(src_len + 4, wide, FALSE);
-	dst_size = SERIES_SPACE(dst_wide);
+	dest = Make_Series(src_len + 4, 1, FALSE);
+	dst_size = SERIES_SPACE(dest);
 
 	
 	char *src = (char*)VAL_BIN_DATA(data);
-	char *dst = (char*)BIN_HEAD(dst_wide);
+	char *dst = (char*)BIN_HEAD(dest);
 	//Reb_Opts->watch_expand = TRUE;
 	for(;;) {
-		//printf("iconv from: %s to: %s wide: %d src_size: %d dst_size: %d\n", fromcode, tocode, wide, src_size, dst_size);
-		//Dump_Series(dst_wide, "dst");
+		//printf("iconv from: %s to: %s src_size: %d dst_size: %d\n", fromcode, tocode, src_size, dst_size);
+		//Dump_Series(dest, "dst");
 		nread = iconv(cd, &src, &src_size, &dst, &dst_size);
-		//printf("ret: %d src_size: %d dst_size: %d %d\n", nread, src_size, dst_size, (REBYTE *)dst - BIN_HEAD(dst_wide));
+		//printf("ret: %d src_size: %d dst_size: %d %d\n", nread, src_size, dst_size, (REBYTE *)dst - BIN_HEAD(dest));
 		if(nread == (size_t)-1) {
 			//printf("iconv failed: %d\n", errno );
 			if(errno == E2BIG) {
 				// There is not sufficient room at destination
-				if (SERIES_SPACE(dst_wide) < (4 * src_len)) {
+				if (SERIES_SPACE(dest) < (4 * src_len)) {
 					// expand the destination series; maximum 4x of the source
-					tail = (REBCNT)((REBYTE*)dst - BIN_HEAD(dst_wide)) / wide;
-					SERIES_TAIL(dst_wide) = tail;
+					tail = (REBCNT)((REBYTE*)dst - BIN_HEAD(dest));
+					SERIES_TAIL(dest) = tail;
 					//printf("\n---expand delta: %d\n", src_len);
-					Expand_Series(dst_wide, tail, src_len / 2);
+					Expand_Series(dest, tail, src_len / 2);
 					// update destination pointers for continuation
-					dst = (char*)BIN_SKIP(dst_wide, wide * tail);
-					dst_size = SERIES_SPACE(dst_wide) - wide * tail;
+					dst = (char*)BIN_SKIP(dest, tail);
+					dst_size = SERIES_SPACE(dest) - tail;
 					continue;
 				}
 				//printf("errno == E2BIG\n");
@@ -809,19 +799,19 @@ static REBYTE* get_codepage_name(REBVAL *cp)
 				// An incomplete multibyte sequence
 				//printf("errno == EINVAL\n");
 			}
-			Free_Series(dst_wide);
+			Free_Series(dest);
 			iconv_close(cd);
 			Trap1(RE_INVALID_DATA, D_ARG(1));
 			return R_NONE;
 		}
 		if (src_size == 0) break;
 	}
-	SERIES_TAIL(dst_wide) = (REBCNT)((REBYTE*)dst - BIN_HEAD(dst_wide)) / wide;
+	SERIES_TAIL(dest) = (REBCNT)((REBYTE*)dst - BIN_HEAD(dest));
 	if (ref_to) {
-		SET_BINARY(D_RET, dst_wide);
+		SET_BINARY(D_RET, dest);
 	}
 	else {
-		SET_STRING(D_RET, dst_wide);
+		SET_STRING(D_RET, dest);
 	}
 	
 result:

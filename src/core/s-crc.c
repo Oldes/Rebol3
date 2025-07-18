@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2024 Rebol Open Source Contributors
+**  Copyright 2012-2025 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -204,13 +204,15 @@ X*/	REBINT CRC_String(REBVAL *val)
 
 	hash = len + (REBYTE)LO_CASE(*str);
 
-	for (; len > 0; str++, len--) {
+	for (; len > 0;) {
 		n = *str;
 		if (n > 127) {
-			m = Decode_UTF8_Char(&str, &len); // mods str, ulen
-			if (!m) Trap0(RE_INVALID_CHARS);
+			m = UTF8_Decode_Codepoint(&str, &len); // mods str, ulen
+			if (m == UNI_ERROR)
+				Trap0(RE_INVALID_CHARS);
 			n = m;
 		}
+		else len--, str++;
 		if (n < UNICODE_CASES) n = LO_CASE(n);
 		n = (REBYTE)((hash >> CRCSHIFTS) ^ (REBYTE)n); // drop upper 8 bits
 		hash = MASK_CRC(hash << 8) ^ CRC24_Table[n];

@@ -23,8 +23,10 @@
 **  Module:  p-clipboard.c
 **  Summary: clipboard port interface
 **  Section: ports
-**  Author:  Carl Sassenrath
+**  Author:  Carl Sassenrath, Oldes
 **  Notes:
+**
+**		It expects that string is always already encoded to UTF-8
 **
 ***********************************************************************/
 
@@ -56,13 +58,8 @@
 		arg = OFV(port, STD_PORT_DATA);
 		if (req->command == RDC_READ) {
 			len = req->actual;
-			if (GET_FLAG(req->flags, RRF_WIDE)) {
-				len /= sizeof(REBUNI); //correct length
-				// Copy the string (convert to latin-8 if it fits):
-				Set_Binary(arg, Copy_Wide_Str(req->data, len));
-			} else {
-				Set_Binary(arg, Copy_OS_Str(req->data, len));
-			}
+			Set_Binary(arg, Copy_Bytes(req->data, len));
+			
 		}
 		else if (req->command == RDC_WRITE) {
 			SET_NONE(arg);  // Write is done.
@@ -92,13 +89,8 @@
 		arg = OFV(port, STD_PORT_DATA);
 		
 		len = req->actual;
-		if (GET_FLAG(req->flags, RRF_WIDE)) {
-			len /= sizeof(REBUNI); //correct length
-			// Copy the string (convert to latin-8 if it fits):
-			Set_String(arg, Copy_Wide_Str(req->data, len));
-		} else {
-			Set_String(arg, Copy_OS_Str(req->data, len));
-		}
+		Set_String(arg, Copy_Bytes(req->data, len));
+		
 
 		OS_FREE(req->data); // release the copy buffer
 		req->data = 0;
@@ -135,42 +127,9 @@
 		if (refs & AM_WRITE_PART && VAL_INT32(D_ARG(ARG_WRITE_LENGTH)) < len)
 			len = VAL_INT32(D_ARG(ARG_WRITE_LENGTH));
 
-#ifdef TO_WINDOWS
-		// Oldes: this code is very old and should be revisited!!!
-		// If bytes, see if we can fit it:
-		if (SERIES_WIDE(VAL_SERIES(arg)) == 1) {
-			#ifdef ARG_STRINGS_ALLOWED
-				if (Is_Not_ASCII(VAL_BIN_DATA(arg), len)) {
-					Set_String(arg, Copy_Bytes_To_Unicode(VAL_BIN_DATA(arg), len));
-				} else
-					req->data = VAL_BIN_DATA(arg);
-			#endif
-
-			// Temp conversion:!!!
-			ser = Make_Unicode(len);
-			len = Decode_UTF8(UNI_HEAD(ser), VAL_BIN_DATA(arg), len, FALSE);
-			SERIES_TAIL(ser) = len = abs(len);
-			//UNI_TERM(ser); // No need to set a null terminator, as the series is fully cleared.
-			Set_String(arg, ser);
-			req->data = (REBYTE*) UNI_HEAD(ser);
-			SET_FLAG(req->flags, RRF_WIDE);
-		}
-		else
-		// If unicode (may be from above conversion), handle it:
-		if (SERIES_WIDE(VAL_SERIES(arg)) == sizeof(REBUNI)) {
-			req->data = (REBYTE *)VAL_UNI_DATA(arg);
-			SET_FLAG(req->flags, RRF_WIDE);
-		}
-
-		// Temp!!!
-		req->length = len * sizeof(REBUNI);
-		
-#else // macOS requires UTF8 encoded data (no clipboard support on other oses yet)
-		ser = Encode_UTF8_Value(arg, len, 0);
-		Set_String(arg, ser);
 		req->data = VAL_BIN_DATA(arg);
 		req->length = len;
-#endif
+		
 		// Setup the write:
 		*OFV(port, STD_PORT_DATA) = *arg;	// keep it GC safe
 		req->actual = 0;

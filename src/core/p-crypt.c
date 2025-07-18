@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2024 Rebol Open Source Contributors
+**  Copyright 2012-2025 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -122,12 +122,7 @@ static void free_crypt_cipher_context(CRYPT_CTX *ctx);
 		CLEAR(&ctx->key, MBEDTLS_MAX_KEY_LENGTH);
 		return TRUE;
 	}
-	if (IS_STRING(val)) {
-		ser = Encode_UTF8_Value(val, VAL_LEN(val), 0);
-		len = SERIES_TAIL(ser);
-		bin = BIN_HEAD(ser);
-	}
-	else if (IS_BINARY(val)) {
+	if (IS_STRING(val) || IS_BINARY(val)) {
 		len = VAL_LEN(val);
 		bin = VAL_BIN_AT(val);
 	}

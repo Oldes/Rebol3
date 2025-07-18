@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2024 Rebol Open Source Developers
+**  Copyright 2012-2025 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -78,9 +78,9 @@
 
 	switch (action) {
 
-	case A_ADD: chr += (REBUNI)arg; break;
+	case A_ADD: chr += arg; break;
 	case A_SUBTRACT:
-		chr -= (REBUNI)arg;
+		chr -= arg;
 		if (IS_CHAR(D_ARG(2))) {
 			DS_RET_INT(chr);
 			return R_RET;
@@ -96,13 +96,13 @@
 		else chr %= arg;
 		break;
 
-	case A_AND: chr &= (REBUNI)arg; break;
-	case A_OR:  chr |= (REBUNI)arg; break;
-	case A_XOR: chr ^= (REBUNI)arg; break;
+	case A_AND: chr &= arg; break;
+	case A_OR:  chr |= arg; break;
+	case A_XOR: chr ^= arg; break;
 
-	case A_NEGATE: chr = (REBUNI)-chr; break;
-	case A_COMPLEMENT: chr = (REBUNI)~chr; break;
-	case A_EVENQ: chr = (REBUNI)~chr;
+	//case A_NEGATE: chr = -chr; break;
+	case A_COMPLEMENT: chr = ~chr; break;
+	case A_EVENQ: chr = ~chr;
 	case A_ODDQ: DECIDE(chr & 1);
 
 	case A_RANDOM:	//!!! needs further definition ?  random/zero
@@ -111,7 +111,7 @@
 			return R_UNSET;
 		}
 		if (chr == 0) break;
-		chr = (REBUNI)(1 + ((REBCNT)Random_Int(D_REF(3)) % chr)); // /secure
+		chr = (REBINT)(1 + ((REBCNT)Random_Int(D_REF(3)) % chr)); // /secure
 		break;
 
 	case A_MAKE:
@@ -136,9 +136,8 @@
 			arg = VAL_LEN(val);
 			if (arg == 0) goto bad_make;
 			if (*bp > 0x80) {
-				if (!Legal_UTF8_Char(bp, arg)) goto bad_make;
-				chr = Decode_UTF8_Char(&bp, 0); // zero on error
-				if (!chr) goto bad_make;
+				chr = UTF8_Decode_Codepoint(&bp, &arg);
+				if (chr == UNI_ERROR) goto bad_make;
 			}
 			else
 				chr = *bp;
@@ -169,7 +168,7 @@ bad_make:
 		Trap_Action(REB_CHAR, action);
 	}
 
-	if ((chr >> 16) != 0 && (chr >> 16) != 0xffff) Trap1(RE_TYPE_LIMIT, Get_Type(REB_CHAR)); 
+	//if ((chr >> 16) != 0 && (chr >> 16) != 0xffff) Trap1(RE_TYPE_LIMIT, Get_Type(REB_CHAR)); 
 	SET_CHAR(DS_RETURN, chr);
 	return R_RET;
 

@@ -574,13 +574,29 @@
 
 /***********************************************************************
 **
-*/	REBCNT Val_Series_Len(REBVAL *value)
+*/	REBLEN Val_Series_Len(REBVAL *value)
 /*
 **		Get length of series, but avoid negative values.
 **
 ***********************************************************************/
 {
 	if (VAL_INDEX(value) >= VAL_TAIL(value)) return 0;
+	return VAL_TAIL(value) - VAL_INDEX(value);
+}
+
+
+/***********************************************************************
+**
+*/	REBLEN Val_String_Len(REBVAL *value)
+/*
+**		Get length of string series.
+**
+***********************************************************************/
+{
+	if (VAL_INDEX(value) >= VAL_TAIL(value)) return 0;
+	if (IS_UTF8_SERIES(VAL_SERIES(value))) {
+		return Length_As_UTF8_Code_Points(VAL_BIN_DATA(value));
+	}
 	return VAL_TAIL(value) - VAL_INDEX(value);
 }
 
@@ -778,21 +794,44 @@
 			Trap1(RE_INVALID_PART, lval);
 			return 0; // silent compiler's warning
 		}
-
-		len = (REBINT)VAL_INDEX(lval) - (REBINT)VAL_INDEX(val);
+		if (IS_UTF8_SERIES(VAL_SERIES(val))) {
+			len = (REBINT)VAL_INDEX(lval) - (REBINT)VAL_INDEX(val);
+			if (len < 0) {
+				len = -len;
+				VAL_INDEX(val) = (REBINT)VAL_INDEX(lval);
+			}
+			return len;
+		}
+		else {
+			len = (REBINT)VAL_INDEX(lval) - (REBINT)VAL_INDEX(val);
+		}
 	}
 
 	if (!val) val = aval;
 
 	// Restrict length to the size available:
-	if (len >= 0) {
-		maxlen = (REBINT)VAL_LEN(val);
-		if (len > maxlen) len = maxlen;
-	} else {
-		len = -len;
-		if (len > (REBINT)VAL_INDEX(val)) len = (REBINT)VAL_INDEX(val);
-		VAL_INDEX(val) -= (REBCNT)len;
-//		if ((-len) > (REBINT)VAL_INDEX(val)) len = -(REBINT)VAL_INDEX(val);
+	if (IS_UTF8_SERIES(VAL_SERIES(val))) {
+		if (len >= 0) {
+			len = UTF8_Bytes_For_Char_Count(VAL_BIN_DATA(val), VAL_LEN(val), len);
+		}
+		else {
+			REBLEN new_index = UTF8_Bytes_For_Char_Count_Back(VAL_BIN(val), VAL_INDEX(val), -len);
+			if (new_index > (REBINT)VAL_INDEX(val)) 
+				new_index = (REBINT)VAL_INDEX(val);
+			len = VAL_INDEX(val) - new_index;
+			VAL_INDEX(val) = new_index;
+		}
+	}
+	else {
+		if (len >= 0) {
+			maxlen = (REBINT)VAL_LEN(val);
+			if (len > maxlen) len = maxlen;
+		}
+		else {
+			len = -len;
+			if (len > (REBINT)VAL_INDEX(val)) len = (REBINT)VAL_INDEX(val);
+			VAL_INDEX(val) -= (REBCNT)len;
+		}
 	}
 
 	return len;

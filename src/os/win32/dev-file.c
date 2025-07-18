@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2024 Rebol Open Source Developers
+**  Copyright 2012-2025 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -270,6 +270,7 @@ static BOOL Seek_File_64(REBREQ *file)
 	h = CreateFile(file->file.path, access, FILE_SHARE_READ|FILE_SHARE_WRITE, 0, create, attrib, 0);
 	if (h == INVALID_HANDLE_VALUE) {
 		file->error = -RFE_OPEN_FAIL;
+		wprintf(L"failed to open: %s\n", file->file.path);
 		goto fail;
 	}
 

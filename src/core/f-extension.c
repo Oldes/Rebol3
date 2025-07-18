@@ -401,7 +401,7 @@ x*/	int Do_Callback(REBSER *obj, u32 name, RXIARG *args, RXIARG *result)
 		}
 
 		// Import the string into REBOL-land:
-		src = Copy_Bytes(code, -1); // Nursery protected
+		src = Copy_Bytes(code, UNKNOWN); // Nursery protected
 		call = OS_FIND_FUNCTION(dll, cs_cast(BOOT_STR(RS_EXTENSION, 2))); // zero is allowed
 	}
 	else {

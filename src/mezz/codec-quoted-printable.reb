@@ -3,9 +3,9 @@ REBOL [
 	Name:    quoted-printable
 	Type:    module
 	Options: [delay]
-	Version: 1.0.0
+	Version: 1.1.0
 	Author:  "Oldes"
-	Rights:  "Copyright (C) 2022 Oldes. All rights reserved."
+	Rights:  "Copyright (C) 2022-2025 Oldes. All rights reserved."
 	License: MIT
 	Test:    %tests/units/codec-test.r3
 	Specification: https://en.wikipedia.org/wiki/Quoted-printable
@@ -19,26 +19,28 @@ register-codec [
 	decode: function [
 		"Decodes quoted-printable data"
 		data [binary! any-string!]
-		/space
+		/uri
+		/space "*** DEPRECATED *** Use /uri instead"
 	][
+		if space [uri: space log-error 'REBOL "/space is deprecated!"]
+
 		output: either binary? data [ copy data ][ to binary! data ]
 		; remove soft line breaks
 		parse output [any [to #"=" remove [#"=" [LF | CR LF]] | skip] to end]
-		to data either space [
-			dehex/escape/uri output #"="
-		][	dehex/escape     output #"="]
+		to data dehex/escape/:uri output #"="
 	]
 
 	encode: function/with [
 		"Encodes data using quoted-printable encoding"
 		data [binary! any-string!]
-		/no-space "Q-encoding - space may not be represented directly"
+		/uri "Q-encoding - space may not be represented directly"
+		/no-space "*** DEPRECATED *** Use /uri instead"
 	][
 		assert [number? :max-line-length]
 
-		output: either no-space [
-			enhex/escape/except/uri to binary! data #"=" :quoted-printable
-		][	enhex/escape/except     to binary! data #"=" :quoted-printable]
+		if no-space [uri: no-space log-error 'REBOL "/no-space is deprecated!"]
+
+		output: enhex/escape/except/:uri to binary! data #"=" :quoted-printable
 
 		if 0 < length: to integer! max-line-length - 1 [
 			; limit line length to 76 chars

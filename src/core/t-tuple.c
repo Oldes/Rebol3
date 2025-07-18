@@ -355,7 +355,7 @@
 		VAL_SET(value, REB_TUPLE);
 		vp = VAL_TUPLE(value);
 		if (IS_ISSUE(arg)) {
-			REBUNI c;
+			REBU32 c;
 			ap = Get_Word_Name(arg);
 			len = (REBINT)LEN_BYTES(ap);  // UTF-8 len
 			if (len & 1) goto bad_arg; // must have even # of chars
@@ -363,7 +363,7 @@
 			if (len > MAX_TUPLE) goto bad_arg; // valid even for UTF-8
 			VAL_TUPLE_LEN(value) = len;
 			for (alen = 0; alen < len; alen++) {
-				if (!Scan_Hex2(ap, &c, 0)) goto bad_arg;
+				if (!Scan_Hex2(ap, &c)) goto bad_arg;
 				*vp++ = (REBYTE)c;
 				ap += 2;
 			}
