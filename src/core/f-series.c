@@ -516,9 +516,10 @@ chkMoney:
 }
 
 
+FORCE_INLINE
 /***********************************************************************
 **
-*/	FORCE_INLINE REBLEN Validate_Index(REBVAL *value)
+*/	REBLEN Validate_Index(REBVAL *value)
 /*
 **		Validates index position.
 **
