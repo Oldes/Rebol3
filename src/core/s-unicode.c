@@ -351,13 +351,13 @@ FORCE_INLINE
 FORCE_INLINE
 /***********************************************************************
 **
-*/	REBCNT UTF8_Validate_Index(const REBYTE *str, REBLEN index)
+*/	REBCNT UTF8_Validate_Index(const REBYTE *str, REBLEN index, REBLEN tail)
 /*
-**		Returns the index of the previous UTF-8 character
+**		Returns the index of the first valid UTF-8 character
 **
 ***********************************************************************/
 {
-	do { index--; } while (index > 0 && (str[index] & 0xC0) == 0x80);
+	while (index < tail && (str[index] & 0xC0) == 0x80)	index++;
 	return index;
 }
 
