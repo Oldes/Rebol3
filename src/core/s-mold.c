@@ -405,21 +405,23 @@ STOID Mold_Char(REBSER *dst, REBU32 chr, REBOOL molded)
 STOID Mold_String_Series(REBVAL *value, REB_MOLD *mold)
 {
 	REBSER *ser = VAL_SERIES(value);
-	REBCNT idx = VAL_INDEX(value);
+	REBCNT idx;
 	REB_STRF sf = {0};
 	const REBYTE *bp;
 	const REBYTE *ep;
 	REBYTE *dp;
 	REBU32 c;
-	REBLEN len = VAL_LEN(value);
+	REBLEN len;
 	REBLEN dlen;
 	REBYTE *dend;
 
+	idx = Validate_Index(value);
 	// Empty string:
 	if (idx >= VAL_TAIL(value)) {
 		Append_Bytes(mold->series, "\"\"");  //Trap0(RE_PAST_END);
 		return;
 	}
+	len = VAL_LEN(value);
 	//TODO: check limit!!!
 	CHECK_MOLD_LIMIT(mold, len);
 
