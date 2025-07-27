@@ -514,3 +514,24 @@ chkMoney:
 
 	return R_ARG1;
 }
+
+
+/***********************************************************************
+**
+*/	FORCE_INLINE REBLEN Validate_Index(REBVAL *value)
+/*
+**		Validates index position.
+**
+***********************************************************************/
+{
+	REBLEN index = VAL_INDEX(value);
+	REBLEN tail = VAL_TAIL(value);
+	if (index > tail) {
+		index = tail;
+	}
+	else if (IS_UTF8_SERIES(VAL_SERIES(value))) {
+		index = UTF8_Validate_Index(VAL_BIN_HEAD(value), index, tail);
+	}
+	VAL_INDEX(value) = index;
+	return index;
+}

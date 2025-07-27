@@ -401,6 +401,22 @@ Rebol [
 		--assert "Aa aá aa ab ba " == sort/compare/skip     "ab aa Aa aá ba " :comp 3 ;; compares only the first char
 		--assert "Aa aa ab aá ba " == sort/compare/skip/all "ab aa Aa aá ba " :comp 3
 
+	--test-- "index invaliadation"
+	;@@ https://github.com/Oldes/Rebol-issues/issues/2656
+		--assert all [
+			str1: "abc"
+			str2: next str1
+			str2 == "bc"
+			"bc" == change str1 "🙂"
+			str2 == "bc"
+			str1 == "🙂bc"
+			str1 == head str2 
+			#"🙂" == pick str1 1
+			#"b" == pick str2 1
+		]
+		--assert {"bc"} == mold str2
+
+
 ===end-group===
 
 

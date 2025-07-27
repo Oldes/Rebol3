@@ -41,6 +41,8 @@
 {
 	REBINT num;
 
+	Validate_Index(a);
+	Validate_Index(b);
 	if (mode == 3)
 		return VAL_SERIES(a) == VAL_SERIES(b) && VAL_INDEX(a) == VAL_INDEX(b);
 
@@ -817,7 +819,7 @@ FORCE_INLINE
 	REBLEN	index = 0;
 	REBLEN	tail = 0;
 	REBINT	len;
-	REBSER  *ser;
+	REBSER  *ser = VAL_SERIES(value);
 	REBCNT  type;
 	REBCNT	args;
 	REBCNT	ret;
@@ -826,19 +828,21 @@ FORCE_INLINE
 		return T_Port(ds, action);
 	}
 
+	// Common setup code for all actions:
+	if (action != A_MAKE && action != A_TO) {
+		Validate_Index(value);
+		index = VAL_INDEX(value);
+		tail = VAL_TAIL(value);
+	}
+
+	//if (ser) Validate_Index(value);
+
 	len = Do_Series_Action(action, value, arg);
 	if (len >= 0) return len;
 
-	// Common setup code for all actions:
-	if (action != A_MAKE && action != A_TO) {
-		index = (REBINT)VAL_INDEX(value);
-		tail  = (REBINT)VAL_TAIL(value);
-		if (index > tail)
-			VAL_INDEX(value) = index = tail;
-	}
 
 	// Check must be in this order (to avoid checking a non-series value);
-	if (action >= A_TAKE && action <= A_SORT && IS_PROTECT_SERIES(VAL_SERIES(value)))
+	if (action >= A_TAKE && action <= A_SORT && IS_PROTECT_SERIES(ser))
 		Trap0(RE_PROTECTED);
 
 	switch (action) {
@@ -848,13 +852,14 @@ FORCE_INLINE
 	case A_INSERT:
 	case A_CHANGE:
 		//Modify_String(action, value, arg);
+		if (ANY_SERIES(arg)) Validate_Index(arg);
 		// Length of target (may modify index): (arg can be anything)
 		len = Partial1((action == A_CHANGE) ? value : arg, DS_ARG(AN_LENGTH));
 		index = VAL_INDEX(value);
 		args = 0;
 		if (IS_BINARY(value)) SET_FLAG(args, AN_SERIES); // special purpose
 		if (DS_REF(AN_PART)) SET_FLAG(args, AN_PART);
-		index = Modify_String(action, VAL_SERIES(value), index, arg, args, len, DS_REF(AN_DUP) ? Int32(DS_ARG(AN_COUNT)) : 1);
+		index = Modify_String(action, ser, index, arg, args, len, DS_REF(AN_DUP) ? Int32(DS_ARG(AN_COUNT)) : 1);
 		VAL_INDEX(value) = index;
 		break;
 
@@ -916,7 +921,7 @@ find:
 		else {
 			if (ret >= (REBCNT)tail) goto is_none;
 			if (IS_BINARY(value)) {
-				SET_INTEGER(value, *BIN_SKIP(VAL_SERIES(value), ret));
+				SET_INTEGER(value, *BIN_SKIP(ser, ret));
 			}
 			else
 				str_to_char(value, value, ret);
@@ -927,7 +932,7 @@ find:
 	case A_PICK:
 	case A_POKE:
 		len = Get_Num_Arg(arg); // Position
-		if (IS_UTF8_SERIES(VAL_SERIES(value))) {
+		if (IS_UTF8_SERIES(ser)) {
 			if (len == 0) Trap_Range(arg);
 			if (len > 0) len--;
 			index = Skip_UTF8_String(value, len);
@@ -961,7 +966,6 @@ pick_it:
 				c = VAL_INT32(arg);
 			else Trap_Arg(arg);
 
-			ser = VAL_SERIES(value);
 			if (IS_BINARY(value)) {
 				if (c > 0xff) Trap_Range(arg);
 				BIN_HEAD(ser)[index] = (REBYTE)c;
@@ -999,7 +1003,6 @@ zero_str:
 			goto zero_str;
 		}
 
-		ser = VAL_SERIES(value);
 		// if no /part, just return value, else return string:
 		if (!D_REF(ARG_TAKE_PART)) {
 			if (IS_BINARY(value)) {
@@ -1013,13 +1016,13 @@ zero_str:
 
 	case A_CLEAR:
 		if (index < tail) {
-			if (index == 0) Reset_Series(VAL_SERIES(value));
+			if (index == 0) Reset_Series(ser);
 			else {
 				VAL_TAIL(value) = (REBCNT)index;
-				TERM_SERIES(VAL_SERIES(value));
+				TERM_SERIES(ser);
 			}
-			if (IS_UTF8_SERIES(VAL_SERIES(value)) && Is_ASCII(VAL_BIN(value), VAL_TAIL(value))) {
-				SERIES_CLR_FLAG(VAL_SERIES(value), SER_UTF8);
+			if (IS_UTF8_SERIES(ser) && Is_ASCII(VAL_BIN(value), VAL_TAIL(value))) {
+				SERIES_CLR_FLAG(ser, SER_UTF8);
 			}
 		}
 		break;
@@ -1028,7 +1031,7 @@ zero_str:
 
 	case A_COPY:
 		len = Partial(value, 0, D_ARG(3), 0); // Can modify value index.
-		ser = Copy_String(VAL_SERIES(value), VAL_INDEX(value), len);
+		ser = Copy_String(ser, VAL_INDEX(value), len);
 		goto ser_exit;
 
 	case A_MAKE:
@@ -1075,9 +1078,9 @@ zero_str:
 		)
 			Trap0(RE_BAD_REFINES);
 		if (IS_BINARY(value))
-			Trim_Binary(VAL_SERIES(value), VAL_INDEX(value), VAL_LEN(value), args, D_ARG(ARG_TRIM_STR));
+			Trim_Binary(ser, index, VAL_LEN(value), args, D_ARG(ARG_TRIM_STR));
 		else
-			Trim_String(VAL_SERIES(value), VAL_INDEX(value), VAL_LEN(value), args, D_ARG(ARG_TRIM_STR));
+			Trim_String(ser, VAL_INDEX(value), VAL_LEN(value), args, D_ARG(ARG_TRIM_STR));
 		break;
 
 	case A_SWAP:
@@ -1106,7 +1109,7 @@ zero_str:
 		break;
 
 	case A_RANDOM:
-		if(IS_PROTECT_SERIES(VAL_SERIES(value))) Trap0(RE_PROTECTED);
+		if(IS_PROTECT_SERIES(ser)) Trap0(RE_PROTECTED);
 		if (D_REF(2)) { // seed
 			Set_Random(Compute_CRC24(VAL_BIN_DATA(value), VAL_LEN(value)));
 			return R_UNSET;
