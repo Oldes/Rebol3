@@ -363,6 +363,9 @@ enum loop_each_mode {
 	
 	windex = index;
 
+	//TODO:
+	//Optimized by not using index and all these *_SKIP(series, index) calls.
+
 	// Iterate over each value in the series block:
 	while (index < (tail = SERIES_TAIL(series))) {
 
@@ -438,7 +441,13 @@ enum loop_each_mode {
 						}
 						else {
 							VAL_SET(vars, REB_CHAR);
-							VAL_CHAR(vars) = GET_ANY_CHAR(series, index);
+							if (IS_UTF8_SERIES(series)) {
+								VAL_CHAR(vars) = UTF8_Get_Codepoint(BIN_SKIP(series, index));
+								index += UTF8_Next_Char_Size(BIN_HEAD(series), index) - 1;
+							}
+							else {
+								VAL_CHAR(vars) = BIN_HEAD(series)[index];
+							}
 						}
 					}
 					index++;

@@ -147,7 +147,12 @@ Rebol [
 	--test-- "first"
 		--assert #"🙂" == first "🙂ab"
 		--assert #"🙂" == first next "a🙂b"
-		
+	
+	--test-- "foreach"
+		str: "áb🙂"
+		out: copy ""
+		foreach c str [append out c]
+		--assert str == out
 		
 ===end-group===
 
