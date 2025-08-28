@@ -182,6 +182,7 @@ enum LEX_SPECIAL_ENUM {             /* The order is important! */
 	LEX_SPECIAL_TICK,               /* 27 ' - literal */
 	LEX_SPECIAL_LESSER,				/* 3C < - compare or tag */
 	LEX_SPECIAL_GREATER,			/* 3E > - compare or end tag */
+	LEX_SPECIAL_UNDERSCORE,         /* 5F _ - none */
 	LEX_SPECIAL_PLUS,               /* 2B + - positive number */
 	LEX_SPECIAL_MINUS,              /* 2D - - date, negative number */
 	LEX_SPECIAL_TILDE,              /* 7E ~ - complement number */

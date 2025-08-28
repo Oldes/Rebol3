@@ -153,7 +153,7 @@
 	/* 5C \   */    LEX_SPECIAL|LEX_SPECIAL_BACKSLASH,
 	/* 5D ]   */    LEX_DELIMIT|LEX_DELIMIT_RIGHT_BRACKET,
 	/* 5E ^   */    LEX_WORD,
-	/* 5F _   */    LEX_WORD,
+	/* 5F _   */    LEX_SPECIAL|LEX_SPECIAL_UNDERSCORE,
 
 	/* 60 `   */    LEX_WORD,
 	/* 61 a   */    LEX_WORD|10,
@@ -1052,7 +1052,7 @@ new_line:
 
         case LEX_DELIMIT_SLASH:         /* probably / or / *   */
             while (*cp == '/') cp++;
-            if (IS_LEX_AT_LEAST_WORD(*cp) || *cp=='+' || *cp=='-' || *cp=='.') {
+            if (IS_LEX_AT_LEAST_WORD(*cp) || *cp=='+' || *cp=='-' || *cp=='.' || *cp=='_') {
 				/* ///refine not allowed */
             	if (scan_state->begin + 1 != cp) {
 					while (!IS_LEX_DELIMIT(*cp)) cp++;
@@ -1136,6 +1136,7 @@ new_line:
         case LEX_SPECIAL_COLON:         /* :word :12 (time) */
             if (IS_LEX_NUMBER(cp[1])) return TOKEN_TIME;
             if (ONLY_LEX_FLAG(flags, LEX_SPECIAL_WORD)) return TOKEN_GET;   /* common case */
+			if (cp[1] == '_' && (IS_LEX_DELIMIT(cp[2]) || IS_LEX_ANY_SPACE(cp[2]))) return -TOKEN_GET;
 			if (cp[1] == '\'' || cp[1] == ':') return -TOKEN_WORD; // no :'foo ::foo
 			// Various special cases of < << <> >> > >= <=
 			if (cp[1] == '<' || cp[1] == '>') {
@@ -1166,6 +1167,7 @@ new_line:
         case LEX_SPECIAL_TICK:
 			if (IS_LEX_NUMBER(cp[1])) return -TOKEN_LIT;		// no '2nd
 			if (cp[1] == ':') return -TOKEN_LIT;				// no ':X
+			if (cp[1] == '_' && (IS_LEX_DELIMIT(cp[2]) || IS_LEX_ANY_SPACE(cp[2]))) return -TOKEN_LIT;
             if (ONLY_LEX_FLAG(flags, LEX_SPECIAL_WORD)) return TOKEN_LIT;   /* common case */
 			cp++;
 			if (*cp == '<' || *cp == '>') {
@@ -1270,6 +1272,14 @@ new_line:
             }
             type = TOKEN_WORD;
             goto scanword;
+
+		case LEX_SPECIAL_UNDERSCORE:    /* Literal NONE! */
+			if (IS_LEX_DELIMIT(cp[1]) || IS_LEX_ANY_SPACE(cp[1]))
+				return TOKEN_NONE;
+			if (cp[1] == ':')
+				return -TOKEN_SET;
+			type = TOKEN_WORD;
+			goto scanword;
 
         case LEX_SPECIAL_POUND:
             cp++;
@@ -1702,6 +1712,11 @@ extern REBSER *Scan_Full_Block(SCAN_STATE *scan_state, REBYTE mode_char);
 			line = TRUE;
 			scan_state->head_line = ep;
 			continue;
+
+		case TOKEN_NONE:
+			SET_NONE(value);
+			++bp;
+			break;
 
 		case TOKEN_LIT:
 		case TOKEN_GET:
@@ -2243,6 +2258,7 @@ exit_block:
 				|| LEX_SPECIAL_MINUS  == c
 				|| LEX_SPECIAL_TILDE  == c
 				|| LEX_SPECIAL_POUND  == c
+				|| LEX_SPECIAL_UNDERSCORE == c
 			))
 			return 0;
 

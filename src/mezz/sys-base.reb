@@ -85,8 +85,8 @@ do*: func [
 		log/info 'REBOL [
 			pick ["Module:" "Script:"] mod?
 			mold select hdr 'title
-			"Version:" any [select hdr 'version '_]
-			"Date:"    any [select hdr 'date    '_]
+			"Version:" select hdr 'version
+			"Date:"    select hdr 'date
 		]
 
 		set/any 'value try [

@@ -1218,7 +1218,7 @@ STOID Mold_Error(REBVAL *value, REB_MOLD *mold, REBFLG molded)
 
 	switch (VAL_TYPE(value)) {
 	case REB_NONE:
-		Append_Bytes(ser, molded ? "#(none)" : "none");
+		Append_Bytes(ser, "_");
 		break;
 
 	case REB_LOGIC:
