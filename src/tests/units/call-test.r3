@@ -79,7 +79,7 @@ rebol-cmd: func[cmd][
 		]
 	--test-- "--secure"
 		--assert 0 = rebol-cmd {--secure none --do "probe system/options/secure"}
-		--assert out-buffer == {none^/}
+		--assert out-buffer == {_^/}
 ===end-group===
 
 

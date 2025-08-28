@@ -52,16 +52,16 @@ Rebol [
 	--assert "ab3"     == ajoin/all [ "a" "b"  3]
 	--assert %ab3      == ajoin/all [ %a  "b"  3]
 	--assert "ab3"     == ajoin/all [#"a" "b"  3]
-	--assert "anone3"  == ajoin/all [ "a" #(none)  3]
-	--assert %anone3   == ajoin/all [ %a  #(none)  3]
-	--assert "anone3"  == ajoin/all [#"a" #(none)  3]
+	--assert "a_3"  == ajoin/all [ "a" #(none)  3]
+	--assert %a_3   == ajoin/all [ %a  #(none)  3]
+	--assert "a_3"  == ajoin/all [#"a" #(none)  3]
 	--assert "a3"      == ajoin/all [ "a" #(unset) 3]
 	--assert %a3       == ajoin/all [ %a  #(unset) 3]
 	--assert "a3"      == ajoin/all [#"a" #(unset) 3]
 	;; when first value is not a string, result is always string
-	--assert "nonea3"  == ajoin/all [#(none)  "a"  3]
-	--assert "nonea3"  == ajoin/all [#(none)  %a   3]
-	--assert "nonea3"  == ajoin/all [#(none) #"a"  3]
+	--assert "_a3"  == ajoin/all [#(none)  "a"  3]
+	--assert "_a3"  == ajoin/all [#(none)  %a   3]
+	--assert "_a3"  == ajoin/all [#(none) #"a"  3]
 
 --test-- "AJOIN/with"
 	--assert "a/b/3"   == ajoin/with [ 'a  'b       3] #"/"
@@ -81,9 +81,9 @@ Rebol [
 	--assert "a/b/3"    == ajoin/all/with [ "a" "b"      3] #"/"
 	--assert %a/b/3     == ajoin/all/with [ %a  "b"      3] #"/"
 	--assert "a/b/3"    == ajoin/all/with [#"a" "b"      3] #"/"
-	--assert "a/none/3" == ajoin/all/with [ "a" #(none)  3] #"/"
-	--assert %a/none/3  == ajoin/all/with [ %a  #(none)  3] #"/"
-	--assert "a/none/3" == ajoin/all/with [#"a" #(none)  3] #"/"
+	--assert "a/_/3" == ajoin/all/with [ "a" #(none)  3] #"/"
+	--assert %a/_/3  == ajoin/all/with [ %a  #(none)  3] #"/"
+	--assert "a/_/3" == ajoin/all/with [#"a" #(none)  3] #"/"
 	--assert "a//3"     == ajoin/all/with [ "a" #(unset) 3] #"/"
 	--assert %a//3      == ajoin/all/with [ %a  #(unset) 3] #"/"
 	--assert "a//3"     == ajoin/all/with [#"a" #(unset) 3] #"/"
@@ -94,9 +94,9 @@ Rebol [
 	--assert "a b 3"    == form [ %a  "b"      3]
 	--assert "a b 3"    == form [#"a" "b"      3]
 	--assert "<a> b 3"  == form [ <a> "b"      3]
-	--assert "a none 3" == form [ "a" #(none)  3]
-	--assert "a none 3" == form [ %a  #(none)  3]
-	--assert "a none 3" == form [#"a" #(none)  3]
+	--assert "a _ 3" == form [ "a" #(none)  3]
+	--assert "a _ 3" == form [ %a  #(none)  3]
+	--assert "a _ 3" == form [#"a" #(none)  3]
 	--assert "a  3"     == form [ "a" #(unset) 3]
 	--assert "a  3"     == form [ %a  #(unset) 3]
 	--assert "a  3"     == form [#"a" #(unset) 3]
@@ -380,12 +380,12 @@ Rebol [
 	--assert "1.1" == find/part str "1." 2
 
 --test-- https://github.com/Oldes/Rebol-issues/issues/1611
-	--assert none? try [index? none]
+	--assert none? try [index? _]
 --test-- https://github.com/Oldes/Rebol-issues/issues/1626
-	--assert none? try [length? none]
+	--assert none? try [length? _]
 --test-- https://github.com/Oldes/Rebol-issues/issues/473
-	--assert none? try [select none 1]
-	--assert none? try [  find none 1]
+	--assert none? try [select _ 1]
+	--assert none? try [  find _ 1]
 
 --test-- "SELECT"
 	--assert 2 = select/part [1 2 1 3 1 2] 1 2
@@ -2754,7 +2754,7 @@ try/with [
 	;@@ https://github.com/Oldes/Rebol-issues/issues/400
 	--assert "123" = union "12" "13"
 --test-- "union with none and unset"
-	--assert [#(none) #(unset)] = union [#(none)] [#(unset)]
+	--assert [_ #(unset)] = union [#(none)] [#(unset)]
 
 --test-- "union/skip"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2520

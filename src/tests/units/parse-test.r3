@@ -191,7 +191,7 @@ Rebol [
 	--assert [2] = parse [1 2 3] [collect [some [keep [set v integer! if (even? v)] | skip]]]
 
 --test-- "block collect copy"
-	--assert all [ [[1] [2] [3]] = parse [1 2 3][collect some [keep copy _ integer!]] _ = [3]]
+	--assert all [ [[1] [2] [3]] = parse [1 2 3][collect some [keep copy __ integer!]] __ = [3]]
 
 --test-- "block collect keep pick"
 	--assert [[1 2]] = parse [1 2][collect some [keep 2 integer!]]
@@ -302,11 +302,11 @@ Rebol [
 	--assert ["abc" "def"] = parse "abc|def" [collect [any [keep some alpha | skip]]]
 
 --test-- "string collect copy"
-	--assert all [ ["a" "b"] = parse "ab" [collect some [keep copy _ skip]] _ = "b"]
-	--assert all [ [@a  @b ] = parse @ab  [collect some [keep copy _ skip]] _ = @b ]
+	--assert all [ ["a" "b"] = parse "ab" [collect some [keep copy __ skip]] __ = "b"]
+	--assert all [ [@a  @b ] = parse @ab  [collect some [keep copy __ skip]] __ = @b ]
 
 --test-- "binary collect copy"
-	--assert all [ [#{01} #{02}] = parse #{0102} [collect some [keep copy _ skip]] _ = #{02}]
+	--assert all [ [#{01} #{02}] = parse #{0102} [collect some [keep copy __ skip]] __ = #{02}]
 
 --test-- "string collect keep pick"
 	--assert ["ab"] = parse "ab" [collect [keep 2 skip]]
