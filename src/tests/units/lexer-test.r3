@@ -237,6 +237,47 @@ Rebol [
 
 ===end-group===
 
+
+===start-group=== "Literal none"
+;@@ https://github.com/Oldes/Rebol-issues/issues/2669
+	--test-- "/_"
+		--assert all [
+			block? blk: transcode/error "/_"
+			word? first blk   ;== /
+			none? second blk  ;== _
+		]
+		--assert all [
+			block? blk: transcode/error "/__"
+			refinement? first blk ;== /__
+		]
+		--assert all [
+			block? blk: transcode/error "/a_"
+			refinement? first blk
+		]
+	--test-- "'_"
+		--assert all [
+			error? e: transcode/error/one "'_"
+			e/id = 'invalid
+			e/arg1 = "word-lit"
+		]
+		--assert lit-word? transcode/error/one "'__"
+	--test-- ":_"
+		--assert all [
+			error? e: transcode/error/one ":_"
+			e/id = 'invalid
+			e/arg1 = "word-get"
+		]
+		--assert get-word? transcode/error/one ":__"
+	--test-- "_:"
+		--assert all [
+			error? e: transcode/error/one "_:"
+			e/id = 'invalid
+			e/arg1 = "word-set"
+		]
+		--assert set-word? transcode/error/one "__:"
+===end-group===
+
+
 ===start-group=== "Special arrow-like words"
 ;@@ https://github.com/Oldes/Rebol-issues/issues/1302
 ;@@ https://github.com/Oldes/Rebol-issues/issues/1318

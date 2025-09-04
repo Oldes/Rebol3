@@ -1059,6 +1059,10 @@ new_line:
             		scan_state->end = cp;
             		return -TOKEN_REFINE;
             	}
+				if (*cp == '_' && IS_LEX_DELIMIT(cp[1])) {
+					// special case: /_
+					return TOKEN_WORD;
+				}
 				scan_state->begin = cp;
 				flags = Prescan(scan_state);
 				scan_state->begin--;
