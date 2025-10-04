@@ -46,6 +46,29 @@ Rebol [
 ===end-group===
 
 
+===start-group=== "Variadic function"
+
+	--test-- "return/redo"
+	sum-numbers: closure/with [
+		"Sum any number of numbers which follows"
+	][
+		result: 0
+		return/redo :arg-adder
+	][
+		result: 0
+		arg-adder: func [:value [any-type! unset!]][
+			unless number? :value [return result]
+			result: result + value
+			return/redo :arg-adder
+		]
+	]
+	--assert (sum-numbers 1 2 3 4) == 10
+	--assert 6.0 == sum-numbers 2.0 4 _
+	--assert 0 == sum-numbers _
+
+===end-group===
+
+
 ===start-group=== "function construction"
 
 --test-- "return: keyword"

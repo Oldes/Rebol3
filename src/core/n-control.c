@@ -339,6 +339,7 @@
 ***********************************************************************/
 {
 	Apply_Block(D_ARG(1), D_ARG(2), !D_REF(3)); // stack volatile
+	VAL_CLR_OPT(DS_TOP, OPTS_REVAL); // secure against return/redo
 	return R_TOS;
 }
 
@@ -845,6 +846,7 @@ callback:	// ...and the last result.
 {
 	REBVAL *arg = D_ARG(1);
 
+	if (D_REF(2)) VAL_SET_OPT(arg, OPTS_REVAL);
 	SET_THROW(ds, RE_RETURN, arg);
 	return R_RET;
 }
