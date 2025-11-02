@@ -80,6 +80,9 @@
 #include "gen-bootdefs.h"
 #define PORT_ACTIONS A_CREATE  // port actions begin here
 
+#include "sys-flags.h"  // endianness-sensitive flag definitions
+#include "sys-base.h"  // pointer discernment of REBSER, REBVAL, UTF-8...
+
 #include "reb-device.h"
 #include "reb-types.h"
 #include "reb-event.h"

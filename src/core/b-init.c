@@ -111,6 +111,19 @@ extern const REBYTE Str_Banner[];
 		//ASSERT1(sizeof(REBGOB) == 64,  RP_BAD_SIZE);
 	}
 	STATIC_ASSERT(sizeof(REBDAT) == 4); // RP_BAD_SIZE
+
+	ASSERT(
+		Detect_Rebol_Pointer(&val) == DETECTED_AS_REBVAL,
+		RP_REBVAL_ALIGNMENT
+	);
+	ASSERT(
+		Detect_Rebol_Pointer("test") == DETECTED_AS_UTF8,
+		RP_REBVAL_ALIGNMENT
+	)
+	ASSERT(
+		Detect_Rebol_Pointer(rebEND) == DETECTED_AS_END,
+		RP_REBVAL_ALIGNMENT
+	);
 }
 
 

@@ -573,6 +573,7 @@ FORCE_INLINE
 #ifdef CHAFF
 	memset((REBYTE *)node, 0xff, length);
 #endif
+	series->leader.bits = BASE_FLAG_BASE | (! BASE_FLAG_CELL);
 	series->tail = series->size = 0;
 	SERIES_REST(series) = length / wide; //FIXME: This is based on the assumption that length is multiple of wide
 	series->data = (REBYTE *)node;
@@ -662,9 +663,9 @@ FORCE_INLINE
 
 clear_header:
 	if (protect) {
+		series->leader.bits = 0;  // TBD: FLAG_BASE_BYTE(FREE_POOLUNIT_BYTE);
 		series->data = BAD_MEM_PTR; // force bad references to trap
 		series->sizes = 0;  // indicates series deallocated (wide = 0)
-		series->flags = 0;
 	}
 }
 
@@ -694,8 +695,8 @@ clear_header:
 	if (!IS_EXT_SERIES(series)) {
 		Free_Series_Data(series, TRUE);
 	}
+	series->leader.bits = 0;  // TBD: FLAG_BASE_BYTE(FREE_POOLUNIT_BYTE);
 	series->sizes = 0; // includes bias and width
-	series->flags = 0;
 	series->series = 0;
 	//series->data = BAD_MEM_PTR;
 	//series->tail = 0xBAD2BAD2;
@@ -779,8 +780,8 @@ clear_header:
 **
 ***********************************************************************/
 {
+	newser->leader = oldser->leader;
 	newser->sizes = oldser->sizes;
-	newser->flags = oldser->flags;
 	newser->all = oldser->all;
 #ifdef SERIES_LABELS
 	newser->label = oldser->label;

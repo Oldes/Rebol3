@@ -41,18 +41,18 @@
 
 #pragma pack(4)
 
-typedef struct Reb_Header {
-#ifdef ENDIAN_LITTLE
-	unsigned type:8;	// datatype
-	unsigned opts:8;	// special options
-	unsigned exts:8;	// extensions to datatype
-	unsigned resv:8;	// reserved for future
-#else
-	unsigned resv:8;	// reserved for future
-	unsigned exts:8;	// extensions to datatype
-	unsigned opts:8;	// special options
-	unsigned type:8;	// datatype
-#endif
+typedef union Reb_Header {
+	REBUPT bits;
+
+    // !!! For some reason, at least on 64-bit Ubuntu, TCC will bloat the
+    // header structure to be 16 bytes instead of 8 if you put a 4 byte char
+    // array in the header.  There's probably a workaround, but for now skip
+    // this debugging pun if __TINYC__ is defined.
+    //
+  #if !defined(__TINYC__)
+    unsigned char bytes_pun[4];
+    char chars_pun[4];
+  #endif
 } REBHED;
 
 struct Reb_Value;
@@ -63,9 +63,13 @@ typedef union rxi_arg_val RXIARG;
 
 // Value type identifier (generally, should be handled as integer):
 
-#define VAL_TYPE(v)		((v)->flags.flags.type)			// get only type, not flags
-#define SET_TYPE(v,t)	((v)->flags.flags.type = (t))	// set only type, not flags
-#define VAL_SET(v,t)	((v)->flags.header = (t))		// set type, clear all flags
+#define VAL_TYPE(v)		SECOND_BYTE(&(v)->header.bits)
+#define SET_TYPE(v,t)   (VAL_TYPE(v) = (t))  // set only type byte
+
+#define VAL_SET(v,t) /* set type, identify as cell in first byte */ \
+	((v)->header.bits = ( \
+		BASE_FLAG_BASE | BASE_FLAG_CELL | FLAG_SECOND_BYTE(t)))
+
 // Note: b-init.c verifies that lower 8 bits of header = flags.type
 
 // Clear type identifier:
@@ -81,7 +85,7 @@ enum {
 	OPTS_HIDE,		// Hide the word
 };
 
-#define VAL_OPTS(v)			((v)->flags.flags.opts)
+#define VAL_OPTS(v)			THIRD_BYTE(&(v)->header.bits)
 #define VAL_SET_OPT(v,n)	SET_FLAG(VAL_OPTS(v), n)
 #define VAL_GET_OPT(v,n)	GET_FLAG(VAL_OPTS(v), n)
 #define VAL_CLR_OPT(v,n)	CLR_FLAG(VAL_OPTS(v), n)
@@ -94,8 +98,8 @@ enum {
 #define VAL_HIDDEN(v)	    VAL_GET_OPT((v), OPTS_HIDE)
 
 // Used for datatype-dependent data (e.g. op! stores action!)
-#define VAL_GET_EXT(v)		((v)->flags.flags.exts)
-#define VAL_SET_EXT(v,n)	((v)->flags.flags.exts = (n))
+#define VAL_GET_EXT(v)		FOURTH_BYTE(&(v)->header.bits)
+#define VAL_SET_EXT(v,n)	(VAL_GET_EXT(v) = (n))
 
 #define	IS_SET(v)			(VAL_TYPE(v) > REB_UNSET)
 #define IS_SCALAR(v)		(VAL_TYPE(v) <= REB_DATE)
@@ -391,11 +395,11 @@ static REBCNT byte_sizes[4] = { 1, 2, 4, 8 };
 **
 ***********************************************************************/
 {
+	REBHED  leader;     // not `header` for macro errors if used w/REBVAL 
 	REBYTE	*data;		// series data head
 	REBLEN	tail;		// one past end of useful data
 	REBLEN	rest;		// total number of units from bias to end
 	REBINT  sizes;      // 16 bits bias, 8 bits reserved, 8 bits wide!
-	REBCNT  flags;
 	union {
 		REBCNT size;	// used for vectors and bitsets
 		REBSER *series;	// MAP datatype uses this
@@ -414,7 +418,7 @@ static REBCNT byte_sizes[4] = { 1, 2, 4, 8 };
 #define SERIES_REST(s)	 ((s)->rest)
 #define	SERIES_LEN(s)    ((s)->tail + 1) // Includes terminator
 #define	SERIES_SIZES(s)  ((s)->sizes)
-#define	SERIES_FLAGS(s)	 ((s)->flags)
+#define	SERIES_FLAGS(s)	 ((s)->leader.bits)
 #define	SERIES_WIDE(s)	 (((s)->sizes) & 0xff)
 #define SERIES_DATA(s)   ((s)->data)
 #define	SERIES_SKIP(s,i) (SERIES_DATA(s) + (SERIES_WIDE(s) * (i)))
@@ -470,19 +474,19 @@ static REBCNT byte_sizes[4] = { 1, 2, 4, 8 };
 #define VAL_BYTE_SIZE(v) (BYTE_SIZE(VAL_SERIES(v)))
 #define VAL_STR_IS_ASCII(v) (VAL_BYTE_SIZE(v) && Is_ASCII(VAL_BIN_DATA(v), VAL_LEN(v)))
 
-// Series Flags (max32):
-enum {
-	SER_MARK = 1,		// Series was found during GC mark scan.
-	SER_KEEP = 1<<1,	// Series is permanent, do not GC it.
-	SER_LOCK = 1<<2,	// Series is locked, do not expand it
-	SER_EXT  = 1<<3,	// Series data is external (library), do not GC it.
-	SER_FREE = 1<<4,	// mark series as removed
-	SER_BARE = 1<<5,	// Series has no links to GC-able values
-	SER_PROT = 1<<6,	// Series is protected from modification
-	SER_MON  = 1<<7,	// Monitoring
-	SER_INT  = 1<<8,	// Series data is internal (loop frames) and should not be accessed by users
-	SER_UTF8 = 1<<9,	// Series contains not only ASCII characters
-};
+// Series Flags (max24, leftmost 8 bits used for Detect_Rebol_Pointer())
+
+#define SER_MARK  BASE_FLAG_MARKED   // was found during GC mark scan
+
+#define SER_KEEP  FLAG_LEFT_BIT(8)   // permanent, do not GC it
+#define	SER_LOCK  FLAG_LEFT_BIT(9)   // locked, do not expand it
+#define SER_EXT   FLAG_LEFT_BIT(10)  // data is external (library), do not GC it
+#define	SER_FREE  FLAG_LEFT_BIT(11)  // mark series as removed
+#define SER_BARE  FLAG_LEFT_BIT(12)  // has no links to GC-able values
+#define SER_PROT  FLAG_LEFT_BIT(13)	 // protected from modification
+#define SER_MON   FLAG_LEFT_BIT(14)  // being monitored for changes
+#define SER_INT   FLAG_LEFT_BIT(15)  // internal (loop frames), not for users
+#define SER_UTF8  FLAG_LEFT_BIT(16)  // contains not only ASCII characters
 
 #define SERIES_SET_FLAG(s, f) (SERIES_FLAGS(s) |=  (f))
 #define SERIES_CLR_FLAG(s, f) (SERIES_FLAGS(s) &= ~(f))
@@ -1341,13 +1345,7 @@ typedef struct Reb_All {
 **
 ***********************************************************************/
 {
-	union Reb_Val_Head {
-		REBHED flags;
-		REBCNT header;
-	} flags;
-#if defined(__LP64__) || defined(__LLP64__)
-	REBINT	padding; //make it 32-bit
-#endif
+	REBHED header;
 	union Reb_Val_Data {
 		REBWRD	word;
 		REBSRI	series;

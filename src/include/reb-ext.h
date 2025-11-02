@@ -28,6 +28,8 @@
 ***********************************************************************/
 
 #include "reb-defs.h"
+#include "sys-flags.h"
+#include "sys-base.h"
 #include "ext-types.h"
 #include "sys-value.h"
 

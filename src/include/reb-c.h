@@ -161,6 +161,41 @@ typedef struct sInt64 {
 #pragma pack()
 
 
+//=//// ISO646 ALTERNATE TOKENS FOR BOOLEAN OPERATIONS ////////////////////=//
+//
+// Ren-C code uses the more "Rebol-like" words for boolean operations, as
+// defined in ISO646, so defining them allows code sharing:
+//
+// https://en.wikipedia.org/wiki/C_alternative_tokens
+// http://blog.hostilefork.com/did-programming-opposite-of-not/
+
+#define did  !!  // see blog post above
+
+#if defined(__cplusplus)
+  #if defined(_MSC_VER)
+    #include <iso646.h>  // MSVC doesn't have `and`, `not`, etc. w/o this
+  #else
+    // legitimate compilers define them, they're even in the C++98 standard!
+  #endif
+#else
+    // iso646.h has been defined since the C90 standard of C.  But TCC doesn't
+    // ship with it, and maybe other C's don't either.  The issue isn't so
+    // much the file, as it is agreeing on the 11 macros, just define them.
+    //
+    #define and     &&
+    #define and_eq  &=
+    #define bitand  &
+    #define bitor   |
+    #define compl   ~
+    #define not     !
+    #define not_eq  !=
+    #define or      ||
+    #define or_eq   |=
+    #define xor     ^
+    #define xor_eq  ^=
+#endif
+
+
 /* ---------------------------------------------------------------------
 	The following 4 definitions are compiler-specific.
 	The C standard does not guarantee that wchar_t has at least
@@ -528,14 +563,14 @@ typedef void(*CFUNC)(void *);
 # endif
 #endif
 
-/* These macros are easier-to-spot variants of the parentheses cast.
- * The 'm_cast' is when getting [M]utablity on a const is okay (RARELY!)
- * Plain 'cast' can do everything else (except remove volatile)
- * The 'c_cast' helper ensures you're ONLY adding [C]onst to a value
+/* Ren-C code uses these easier to-spot-variations of parentheses casts.
+ * They have extra behavior in Ren-C's C++ builds, not included here.
+ * They are defined to make code sharing with Ren-C easier, so code can be
+ * copy-pasted between the projects without needing to edit the casts.
  */
-#define m_cast(t,v)     ((t)(v))
-#define cast(t,v)       ((t)(v))
-#define c_cast(t,v)     ((t)(v))
+#define cast(t,v)       ((t)(v))  // cast that can run per-type verification
+#define u_cast(t,v)     ((t)(v))  // unchecked cast (no debug verification)
+#define m_cast(t,v)     ((t)(v))  // const-to-mutable cast
 
 #include <string.h> // for strlen() etc, but also defines `size_t`
 #define strsize strlen

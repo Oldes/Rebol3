@@ -121,7 +121,7 @@
 	oser = *ser;
 	*ser = *nser;
 	ser->sizes = oser.sizes;
-	ser->flags = oser.flags;
+	ser->leader = oser.leader;
 	ser->tail = pnum;
 	*nser = oser;
 
