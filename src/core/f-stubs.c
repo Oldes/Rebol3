@@ -1027,3 +1027,56 @@
 	}
 	return 0;
 }
+
+/***********************************************************************
+**
+*/	PointerDetect Detect_Rebol_Pointer(const void *p)
+/*
+***********************************************************************/
+{
+    REBYTE b = FIRST_BYTE(p);
+
+    if (not (b & BASE_BYTEMASK_0x80_NODE))  // test for 1xxxxxxx
+        return DETECTED_AS_UTF8;  // < 0x80 is string w/1st char in ASCII range
+
+    if (not (b & BASE_BYTEMASK_0x40_UNREADABLE)) {  // test for 10xxxxxx
+        if (b & BASE_BYTEMASK_0x08_CELL)  // 10xxxxxx never starts UTF-8
+            return DETECTED_AS_REBVAL;
+        return DETECTED_AS_REBSER;
+    }
+
+    if (  // we know it's 11xxxxxx... now test for 1111xxxx
+        (b & (BASE_BYTEMASK_0x20_GC_ONE | BASE_BYTEMASK_0x10_GC_TWO))
+            == (BASE_BYTEMASK_0x20_GC_ONE | BASE_BYTEMASK_0x10_GC_TWO)
+    ){
+        if (b & BASE_BYTEMASK_0x08_CELL)  // ...now test for 11111xxx
+            return DETECTED_AS_REBVAL;  // 11111xxx never starts UTF-8!
+
+        // There are 3 patterns of 0b11110xxx that are illegal in UTF-8:
+        //
+        //     0xF5 (11110101), 0xF6 (11110110), 0xF7 (11110111)
+        //
+        // Hence if the sixth bit is clear (0b111100xx) detect it as UTF-8.
+        //
+        if (not (b & BASE_BYTEMASK_0x04_MANAGED))
+            return DETECTED_AS_UTF8;
+
+        if (b == END_SIGNAL_BYTE) {  // 0xF7
+            /* assert(SECOND_BYTE(p) == '\0'); */
+            return DETECTED_AS_END;
+        }
+
+        if (b == FREE_POOLUNIT_BYTE)  // 0xF6
+            return DETECTED_AS_FREE;
+
+        if (b == BASE_BYTE_WILD)  // 0xF5
+            return DETECTED_AS_WILD;
+
+        return DETECTED_AS_REBSER;
+    }
+
+    if (b == DIMINISHED_CANON_BYTE or b == DIMINISHED_NON_CANON_BYTE)
+        return DETECTED_AS_FREE;  // 11000000 and 11000001 illegal UTF-8
+
+    return DETECTED_AS_UTF8;
+}

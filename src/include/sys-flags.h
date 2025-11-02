@@ -130,43 +130,4 @@
 #define FOURTH_BYTE(p)      u_cast(REBYTE*, (p))[3]
 
 
-// There might not seem to be a good reason to keep the uint16_t variant in
-// any particular order.  But if you cast a uintptr_t (or otherwise) to byte
-// and then try to read it back as a uint16_t, compilers see through the
-// cast and complain about strict aliasing.  Building it out of bytes makes
-// these generic (so they work with uint_fast32_t, or uintptr_t, etc.) and
-// as long as there has to be an order, might as well be platform-independent.
-
-INLINE u16 FIRST_UINT16(const void* p) {
-    const REBYTE* bp = u_cast(REBYTE*, p);
-    return cast(u16, bp[0] << 8) | bp[1];
-}
-
-INLINE u16 SECOND_UINT16(const void* p) {
-    const REBYTE* bp = u_cast(REBYTE*, p);
-    return cast(u16, bp[2] << 8) | bp[3];
-}
-
-INLINE void SET_FIRST_UINT16(void *p, u16 u) {
-    REBYTE* bp = u_cast(REBYTE*, p);
-    bp[0] = u / 256;
-    bp[1] = u % 256;
-}
-
-INLINE void SET_SECOND_UINT16(void* p, u16 u) {
-    REBYTE* bp = u_cast(REBYTE*, p);
-    bp[2] = u / 256;
-    bp[3] = u % 256;
-}
-
-INLINE uintptr_t FLAG_FIRST_UINT16(u16 u)
-  { return FLAG_FIRST_BYTE(u / 256) | FLAG_SECOND_BYTE(u % 256); }
-
-INLINE uintptr_t FLAG_SECOND_UINT16(u16 u)
-  { return FLAG_THIRD_BYTE(u / 256) | FLAG_FOURTH_BYTE(u % 256); }
-
-
-// !!! SECOND_UINT32 should be defined on 64-bit platforms, for any enhanced
-// features that might be taken advantage of when that storage is available.
-
 #endif  // SYS_FLAGS_H_INCLUDED
