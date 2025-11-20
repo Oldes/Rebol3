@@ -815,7 +815,7 @@ sys/make-scheme [
 			]
 			either any-function? :port/awake [
 				unless open? port [cause-error 'Access 'not-open port/spec/ref]
-				if port/state/state <> 'ready [throw-http-error "Port not ready"]
+				if port/state/state <> 'ready [throw-http-error port "Port not ready"]
 				port/state/awake: :port/awake
 				do-request port
 			][
@@ -870,7 +870,7 @@ sys/make-scheme [
 
 			either any-function? :port/awake [
 				unless open? port [cause-error 'Access 'not-open port/spec/ref]
-				if port/state/state <> 'ready [throw-http-error "Port not ready"]
+				if port/state/state <> 'ready [throw-http-error port "Port not ready"]
 				port/state/awake: :port/awake
 				parse-write-dialect port value
 				do-request port
