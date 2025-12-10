@@ -619,6 +619,6 @@ SCHEME_ACTIONS *Scheme_Actions;	// Initial Global (not threaded)
 /*
 ***********************************************************************/
 {
-	Free_Mem(Scheme_Actions, 0);
+	Free_Mem(Scheme_Actions, sizeof(SCHEME_ACTIONS) * MAX_SCHEMES);
 	Scheme_Actions = 0;
 }

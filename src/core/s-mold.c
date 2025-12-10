@@ -1724,8 +1724,8 @@ append:
 ***********************************************************************/
 {
 	// TASK_MOLD_LOOP and TASK_BUF_MOLD are released in Dispose_Core
-	Free_Mem(Char_Escapes, 0);
-	Free_Mem( URL_Escapes, 0);
+	Free_Mem(Char_Escapes, MAX_ESC_CHAR + 1);
+	Free_Mem( URL_Escapes, MAX_URL_CHAR + 1);
 	Char_Escapes = NULL;
 	URL_Escapes = NULL;
 }

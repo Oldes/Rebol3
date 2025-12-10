@@ -689,6 +689,7 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 		LABEL_SERIES(VAL_SERIES(&spec), "struct_spec");
 		// make sure that user cannot modify it
 		Protect_Series(&spec, FLAGIT(PROT_SET) | FLAGIT(PROT_LOCK) | FLAGIT(PROT_DEEP));
+		// NOTE: the spec is not disposed on exit because of this protection!
 		new_spec = TRUE;
 	}
 	else {

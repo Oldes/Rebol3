@@ -638,7 +638,7 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 
 /***********************************************************************
 **
-*/	REBCNT Recycle(REBOOL all)
+*/	REBI64 Recycle(REBFLG all, REBFLG pools)
 /*
 **		Recycle memory no longer needed.
 **
@@ -658,13 +658,17 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 		//Print("pending");
 		return 0;
 	}
-
+#ifdef DEBUG
 	if (Reb_Opts->watch_recycle) Debug_Str(cs_cast(BOOT_STR(RS_WATCH, 0)));
-
+#endif
 	GC_Disabled = 1;
 
 	PG_Reb_Stats->Recycle_Counter++;
 	PG_Reb_Stats->Recycle_Series = Mem_Pools[SERIES_POOL].free;
+
+	//printf("PG_Mem_Usage: %llu\n", PG_Mem_Usage);
+	REBI64 mem_used = PG_Mem_Usage;                // to count number of managed memory bytes
+//	REBI64 ser_used = PG_Reb_Stats->Series_Memory; // to count number of series bytes released (can be to pools)
 
 	//PG_Reb_Stats->Mark_Count = 0;
 
@@ -721,6 +725,11 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 	count += Sweep_Gobs();
 	count += Sweep_Handles();
 
+	// Check memory pool segments.
+	// If used recycle/pools refinement, check all segments where usage is less than 90%.
+	// Otherwise, check only pools where usage is less than 20%.
+	Free_Empty_Pool_Segments(pools ? 90 : 20);
+
 	CHECK_MEMORY(4);
 
 	// Compute new stats:
@@ -733,9 +742,12 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 
 	GC_Ballast = VAL_INT32(TASK_BALLAST);
 	GC_Disabled = 0;
-
+#ifdef DEBUG
 	if (Reb_Opts->watch_recycle) Debug_Fmt(BOOT_STR(RS_WATCH, 1), count);
-	return count;
+	//printf("PG_Mem_Usage- %llu\n", PG_Mem_Usage);
+	//printf("ser_used: %llu - %llu\n", ser_used, PG_Reb_Stats->Series_Memory);
+#endif
+	return (mem_used - PG_Mem_Usage);
 }
 
 
@@ -838,7 +850,6 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 	Free_Series(GC_Series);
 	Sweep_Series();
 	Sweep_Gobs();
-	Free_Mem(GC_Infants, 0);
-	Free_Mem(Prior_Expand, 0);
-	Dispose_Pools();
+	Free_Mem(GC_Infants, sizeof(REBSER*) * (MAX_SAFE_SERIES + 2));
+	Free_Mem(Prior_Expand, sizeof(REBSER*) * MAX_EXPAND_LIST);
 }

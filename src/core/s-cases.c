@@ -962,9 +962,9 @@ REBCNT _To_Lower_Case(REBCNT c) {
 /*
 ***********************************************************************/
 {
-	Free_Mem(White_Chars, 0);
-	Free_Mem(Upper_Cases, 0);
-	Free_Mem(Lower_Cases, 0);
+	Free_Mem(White_Chars, 34);
+	Free_Mem(Upper_Cases, UNICODE_CASES * sizeof(REBUNI));
+	Free_Mem(Lower_Cases, UNICODE_CASES * sizeof(REBUNI));
 	White_Chars = NULL;
 	Upper_Cases = NULL;
 	Lower_Cases = NULL;

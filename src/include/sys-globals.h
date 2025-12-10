@@ -36,6 +36,10 @@ PVAR REBYTE **PG_Boot_Strs;	// Special strings in boot.reb (RS_ constants)
 PVAR REB_STATS *PG_Reb_Stats;
 PVAR REBU64 PG_Mem_Usage;	// Overall memory used
 PVAR REBU64 PG_Mem_Limit;	// Memory limit set by SECURE
+#ifdef DEBUG
+PVAR REBU64 PG_Mem_Make;	// Number of allocations
+PVAR REBU64 PG_Mem_Free;    // Number of memory releases
+#endif
 
 //-- Symbol Table:
 PVAR REBSER *PG_Word_Names;	// Holds all word strings. Never removed.

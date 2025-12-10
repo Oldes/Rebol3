@@ -861,7 +861,7 @@ more_get_path:
 	// Check for recycle signal:
 	if (GET_FLAG(sigs, SIG_RECYCLE)) {
 		CLR_SIGNAL(SIG_RECYCLE);
-		Recycle(FALSE);
+		Recycle(FALSE, FALSE);
 	}
 
 #ifdef NOT_USED_INVESTIGATE
@@ -1833,7 +1833,7 @@ reapply:  // Go back here to start over with a new func
 		val = Get_System(SYS_STATE, STATE_LAST_ERROR); // Save it for EXPLAIN
 		*val = *DS_NEXT;
 		if (VAL_ERR_NUM(val) == RE_QUIT) {
-			OS_Exit(VAL_INT32(VAL_ERR_VALUE(DS_NEXT))); // console quit
+			OS_Exit(VAL_INT32(VAL_ERR_VALUE(DS_NEXT)), 1); // console quit
 		}
 		return val;
 	}
@@ -2352,7 +2352,7 @@ xx*/	REBVAL *Do_Path(REBVAL **path_val, REBVAL *val)
 				*val = *DS_NEXT;
 				if (VAL_ERR_NUM(val) == RE_QUIT) {
 					//Debug_Fmt("Quit(init)");
-					OS_Exit(VAL_INT32(VAL_ERR_VALUE(val))); // console quit
+					OS_Exit(VAL_INT32(VAL_ERR_VALUE(val)), 1); // console quit
 				}
 				if (VAL_ERR_NUM(val) == RE_HALT) return -ROF_HALT;
 				if (VAL_ERR_NUM(val) >= RE_THROW_MAX)
@@ -2378,6 +2378,6 @@ xx*/	REBVAL *Do_Path(REBVAL **path_val, REBVAL *val)
 
 	// Cleanup stack and memory:
 	DS_RESET;
-	Recycle(FALSE);
+	Recycle(FALSE, FALSE);
 	return 0; //result;
 }

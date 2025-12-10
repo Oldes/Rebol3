@@ -72,11 +72,12 @@ enum Crash_Msg_Nums {
 	va_start(args, id);
 
 	DISABLE_GC;
+#ifdef DEBUG
 	if (Reb_Opts->crash_dump) {
 		Dump_Info();
 		Dump_Stack(0, 0);
 	}
-
+#endif
 	// "REBOL PANIC #nnn:"
 	COPY_BYTES(buf, Crash_Msgs[CM_ERROR], CRASH_BUF_SIZE);
 	buf[CRASH_BUF_SIZE - 1] = '\0';

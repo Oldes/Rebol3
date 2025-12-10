@@ -298,7 +298,7 @@ enum {
 #define ALIGN(s, a) (((s) + (a)-1) & ~((a)-1))
 
 #ifndef ALEVEL
-# ifdef _DEBUG
+# ifdef DEBUG
 #  define ALEVEL 1
 # else
 #  define ALEVEL 0
@@ -431,6 +431,7 @@ typedef struct rebol_opts {
 	REBFLG	watch_series;
 	REBFLG	watch_expand;
 	REBFLG	crash_dump;
+	REBFLG	watch_alloc;
 } REB_OPTS;
 
 typedef struct rebol_time_fields {

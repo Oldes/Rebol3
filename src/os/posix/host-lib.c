@@ -371,18 +371,20 @@ RL_LIB *RL; // Link back to reb-lib from embedded extensions (like for now: host
 
 /***********************************************************************
 **
-*/	RL_API REB_NORETURN void OS_Exit(int code)
+*/	RL_API REB_NORETURN void OS_Exit(int code, int flags)
 /*
 **		Called in all cases when REBOL quits
 **
-**		If there would be case when freeing resources is not wanted,
-**		it should be signalised by a new argument.
+**		At this time, the `flags` argument is used only to indicate
+**		whether the core should be released gracefully.
 **
 ***********************************************************************/
 {
 	//OS_Call_Device(RDI_STDIO, RDC_CLOSE); // close echo
 	OS_Quit_Devices(0);
-	RL_Dispose();
+#ifdef DEBUG
+	if (flags) RL_Dispose();
+#endif
 	exit(code);
 }
 

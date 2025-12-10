@@ -187,3 +187,15 @@
 	Init_Crypt(); // old crypt code handles
 #endif
 }
+
+
+/***********************************************************************
+**
+*/	void Dispose_Handles(void)
+/*
+**		Free handles table
+**
+***********************************************************************/
+{
+	Free_Mem(PG_Handles, sizeof(REBHSP) * MAX_HANDLE_TYPES);
+}

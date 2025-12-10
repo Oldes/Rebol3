@@ -363,6 +363,7 @@ X*/	REBOOL As_OS_Str(REBSER *series, REBCHR **string)
 ***********************************************************************/
 {
 	return malloc(size);
+	//return RL_Mem_Alloc(0, size);
 }
 
 
@@ -375,17 +376,18 @@ X*/	REBOOL As_OS_Str(REBSER *series, REBCHR **string)
 ***********************************************************************/
 {
 	free(mem);
+	//RL_MEM_FREE(0, mem);
 }
 
 
 /***********************************************************************
 **
-*/	RL_API REB_NORETURN void OS_Exit(int code)
+*/	RL_API REB_NORETURN void OS_Exit(int code, int flags)
 /*
 **		Called in all cases when REBOL quits
 **
-**		If there would be case when freeing resources is not wanted,
-**		it should be signalised by a new argument.
+**		At this time, the `flags` argument is used only to indicate
+**		whether the core should be released gracefully.
 **
 ***********************************************************************/
 {
@@ -399,7 +401,9 @@ X*/	REBOOL As_OS_Str(REBSER *series, REBCHR **string)
 	//Dispose_Graphics();
 	Dispose_Windows();
 #endif
-	RL_Dispose();
+#ifdef DEBUG
+	if (flags) RL_Dispose();
+#endif
 	exit(code);
 }
 
@@ -490,7 +494,7 @@ X*/	REBOOL As_OS_Str(REBSER *series, REBCHR **string)
 	if (!GetModuleFileName(0, wide, MAX_FILE_NAME)) return 0;
 	REBYTE *temp = NULL;
 	OS_Wide_To_Multibyte(wide, &temp, -1);
-	OS_Free(wide);
+	FREE_MEM(wide);
 	*name = temp;
 	return 1;
 }
@@ -655,13 +659,13 @@ X*/	REBOOL As_OS_Str(REBSER *series, REBCHR **string)
 	if (!wide) return 0; // Allocation failed
 	DWORD got = GetCurrentDirectory(len, wide);
 	if (got == 0 || got >= len) {
-		OS_Free(wide);
+		FREE_MEM(wide);
 		return 0; // Failure
 	}
 
 	REBYTE *temp = NULL;
 	len = OS_Wide_To_Multibyte(wide, &temp, len-1);
-	OS_Free(wide);
+	FREE_MEM(wide);
 
 	*path = temp;
 	return len; // Be sure to call free() on path after usage

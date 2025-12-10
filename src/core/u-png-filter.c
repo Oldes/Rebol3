@@ -111,7 +111,7 @@ static REBYTE get_png_filter_type(REBVAL* val) {
 	ser  = Make_Binary(bytes);
 	out  = BIN_DATA(ser);
 
-	temp = malloc(width);
+	temp = Make_Managed_Mem(0, width);
 	if (!temp) {
 		Trap0(RE_NO_MEMORY);
 		return R_NONE;
@@ -149,7 +149,7 @@ static REBYTE get_png_filter_type(REBVAL* val) {
 		}
 		prev = scan;
 	}
-	free(temp);
+	Free_Managed_Mem(0, temp);
 	SET_BINARY(D_RET, ser);
 	VAL_TAIL(D_RET) = bytes;
 	return R_RET;

@@ -1018,7 +1018,7 @@ static int Do_Ordinal(REBVAL *ds, REBINT n)
 /*
 ***********************************************************************/
 {
-#ifdef _DEBUG
+#ifdef DEBUG
 	REBVAL *arg = D_ARG(1);
 
 	if (ANY_SERIES(arg)) {

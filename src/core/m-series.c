@@ -95,11 +95,11 @@
 	if ((size + extra) > SERIES_SPACE(series)) {
 		if (IS_LOCK_SERIES(series)) Crash(RP_LOCKED_SERIES);
 		//DISABLE_GC; // Don't let GC occur just for an expansion.
-
+#ifdef DEBUG
 		if (Reb_Opts->watch_expand) {
 			Debug_Fmt(cb_cast("Expand %x wide: %d tail: %d delta: %d"), series, wide, series->tail, delta);
 		}
-
+#endif
 		// Create a new series that is bigger.
 		// Have we recently expanded the same series?
 		x = 1;

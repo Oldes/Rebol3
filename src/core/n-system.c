@@ -75,7 +75,7 @@
 /*
 ***********************************************************************/
 {
-	REBCNT count;
+	REBI64 released_bytes;
 
 	if (D_REF(1)) { // /off
 		GC_Active = FALSE;
@@ -103,19 +103,14 @@
 		GC_Active = TRUE;
 	}
 
-	count = Recycle(TRUE);
-
-	// Check memory pool segments.
-	// If used with /pool refinement, check all segments where usage is less than 90%.
-	// Otherwise, check only pools where usage is less than 20%.
-	count += Free_Empty_Pool_Segments( D_REF(6) ? 90 : 20);
+	released_bytes = Recycle(TRUE, D_REF(6));
 
 
 	// Disable auto-recycling if it was disabled.
 	if (D_REF(1))
 		GC_Active = FALSE;
 
-	DS_Ret_Int(count);
+	DS_Ret_Int(released_bytes);
 	return R_RET;
 }
 
@@ -212,11 +207,15 @@
 }
 
 char *evoke_help = "Evoke values:\n"
-	"[stack-size n] crash-dump delect\n"
-	"watch-recycle watch-obj-copy crash\n"
-	"1: watch expand\n"
-	"2: check memory pools\n"
-	"3: check bind table\n"
+	"[stack-size n]\n"
+#ifdef INCLUDE_DELECT
+	" delect"
+#endif
+#ifdef DEBUG
+	" watch-recycle watch-alloc watch-obj-copy watch-expand crash-dump crash"
+#endif
+	"\n1: check memory pools\n"
+	"2: check bind table\n"
 ;
 
 /***********************************************************************
@@ -244,21 +243,38 @@ char *evoke_help = "Evoke values:\n"
 				Trace_Delect(1);
 #endif
 				break;
+#ifdef DEBUG
 			case SYM_CRASH_DUMP:
 				Reb_Opts->crash_dump = TRUE;
 				break;
 			case SYM_WATCH_RECYCLE:
 				Reb_Opts->watch_recycle = !Reb_Opts->watch_recycle;
 				break;
+			case SYM_WATCH_ALLOC:
+				Reb_Opts->watch_alloc = !Reb_Opts->watch_alloc;
+				break;
 			case SYM_WATCH_OBJ_COPY:
 				Reb_Opts->watch_obj_copy = !Reb_Opts->watch_obj_copy;
 				break;
-			case SYM_STACK_SIZE:
-				arg++;
-				Expand_Stack(Int32s(arg, 1));
+			case SYM_WATCH_EXPAND:
+				Reb_Opts->watch_expand = !Reb_Opts->watch_expand;
 				break;
 			case SYM_CRASH:
 				Crash(9999);
+				break;
+#else
+			case SYM_CRASH_DUMP:
+			case SYM_WATCH_RECYCLE:
+			case SYM_WATCH_ALLOC:
+			case SYM_WATCH_OBJ_COPY:
+			case SYM_WATCH_EXPAND:
+			case SYM_CRASH:
+				Trap0(RE_FEATURE_NA);
+				break;
+#endif
+			case SYM_STACK_SIZE:
+				arg++;
+				Expand_Stack(Int32s(arg, 1));
 				break;
 			default:
 				Out_Str(cb_cast(evoke_help), 1, FALSE);
@@ -271,12 +287,9 @@ char *evoke_help = "Evoke values:\n"
 				Check_Bind_Table();
 				break;
 			case 1:
-				Reb_Opts->watch_expand = TRUE;
-				break;
-			case 2:
 				Check_Memory();
 				break;
-			case 3:
+			case 2:
 				Check_Bind_Table();
 				break;
 			default:

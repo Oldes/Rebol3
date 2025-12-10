@@ -126,12 +126,17 @@ const REBPOOLSPEC Mem_Pool_Spec[MAX_POOLS] =
 	void *ptr;
 
 	if (!(ptr = malloc(size))) return 0;
+#ifdef DEBUG
+	PG_Mem_Make++;
+	if (Reb_Opts && Reb_Opts->watch_alloc)
+		Debug_Fmt(BOOT_STR(RS_WATCH, 4), size);
+#endif
 	PG_Mem_Usage += size;
 	if (PG_Mem_Limit != 0 && (PG_Mem_Usage > PG_Mem_Limit)) {
 		Check_Security(SYM_MEMORY, POL_EXEC, 0);
 	}
 
-#ifdef _DEBUG
+#ifdef DEBUG
 	// Fill the allocated memory with content to detect
 	// potential issues where it should have been cleared.
 	memset(ptr, 42, size);
@@ -151,6 +156,11 @@ const REBPOOLSPEC Mem_Pool_Spec[MAX_POOLS] =
 	void *ptr;
 
 	if (!(ptr = calloc(nmemb, size))) return 0;
+#ifdef DEBUG
+	PG_Mem_Make++;
+	if (Reb_Opts && Reb_Opts->watch_alloc)
+		Debug_Fmt(BOOT_STR(RS_WATCH, 4), nmemb * size);
+#endif
 	PG_Mem_Usage += (size * nmemb);
 	if (PG_Mem_Limit != 0 && (PG_Mem_Usage > PG_Mem_Limit)) {
 		Check_Security(SYM_MEMORY, POL_EXEC, 0);
@@ -178,6 +188,12 @@ FORCE_INLINE
 /*
 ***********************************************************************/
 {
+	ASSERT1(mem != NULL, RP_MISC);
+#ifdef DEBUG
+	if (Reb_Opts->watch_alloc) Debug_Fmt(BOOT_STR(RS_WATCH, 5), size);
+	PG_Mem_Free++;
+#endif
+	ASSERT1(PG_Mem_Usage >= size, RP_MISC);
 	PG_Mem_Usage -= size;
 	free(mem);
 }
@@ -187,9 +203,9 @@ FORCE_INLINE
 **
 */	void *Make_Managed_Mem(void *opaque, size_t size)
 /*
-**		Allocates memory either using a memory pool or standard dynamic memory allocation.
-**		It keeps info about this memory and checks if memory use is not over policy.
-**		Such an allocated memory must be freed using Free_Managed_Mem function!
+**		Allocates memory using either a memory pool or standard dynamic allocation.
+**		It keeps track of this memory and verifies that usage does not exceed policy limits.
+**		Memory allocated this way must be freed using the Free_Managed_Mem function.
 **
 ***********************************************************************/
 {
@@ -251,12 +267,11 @@ FORCE_INLINE
 	if (address) {
 		size_t *mem = ((size_t *)address) - 2;
 		//printf("memory free pool: %zu size: %zu\n", mem[0], mem[1]);
-		PG_Mem_Usage -= mem[1];
 		if (mem[0] < SYSTEM_POOL) {
 			Free_Node((REBCNT)mem[0], (REBNOD *)mem);
 		}
 		else {
-			free((void *)mem);
+			Free_Mem(mem, mem[1]);
 		}
 	}
 }
@@ -482,6 +497,9 @@ FORCE_INLINE
 		memcpy(((REBYTE *)node)+length+MUNG_SIZE,MUNG_PATTERN2,MUNG_SIZE);
 		node=(REBNOD *)(((REBYTE *)node)+MUNG_SIZE);
 #endif
+		// NOTE: for this special pool, the values `has` and `free` have different meanings!
+		// `has`  - total number of large series bytes allocated
+		// `free` - number of allocated large series 
 		Mem_Pools[SYSTEM_POOL].has += length;
 		Mem_Pools[SYSTEM_POOL].free++;
 #ifdef WATCH_SYSTEM_POOL
@@ -642,6 +660,7 @@ FORCE_INLINE
 		*node = pool->first;
 		pool->first = node;
 		pool->free++;
+		PG_Reb_Stats->Series_Memory -= size;
 #ifdef WATCH_SERIES_POOL
 		if(pool_num == SERIES_POOL) printf(cs_cast("*** SERIES_POOL Free_Series_Data=> has: %u free: %u (size: %u)\n"), Mem_Pools[SERIES_POOL].has, Mem_Pools[SERIES_POOL].free, size);
 #endif
@@ -651,8 +670,8 @@ FORCE_INLINE
 #else
 		Free_Mem(node, size);
 #endif
-		Mem_Pools[SYSTEM_POOL].has -= size;
-		Mem_Pools[SYSTEM_POOL].free--;
+		Mem_Pools[SYSTEM_POOL].has -= size; // number of bytes allocated for large series
+		Mem_Pools[SYSTEM_POOL].free--;      // reversed meaning!
 #ifdef WATCH_SYSTEM_POOL
 		printf(cs_cast("*** SYSTEM_POOL Free_Series_Data=> has: %u free: %u (size: %u)\n"), Mem_Pools[SYSTEM_POOL].has, Mem_Pools[SYSTEM_POOL].free, size);
 #endif
@@ -1003,6 +1022,7 @@ crash:
 	REBCNT  tused = 0;
 	REBCNT  n;
 
+	Debug_Fmt(cb_cast("Pool     Wide Units  Used/Total  Used%% Segments Bytes-per-pool"));
 	FOREACH(n, SYSTEM_POOL) {
 		size = segs = 0;
 
@@ -1010,12 +1030,12 @@ crash:
 			size += seg->size;
 
 		used = Mem_Pools[n].has - Mem_Pools[n].free;
-		Debug_Fmt(cb_cast("Pool[%-2d] %-4dB %-5d/%-5d:%-4d (%-2d%%) %-2d segs, %-07d total"),
+		Debug_Fmt(cb_cast("Pool[%-2d] %-4dB %-4d %-6d/%6d (%-2d%%) %-2d segs, %-08d total"),
 			n,
 			Mem_Pools[n].wide,
+			Mem_Pools[n].units,
 			used,
 			Mem_Pools[n].has,
-			Mem_Pools[n].units,
 			Mem_Pools[n].has ? ((used * 100) / Mem_Pools[n].has) : 0,
 			segs,
 			size
@@ -1058,18 +1078,19 @@ static REBFLG Is_Segment_Empty(REBPOL* pool, REBSEG* seg)
 static void Free_Empty_Segment(REBPOL* pool, REBSEG* seg)
 {
 	// 1. Remove ALL nodes from free list FIRST
-	REBNOD* prevNode = &pool->first;
-	REBNOD  node = pool->first;
+	REBNOD** prevNode = &pool->first;
+	REBNOD*  node = pool->first;
 	REBCNT n = 0;
 	while (node) {
-		REBNOD nextNode = *(REBNOD*)node;
-		if ((REBUPT)node > (REBUPT)seg && (REBUPT)node < (REBUPT)seg + (REBUPT)seg->size) {
+		REBNOD* nextNode = *(REBNOD**)node;
+		if ((REBUPT)node > (REBUPT)seg &&
+			(REBUPT)node < (REBUPT)seg + (REBUPT)seg->size) {
 			// Unlink this node (belongs to segment)
 			*prevNode = nextNode;
 			n++;
 		}
 		else {
-			prevNode = (REBNOD*)node;
+			prevNode = (REBNOD**)node;
 		}
 		node = nextNode;
 	}
@@ -1095,6 +1116,7 @@ static void Free_Empty_Segment(REBPOL* pool, REBSEG* seg)
 	FOREACH(pool_id, SYSTEM_POOL) {
 		REBPOL* pool = &Mem_Pools[pool_id];
 		REBSEG* prev = pool->segs;
+		if (!prev) continue;
 		REBSEG* seg = prev->next;
 		REBSEG* next = NULL;
 
@@ -1107,7 +1129,10 @@ static void Free_Empty_Segment(REBPOL* pool, REBSEG* seg)
 		//printf("Pool %u has: %u units:%u used: %u (%u%%)\n", pool_id, pool->has, pool->units, used, (used * 100) / pool->has);
 		while (seg) {
 			if (Is_Segment_Empty(pool, seg)) {
-				//printf("EMPTY(pool=%u, seg=%p,size=%u)\n", pool_id, (void*)seg, seg->size);
+#ifdef DEBUG
+				if (Reb_Opts->watch_recycle)
+					Debug_Fmt(BOOT_STR(RS_WATCH, 3), pool_id, (void*)seg, seg->size);
+#endif
 				next = seg->next;
 				Free_Empty_Segment(pool, seg);
 				freed += prev->size;
@@ -1235,7 +1260,7 @@ static void Free_Empty_Segment(REBPOL* pool, REBSEG* seg)
 
 	if (flags & 2) Dump_Pools();
 
-	return tot_size;
+	return PG_Mem_Usage;
 }
 
 /***********************************************************************
@@ -1269,33 +1294,61 @@ static void Free_Empty_Segment(REBPOL* pool, REBSEG* seg)
 /*
 **		Free memory pool array when application quits.
 **
+**		NOTE: Don't use any Debug_* or Dump_* functions!
+**		      These depends on resources not available anymore.
+**
 ***********************************************************************/
 {
 	REBSEG	*seg, *next;
 	REBCNT  n;
+	REBSER  *series;
+	REBCNT  count;
 
-	//Dump_Pools();
-	//Dump_Series_In_Pool(-1);
 	//puts("===== Dispose_Pools ======");
 
-	// Release all series from all system pools
-	FOREACH(n, SYSTEM_POOL) {
-		//printf(cs_cast("*** Dispose_Pools[%u] Has: %u free: %u\n"), n, Mem_Pools[n].has, Mem_Pools[n].free);
-		if (Mem_Pools[n].has == Mem_Pools[n].free) {
-			seg = Mem_Pools[n].segs;
-			while (seg) {
-				next = seg->next;
-				Free_Mem(seg, seg->size);
-				seg = next;
+	for (seg = Mem_Pools[SERIES_POOL].segs; seg; seg = seg->next) {
+		series = (REBSER*)(seg + 1);
+		for (count = Mem_Pools[SERIES_POOL].units; count > 0; count--) {
+			SKIP_WALL(series);
+			if (!SERIES_FREED(series)) {
+				/*#ifdef DEBUG
+				printf(
+					"%s Series %x: Wide: %2d Size: %6d - Bias: %d Tail: %d Rest: %d Flags: %x %s\n",
+					"Free",
+					(int)(void*)series,
+					SERIES_WIDE(series),
+					SERIES_TOTAL(series),
+					SERIES_BIAS(series),
+					SERIES_TAIL(series),
+					SERIES_REST(series),
+					SERIES_FLAGS(series),
+					(SERIES_LABEL(series) ? SERIES_LABEL(series) : "-")
+				);
+				Dump_Bytes(series->data, (SERIES_TAIL(series) + 1) * SERIES_WIDE(series));
+				#endif */
+				Free_Series(series);
 			}
+			series++;
+			SKIP_WALL(series);
 		}
-		//else {
-		//	printf(cs_cast("!!! Mem_Pools[%u] not empty! Has: %u free: %u\n"), n, Mem_Pools[n].has, Mem_Pools[n].free);
-		//}
+	}
+
+	// Release all system pool memory segments.
+	FOREACH(n, SYSTEM_POOL) {
+#ifdef DEBUG
+		if (Mem_Pools[n].has != Mem_Pools[n].free) {
+			printf(cs_cast("!!! Mem_Pools[%u] not empty! Has: %u free: %u\n"), n, Mem_Pools[n].has, Mem_Pools[n].free);
+		}
+#endif
+		seg = Mem_Pools[n].segs;
+		while (seg) {
+			next = seg->next;
+			Free_Mem(seg, seg->size);
+			seg = next;
+		}
 	}
 	// SYSTEM_POOL contains not system series sizes (big series), at this state it should be empty!
-	//if (Mem_Pools[SYSTEM_POOL].has > 0)
-	//	printf(cs_cast("!!! Mem_Pools[SYSTEM_POOL].has: %u\n"), Mem_Pools[SYSTEM_POOL].has);
-	Free_Mem(Mem_Pools, 0);
-	Free_Mem(PG_Pool_Map, 0);
+	ASSERT1(Mem_Pools[SYSTEM_POOL].has == 0, RP_CORRUPT_MEMORY);
+	Free_Mem(Mem_Pools, sizeof(REBPOL) * MAX_POOLS);
+	Free_Mem(PG_Pool_Map, (4 * MEM_BIG_SIZE) + 4);
 }

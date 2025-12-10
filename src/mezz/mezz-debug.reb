@@ -26,10 +26,11 @@ dt: delta-time: function [
 dp: delta-profile: func [
 	{Delta-profile of running a specific block.}
 	block [block!]
+	/only "Don't call recycle"
 	/local start end adjust
 ][
 	; first force GC
-	recycle
+	unless only [recycle]
 	; than count adjustments for empty code
 	adjust: copy end: stats/profile 
 	do [] 

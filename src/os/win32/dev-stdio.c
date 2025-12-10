@@ -188,7 +188,7 @@ BOOL WINAPI Handle_Break(DWORD dwCtrlType)
 		return TRUE;
 	}
 	// Handle the MS CMD console CTRL-C, BREAK, and other events:
-	if (dwCtrlType >= CTRL_CLOSE_EVENT) OS_Exit(100); // close button, shutdown, etc.
+	if (dwCtrlType >= CTRL_CLOSE_EVENT) OS_Exit(100, 0); // close button, shutdown, etc.
 	RL_Escape(0);
 	return TRUE;	// We handled it
 }

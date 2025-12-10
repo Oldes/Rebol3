@@ -366,12 +366,12 @@ int main(int argc, char **argv) {
 	){
 		if (n < 0 && !(args->options & RO_HALT)) {
 			RL_Do_String(b_cast("unless system/options/quiet [print {^[[mClosing in 3s!} wait 3]"), 0, 0);
-			OS_Exit(-n);
+			OS_Exit(-n, 0);
 		}
 		Host_Repl();
 	}
 
-	OS_Exit(0);
+	OS_Exit(0, 0);
 	return 0;
 }
 

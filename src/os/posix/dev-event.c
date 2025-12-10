@@ -121,7 +121,7 @@ void Done_Device(int handle, int error);
 	if (select(0, 0, 0, 0, &tv) < 0) {
 		if (errno == EINTR) return DR_DONE; // Ctrl-C interrupts a timer on a WAIT
 		req->error = errno; // report the error code
-		#ifdef _DEBUG
+		#ifdef DEBUG
 			printf("select() returned -1 in dev-event.c (I/O error!)\n");
 		#endif
 		return DR_ERROR;

@@ -146,8 +146,8 @@ static REBCNT *CRC32_Table = 0;
 /*
 ***********************************************************************/
 {
-	Free_Mem(CRC24_Table, 0);
-	Free_Mem(CRC32_Table, 0);
+	if (CRC24_Table) Free_Mem(CRC24_Table, sizeof(REBCNT) * 256);
+	if (CRC32_Table) Free_Mem(CRC32_Table, sizeof(REBCNT) * 256);
 }
 
 #ifdef unused

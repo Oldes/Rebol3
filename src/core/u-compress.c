@@ -461,6 +461,16 @@ error:
 #endif //INCLUDE_BROTLI
 
 #ifdef INCLUDE_LZ4 // https://github.com/lz4/lz4
+#define LZ4_USER_MEMORY_FUNCTIONS
+void* LZ4_malloc(size_t size) {
+	return Make_Managed_Mem(NULL, size);
+}
+void* LZ4_calloc(size_t nmemb, size_t size) {
+	return Make_Managed_CMem(nmemb, size);
+}
+void LZ4_free(void* address) {
+	Free_Managed_Mem(NULL, address);
+}
 #include "lz4/lz4hc.h"
 /***********************************************************************
 **
@@ -500,8 +510,12 @@ error:
 #endif //INCLUDE_LZ4
 
 
-#ifdef INCLUDE_LZAV
-#include "sys-lzav.h" // https://github.com/avaneev/lzav/blob/main/lzav.h
+#ifdef INCLUDE_LZAV // https://github.com/avaneev/lzav
+#undef LZAV_DEF_MALLOC
+#define LZAV_MALLOC( s, T ) (T*) Make_Managed_Mem(NULL, s)
+#define LZAV_FREE( p ) Free_Managed_Mem(NULL, p )
+
+#include "sys-lzav.h" 
 /***********************************************************************
 **
 */  int CompressLzav(const REBYTE* input, REBLEN len, REBCNT level, REBSER** output, int* error)

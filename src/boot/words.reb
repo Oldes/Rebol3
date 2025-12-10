@@ -288,7 +288,9 @@ bits
 crash
 crash-dump
 watch-recycle
+watch-expand
 watch-obj-copy
+watch-alloc
 stack-size
 
 ;call/info
