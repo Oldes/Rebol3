@@ -1522,7 +1522,7 @@ static INT CALLBACK BrowseCallbackProc(HWND hwnd, UINT uMsg, LPARAM lParam, LPAR
 {
 	if (len == (REBLEN)-1) len = AS_REBLEN(wcslen(wide));
 	size_t needed = WideCharToMultiByte(CP_UTF8, 0, wide, len, NULL, 0, NULL, NULL);
-	REBYTE *out = (REBYTE*)malloc(needed+1);
+	REBYTE *out = (REBYTE*)MAKE_MEM(needed+1);
 	*utf8 = out;
 	if (out == NULL || needed == 0) return 0;
 	WideCharToMultiByte(CP_UTF8, 0, wide, AS_INT(len), out, AS_INT(needed), NULL, NULL);
