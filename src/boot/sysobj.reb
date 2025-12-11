@@ -120,10 +120,12 @@ catalog: object [
 		quoted-printable: #(bitset! #{FFFFFFFFFFFFFFFBFFFFFFFFFFFFFFFF})
 	]
 	structs: make map! [] ;; filled using `register` native function
+	compressions: [
+		; will be filled on boot from `Init_Compression` in `u-compress.c`
+	]
 	checksums: [
 		; will be filled on boot from `Init_Crypt` in `n-crypt.c
 	]
-	compressions: [deflate zlib gzip] ;; these are always available
 	elliptic-curves: [
 		; will be filled on boot from `Init_Crypt` in `n-crypt.c`
 	]

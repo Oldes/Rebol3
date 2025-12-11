@@ -18,7 +18,10 @@ temp:     %make/tmp/
 stack-size: 4194304 ;= 4MB (4 * 1024 * 1024)
 optimize:   2
 
-version: 3.20.6
+version: 3.20.7
+
+;flags: "-ggdb3"
+;define: DEBUG
 
 #if Linux?   [ defines: TO_LINUX   ]
 #if macOS?   [ defines: TO_MACOS   ]
@@ -270,7 +273,6 @@ core-files: [
 ;	%core/u-rc4.c             ;optional, use: include-cryptography
 ;	%core/u-rsa.c             ;optional, use: include-cryptography
 ;	%core/u-uECC.c            ;optional, use: include-cryptography
-	%core/u-zlib.c
 ;	%core/u-wav.c             ;optional, use: include-native-wav-codec
 
 	%core/u-mbedtls.c
@@ -451,7 +453,7 @@ include-image-natives: [
 ]
 
 include-native-bmp-codec: [config: INCLUDE_BMP_CODEC core-files: %core/u-bmp.c]
-include-native-png-codec: [config: INCLUDE_PNG_CODEC core-files: %core/u-png.c]
+include-native-png-codec: [config: INCLUDE_PNG_CODEC core-files: %core/u-png.c core-files: %core/u-zlib.c]
 include-native-qoi-codec: [config: INCLUDE_QOI_CODEC core-files: %core/u-qoi.c]
 include-native-jpg-codec: [config: INCLUDE_JPG_CODEC core-files: %core/u-jpg.c]
 include-native-gif-codec: [config: INCLUDE_GIF_CODEC core-files: %core/u-gif.c]
@@ -850,6 +852,28 @@ include-brotli-compression: [
 	]
 ]
 
+include-zlib-compression: [
+	;= Original but slower Adler's implementation.
+	config: INCLUDE_DEPRECATED_ZLIB
+	core-files: %core/u-zlib.c
+]
+include-deflate-compression: [
+	config: INCLUDE_DEFLATE
+	core-files: [
+		%core/deflate/lib/adler32.c
+		%core/deflate/lib/crc32.c
+		%core/deflate/lib/deflate_compress.c
+		%core/deflate/lib/deflate_decompress.c
+		%core/deflate/lib/gzip_compress.c
+		%core/deflate/lib/gzip_decompress.c
+		%core/deflate/lib/utils.c
+		%core/deflate/lib/zlib_compress.c
+		%core/deflate/lib/zlib_decompress.c
+		%core/deflate/lib/x86/cpu_features.c
+		%core/deflate/lib/arm/cpu_features_arm.c
+	]
+]
+
 include-png-filter-native: [
 	config: INCLUDE_PNG_FILTER
 	core-files: %core/u-png-filter.c
@@ -952,6 +976,11 @@ include-prebol:              [mezz-lib-files: %modules/prebol.reb           ]
 
 include-native-oid: [core-files: %core/n-oid.c] ; `form-oid` native (used in DER codec)
 
+
+;- Deflate is part of the Base!
+
+;:include-zlib-compression   ;= Original Adler's implementation
+:include-deflate-compression ;= libdeflate's zlib, gzip and deflate
 
 ;- Product specifications                                                       
 

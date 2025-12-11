@@ -169,18 +169,21 @@ extern const REBYTE Str_Banner[];
 	// first four bytes of Native_Specs is a little-endian 32-bit
 	// length of the uncompressed spec data.
 	{
-		REBSER spec;
-		REBSER *text;
-		REBCNT textlen;
+		REBSER* text;
+		REBCNT textlen = Bytes_To_REBCNT(Native_Specs);
 
+#ifdef INCLUDE_DEPRECATED_ZLIB
+		REBSER spec;
 		// REVIEW: This is a nasty casting away of a const.  But there's
 		// nothing that can be done about it as long as Decompress takes
 		// a REBSER, as the data field is not const
 		spec.data = ((REBYTE*)Native_Specs) + 4;
 		spec.tail = NAT_SPEC_SIZE;
-
-		textlen = Bytes_To_REBCNT(Native_Specs);
-		text = DecompressZlib(&spec, 0, -1, textlen, 0);
+		text = DecompressZlibDeprecated(&spec, 0, -1, textlen, 0);
+#else
+		REBINT err = 0;
+		DecompressZlib(((REBYTE*)Native_Specs) + 4, NAT_SPEC_SIZE, textlen, &text, &err);
+#endif
 		if (!text || (STR_LEN(text) != textlen)) Crash(RP_BOOT_DATA);
 		boot = Scan_Source(STR_HEAD(text), textlen);
 		//Dump_Block_Raw(boot, 0, 2);

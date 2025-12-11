@@ -33,7 +33,13 @@
 #include "sys-deci-funcs.h"
 #include "sys-checksum.h"
 
-REBCNT z_adler32_z(REBCNT adler, REBYTE *buf, REBCNT len);
+#ifdef INCLUDE_DEFLATE
+#define ADLER32_FUNC libdeflate_adler32
+#else
+#define ADLER32_FUNC z_adler32_z
+#endif
+
+REBCNT ADLER32_FUNC(REBCNT adler, REBYTE *buf, REBCNT len);
 REBSER *Make_Binary_BE64(REBVAL *arg);
 
 // Table of hash functions and parameters:
@@ -348,7 +354,7 @@ static struct digest {
 		Trap0(RE_BAD_REFINES);
 
 	if (sym == SYM_CRC32 || sym == SYM_ADLER32) {
-		i = (sym == SYM_CRC32) ? CRC32(bin, len) : z_adler32_z(0x00000001L, bin, len);
+		i = (sym == SYM_CRC32) ? CRC32(bin, len) : ADLER32_FUNC(0x00000001L, bin, len);
 	}
 	else if (sym == SYM_HASH) {  // /hash
 		if(!D_REF(ARG_CHECKSUM_WITH)) Trap0(RE_MISSING_ARG);

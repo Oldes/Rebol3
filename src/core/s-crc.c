@@ -250,7 +250,9 @@ X*/	REBINT CRC_String(REBVAL *val)
 }
 
 
-
+#ifdef INCLUDE_DEFLATE
+u32 libdeflate_crc32(u32 crc, const void* p, size_t len);
+#else
 static void Make_CRC32_Table(void) {
 	u32 c;
 	int n,k;
@@ -281,6 +283,7 @@ REBCNT Update_CRC32(u32 crc, REBYTE *buf, int len) {
 
 	return ~c;
 }
+#endif
 
 /***********************************************************************
 **
@@ -288,7 +291,11 @@ REBCNT Update_CRC32(u32 crc, REBYTE *buf, int len) {
 /*
 ***********************************************************************/
 {
+#ifdef INCLUDE_DEFLATE
+	return libdeflate_crc32(0, buf, len);
+#else
 	return Update_CRC32(U32_C(0x00000000), buf, len);
+#endif
 }
 
 

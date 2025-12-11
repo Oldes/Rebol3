@@ -172,11 +172,16 @@ extern int Do_Callback(REBSER *obj, u32 name, RXIARG *args, RXIARG *result);
 	REBSER *ser;
 
 	if (bin) {
+#ifdef INCLUDE_DEPRECATED_ZLIB
 		spec.data = bin;
 		spec.tail = len;
-		ser = DecompressZlib(&spec, 0, -1, 0, 0);
+		ser = DecompressZlibDeprecated(&spec, 0, -1, 0, 0);
+#else
+		REBINT err = 0;
+		DecompressZlib(bin, len, -1, &ser, &err);
+		if (err) return 1;
+#endif
 		if (!ser) return 1;
-
 		val = BLK_SKIP(Sys_Context, SYS_CTX_BOOT_HOST);
 		Set_Binary(val, ser);
 	}
@@ -322,11 +327,18 @@ extern int Do_Callback(REBSER *obj, u32 name, RXIARG *args, RXIARG *result);
 #endif
 
 	//Cloak(TRUE, code, NAT_SPEC_SIZE, &key[0], 20, TRUE);
+#ifdef INCLUDE_DEPRECATED_ZLIB
 	spec.data = bin;
 	spec.tail = length;
-	text = DecompressZlib(&spec, 0, -1, 0, 0);
+	text = DecompressZlibDeprecated(&spec, 0, -1, 0, 0);
+#else
+	REBINT err = 0;
+	DecompressZlib(bin, length, -1, &text, &err);
+	if (err) return FALSE;
+#endif
 	if (!text) return FALSE;
 	Append_Byte(text, 0);
+
 
 #ifdef DUMP_INIT_SCRIPT
 	f = _open("host-boot.reb", _O_CREAT | _O_RDWR, _S_IREAD | _S_IWRITE );

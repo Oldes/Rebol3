@@ -29,7 +29,6 @@
 
 #include "sys-core.h"
 #include "reb-ext-handler.h"
-#include "sys-zlib.h"
 #ifdef INCLUDE_LZMA
 #include "sys-lzma.h"
 #endif // INCLUDE_LZMA
@@ -43,20 +42,10 @@ typedef struct {
 } COMPRESS_METHOD;
 
 // Dynamic registry (used to register compression methods on runtime)
-#define MAX_COMPRESS_METHODS 8
+#define MAX_COMPRESS_METHODS 16
 COMPRESS_METHOD compress_registry[MAX_COMPRESS_METHODS];
 static REBCNT compress_method_count = 0;
 
-
-
-
-static void *zalloc(void *opaque, unsigned nr, unsigned size) {
-	return Make_Managed_Mem(opaque, nr*size);
-}
-
-static void zfree(void *opaque, void *address) {
-	Free_Managed_Mem(opaque, address);
-}
 
 //#ifdef old_Sterlings_code // used also in LZMA code at this moment
 /*
@@ -67,23 +56,247 @@ static void zfree(void *opaque, void *address) {
  */
 #define STERLINGS_MAGIC_NUMBER      10000
 
-/*
- *  This number represents the largest that a small file that expands
- *  on compression can expand.  The actual value is closer to
- *  500 bytes but why take chances? -- SN
- */
+ /*
+  *  This number represents the largest that a small file that expands
+  *  on compression can expand.  The actual value is closer to
+  *  500 bytes but why take chances? -- SN
+  */
 #define STERLINGS_MAGIC_FIX         1024
 
-/*
- *  The why_compress_constant is here to satisfy the condition that
- *  somebody might just try compressing some big file that is already well
- *  compressed (or expands for some other wild reason).  So we allocate
- *  a compression buffer a bit larger than the original file size.
- *  10% is overkill for really large files so some other limit might
- *  be a good idea.
-*/
+  /*
+   *  The why_compress_constant is here to satisfy the condition that
+   *  somebody might just try compressing some big file that is already well
+   *  compressed (or expands for some other wild reason).  So we allocate
+   *  a compression buffer a bit larger than the original file size.
+   *  10% is overkill for really large files so some other limit might
+   *  be a good idea.
+  */
 #define WHY_COMPRESS_CONSTANT       0.1
-//#endif
+  //#endif
+
+
+#ifdef INCLUDE_DEFLATE
+#include "deflate/libdeflate.h"
+
+static void* DelfateAlloc(size_t size) { return Make_Managed_Mem(0, size); }
+static void DelfateFree(void* address) { Free_Managed_Mem(0, address); }
+
+static const struct libdeflate_options options = {
+	.sizeof_options = sizeof(options),
+	.malloc_func = DelfateAlloc,
+	.free_func = DelfateFree,
+};
+
+typedef enum {
+	DEFLATE_MODE_DEFLATE,
+	DEFLATE_MODE_ZLIB,
+	DEFLATE_MODE_GZIP
+} deflate_mode_t;
+
+typedef size_t(*compress_fn_t)(
+	struct libdeflate_compressor* ctx,
+	const void* in, size_t in_size,
+	void* out, size_t out_size
+	);
+
+typedef size_t(*compress_bound_fn_t)(
+	struct libdeflate_compressor* ctx,
+	size_t in_size
+	);
+
+typedef enum libdeflate_result(*decompress_fn_t)(
+	struct libdeflate_decompressor* ctx,
+	const void* in, size_t in_size,
+	void* out, size_t out_size,
+	size_t* actual_out
+	);
+
+typedef enum libdeflate_result(*decompress_ex_fn_t)(
+	struct libdeflate_decompressor* ctx,
+	const void* in, size_t in_size,
+	void* out, size_t out_size,
+	size_t* in_consumed,
+	size_t* out_consumed
+	);
+
+typedef struct {
+	compress_fn_t       compress;
+	compress_bound_fn_t compress_bound;
+	decompress_fn_t     decompress;
+	decompress_ex_fn_t  decompress_ex;
+} deflate_handlers_t;
+
+static const deflate_handlers_t handlers[] = {
+	[DEFLATE_MODE_DEFLATE] = {
+		.compress = libdeflate_deflate_compress,
+		.compress_bound = libdeflate_deflate_compress_bound,
+		.decompress = libdeflate_deflate_decompress,
+		.decompress_ex = libdeflate_deflate_decompress_ex
+	},
+	[DEFLATE_MODE_ZLIB] = {
+		.compress = libdeflate_zlib_compress,
+		.compress_bound = libdeflate_zlib_compress_bound,
+		.decompress = libdeflate_zlib_decompress,
+		.decompress_ex = libdeflate_zlib_decompress_ex
+	},
+	[DEFLATE_MODE_GZIP] = {
+		.compress = libdeflate_gzip_compress,
+		.compress_bound = libdeflate_gzip_compress_bound,
+		.decompress = libdeflate_gzip_decompress,
+		.decompress_ex = libdeflate_gzip_decompress_ex
+	}
+};
+
+int CompressCommonDeflate(deflate_mode_t mode, const REBYTE* input, REBLEN len, REBCNT level, REBSER** output, REBINT* error) {
+	struct libdeflate_compressor* ctx;
+	const deflate_handlers_t* h;
+
+	if (mode < 0 || mode > 3) return FALSE;
+	h = &handlers[mode];
+	if (!h->compress || !h->compress_bound) return FALSE;
+
+	if (level > 12) level = 12;
+	ctx = libdeflate_alloc_compressor_ex(level, &options);
+	if (!ctx) return FALSE;
+
+	size_t size = h->compress_bound(ctx, len);
+	if (size == 0 || size > MAX_I32) {
+		libdeflate_free_compressor(ctx);
+		return FALSE;
+	}
+	*output = Make_Binary((REBLEN)size);
+
+	size = h->compress(ctx, input, len, BIN_HEAD(*output), SERIES_REST(*output));
+
+	libdeflate_free_compressor(ctx);
+
+	if (size == 0) return FALSE;
+	SERIES_TAIL(*output) = (REBLEN)size;
+	return TRUE;
+}
+
+/***********************************************************************
+**
+*/  int CompressDeflate(const REBYTE* input, REBLEN len, REBCNT level, REBSER** output, REBINT* error)
+/*
+**      Compress a binary using Deflate.
+**
+***********************************************************************/
+{
+	return CompressCommonDeflate(DEFLATE_MODE_DEFLATE, input, len, level, output, error);
+}
+/***********************************************************************
+**
+*/  int CompressGzip(const REBYTE* input, REBLEN len, REBCNT level, REBSER** output, REBINT* error)
+/*
+**      Compress a binary using Deflate with gzip wrapper.
+**
+***********************************************************************/
+{
+	return CompressCommonDeflate(DEFLATE_MODE_GZIP, input, len, level, output, error);
+}
+/***********************************************************************
+**
+*/  int CompressZlib(const REBYTE* input, REBLEN len, REBCNT level, REBSER** output, REBINT* error)
+/*
+**      Compress a binary using Deflate with zlib wrapper.
+**
+***********************************************************************/
+{
+	return CompressCommonDeflate(DEFLATE_MODE_ZLIB, input, len, level, output, error);
+}
+
+int DecompressCommonDeflate(deflate_mode_t mode, const REBYTE* input, REBLEN len, REBLEN limit, REBSER** output, REBINT* error) {
+	struct libdeflate_decompressor* ctx;
+	int result;
+	REBU64 out_len;
+	size_t out_bytes = 0;
+	size_t in_bytes = 0;
+	const deflate_handlers_t* h = &handlers[mode];
+
+	if (mode >= sizeof(handlers) / sizeof(handlers[0]) || !h->decompress) return FALSE;
+
+	ctx = libdeflate_alloc_decompressor_ex(&options);
+	if (!ctx) return FALSE;
+
+	out_len = (limit != NO_LIMIT) ? limit : len << 2;
+
+	if (out_len == 0) {
+		*output = Make_Binary(1);
+		libdeflate_free_decompressor(ctx);
+		return TRUE;
+	}
+	if (out_len > MAX_I32) out_len = MAX_I32;
+	*output = Make_Binary((REBLEN)out_len);
+
+	if (limit != NO_LIMIT) {
+		out_bytes = limit;
+		result = h->decompress(ctx, input, len, BIN_HEAD(*output), out_bytes, NULL);
+	}
+	else {
+	retry:
+		result = h->decompress_ex(ctx, input, len, BIN_HEAD(*output), SERIES_REST(*output), &in_bytes, &out_bytes);
+		if (result == LIBDEFLATE_INSUFFICIENT_SPACE) {
+			SERIES_TAIL(*output) = SERIES_REST(*output);
+			Expand_Series(*output, AT_TAIL, len >> 1);
+			goto retry;
+		}
+	}
+
+	if (result > 0) {
+		*error = result;
+		libdeflate_free_decompressor(ctx);
+		return FALSE;
+	}
+	if (limit != NO_LIMIT && out_bytes > limit) out_bytes = limit;
+	libdeflate_free_decompressor(ctx);
+	SERIES_TAIL(*output) = (REBLEN)out_bytes;
+	return TRUE;
+}
+
+/***********************************************************************
+**
+*/  int DecompressDeflate(const REBYTE* input, REBLEN len, REBCNT level, REBSER** output, REBINT* error)
+/*
+**      Decompress a binary using Deflate.
+**
+***********************************************************************/
+{
+	return DecompressCommonDeflate(DEFLATE_MODE_DEFLATE, input, len, level, output, error);
+}
+/***********************************************************************
+**
+*/  int DecompressGzip(const REBYTE* input, REBLEN len, REBCNT level, REBSER** output, REBINT* error)
+/*
+**      Decompress a binary using Deflate with gzip wrapper.
+**
+***********************************************************************/
+{
+	return DecompressCommonDeflate(DEFLATE_MODE_GZIP, input, len, level, output, error);
+}
+/***********************************************************************
+**
+*/  int DecompressZlib(const REBYTE* input, REBLEN len, REBCNT level, REBSER** output, REBINT* error)
+/*
+**      Decompress a binary using Deflate with zlib wrapper.
+**
+***********************************************************************/
+{
+	return DecompressCommonDeflate(DEFLATE_MODE_ZLIB, input, len, level, output, error);
+}
+
+#endif //INCLUDE_DEFLATE
+
+
+#ifdef INCLUDE_DEPRECATED_ZLIB
+#include "sys-zlib.h"
+static void *zalloc(void *opaque, unsigned nr, unsigned size) {
+	return Make_Managed_Mem(opaque, nr*size);
+}
+
+static void zfree(void *opaque, void *address) {
+	Free_Managed_Mem(opaque, address);
+}
 
 void Trap_ZStream_Error(z_stream *stream, int err, REBOOL while_compression)
 /*
@@ -108,7 +321,7 @@ void Trap_ZStream_Error(z_stream *stream, int err, REBOOL while_compression)
 
 /***********************************************************************
 **
-*/  REBSER *CompressZlib(REBSER *input, REBINT index, REBCNT in_len, REBINT level, REBINT windowBits)
+*/  REBSER *CompressZlibDeprecated(REBSER *input, REBINT index, REBCNT in_len, REBINT level, REBINT windowBits)
 /*
 **      Compress a binary (only).
 **
@@ -173,7 +386,7 @@ void Trap_ZStream_Error(z_stream *stream, int err, REBOOL while_compression)
 
 /***********************************************************************
 **
-*/  REBSER *DecompressZlib(REBSER *input, REBCNT index, REBINT len, REBCNT limit, REBINT windowBits)
+*/  REBSER *DecompressZlibDeprecated(REBSER *input, REBCNT index, REBINT len, REBCNT limit, REBINT windowBits)
 /*
 **      Decompress a binary (only).
 **
@@ -231,6 +444,7 @@ void Trap_ZStream_Error(z_stream *stream, int err, REBOOL while_compression)
 
 	return output;
 }
+#endif
 
 #ifdef INCLUDE_LZMA
 
@@ -626,7 +840,9 @@ static DECOMPRESS_FUNC Find_Decompress_Handler(REBINT sym) {
 	REBSER* ser = VAL_SERIES(data);
 	REBCNT len = Partial1(data, length); // May modify the index!
 	REBCNT index = VAL_INDEX(data);
+#ifdef INCLUDE_DEPRECATED_ZLIB
 	REBINT windowBits = MAX_WBITS;
+#endif
 	REBCNT level = ref_level ? VAL_UNT32(D_ARG(6)) : UNKNOWN;
 	
 	// Try to find registered handler
@@ -647,9 +863,10 @@ static DECOMPRESS_FUNC Find_Decompress_Handler(REBINT sym) {
 	}
 
 	switch (method) {
+#ifdef INCLUDE_DEPRECATED_ZLIB
 	case SYM_ZLIB:
 	zlib_compress:
-		Set_Binary(D_RET, CompressZlib(ser, index, (REBINT)len, level, windowBits));
+		Set_Binary(D_RET, CompressZlibDeprecated(ser, index, (REBINT)len, level, windowBits));
 		break;
 
 	case SYM_DEFLATE:
@@ -659,7 +876,7 @@ static DECOMPRESS_FUNC Find_Decompress_Handler(REBINT sym) {
 	case SYM_GZIP:
 		windowBits |= 16;
 		goto zlib_compress;
-
+#endif
 	default:
 		Trap1(RE_INVALID_ARG, D_ARG(2));
 	}
@@ -714,11 +931,11 @@ static DECOMPRESS_FUNC Find_Decompress_Handler(REBINT sym) {
 			Trap1(RE_BAD_PRESS, DS_RETURN); //!!!provide error string descriptions
 		}
 	}
-
 	switch (method) {
+#ifdef INCLUDE_DEPRECATED_ZLIB
 	case SYM_ZLIB:
 	zlib_decompress:
-		Set_Binary(D_RET, DecompressZlib(VAL_SERIES(data), VAL_INDEX(data), (REBINT)len, limit, windowBits));
+		Set_Binary(D_RET, DecompressZlibDeprecated(VAL_SERIES(data), VAL_INDEX(data), (REBINT)len, limit, windowBits));
 		break;
 
 	case SYM_DEFLATE:
@@ -728,7 +945,7 @@ static DECOMPRESS_FUNC Find_Decompress_Handler(REBINT sym) {
 	case SYM_GZIP:
 		windowBits |= 16;
 		goto zlib_decompress;
-
+#endif
 	default:
 		Trap1(RE_INVALID_ARG, D_ARG(2));
 	}
@@ -750,6 +967,14 @@ static DECOMPRESS_FUNC Find_Decompress_Handler(REBINT sym) {
 #define add_compression(sym) Init_Word(&tmp, sym); Append_Val(VAL_SERIES(blk), &tmp);
 	blk = Get_System(SYS_CATALOG, CAT_COMPRESSIONS);
 	if (blk && IS_BLOCK(blk)) {
+#ifdef INCLUDE_DEFLATE
+		Register_Compress_Method(SYM_DEFLATE, CompressDeflate, DecompressDeflate);
+		Register_Compress_Method(SYM_ZLIB, CompressZlib, DecompressZlib);
+		Register_Compress_Method(SYM_GZIP, CompressGzip, DecompressGzip);
+		add_compression(SYM_DEFLATE);
+		add_compression(SYM_ZLIB);
+		add_compression(SYM_GZIP);
+#endif
 #ifdef INCLUDE_BROTLI
 		Register_Compress_Method(SYM_BR, CompressBrotli, DecompressBrotli);
 		add_compression(SYM_BR);

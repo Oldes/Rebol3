@@ -1,6 +1,6 @@
 REBOL [R3] Language Interpreter and Run-time Environment
 Copyright 2012 REBOL Technologies
-Copyright 2012-2021 Rebol Open Source Developers
+Copyright 2012-2025 Rebol Open Source Developers
 REBOL is a trademark of REBOL Technologies
 Licensed under the Apache License, Version 2.0
 See included LICENSE file for details
@@ -16,7 +16,12 @@ Credits for Non-REBOL orginated C files and modules
 * Unicode encoding/decoding functions:
   Copyright 2001-2004 Unicode, Inc.
 
-* ZLIB general purpose compression library:
+* libdeflate:
+  Copyright 2016 Eric Biggers
+  Copyright 2024 Google LLC
+  MIT - https://github.com/ebiggers/libdeflate
+
+* ZLIB general purpose compression library (optional):
   Version 1.3.1.1, 1-Apr-2025
   Copyright 1995-2024 Jean-loup Gailly and Mark Adler
 
