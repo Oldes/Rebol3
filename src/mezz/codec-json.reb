@@ -171,6 +171,7 @@ replace-unicode-escapes: func [
 	parse s [
 		any [
 			some chars								; Pass over unescaped chars
+			| dbl-quote								; Quotes are not part of chars but are valid
 			| json-escaped							; Pass over simple backslash escapes
 			| change ["\u" copy c 4 hex-char] (decode-unicode-char c) ()
 			;| "\u" followed by anything else is an invalid \uXXXX escape
