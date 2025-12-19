@@ -652,31 +652,31 @@ load: function [
 				]
 			]
 
-			content: read-decode source type
+			body: read-decode source type
 
 			if not find [0 extension unbound] any [type 0] [
-				return content
+				return body
 			]
 		]
 
-		none? content [
-			content: source
+		none? body [
+			body: source
 		]
 
 		; -- Is it not source code? Then return it now:
 		;
 		any [
-			block? content
+			block? body
 
 			not find [0 extension unbound] any [type 0]
 			; due to make-boot issue with #[none]
 		][
 			unless type [
-				return content
+				return body
 			]
 
 			try [
-				return decode type to binary! content
+				return decode type to binary! body
 			]
 
 			cause-error 'access 'no-codec type
@@ -685,10 +685,10 @@ load: function [
 		; -- Try to load the HEADER, handle error:
 		;
 		not all [
-			set [script: body: remaining: line:] either object? content [
-				load-ext-module content
+			set [script: body: remaining: line:] either object? body [
+				load-ext-module body
 			][
-				load-header content
+				load-header body
 			]
 
 			if word? script [
