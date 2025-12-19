@@ -437,7 +437,7 @@ if find codecs 'JSON [
 		--assert ["+1" 1] = to block! decode 'JSON {{"+1": 1}}
 	--test-- "Decode unicode escaped char"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2546
-		--assert [test: "a"] = to block! decode 'json {{"test": "\u0061"}}
+		--assert [test: {"<}] = to block! decode 'json {{"test": "\"\u003c"}}
 
 	===end-group===
 ]
