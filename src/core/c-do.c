@@ -1399,8 +1399,8 @@ eval_func2:
 			DSP++; // !!!DSP temp
 			if (THROWN(DS_TOP)) return;
 
-			// If result is a block, and not /only, insert its contents:
-			if (IS_BLOCK(DS_TOP) && !only) {
+			// If result is a block, and not /only or a map value, insert its contents:
+			if (IS_BLOCK(DS_TOP) && !only && !IS_MAP(block)) {
 				// Append series to the stack:
 				SERIES_TAIL(DS_Series) = DSP; // overwrites TOP value
 				Append_Series(DS_Series, (REBYTE *)VAL_BLK_DATA(DS_TOP), VAL_BLK_LEN(DS_TOP));
