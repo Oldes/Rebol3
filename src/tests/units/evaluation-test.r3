@@ -508,6 +508,17 @@ Rebol [
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2686
 	--assert #[num: [one two three]] = compose #[num: ([one two three])]
 
+	;@@ https://github.com/Oldes/Rebol-issues/issues/2687
+	*obp: make object! [one: 1 two: 2 tmp: #[three: (one + two)]]
+	*ob1: make *obp [one: 11]
+	*ob2: make *obp [two: 22]
+	*ob3: make *ob1 [two: 22]
+
+	--assert [3 13 23 33] = map-each obj reduce [*obp *ob1 *ob2 *ob3] [
+		select compose/deep obj/tmp 'three
+	]
+	
+
 ===end-group===
 
 ===start-group=== "unset value passing"
