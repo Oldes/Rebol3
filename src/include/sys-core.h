@@ -169,7 +169,7 @@ enum {
 #define TS_CODE ((CP_DEEP | TS_SERIES) & ~TS_NOT_COPIED)
 
 #define TS_FUNCLOS (TYPESET(REB_FUNCTION) | TYPESET(REB_CLOSURE))
-#define TS_CLONE ((CP_DEEP | TS_SERIES | TS_FUNCLOS) & ~TS_NOT_COPIED)
+#define TS_CLONE ((CP_DEEP | TS_SERIES | TS_FUNCLOS | TYPESET(REB_MAP)) & ~TS_NOT_COPIED)
 
 // Modes allowed by Bind related functions:
 enum {
