@@ -505,6 +505,9 @@ Rebol [
 	--assert #[num: 4] = use[v][v: 4 compose #[num: (v)]]
 	--assert #[num: 5] = apply func [val] [compose/deep #[num: (val)]] [5]
 	
+	;@@ https://github.com/Oldes/Rebol-issues/issues/2686
+	--assert #[num: [one two three]] = compose #[num: ([one two three])]
+
 ===end-group===
 
 ===start-group=== "unset value passing"
