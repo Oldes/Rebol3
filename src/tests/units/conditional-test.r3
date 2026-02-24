@@ -107,30 +107,28 @@ Rebol [
 	    --assert sb4-j = "Χαῖρε, κόσμε"
 	
 	--test-- "switch-basic-5"
-	;@@ R3 does not support UCS4 chars yet!
-;		sb5-i: "abcde^(010000)"
-;		sb5-j: "REBOL"
-;		switch sb5-i [
-;			"Andreas" 			[sb5-j: "Earl"]
-;			"Nenad"				[sb5-j: "Red"]
-;			"Peter"				[sb5-j: "Peter"]
-;			"Zorba"				[sb5-j: "Χαῖρε, κόσμε"]
-;			"abcde^(010000)"	[sb5-j: "boron"]
-;		]
-;	    --assert sb5-j = "boron"
+		sb5-i: "abcde^(010000)"
+		sb5-j: "REBOL"
+		switch sb5-i [
+			"Andreas" 			[sb5-j: "Earl"]
+			"Nenad"				[sb5-j: "Red"]
+			"Peter"				[sb5-j: "Peter"]
+			"Zorba"				[sb5-j: "Χαῖρε, κόσμε"]
+			"abcde^(010000)"	[sb5-j: "boron"]
+		]
+	    --assert sb5-j = "boron"
 	
 	--test-- "switch-basic-6"
-	;@@ R3 does not support UCS4 chars yet!
-;		sb6-i: #"^(010000)"
-;		sb6-j: "REBOL"
-;		switch sb6-i [
-;			#"a" 				[sb6-j: "Earl"]
-;			#"b"				[sb6-j: "Red"]
-;			#"c"				[sb6-j: "Peter"]
-;			#"d"				[sb6-j: "Χαῖρε, κόσμε"]
-;			#"^(010000)"		[sb6-j: "boron"]
-;		]
-;    	--assert sb6-j = "boron"
+		sb6-i: #"^(010000)"
+		sb6-j: "REBOL"
+		switch sb6-i [
+			#"a" 				[sb6-j: "Earl"]
+			#"b"				[sb6-j: "Red"]
+			#"c"				[sb6-j: "Peter"]
+			#"d"				[sb6-j: "Χαῖρε, κόσμε"]
+			#"^(010000)"		[sb6-j: "boron"]
+		]
+    	--assert sb6-j = "boron"
 	
 	--test-- "switch-basic-8"
 		sb8-i: %Nenad
