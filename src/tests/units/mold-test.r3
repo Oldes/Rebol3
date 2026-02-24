@@ -266,6 +266,8 @@ Rebol [
 		--assert "%a%02c" == mold to-file "a^Bc"
 		--assert "%a%20b" == mold to-file "a^ b"
 
+		--assert "%a@b" == mold to-file "a@b"
+
 ===end-group=== 
 
 

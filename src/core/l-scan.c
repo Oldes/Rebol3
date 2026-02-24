@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -1095,7 +1095,7 @@ new_line:
         }
 
     case LEX_CLASS_SPECIAL:
-        if (HAS_LEX_FLAG(flags, LEX_SPECIAL_AT) && *cp != '<') { // for case like: %61@b which is actually: a@b 
+        if (HAS_LEX_FLAG(flags, LEX_SPECIAL_AT) && *cp != '<' && *cp != '%') { // for case like: %61@b which is actually: a@b 
 			if (*cp == '\'' || *cp == ':') return -TOKEN_WORD; // no '@foo abd :@foo
 			return TOKEN_EMAIL; 
 		}

@@ -464,6 +464,16 @@ Rebol [
 
 ===end-group===
 
+
+===start-group=== "File"
+	--test-- "valid `files`"
+		--assert file? transcode/one {%abc}
+		--assert file? transcode/one {%"abc"}
+		--assert file? transcode/one {%a@c}
+		--assert file? transcode/one {%a%40c}
+
+===end-group===
+
 ===start-group=== "Money"
 	--test-- "space requirement"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/1445
