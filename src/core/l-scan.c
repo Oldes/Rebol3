@@ -1268,7 +1268,7 @@ new_line:
 					return TOKEN_WORD;
 				}
 				if ((GET_LEX_VALUE(*cp)) >= LEX_SPECIAL_PERIOD) goto next_ls;
-                if (*cp == '+' || *cp == '-') {
+                if (*cp == '+' || *cp == '-' || *cp == '>') {
                     type = TOKEN_WORD;
                     goto scanword;
                 }
@@ -1487,7 +1487,7 @@ scanword:
 		scan_state->end = cp;
 	}
 	else if (HAS_LEX_FLAG(flags, LEX_SPECIAL_GREATER)) {
-		if (*cp == '=' || *cp == '-' || *cp == '~') {
+		if (*cp == '=' || *cp == '-' || *cp == '~' || *cp == '>') {
 			np = Skip_Right_Arrow(cp);
 			if (np != NULL) {
 				scan_state->end = np;
