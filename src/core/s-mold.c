@@ -1296,7 +1296,8 @@ STOID Mold_Error(REBVAL *value, REB_MOLD *mold, REBFLG molded)
 		if ((GET_MOPT(mold, MOPT_MOLD_ALL) && VAL_INDEX(value) != 0)
 			|| VAL_TAIL(value) == 0
 			|| NOT_FOUND == Find_Str_Char(VAL_SERIES(value), 0, 0,
-				VAL_TAIL(value), 1, VAL_TYPE(value) == REB_EMAIL ? '@' : ':', 0))
+				VAL_TAIL(value), 1, VAL_TYPE(value) == REB_EMAIL ? '@' : ':', 0)
+			|| VAL_DATA(value)[0] == '%')
 		{
 			Mold_All_Constr_String(value, mold);
 			return;
