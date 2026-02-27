@@ -185,6 +185,11 @@ Rebol [
 	--assert "<A>"  = find/case "<a><A>" "<A>"
 	--assert "<a href=''>" = find "foo<a href=''>" "<a href=''>"
 	--assert "<a>x" = find/skip "x<a><b>x<a>x" "<a>" 4
+	;@@ https://github.com/Oldes/Rebol-issues/issues/2689
+	--assert "č" == find "č" "č"
+	--assert "č" == find "č" #"č"
+	--assert "č" == find "č" form #"č"
+
 
 --test-- "FIND %file %file"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/624

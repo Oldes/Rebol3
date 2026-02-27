@@ -385,6 +385,7 @@ STOID Mold_Char(REBSER *dst, REBU32 chr, REBOOL molded)
 		REBCNT len = UTF8_Codepoint_Size(chr);
 		EXPAND_SERIES_TAIL(dst, len);
 		Encode_UTF8_Char(BIN_TAIL(dst) - len, chr);
+		if (len > 1) UTF8_SERIES(dst);
 	}
 	else {
 		EXPAND_SERIES_TAIL(dst, 10); // worst case: #"^(1234)"
