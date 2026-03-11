@@ -20,34 +20,34 @@ Simple HTTP server:
 
 ```rebol
 Rebol [
-	Title: "HTTPD Scheme example"
+    Title: "HTTPD Scheme example"
 ]
 
 import %httpd.reb
 
-system/options/log/httpd: 3 ; for verbose output
+system/schemes/httpd/set-verbose 3 ; for verbose output
 
 ; make sure that there is the directory for logs
 make-dir/deep %_logs/
 
-http-server/config/actor 8082 [
-	;- Main server configuration
-	
-	root: %./
-	server-name: "nginx"  ;= it's possible to hide real server name
-	keep-alive: [15 100]  ;= [timeout max-requests] or FALSE to turn it off
-	list-dir?:  #[true]   ;= allow directory listing
-	log-access: %_logs/test-access.log
-	log-errors: %_logs/test-errors.log
+serve-http [
+    ;- Main server configuration
+    port: 8082
+    root: %./
+    server-name: "nginx"  ;= it's possible to hide real server name
+    keep-alive: [15 100]  ;= [timeout max-requests] or FALSE to turn it off
+    list-dir?:  #(true)   ;= allow directory listing
+    log-access: %_logs/test-access.log
+    log-errors: %_logs/test-errors.log
 
-] [
-	;- Server's actor functions
-
-	On-Accept: func [info [object!]][
-		; allow only connections from localhost
-		; TRUE = accepted, FALSE = refuse
-		find [ 127.0.0.1 ] info/remote-ip 
-	]
+    ;- Server's actor functions
+    actor: [
+        On-Accept: func [info [object!]][
+            ; allow only connections from localhost
+            ; TRUE = accepted, FALSE = refuse
+            find [ 127.0.0.1 ] info/remote-ip 
+        ]
+    ]
 ]
 ```
 
