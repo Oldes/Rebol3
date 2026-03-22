@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,7 +23,7 @@
 **  Module:  m-gc.c
 **  Summary: main memory garbage collection
 **  Section: memory
-**  Author:  Carl Sassenrath, Ladislav Mecir, HostileFork
+**  Author:  Carl Sassenrath, Ladislav Mecir, HostileFork, Oldes
 **  Notes:
 **    WARNING WARNING WARNING
 **    This is highly tuned code that should only be modified by experts
@@ -385,14 +385,20 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 #endif
 		if (SERIES_WIDE(ser) != sizeof(REBVAL) && SERIES_WIDE(ser) != 4 && SERIES_WIDE(ser) != 0)
 			Crash(RP_BAD_WIDTH, 16, SERIES_WIDE(ser), VAL_TYPE(val));
-		QUEUE_CHECK_MARK(ser, depth);
+		if (IS_SLICE_SERIES(ser)) {
+			MARK_SERIES(ser);
+			QUEUE_CHECK_MARK(ser->series, depth);
+		}
+		else {
+			QUEUE_CHECK_MARK(ser, depth);
+		}
 		return;
 	}
 	if (VAL_TYPE(val) >= REB_BINARY && VAL_TYPE(val) <= REB_BITSET) {
 		ser = VAL_SERIES(val);
-		if (SERIES_WIDE(ser) > sizeof(REBUNI))
-			Crash(RP_BAD_WIDTH, sizeof(REBUNI), SERIES_WIDE(ser), VAL_TYPE(val));
+		ASSERT1(SERIES_WIDE(ser) <= sizeof(REBUNI), RP_BAD_WIDTH);
 		MARK_SERIES(ser);
+		if (IS_SLICE_SERIES(ser)) MARK_SERIES(ser->series);
 		return;
 	}
 
@@ -558,7 +564,6 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 
 	return count;
 }
-
 
 /***********************************************************************
 **

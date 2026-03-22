@@ -441,6 +441,7 @@ enum {
 	SER_MON  = 1<<7,	// Monitoring
 	SER_INT  = 1<<8,	// Series data is internal (loop frames) and should not be accessed by users
 	SER_UTF8 = 1<<9,	// Series contains not only ASCII characters
+	SER_SLICE= 1<<10,	// Series is sliced (side link contains the original)
 };
 
 #define SERIES_SET_FLAG(s, f) (SERIES_FLAGS(s) |=  (f))
@@ -466,6 +467,8 @@ enum {
 #define UTF8_SERIES(s)       SERIES_SET_FLAG(s, SER_UTF8)
 #define IS_UTF8_SERIES(s)    SERIES_GET_FLAG(s, SER_UTF8)
 #define IS_UTF8_STRING(v)    SERIES_GET_FLAG(VAL_SERIES(v), SER_UTF8)
+#define SLICE_SERIES(s)      SERIES_SET_FLAG(s, SER_EXT|SER_SLICE)
+#define IS_SLICE_SERIES(s)   SERIES_GET_FLAG(s, SER_SLICE)
 
 #define TRAP_PROTECT(s) if (IS_PROTECT_SERIES(s)) Trap0(RE_PROTECTED)
 
@@ -1340,7 +1343,6 @@ typedef struct Reb_All {
 } REBALL;
 
 #define VAL_ALL_BITS(v) ((v)->data.all.bits)
-
 
 /***********************************************************************
 **
