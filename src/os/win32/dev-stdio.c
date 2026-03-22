@@ -275,33 +275,34 @@ static void Close_StdIO_Local(void)
 **
 ***********************************************************************/
 {
+#if _WIN32_WINNT >= 0x0500  // Windows 2000 or later
+	return GetConsoleWindow();
+#else
 #define MY_BUFSIZE 1024 // Buffer size for console window titles.
 	HWND hwndFound;     // This is what is returned to the caller.
-	char pszNewWindowTitle[MY_BUFSIZE]; // Contains fabricated
-										// WindowTitle.
-	char pszOldWindowTitle[MY_BUFSIZE]; // Contains original
-										// WindowTitle.
-										// Fetch current window title.
-
-	GetConsoleTitle((LPWSTR)pszOldWindowTitle, MY_BUFSIZE>>1); // size is in wide chars, not bytes!
-
+	WCHAR pszNewWindowTitle[MY_BUFSIZE]; // Contains fabricated
+										 // WindowTitle.
+	WCHAR pszOldWindowTitle[MY_BUFSIZE]; // Contains original
+										 // WindowTitle.
+										 // Fetch current window title.
+	GetConsoleTitleW(pszOldWindowTitle, MY_BUFSIZE);
 	// Format a "unique" NewWindowTitle.
-	wsprintf((LPWSTR)pszNewWindowTitle, L"%llu/%d",
+	swprintf_s(pszNewWindowTitle, MY_BUFSIZE, L"%llu/%lu",
 		GetTickCount64(),
 		GetCurrentProcessId());
-
 	// Change current window title.
-	SetConsoleTitle((LPWSTR)pszNewWindowTitle);
-
+	SetConsoleTitleW(pszNewWindowTitle);
 	// Ensure window title has been updated.
-	Sleep(40);
-
+	for (int i = 0; i < 100 && hwndFound == NULL; i++) {
+		Sleep(5);
+		hwndFound = FindWindowW(NULL, pszNewWindowTitle);
+	}
 	// Look for NewWindowTitle.
 	hwndFound = FindWindow(NULL, (LPWSTR)pszNewWindowTitle);
-
 	// Restore original window title.
-	SetConsoleTitle((LPWSTR)pszOldWindowTitle);
+	SetConsoleTitleW(pszOldWindowTitle);
 	return(hwndFound);
+#endif
 }
 
 /***********************************************************************
