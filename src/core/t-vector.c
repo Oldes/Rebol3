@@ -23,7 +23,7 @@
 **  Module:  t-vector.c
 **  Summary: vector datatype
 **  Section: datatypes
-**  Author:  Carl Sassenrath
+**  Author:  Carl Sassenrath, Oldes
 **  Notes:
 **
 ***********************************************************************/
@@ -226,11 +226,11 @@ typedef struct Vector_Query_Values {
 	REBDEC median;
 } REBVQV;
 
-static void Query_Vector_Statictics(REBSER *vect, REBVQV *out) {
-	REBLEN len = SERIES_TAIL(vect);
-	REBCNT type = VECT_TYPE(vect);
+static void Query_Vector_Statictics(REBVAL *vect, REBVQV *out) {
+	REBLEN len = VAL_LEN(vect);
+	REBCNT type = VAL_VEC_INFO(vect);
 	REBCNT n = 0;
-	REBYTE *data = SERIES_DATA(vect);
+	REBYTE *data = VAL_VEC_DATA(vect);
 	REBDEC num, diff;
 
 	CLEARS(out);
@@ -255,18 +255,17 @@ static void Query_Vector_Statictics(REBSER *vect, REBVQV *out) {
 		out->variance += diff * diff;  // More efficient than pow()
 	}
 }
-static REBDEC Query_Vector_Median(REBSER *vect) {
-	REBLEN len = SERIES_TAIL(vect);
-	REBCNT type = VECT_TYPE(vect);
+static REBDEC Query_Vector_Median(REBVAL *vec) {
+	REBLEN len = VAL_TAIL(vec);
+	REBCNT type = VAL_VEC_INFO(vec);
 	REBSER *sorted;
 	REBDEC median;
 
 	if (len == 0) return 0;
 	// Make a vector copy, because sorting modifies
-	sorted = Copy_Series(vect);
-	sorted->size = vect->size; // attributes
+	sorted = Copy_Binary(VAL_SERIES(vec));
 	ASSERT1(type < VT_MAX, RP_ASSERTS);
-	unstable_sort(SERIES_DATA(sorted), len, VECT_BYTE_SIZE(type), compares[type]);
+	unstable_sort(SERIES_DATA(sorted), len, VAL_VEC_WIDE(vec), compares[type]);
 
 	median = get_vect_decimal(type, SERIES_DATA(sorted), len/2);
 	if (len%2 == 0) {
@@ -279,43 +278,42 @@ static REBDEC Query_Vector_Median(REBSER *vect) {
 
 
 FORCE_INLINE
-static void Set_Vector_Value(REBCNT bits, REBYTE *data, REBCNT n, REBVAL *val) {
+static void Set_Vector_Value(REBCNT type, REBYTE *data, REBCNT n, REBVAL *val) {
 	REBVAL num = *val; // because may be modified!
 	if (IS_DECIMAL(val)) {
 		// value is decimal
-		if (bits <= VTUI64) {
+		if (type <= VTUI64) {
 			// but target is integer 
 			VAL_INT64(&num) = (REBI64)VAL_DECIMAL(val);
 		}
 	}
 	else if (IS_INTEGER(val) || IS_CHAR(val)) {
-		if (bits > VTUI64) {
+		if (type > VTUI64) {
 			VAL_DECIMAL(&num) = (REBDEC)VAL_INT64(val);
 		}
 	}
 	else Trap_Arg(val);
-	setters[bits](data, n, &num);
+	setters[type](data, n, &num);
 }
 
 
-void Set_Vector_Row(REBSER *ser, REBVAL *blk)
+void Set_Vector_Row(REBSER *ser, REBVAL *blk, REBCNT type)
 {
 	REBVAL *val;
 	REBLEN n = 0;
 	REBCNT len = VAL_LEN(blk);
-	REBCNT bits = VECT_TYPE(ser);
 
 	if (IS_BLOCK(blk)) {
 		val = VAL_BLK_DATA(blk);
 		for (; NOT_END(val); val++) {
-			Set_Vector_Value(bits, ser->data, n++, val);
+			Set_Vector_Value(type, ser->data, n++, val);
 		}
 	}
 	else {
 #ifdef old_code
 		REBYTE *data = VAL_BIN_DATA(blk);
 		for (; len > 0; len--, idx++) {
-			set_vect(bits, ser->data, n++, (REBI64)(data[idx]), f);
+			set_vect(type, ser->data, n++, (REBI64)(data[idx]), f);
 		}
 #else
 		REBCNT bytes = ser->tail * SERIES_WIDE(ser); //TODO: review! Wide is max 256 bytes!!!
@@ -325,11 +323,11 @@ void Set_Vector_Row(REBSER *ser, REBVAL *blk)
 	}
 }
 
-void Find_Minimum_Of_Vector(REBSER *vect, REBVAL *ret) {
+void Find_Minimum_Of_Vector(REBVAL *vect, REBVAL *ret) {
 	REBLEN len;
 	REBYTE *data;
 	
-	len = SERIES_TAIL(vect);
+	len = VAL_LEN(vect);
 
 	SET_NONE(ret);
 	if (len == 0) return;
@@ -345,9 +343,9 @@ void Find_Minimum_Of_Vector(REBSER *vect, REBVAL *ret) {
         return;                              \
     }
 
-	data = SERIES_DATA(vect);
+	data = VAL_VEC_DATA(vect);
 
-	switch (VECT_TYPE(vect)) {
+	switch (VAL_VEC_INFO(vect)) {
 	case VTSI08: FIND_MIN(i8, SET_INTEGER); break;
 	case VTSI16: FIND_MIN(i16, SET_INTEGER); break;
 	case VTSI32: FIND_MIN(i32, SET_INTEGER); break;
@@ -363,11 +361,11 @@ void Find_Minimum_Of_Vector(REBSER *vect, REBVAL *ret) {
 #undef FIND_MIN
 }
 
-void Find_Maximum_Of_Vector(REBSER *vect, REBVAL *ret) {
+void Find_Maximum_Of_Vector(REBVAL *vect, REBVAL *ret) {
 	REBLEN len;
 	REBYTE *data;
 
-	len = SERIES_TAIL(vect);
+	len = VAL_LEN(vect);
 
 	SET_NONE(ret);
 	if (len == 0) return;
@@ -383,9 +381,9 @@ void Find_Maximum_Of_Vector(REBSER *vect, REBVAL *ret) {
         return;                              \
     }
 
-	data = SERIES_DATA(vect);
+	data = VAL_VEC_DATA(vect);
 
-	switch (VECT_TYPE(vect)) {
+	switch (VAL_VEC_INFO(vect)) {
 	case VTSI08: FIND_MAX(i8, SET_INTEGER); break;
 	case VTSI16: FIND_MAX(i16, SET_INTEGER); break;
 	case VTSI32: FIND_MAX(i32, SET_INTEGER); break;
@@ -404,7 +402,7 @@ void Find_Maximum_Of_Vector(REBSER *vect, REBVAL *ret) {
 
 /***********************************************************************
 **
-*/	static REBOOL Query_Vector_Field(REBSER *vect, REBCNT field, REBVAL *ret, REBVQV *vqv)
+*/	static REBOOL Query_Vector_Field(REBVAL *vec, REBCNT field, REBVAL *ret, REBVQV *vqv)
 /*
 **		Set a value with requested vector field result 
 **
@@ -412,49 +410,51 @@ void Find_Maximum_Of_Vector(REBSER *vect, REBVAL *ret) {
 {
 #define RETURN_DECIMAL(v) {SET_DECIMAL(ret, v); return TRUE;}
 #define RETURN_NUMBER(v)  {SET_DECIMAL(ret, v); goto return_number;}
+	
+	REBCNT type = VAL_VEC_INFO(vec);
 
 	switch (field) {
 	case SYM_TYPE:
-		Init_Word(ret, (VECT_TYPE(vect) >= VTSF08) ? SYM_DECIMAL_TYPE : SYM_INTEGER_TYPE);
+		Init_Word(ret, (type >= VTSF08) ? SYM_DECIMAL_TYPE : SYM_INTEGER_TYPE);
 		break;
 	case SYM_SIZE:
-		SET_INTEGER(ret, VECT_BIT_SIZE(VECT_TYPE(vect)));
+		SET_INTEGER(ret, VAL_VEC_BITS(vec));
 		break;
 	case SYM_LENGTH:
-		SET_INTEGER(ret, vect->tail);
+		SET_INTEGER(ret, VAL_TAIL(vec));
 		break;
 	case SYM_SIGNED:
-		SET_LOGIC(ret, !(VECT_TYPE(vect) >= VTUI08 && VECT_TYPE(vect) <= VTUI64));
+		SET_LOGIC(ret, VAL_VEC_SIGN(vec));
 		break;
 	case SYM_MIN:
 	case SYM_MINIMUM:
 		if (vqv) RETURN_NUMBER(vqv->minimum);
-		Find_Minimum_Of_Vector(vect, ret);
+		Find_Minimum_Of_Vector(vec, ret);
 		break;
 	case SYM_MAX:
 	case SYM_MAXIMUM:
 		if (vqv) RETURN_NUMBER(vqv->maximum);
-		Find_Maximum_Of_Vector(vect, ret);
+		Find_Maximum_Of_Vector(vec, ret);
 		break;
 	default:
 		if (!vqv) {
 			REBVQV out;
-			Query_Vector_Statictics(vect, &out);
+			Query_Vector_Statictics(vec, &out);
 			vqv = &out;
 		}
 		if (field == SYM_RANGE) RETURN_NUMBER((vqv->maximum - vqv->minimum));
 		if (field == SYM_SUM) RETURN_NUMBER(vqv->sum);
 		if (field == SYM_MEAN || field == SYM_AVERAGE) RETURN_DECIMAL(vqv->mean);
-		if (field == SYM_MEDIAN) RETURN_DECIMAL(Query_Vector_Median(vect));
+		if (field == SYM_MEDIAN) RETURN_DECIMAL(Query_Vector_Median(vec));
 		if (field == SYM_VARIANCE) RETURN_DECIMAL(vqv->variance);
-		if (field == SYM_POPULATION_DEVIATION) RETURN_DECIMAL(sqrt(vqv->variance / SERIES_TAIL(vect)));
-		if (field == SYM_SAMPLE_DEVIATION) RETURN_DECIMAL(sqrt(vqv->variance / (SERIES_TAIL(vect) - 1)));
+		if (field == SYM_POPULATION_DEVIATION) RETURN_DECIMAL(sqrt(vqv->variance / VAL_TAIL(vec)));
+		if (field == SYM_SAMPLE_DEVIATION) RETURN_DECIMAL(sqrt(vqv->variance / (VAL_TAIL(vec) - 1)));
 		return FALSE;
 	}
 	return TRUE;
 return_number:
 	// Return integer if vector type is integer, else keep decimal
-	if (VECT_TYPE(vect) < VTSF08) SET_INTEGER(ret, (REBI64)VAL_DECIMAL(ret));
+	if (type < VTSF08) SET_INTEGER(ret, (REBI64)VAL_DECIMAL(ret));
 	return TRUE;
 
 #undef RETURN_DECIMAL
@@ -471,8 +471,8 @@ return_number:
 ***********************************************************************/
 {
 	REBCNT len = VAL_LEN(vect);
-	REBYTE *data = VAL_SERIES(vect)->data;
-	REBCNT type = VECT_TYPE(VAL_SERIES(vect));
+	REBYTE *data = VAL_VEC_HEAD(vect);
+	REBCNT type = VAL_VEC_INFO(vect);
 	REBSER *ser = Make_Block(len);
 	REBVAL *val = NULL;
 	REBCNT reb_type = (type >= VTSF08) ? REB_DECIMAL : REB_INTEGER;
@@ -505,10 +505,8 @@ return_number:
 **
 ***********************************************************************/
 {
-	REBSER *vect = NULL;
-	REBSER *dest;
 	REBYTE *data;
-	REBCNT bits;
+	REBCNT vtype;
 	REBCNT len;
 
 	REBVAL *left;
@@ -529,8 +527,7 @@ return_number:
 		return;
 	}
 
-	vect = VAL_SERIES(left);
-	bits = VECT_TYPE(vect);
+	vtype = VAL_VEC_INFO(left);
 	len = VAL_LEN(left);
 
 
@@ -542,16 +539,12 @@ return_number:
 		i = (REBI64)f;
 	}
 
-	dest = Copy_Series_Part(vect, VAL_INDEX(left), len);
-	dest->size = vect->size; // attributes
-	data = dest->data;
-	SET_VECTOR(out, dest);
-	n = 0;
-
+	SET_VECTOR(out, Copy_Binary_Part(VAL_SERIES(left), VAL_INDEX(left), len), vtype);
+	data = VAL_VEC_HEAD(out);
 
 	switch (action) {
 	case A_ADD:
-		switch (bits) {
+		switch (vtype) {
 		case VTSI08: VEC_OP_LOOP(i8, +=, i); break;
 		case VTSI16: VEC_OP_LOOP(i16, +=, i); break;
 		case VTSI32: VEC_OP_LOOP(i32, +=, i); break;
@@ -565,7 +558,7 @@ return_number:
 		}
 		break;
 	case A_SUBTRACT:
-		switch (bits) {
+		switch (vtype) {
 		case VTSI08: VEC_OP_LOOP(i8, -=, i); break;
 		case VTSI16: VEC_OP_LOOP(i16, -=, i); break;
 		case VTSI32: VEC_OP_LOOP(i32, -=, i); break;
@@ -579,7 +572,7 @@ return_number:
 		}
 		break;
 	case A_MULTIPLY:
-		switch (bits) {
+		switch (vtype) {
 		case VTSI08: VEC_OP_LOOP(i8, *=, i); break;
 		case VTSI16: VEC_OP_LOOP(i16, *=, i); break;
 		case VTSI32: VEC_OP_LOOP(i32, *=, i); break;
@@ -593,8 +586,8 @@ return_number:
 		}
 		break;
 	case A_DIVIDE:
-		if (i == 0 && bits <= VTUI64) Trap0(RE_ZERO_DIVIDE);
-		switch (bits) {
+		if (i == 0 && vtype <= VTUI64) Trap0(RE_ZERO_DIVIDE);
+		switch (vtype) {
 		case VTSI08: VEC_OP_LOOP(i8, /=, i); break;
 		case VTSI16: VEC_OP_LOOP(i16, /=, i); break;
 		case VTSI32: VEC_OP_LOOP(i32, /=, i); break;
@@ -608,7 +601,7 @@ return_number:
 		}
 		break;
 	case A_AND:
-		switch (bits) {
+		switch (vtype) {
 		case VTSI08: VEC_OP_LOOP(i8, &=, i); break;
 		case VTSI16: VEC_OP_LOOP(i16, &=, i); break;
 		case VTSI32: VEC_OP_LOOP(i32, &=, i); break;
@@ -621,7 +614,7 @@ return_number:
 		}
 		break;
 	case A_OR:
-		switch (bits) {
+		switch (vtype) {
 		case VTSI08: VEC_OP_LOOP(i8, |=, i); break;
 		case VTSI16: VEC_OP_LOOP(i16, |=, i); break;
 		case VTSI32: VEC_OP_LOOP(i32, |=, i); break;
@@ -634,7 +627,7 @@ return_number:
 		}
 		break;
 	case A_XOR:
-		switch (bits) {
+		switch (vtype) {
 		case VTSI08: VEC_OP_LOOP(i8, ^=, i); break;
 		case VTSI16: VEC_OP_LOOP(i16, ^=, i); break;
 		case VTSI32: VEC_OP_LOOP(i32, ^=, i); break;
@@ -648,7 +641,7 @@ return_number:
 		break;
 	case A_REMAINDER:
 		if (i == 0) Trap0(RE_ZERO_DIVIDE);
-		switch (bits) {
+		switch (vtype) {
 		case VTSI08: VEC_OP_LOOP(i8, %=, i); break;
 		case VTSI16: VEC_OP_LOOP(i16, %=, i); break;
 		case VTSI32: VEC_OP_LOOP(i32, %=, i); break;
@@ -692,33 +685,24 @@ return_number:
 **
 ***********************************************************************/
 {
-	REBSER *vect1 = VAL_SERIES(v1);
-	REBSER *vect2 = VAL_SERIES(v2);
-	REBLEN len1 = VAL_LEN(v1);
-	REBLEN len2 = VAL_LEN(v2);
-	REBLEN len, n;
+	REBLEN len, n = 0;
 	REBLEN idx1 = VAL_INDEX(v1);
 	REBLEN idx2 = VAL_INDEX(v2);
-	REBINT bits1 = VECT_TYPE(vect1);
-	REBINT bits2 = VECT_TYPE(vect2);
-	REBSER *dest;
+	REBINT type = VAL_VEC_INFO(v1);
 	REBYTE *data;
-	REBYTE *data1 = vect1->data;
-	REBYTE *data2 = vect2->data;
+	REBYTE *data1 = VAL_VEC_HEAD(v1);
+	REBYTE *data2 = VAL_VEC_HEAD(v2);
 
-	len = MIN(len1, len2);
+	len = MIN(VAL_LEN(v1), VAL_LEN(v2));
 
-	if (bits1 != bits2)	Trap0(RE_VECTOR_NOT_COMPATIBLE);
-	dest = Make_Series(MAX(len,1), SERIES_WIDE(vect1), FALSE);
-	dest->size = vect1->size; // attributes
-	data = dest->data;
-	SERIES_TAIL(dest) = len;
-	SET_VECTOR(out, dest);
-	n = 0;
+	if (type != VAL_VEC_INFO(v2)) Trap0(RE_VECTOR_NOT_COMPATIBLE);
+	SET_VECTOR(out, Make_Series(MAX(len, 1), VAL_VEC_WIDE(v1), FALSE), type);
+	VAL_TAIL(out) = len;
+	data = VAL_VEC_HEAD(out);
 
 	switch (action) {
 	case A_ADD:
-		switch (bits1) {
+		switch (type) {
 		case VTSI08: VEC_OP_LOOP(i8, +); break;
 		case VTSI16: VEC_OP_LOOP(i16, +); break;
 		case VTSI32: VEC_OP_LOOP(i32, +); break;
@@ -732,7 +716,7 @@ return_number:
 		}
 		break;
 	case A_SUBTRACT:
-		switch (bits1) {
+		switch (type) {
 		case VTSI08: VEC_OP_LOOP(i8, -); break;
 		case VTSI16: VEC_OP_LOOP(i16, -); break;
 		case VTSI32: VEC_OP_LOOP(i32, -); break;
@@ -746,7 +730,7 @@ return_number:
 		}
 		break;
 	case A_MULTIPLY:
-		switch (bits1) {
+		switch (type) {
 		case VTSI08: VEC_OP_LOOP(i8, *); break;
 		case VTSI16: VEC_OP_LOOP(i16, *); break;
 		case VTSI32: VEC_OP_LOOP(i32, *); break;
@@ -760,7 +744,7 @@ return_number:
 		}
 		break;
 	case A_DIVIDE:
-		switch (bits1) {
+		switch (type) {
 		case VTSI08: VEC_OP_LOOP_NO_ZERO(i8, /); break;
 		case VTSI16: VEC_OP_LOOP_NO_ZERO(i16, /); break;
 		case VTSI32: VEC_OP_LOOP_NO_ZERO(i32, /); break;
@@ -774,7 +758,7 @@ return_number:
 		}
 		break;
 	case A_AND:
-		switch (bits1) {
+		switch (type) {
 		case VTSI08: VEC_OP_LOOP(i8, &); break;
 		case VTSI16: VEC_OP_LOOP(i16, &); break;
 		case VTSI32: VEC_OP_LOOP(i32, &); break;
@@ -787,7 +771,7 @@ return_number:
 		}
 		break;
 	case A_OR:
-		switch (bits1) {
+		switch (type) {
 		case VTSI08: VEC_OP_LOOP(i8, |); break;
 		case VTSI16: VEC_OP_LOOP(i16, |); break;
 		case VTSI32: VEC_OP_LOOP(i32, |); break;
@@ -800,7 +784,7 @@ return_number:
 		}
 		break;
 	case A_XOR:
-		switch (bits1) {
+		switch (type) {
 		case VTSI08: VEC_OP_LOOP(i8, ^); break;
 		case VTSI16: VEC_OP_LOOP(i16, ^); break;
 		case VTSI32: VEC_OP_LOOP(i32, ^); break;
@@ -813,7 +797,7 @@ return_number:
 		}
 		break;
 	case A_REMAINDER:
-		switch (bits1) {
+		switch (type) {
 		case VTSI08: VEC_OP_LOOP_NO_ZERO(i8, %); break;
 		case VTSI16: VEC_OP_LOOP_NO_ZERO(i16, %); break;
 		case VTSI32: VEC_OP_LOOP_NO_ZERO(i32, %); break;
@@ -843,12 +827,11 @@ return_number:
 	REBCNT l2 = VAL_LEN(b);
 	REBCNT len = MIN(l1, l2);
 	REBCNT n;
-	REBVAL v1;
-	REBVAL v2;
+	REBVAL v1, v2;
 	REBYTE *d1 = VAL_SERIES(a)->data;
 	REBYTE *d2 = VAL_SERIES(b)->data;
-	REBCNT b1 = VECT_TYPE(VAL_SERIES(a));
-	REBCNT b2 = VECT_TYPE(VAL_SERIES(b));
+	REBCNT  b1 = VAL_VEC_INFO(a);
+	REBCNT  b2 = VAL_VEC_INFO(b);
 
 	if (
 		(b1 >= VTSF08 && b2 < VTSF08)
@@ -879,8 +862,8 @@ return_number:
 	REBCNT n;
 	REBCNT k;
 	REBVAL a, b;
-	REBYTE *data = VAL_SERIES(vect)->data;
-	REBCNT type = VECT_TYPE(VAL_SERIES(vect));
+	REBYTE *data = VAL_VEC_HEAD(vect);
+	REBCNT type = VAL_VEC_INFO(vect);
 	REBCNT idx = VAL_INDEX(vect);
 
 	for (n = VAL_LEN(vect); n > 1;) {
@@ -895,92 +878,85 @@ return_number:
 
 /***********************************************************************
 **
-*/	void Sort_Vector(REBVAL *vect, REBLEN len, REBFLG reversed)
+*/	void Sort_Vector(REBVAL *vec, REBLEN len, REBFLG reversed)
 /*
 ***********************************************************************/
 {
-	REBCNT type = VECT_TYPE(VAL_SERIES(vect));
-	REBCNT idx = VAL_INDEX(vect);
-	REBCNT skp = VECT_BYTE_SIZE(type);
-	REBYTE *data = VAL_SERIES(vect)->data + (idx * skp);
+	REBCNT  type = VAL_VEC_INFO(vec);
+	REBCNT  skp  = VAL_VEC_WIDE(vec);
+	REBYTE* data = VAL_VEC_DATA(vec);
 	ASSERT1(type < VT_MAX, RP_ASSERTS);
 	unstable_sort(data, len, skp, reversed ? compares_rev[type] : compares[type]);
 }
 
 /***********************************************************************
 **
-*/	void Get_Vector_Value(REBVAL *var, REBSER *series, REBCNT index)
+*/	void Get_Vector_Value(REBVAL *var, REBVAL *vec, REBCNT index)
 /*
 ***********************************************************************/
 {
-	REBYTE *data = series->data;
-	REBCNT bits = VECT_TYPE(series);
-
-	get_vect(bits, data, index, var);
-	SET_TYPE(var, (bits >= VTSF08) ? REB_DECIMAL : REB_INTEGER);
+	REBCNT type  = VAL_VEC_INFO(vec);
+	get_vect(type, VAL_VEC_HEAD(vec), index, var);
+	SET_TYPE(var, (type >= VTSF08) ? REB_DECIMAL : REB_INTEGER);
 }
-
 
 /***********************************************************************
 **
-*/	REBSER *Make_Vector(REBINT type, REBINT sign, REBINT dims, REBINT bits, REBINT size)
+*/	REBSER* Make_Vector_Series(REBINT size, REBCNT wide, REBINT dims)
 /*
-**		type: the datatype
-**		sign: signed or unsigned
-**		dims: number of dimensions
-**		bits: number of bits per unit (8, 16, 32, 64)
+**		size: number of values
+**		wide: number of bytes per value
+**		dims: number of dimensions (currently always 1)
+**
+***********************************************************************/
+{
+	REBU64 len = (REBU64)size * dims;
+	if (len > 0x7fffffff) return NULL;
+
+	REBSER* ser = Make_Series(MAX(1,size), wide, TRUE); // !!! can width help extend the len?
+	LABEL_SERIES(ser, "make vector");
+	ser->tail = AS_REBLEN(len);
+	return ser;
+}
+
+/***********************************************************************
+**
+*/	REBINT Make_Vector(REBVAL* val, REBCNT vtype, REBINT size)
+/*
+**		type: encoded vector type info (one of VTSI08..VTSF64)
 **		size: number of values
 **
 ***********************************************************************/
 {
-	REBCNT len;
-	REBSER *ser;
-
-	//printf("MAKE_VECTOR=> type: %i sign: %i dims: %i bits: %i size: %i\n", type, sign, dims, bits, size);
-
-	len = size * dims;
-	if (len > 0x7fffffff) return 0;
-	ser = Make_Series(len+1, bits/8, TRUE); // !!! can width help extend the len?
-	LABEL_SERIES(ser, "make vector");
-	//No need to clear the series, because Make_Series guarantees completely cleared memory.
-	ser->tail = len;  // !!! another way to do it?
-
-	// Store info about the vector (could be moved to flags if necessary):
-	ser->size = (dims << 8) | (type << 3) | (sign << 2) | (bits == 64 ? 3 : bits >> 4); // there are only 2 bits to store the info
-
-	return ser;
+	REBSER* ser;
+	if (!(ser = Make_Vector_Series(size, VECT_WIDE(vtype), VECT_DIMS(vtype))))
+		return FALSE;
+	
+	SET_VECTOR(val, ser, vtype);
+	//printf("Make_Vector: wide: %u bits: %u sign: %u\n", VAL_VEC_WIDE(val), VAL_VEC_BITS(val), VAL_VEC_SIGN(val));
+	return TRUE;
 }
 
-REBOOL Get_Vector_Spec_From_Symbol(REBCNT sym, REBINT *type, REBINT *sign, REBINT *bits) {
-	switch (Normalize_Vector_Type_Symbol(sym)) {
-	case SYM_INT8X:    *type = 0; *sign = 0; *bits =  8; break;
-	case SYM_UINT8X:   *type = 0; *sign = 1; *bits =  8; break;
-	case SYM_INT16X:   *type = 0; *sign = 0; *bits = 16; break;
-	case SYM_UINT16X:  *type = 0; *sign = 1; *bits = 16; break;
-	case SYM_INT32X:   *type = 0; *sign = 0; *bits = 32; break;
-	case SYM_UINT32X:  *type = 0; *sign = 1; *bits = 32; break;
-	case SYM_INT64X:   *type = 0; *sign = 0; *bits = 64; break;
-	case SYM_UINT64X:  *type = 0; *sign = 1; *bits = 64; break;
-	case SYM_FLOAT32X: *type = 1; *sign = 0; *bits = 32; break;
-	case SYM_FLOAT64X: *type = 1; *sign = 0; *bits = 64; break;
-	default: return FALSE;
-	}
-	return TRUE;
+static
+REBCNT Get_Vector_Type_From_Symbol(REBCNT sym) {
+	sym = Normalize_Vector_Type_Symbol(sym);
+	return (sym < SYM_INT8X || sym > SYM_FLOAT64X)
+		? UNKNOWN
+		: sym - SYM_INT8X;
 }
 
 /***********************************************************************
 **
-*/	REBSER *Make_Vector_From_Word(REBCNT sym, REBINT size)
+*/	void Make_Vector_From_Word(REBVAL *val, REBCNT sym, REBINT size)
 /*
 **	Make a vector from a type name.
 **
 ***********************************************************************/
 {
-	REBINT type, sign, bits;
-	if (Get_Vector_Spec_From_Symbol(sym, &type, &sign, &bits)) {
-		return Make_Vector(type, sign, 1, bits, size);
+	REBINT type = Get_Vector_Type_From_Symbol(sym);
+	if (type==UNKNOWN || !Make_Vector(val, type, size)) {
+		VAL_SERIES(val) = NULL;
 	}
-	return NULL;	
 }
 
 /***********************************************************************
@@ -999,13 +975,9 @@ REBOOL Get_Vector_Spec_From_Symbol(REBCNT sym, REBINT *type, REBINT *sign, REBIN
 **
 ***********************************************************************/
 {
-	REBINT type = -1; // 0 = int,    1 = float
-	REBINT sign = -1; // 0 = signed, 1 = unsigned
-	REBINT dims = 1;
-	REBINT bits = 32;
-	REBCNT size = 0;
-	REBVAL *iblk = 0;
-	REBSER *vect;
+	REBCNT size  = 0;
+	REBLEN index = 0;
+	REBVAL *iblk = 0;	
 
 	// Vector type:
 	if (!IS_WORD(bp)) return 0;
@@ -1014,12 +986,15 @@ REBOOL Get_Vector_Spec_From_Symbol(REBCNT sym, REBINT *type, REBINT *sign, REBIN
 		bp++;
 		if (!IS_WORD(bp)) return 0;
 	}
-	if (!Get_Vector_Spec_From_Symbol(VAL_WORD_CANON(bp), &type, &sign, &bits)) return 0;
+	REBCNT vtype = Get_Vector_Type_From_Symbol(VAL_WORD_CANON(bp));
+	if (vtype == UNKNOWN) return 0;
+	//printf("vtype: wide: %u bits: %u sign: %u\n", VECT_WIDE(vtype), VECT_BITS(vtype), VECT_SIGN(vtype));
+
 	bp++;
 	// Initial data:
 	if (IS_BLOCK(bp) || IS_BINARY(bp)) {
 		REBCNT len = VAL_LEN(bp);
-		if (IS_BINARY(bp)) len /= (bits >> 3);
+		if (IS_BINARY(bp)) len /= VECT_WIDE(vtype);
 		if (len > size && size == 0) size = len;
 		iblk = bp;
 		bp++;
@@ -1030,16 +1005,13 @@ REBOOL Get_Vector_Spec_From_Symbol(REBCNT sym, REBINT *type, REBINT *sign, REBIN
 	else return 0;
 	// Index offset:
 	if (IS_INTEGER(bp)) {
-		VAL_INDEX(value) = (Int32s(bp, 1) - 1);
+		index = (Int32s(bp, 1) - 1);
 	}
-
-	vect = Make_Vector(type, sign, dims, bits, size);
-	if (!vect) return 0;
-	if (iblk) Set_Vector_Row(vect, iblk);
-
-	SET_TYPE(value, REB_VECTOR);
-	VAL_SERIES(value) = vect;
-	// index set earlier
+	
+	Make_Vector(value, vtype, size);
+	if (!VAL_SERIES(value)) return 0;
+	if (iblk) Set_Vector_Row(VAL_SERIES(value), iblk, vtype);
+	VAL_INDEX(value) = index;
 
 	return value;
 }
@@ -1073,8 +1045,8 @@ REBOOL Get_Vector_Spec_From_Symbol(REBCNT sym, REBINT *type, REBINT *sign, REBIN
 ***********************************************************************/
 {
 	REBVAL *bp = VAL_BLK_DATA(spec);
-	REBINT type = -1; // 0 = int,    1 = float
-	REBINT sign = -1; // 0 = signed, 1 = unsigned
+	REBCNT isfloat = 0;  // 0 = int,    1 = float
+	REBCNT sign = 1;     // 1 = signed, 0 = unsigned
 	REBINT dims = 1;
 	REBINT bits = 64;
 	REBCNT size = 0;
@@ -1082,25 +1054,28 @@ REBOOL Get_Vector_Spec_From_Symbol(REBCNT sym, REBINT *type, REBINT *sign, REBIN
 	REBSER *vect;
 	REBVAL *iblk = 0;
 	REBVAL *val;
+	REBCNT vtype = UNKNOWN;
 
 	if (IS_WORD(bp)) {
 		// Using the prefered type like: make vector! [uint8! ...]
-		if (Get_Vector_Spec_From_Symbol(VAL_WORD_CANON(bp), &type, &sign, &bits)) {
+		vtype = Get_Vector_Type_From_Symbol(VAL_WORD_CANON(bp));
+		if (vtype != UNKNOWN) {
 			bp++;
+			bits = VECT_BITS(vtype);
 			goto size_spec;
 		}
 		// Old specification like: make vector! [unsigned integer! 8 ...]
 		switch (VAL_WORD_CANON(bp)) {
-		case SYM_UNSIGNED: sign = 1; bp++; break;
-		case SYM_SIGNED:   sign = 0; bp++; break;
+		case SYM_UNSIGNED: sign = 0; bp++; break;
+		case SYM_SIGNED:   sign = 1; bp++; break;
 		}
 	}
 	else if (IS_INTEGER(bp) || IS_DECIMAL(bp)) {
 		// make vector! [1 2 3]
 		// make vector! [1.0 2.0 3.0]
 		// using signed and 64 bits as a default
-		type = IS_INTEGER(bp) ? 0 : 1;
-		sign = 0;
+		isfloat = IS_INTEGER(bp) ? 0 : 1;
+		sign = 1;
 		size = VAL_LEN(spec);
 		iblk = spec;
 		goto data_spec;
@@ -1109,17 +1084,14 @@ REBOOL Get_Vector_Spec_From_Symbol(REBCNT sym, REBINT *type, REBINT *sign, REBIN
 	// INTEGER! or DECIMAL!
 	if (IS_WORD(bp)) {
 		if (VAL_WORD_CANON(bp) == (REB_INTEGER+1)) // integer! symbol
-			type = 0;
+			isfloat = 0;
 		else if (VAL_WORD_CANON(bp) == (REB_DECIMAL+1)) { // decimal! symbol
-			type = 1;
-			if (sign > 0) return 0;
+			isfloat = 1;
+			if (!sign) return 0;
 		}
 		else return 0;
 		bp++;
 	}
-
-	if (type < 0) type = 0;
-	if (sign < 0) sign = 0;
 
 	// BITS
 	if (IS_INTEGER(bp)) {
@@ -1127,10 +1099,11 @@ REBOOL Get_Vector_Spec_From_Symbol(REBCNT sym, REBINT *type, REBINT *sign, REBIN
 		if (
 			(bits == 32 || bits == 64)
 			||
-			(type == 0 && (bits == 8 || bits == 16))
+			(isfloat == 0 && (bits == 8 || bits == 16))
 		) bp++;
 		else return 0;
 	} else return 0;
+	vtype = VECT_MAKE_TYPE(bits==64?3:bits>>4, sign, isfloat);
 
 size_spec:
 	// For size, data and index one can use get-words
@@ -1167,12 +1140,10 @@ size_spec:
 
 	if (NOT_END(val)) return 0;
 data_spec:
-	vect = Make_Vector(type, sign, dims, bits, size);
-	if (!vect) return 0;
-	if (iblk) Set_Vector_Row(vect, iblk);
-
-	SET_TYPE(value, REB_VECTOR);
-	VAL_SERIES(value) = vect;
+	if (vtype == UNKNOWN) vtype = VECT_MAKE_TYPE(bits == 64 ? 3 : bits >> 4, sign, isfloat);
+	Make_Vector(value, vtype, size);
+	if (!VAL_SERIES(value)) return 0;
+	if (iblk) Set_Vector_Row(VAL_SERIES(value), iblk, VAL_VEC_INFO(value));
 	VAL_INDEX(value) = index;
 
 	return value;
@@ -1205,7 +1176,7 @@ data_spec:
 		return VAL_SERIES(a) == VAL_SERIES(b) && VAL_INDEX(a) == VAL_INDEX(b);
 
 	num = Compare_Vector(a, b);
-	if (mode >= 0) return (num == 0);
+	if (mode >=  0) return (num == 0);
 	if (mode == -1) return (num >= 0);
 	return (num > 0);
 }
@@ -1220,8 +1191,9 @@ data_spec:
 	REBVAL *sel = pvs->select;
 	REBVAL *val = pvs->value;
 	REBVAL *set = pvs->setval;
+	REBVAL *vec = val;
 	REBSER *vect = VAL_SERIES(val);
-	REBINT bits = VECT_TYPE(vect);
+	REBINT vtype = VAL_VEC_INFO(val);
 	REBINT n;
 	//REBINT dims;
 	
@@ -1234,7 +1206,7 @@ data_spec:
 	} else if (IS_WORD(sel)) {
 		if (set == 0) {
 			val = pvs->value = pvs->store;
-			if(!Query_Vector_Field(vect, VAL_WORD_CANON(sel), val, NULL)) return PE_BAD_SELECT;
+			if(!Query_Vector_Field(vec, VAL_WORD_CANON(sel), val, NULL)) return PE_BAD_SELECT;
 			return PE_OK;
 		} else
 			return PE_BAD_SET;
@@ -1252,8 +1224,8 @@ data_spec:
 		if (n <= 0 || (REBCNT)n > vect->tail) return PE_NONE;
 
 		// Get element value:
-		get_vect(bits, vp, n - 1, pvs->store);
-		SET_TYPE(pvs->store, (bits >= VTSF08) ? REB_DECIMAL : REB_INTEGER);
+		get_vect(vtype, vp, n - 1, pvs->store);
+		SET_TYPE(pvs->store, (vtype >= VTSF08) ? REB_DECIMAL : REB_INTEGER);
 		return PE_USE;
 	}
 
@@ -1261,7 +1233,7 @@ data_spec:
 	TRAP_PROTECT(vect);
 
 	if (n <= 0 || (REBCNT)n > vect->tail) return PE_BAD_RANGE;
-	Set_Vector_Value(bits, vp, n-1, set);
+	Set_Vector_Value(vtype, vp, n-1, set);
 	return PE_OK;
 }
 
@@ -1270,7 +1242,7 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 {
 	REBCNT n;
 	REBCNT m;
-	REBINT width = VAL_VEC_WIDTH(value);
+	REBINT width = VAL_VEC_WIDE(value);
 
 	if (width == 1) {
 		REBYTE *bp = VAL_BIN_DATA(value);
@@ -1371,26 +1343,19 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 		if (IS_INTEGER(arg) || IS_DECIMAL(arg)) {
 			size = Int32s(arg, 0);
 			if (size < 0) goto bad_make;
-			ser = Make_Vector(0, 0, 1, 32, size);
-			SET_VECTOR(value, ser);
+			Make_Vector(value, VTSI32, size);
 			break;
 		}
-//		if (IS_NONE(arg)) {
-//			ser = Make_Vector(0, 0, 1, 32, 0);
-//			SET_VECTOR(value, ser);
-//			break;
-//		}
 		// fall thru
 
 	case A_TO:
 		// CASE: make vector! #{01FF} ;== #(uint8! [1 255]) 
 		if (IS_BINARY(arg)) {
 			len = VAL_LEN(arg);
-			ser = Make_Vector(0, 1, 1, 8, len); //== uint8!
-			if (len > 0) {
-				COPY_MEM(SERIES_DATA(ser), VAL_BIN_DATA(arg), len);
+			Make_Vector(value, VTUI08, len);
+			if (len > 0 && VAL_TAIL(value) == len) {
+				COPY_MEM(VAL_VEC_HEAD(value), VAL_BIN_DATA(arg), len);
 			}
-			SET_VECTOR(value, ser);
 			break;
 		}
 		// CASE: make vector! [...]
@@ -1404,9 +1369,9 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 
 	case A_COPY:
 		len = Partial(value, 0, D_ARG(3), 0); // Can modify value index.
-		ser = Copy_Series_Part(vect, VAL_INDEX(value), len);
+		ser = Copy_Binary_Part(vect, VAL_INDEX(value), len);
 		ser->size = vect->size; // attributes
-		SET_VECTOR(value, ser);
+		SET_VECTOR(value, ser, VAL_VEC_INFO(value));
 		break;
 
 	case A_REVERSE:
@@ -1431,32 +1396,32 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 		return R_ARG1;
 
 	case A_REFLECT:
-		bits = VECT_TYPE(vect);
+		bits = VAL_VEC_INFO(value);
 		if (SYM_SPEC == VAL_WORD_SYM(D_ARG(2))) {
 			blk = Make_Block(4);
 			if (bits >= VTUI08 && bits <= VTUI64) Init_Word(Append_Value(blk), SYM_UNSIGNED);
-			Query_Vector_Field(vect, SYM_TYPE, Append_Value(blk), NULL);
-			Query_Vector_Field(vect, SYM_SIZE, Append_Value(blk), NULL);
-			Query_Vector_Field(vect, SYM_LENGTH, Append_Value(blk), NULL);
+			Query_Vector_Field(value, SYM_TYPE, Append_Value(blk), NULL);
+			Query_Vector_Field(value, SYM_SIZE, Append_Value(blk), NULL);
+			Query_Vector_Field(value, SYM_LENGTH, Append_Value(blk), NULL);
 			Set_Series(REB_BLOCK, value, blk);
 		} else {
-			if(!Query_Vector_Field(vect, VAL_WORD_SYM(D_ARG(2)), value, NULL))
+			if(!Query_Vector_Field(value, VAL_WORD_SYM(D_ARG(2)), value, NULL))
 				Trap_Reflect(VAL_TYPE(value), D_ARG(2));
 		}
 		break;
 
 	case A_QUERY:
-		bits = VECT_TYPE(vect);
+		bits = VAL_VEC_INFO(value);
 		REBVAL *spec = Get_System(SYS_STANDARD, STD_VECTOR_INFO);
 		if (!IS_OBJECT(spec)) Trap_Arg(spec);
 		REBVAL *field = D_ARG(ARG_QUERY_FIELD);
 		if(IS_WORD(field)) {
-			if (!Query_Vector_Field(vect, VAL_WORD_SYM(field), value, NULL))
+			if (!Query_Vector_Field(value, VAL_WORD_SYM(field), value, NULL))
 				Trap_Reflect(VAL_TYPE(value), field); // better error?
 			break;
 		}
 		REBVQV results = { 0 };
-		Query_Vector_Statictics(vect, &results);
+		Query_Vector_Statictics(value, &results);
 
 		if (IS_BLOCK(field)) {
 			REBSER *values = Make_Block(2 * BLK_LEN(VAL_SERIES(field)));
@@ -1471,7 +1436,7 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 						VAL_SET_LINE(val);
 					}
 					val = Append_Value(values);
-					if (!Query_Vector_Field(vect, VAL_WORD_SYM(word), val, &results))
+					if (!Query_Vector_Field(value, VAL_WORD_SYM(word), val, &results))
 						Trap1(RE_INVALID_ARG, word);
 				}
 				else  Trap1(RE_INVALID_ARG, word);
@@ -1484,19 +1449,19 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 		}
 		else {
 			REBSER *obj = CLONE_OBJECT(VAL_OBJ_FRAME(spec));
-			Query_Vector_Field(vect, SYM_SIGNED, OFV(obj, STD_VECTOR_INFO_SIGNED), &results);
-			Query_Vector_Field(vect, SYM_TYPE,   OFV(obj, STD_VECTOR_INFO_TYPE), &results);
-			Query_Vector_Field(vect, SYM_SIZE,   OFV(obj, STD_VECTOR_INFO_SIZE), &results);
-			Query_Vector_Field(vect, SYM_LENGTH, OFV(obj, STD_VECTOR_INFO_LENGTH), &results);
-			Query_Vector_Field(vect, SYM_MINIMUM, OFV(obj, STD_VECTOR_INFO_MINIMUM), &results);
-			Query_Vector_Field(vect, SYM_MAXIMUM, OFV(obj, STD_VECTOR_INFO_MAXIMUM), &results);
-			Query_Vector_Field(vect, SYM_RANGE, OFV(obj, STD_VECTOR_INFO_RANGE), &results);
-			Query_Vector_Field(vect, SYM_SUM, OFV(obj, STD_VECTOR_INFO_SUM), &results);
-			Query_Vector_Field(vect, SYM_MEAN, OFV(obj, STD_VECTOR_INFO_MEAN), &results);
-			Query_Vector_Field(vect, SYM_MEDIAN, OFV(obj, STD_VECTOR_INFO_MEDIAN), &results);
-			Query_Vector_Field(vect, SYM_VARIANCE, OFV(obj, STD_VECTOR_INFO_VARIANCE), &results);
-			Query_Vector_Field(vect, SYM_POPULATION_DEVIATION, OFV(obj, STD_VECTOR_INFO_POPULATION_DEVIATION), &results);
-			Query_Vector_Field(vect, SYM_SAMPLE_DEVIATION, OFV(obj, STD_VECTOR_INFO_SAMPLE_DEVIATION), &results);
+			Query_Vector_Field(value, SYM_SIGNED, OFV(obj, STD_VECTOR_INFO_SIGNED), &results);
+			Query_Vector_Field(value, SYM_TYPE,   OFV(obj, STD_VECTOR_INFO_TYPE), &results);
+			Query_Vector_Field(value, SYM_SIZE,   OFV(obj, STD_VECTOR_INFO_SIZE), &results);
+			Query_Vector_Field(value, SYM_LENGTH, OFV(obj, STD_VECTOR_INFO_LENGTH), &results);
+			Query_Vector_Field(value, SYM_MINIMUM, OFV(obj, STD_VECTOR_INFO_MINIMUM), &results);
+			Query_Vector_Field(value, SYM_MAXIMUM, OFV(obj, STD_VECTOR_INFO_MAXIMUM), &results);
+			Query_Vector_Field(value, SYM_RANGE, OFV(obj, STD_VECTOR_INFO_RANGE), &results);
+			Query_Vector_Field(value, SYM_SUM, OFV(obj, STD_VECTOR_INFO_SUM), &results);
+			Query_Vector_Field(value, SYM_MEAN, OFV(obj, STD_VECTOR_INFO_MEAN), &results);
+			Query_Vector_Field(value, SYM_MEDIAN, OFV(obj, STD_VECTOR_INFO_MEDIAN), &results);
+			Query_Vector_Field(value, SYM_VARIANCE, OFV(obj, STD_VECTOR_INFO_VARIANCE), &results);
+			Query_Vector_Field(value, SYM_POPULATION_DEVIATION, OFV(obj, STD_VECTOR_INFO_POPULATION_DEVIATION), &results);
+			Query_Vector_Field(value, SYM_SAMPLE_DEVIATION, OFV(obj, STD_VECTOR_INFO_SAMPLE_DEVIATION), &results);
 			SET_OBJECT(value, obj);
 		}
 		break;
@@ -1510,7 +1475,7 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 		index = VAL_INDEX(value);
 		REBFLG args = 0;
 		if (DS_REF(AN_PART)) SET_FLAG(args, AN_PART);
-		index = Modify_Vector(action, VAL_SERIES(value), index, arg, args, len, DS_REF(AN_DUP) ? Int32(DS_ARG(AN_COUNT)) : 1);
+		index = Modify_Vector(action, value, index, arg, args, len, DS_REF(AN_DUP) ? Int32(DS_ARG(AN_COUNT)) : 1);
 		VAL_INDEX(value) = index;
 		break;
 
@@ -1538,7 +1503,7 @@ bad_make:
 
 /***********************************************************************
 **
-*/	REBCNT Modify_Vector(REBCNT action, REBSER *vect, REBCNT index, REBVAL *src_val, REBCNT flags, REBINT dst_len, REBINT dups)
+*/	REBCNT Modify_Vector(REBCNT action, REBVAL *vec, REBCNT index, REBVAL *src_val, REBCNT flags, REBINT dst_len, REBINT dups)
 /*
 **		action: INSERT, APPEND, CHANGE
 **
@@ -1556,9 +1521,10 @@ bad_make:
 	REBSER *src_ser = 0;
 	REBCNT src_idx = 0;
 	REBCNT src_len = 0;
+	REBSER *vect = VAL_SERIES(vec);
+	REBCNT type = VAL_VEC_INFO(vec);
 	REBCNT tail = SERIES_TAIL(vect);
-	REBCNT type = VECT_TYPE(vect);
-	REBCNT bpv = VECT_BYTE_SIZE(type); // bytes per value
+	REBCNT bpv  = VAL_VEC_WIDE(vec); // bytes per value
 	REBINT size;  // total to insert/append/change (includes dups)
 	REBVAL *val = NULL;
 
@@ -1572,7 +1538,7 @@ bad_make:
 		REBLEN part = VAL_TAIL(src_val) - index;
 		if (action != A_CHANGE && GET_FLAG(flags, AN_PART) && dst_len < AS_INT(part))
 			part = dst_len;
-		if (type == VECT_TYPE(VAL_SERIES(src_val))) {
+		if (type == VAL_VEC_INFO(src_val)) {
 			// same vector types...
 			src_ser = VAL_SERIES(src_val);
 			src_idx = index;
@@ -1583,7 +1549,7 @@ bad_make:
 			RESIZE_SERIES(src_ser, part * bpv);
 			// Encode values from the source vector to the temp buffer.
 			for (REBVAL tmp; src_len < part; index++) {
-				Get_Vector_Value(&tmp, VAL_SERIES(src_val), index);
+				Get_Vector_Value(&tmp, src_val, index);
 				Set_Vector_Value(type, src_ser->data, src_len++, &tmp);
 			}
 		}
@@ -1649,11 +1615,9 @@ bad_make:
 {
 	REBSER *vect = VAL_SERIES(value);
 	REBYTE *data = vect->data;
-	REBCNT bits  = VECT_TYPE(vect);
+	REBCNT type  = VAL_VEC_INFO(value);
 //	REBCNT dims  = vect->size >> 8;
-	REBCNT len;
-	REBCNT n;
-	REBCNT c;
+	REBCNT len, n, c;
 	REBVAL v;
 	REBYTE buf[32];
 	REBYTE l;
@@ -1668,15 +1632,7 @@ bad_make:
 	}
 
 	if (molded) {
-//		REBCNT type = (bits >= VTSF32) ? REB_DECIMAL : REB_INTEGER;
-//		if (GET_MOPT(mold, MOPT_MOLD_ALL)) {
-//			Emit(mold, "#(T ", value);
-//			if (bits >= VTUI08 && bits <= VTUI64) Append_Bytes(mold->series, "unsigned ");
-//			Emit(mold, "N I I [", type + 1, VECT_BIT_SIZE(bits), len);
-//		}
-//		else {
-			Emit(mold, "#(S [", Get_Sym_Name(SYM_INT8X + bits));
-//		}
+		Emit(mold, "#(S [", Get_Sym_Name(SYM_INT8X + type));
 		if (indented && len > 10) {
 			mold->indent++;
 			New_Indented_Line(mold);
@@ -1687,8 +1643,8 @@ bad_make:
 	c = 0;
 	for (; n < vect->tail; n++) {
 		if (MOLD_HAS_LIMIT(mold) && MOLD_OVER_LIMIT(mold)) return;
-		get_vect(bits, data, n, &v);
-		if (bits < VTSF08) {
+		get_vect(type, data, n, &v);
+		if (type < VTSF08) {
 			l = Emit_Integer(buf, VAL_INT64(&v));
 		} else {
 			l = Emit_Decimal(buf, VAL_DECIMAL(&v), 0, '.', mold->digits);

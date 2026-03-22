@@ -1481,7 +1481,7 @@ is_true:
 					n = VAL_INT32(val);
 					if (n < 0 || n > 255) return PE_BAD_RANGE;
 					Fill_Line((REBCNT *)src, TO_PIXEL_COLOR(n,n,n,0xff), len, 1);
-				} else if ((IS_VECTOR(val) && VAL_VEC_WIDTH(val) == 1) || IS_BINARY(val)) {
+				} else if ((IS_VECTOR(val) && VAL_VEC_WIDE(val) == 1) || IS_BINARY(val)) {
 					Bin_To_RGB(src, len, VAL_BIN_DATA(val), VAL_LEN(val) / 3);
 				}
 				else return PE_BAD_SET;
@@ -1504,7 +1504,7 @@ is_true:
 					n = VAL_INT32(val);
 					if (n < 0 || n > 255) return PE_BAD_RANGE;
 					Fill_Line((REBCNT *)src, TO_PIXEL_COLOR(n,n,n,n), len, FALSE);
-				} else if ((IS_VECTOR(val) && VAL_VEC_WIDTH(val) == 1) || IS_BINARY(val)) {
+				} else if ((IS_VECTOR(val) && VAL_VEC_WIDE(val) == 1) || IS_BINARY(val)) {
 					Bin_To_Color(src, VAL_BIN_DATA(val), VAL_LEN(val) / 4, sym);
 				} else return PE_BAD_SET;
 				break;
@@ -1518,7 +1518,7 @@ is_true:
 					n = VAL_INT32(val);
 					if (n < 0 || n > 255) return PE_BAD_RANGE;
 					Fill_Channel_Line(src, (REBYTE)n, len, sym);
-				} else if ((IS_VECTOR(val) && VAL_VEC_WIDTH(val) == 1) || IS_BINARY(val)) {
+				} else if ((IS_VECTOR(val) && VAL_VEC_WIDE(val) == 1) || IS_BINARY(val)) {
 					Bin_To_Channel(src, len, VAL_BIN_DATA(val), VAL_LEN(val), sym);
 				} else return PE_BAD_SET;
 				break;
@@ -1530,7 +1530,7 @@ is_true:
 					if (n < 0 || n > 255) return PE_BAD_RANGE;
 					Fill_Line((REBCNT*)src, TO_PIXEL_COLOR(n, n, n, n), len, FALSE);
 				}
-				else if ((IS_VECTOR(val) && VAL_VEC_WIDTH(val) == 1) || IS_BINARY(val)) {
+				else if ((IS_VECTOR(val) && VAL_VEC_WIDE(val) == 1) || IS_BINARY(val)) {
 					Bin_To_Color(src, VAL_BIN_DATA(val), VAL_LEN(val), sym);
 				}
 				else return PE_BAD_SET;

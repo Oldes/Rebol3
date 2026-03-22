@@ -3,7 +3,7 @@
 **  REBOL Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -249,6 +249,21 @@
 	STR_TERM(series);
 }
 
+/***********************************************************************
+**
+*/	REBSER* Copy_Binary(REBSER* source)
+/*
+**		Copy binary series, without terminator.
+**
+***********************************************************************/
+{
+	REBCNT len = SERIES_TAIL(source);
+	REBSER* series = Make_Series(len, SERIES_WIDE(source), FALSE);
+
+	COPY_MEM(series->data, source->data, len * SERIES_WIDE(source));
+	SERIES_TAIL(series) = len;
+	return series;
+}
 
 /***********************************************************************
 **
@@ -258,15 +273,29 @@
 **
 ***********************************************************************/
 {
-	REBCNT len = source->tail + 1;
+	REBCNT len = SERIES_LEN(source); // with terminator
 	REBSER *series = Make_Series(len, SERIES_WIDE(source), FALSE);
 
 	COPY_MEM(series->data, source->data, len * SERIES_WIDE(source));
 	if (IS_UTF8_SERIES(source)) UTF8_SERIES(series);
-	series->tail = source->tail;
+	SERIES_TAIL(series) = SERIES_TAIL(source);
 	return series;
 }
 
+/***********************************************************************
+**
+*/	REBSER* Copy_Binary_Part(REBSER* source, REBCNT index, REBCNT length)
+/*
+**		Copy binary subseries, without space for the terminator.
+**
+***********************************************************************/
+{
+	REBSER* series = Make_Series(length, SERIES_WIDE(source), FALSE);
+
+	COPY_MEM(series->data, source->data + index * SERIES_WIDE(source), length * SERIES_WIDE(source));
+	series->tail = length;
+	return series;
+}
 
 /***********************************************************************
 **
@@ -280,10 +309,7 @@
 
 	COPY_MEM(series->data, source->data + index * SERIES_WIDE(source), (length+1) * SERIES_WIDE(source));
 	series->tail = length;
-	if (IS_UTF8_SERIES(source)) {
-
-		UTF8_SERIES(series);
-	}
+	if (IS_UTF8_SERIES(source)) UTF8_SERIES(series);
 	return series;
 }
 
