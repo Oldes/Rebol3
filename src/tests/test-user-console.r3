@@ -45,19 +45,17 @@ my-console: context [
 						]
 					]
 					#"^-" [ ; Tab Completion
-						;all-words: union words-of system/contexts/lib words-of system/contexts/user
 						last-part: any [
 							find/last/tail event/port/data SP
 							event/port/data
 						]
-						if last-part/1 == #"%" [
+						either last-part/1 == #"%" [ ; File completion
 							last-part: as file! next last-part
 							path-parts: split-path last-part
 							files: sort read path-parts/1
 							matching-part: none
 							either perfect-match: find files last-part [
-								matching-part: skip best-matches/1 length? last-part
-								append matching-part SP
+								append event/port/data SP
 							][
 								best-matches: clear []
 								foreach file files [
@@ -66,8 +64,8 @@ my-console: context [
 									]
 								]
 								either single? best-matches [
-									matching-part: skip best-matches/1 length? last-part
-									append matching-part SP
+									missing-part: skip best-matches/1 length? last-part
+									append event/port/data join missing-part SP
 								][
 									print ["^[[G^[[K" mold best-matches]
 									min-length: length? best-matches/1
@@ -91,8 +89,28 @@ my-console: context [
 							if matching-part [
 								append event/port/data matching-part
 							]
+						] [ ; Word completion
+							all-words: sort union words-of system/contexts/lib words-of system/contexts/user
+
+							written-text: copy event/port/data
+
+							either perfect-match: find all-words to-word written-text [
+								append event/port/data SP
+							][
+								best-matches: clear []
+								foreach word all-words [
+									if parse to-string word [ written-text to end ] [
+										append best-matches word
+									]
+								]
+								either single? best-matches [
+									missing-part: skip to-string best-matches/1 length? written-text
+									append event/port/data join missing-part SP
+								] [
+									print ["^[[G^[[K" mold best-matches]
+								]
+							]
 						]
-						;@@TODO... words?
 					]
 				][
 					append event/port/data event/key
