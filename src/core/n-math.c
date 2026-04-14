@@ -379,8 +379,9 @@ enum {SINE, COSINE, TANGENT};
 	if (IS_INTEGER(val1) && IS_INTEGER(val2)) {
 		REBI64 ia = VAL_INT64(val1);
 		REBI64 ib = VAL_INT64(val2);
-		REBI64 r = ia % ib;
 		if (ib == 0) Trap0(RE_ZERO_DIVIDE);
+		REBI64 r = ia % ib;
+
 		switch (mode) {
 		case MODULO_T: break;
 		case MODULO_E: if (r < 0) r += llabs(ib); break;
