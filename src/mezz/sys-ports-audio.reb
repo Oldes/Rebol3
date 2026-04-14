@@ -32,7 +32,7 @@ append/only system/schemes [
 		; make spec to be only with audio related keys
 		spec: make copy system/standard/port-spec-audio spec
 		if file? spec/source [
-			try/except [
+			try/with [
 				wav: decode 'wav read spec/source
 				spec/channels: wav/channels
 				spec/rate: wav/rate
