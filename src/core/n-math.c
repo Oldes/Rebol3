@@ -379,24 +379,14 @@ enum {SINE, COSINE, TANGENT};
 	if (IS_INTEGER(val1) && IS_INTEGER(val2)) {
 		REBI64 ia = VAL_INT64(val1);
 		REBI64 ib = VAL_INT64(val2);
+		REBI64 r = ia % ib;
 		if (ib == 0) Trap0(RE_ZERO_DIVIDE);
 		switch (mode) {
-		case MODULO_T:
-			SET_INTEGER(ret, ia % ib);
-			break;
-		case MODULO_E: {
-			REBI64 r = ia % ib;
-			if (r < 0) r += llabs(ib);
-			SET_INTEGER(ret, r);
-			break;
+		case MODULO_T: break;
+		case MODULO_E: if (r < 0) r += llabs(ib); break;
+		case MODULO_F: if (r != 0 && (r < 0) != (ib < 0)) r += ib; break;
 		}
-		case MODULO_F: {
-			REBI64 r = ia % ib;
-			if (r != 0 && (r < 0) != (ib < 0)) r += ib;
-			SET_INTEGER(ret, r);
-			break;
-		}
-		}
+		SET_INTEGER(ret, r);
 		return;
 	}
 
