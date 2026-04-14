@@ -906,13 +906,8 @@ callback:	// ...and the last result.
 	REBVAL  *error = Get_System(SYS_STATE, STATE_LAST_ERROR);
 	SET_NONE(error); // reset the last error
 
-
-	// If not used the new /with refine, try to use the deprecated /except
 	if (with) {
 		handler = *D_ARG(ARG_TRY_HANDLER);
-	} else {
-		with    =  D_REF(ARG_TRY_EXCEPT);
-		handler = *D_ARG(ARG_TRY_CODE);
 	}
 	// TRY exception will trim the stack
 	if (Try_Block(VAL_SERIES(D_ARG(ARG_TRY_BLOCK)), VAL_INDEX(D_ARG(ARG_TRY_BLOCK)))) {

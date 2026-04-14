@@ -93,7 +93,7 @@ dt [ ;- delta time
 		;%units/xx-test.r3
 		;%units/_test.r3
 	][
-		try/except [wrap load file] func[error][
+		try/with [wrap load file] func[error][
 			repend failed-units [file error]
 		]
 	]
