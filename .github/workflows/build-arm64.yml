@@ -14,10 +14,10 @@ jobs:
     runs-on: macos-12
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v5
 
       - name: Install Siskin Builder
-        uses: oldes/install-siskin@v0.13.0
+        uses: oldes/install-siskin@v0.21.15
 
       - name: List some directories
         run: |
@@ -56,7 +56,7 @@ jobs:
           file ./rebol3-bulk-macos-arm64
           gzip -9 ./rebol3-bulk-macos-arm64
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v5
         with:
           name: Rebol-arm64-osx-${{github.run_id}}
           path: ./*.gz

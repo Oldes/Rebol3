@@ -362,9 +362,14 @@ enum {SINE, COSINE, TANGENT};
 }
 
 
+// Modulus definition modes
+#define MODULO_T 0  // Truncated (T-definition): sign follows dividend
+#define MODULO_E 1  // Euclidean (E-definition): result always non-negative
+#define MODULO_F 2  // Floor     (F-definition): sign follows divisor
+
 /***********************************************************************
 **
-*/	void modulus(REBVAL *ret, REBVAL *val1, REBVAL *val2, REBOOL round)
+*/	void modulus(REBVAL* ret, REBVAL* val1, REBVAL* val2, REBINT mode)
 /*
 **  Based on: https://stackoverflow.com/a/66777048/494472
 **
@@ -375,7 +380,23 @@ enum {SINE, COSINE, TANGENT};
 		REBI64 ia = VAL_INT64(val1);
 		REBI64 ib = VAL_INT64(val2);
 		if (ib == 0) Trap0(RE_ZERO_DIVIDE);
-		SET_INTEGER(ret, ((ia % ib) + ib) % ib);
+		switch (mode) {
+		case MODULO_T:
+			SET_INTEGER(ret, ia % ib);
+			break;
+		case MODULO_E: {
+			REBI64 r = ia % ib;
+			if (r < 0) r += llabs(ib);
+			SET_INTEGER(ret, r);
+			break;
+		}
+		case MODULO_F: {
+			REBI64 r = ia % ib;
+			if (r != 0 && (r < 0) != (ib < 0)) r += ib;
+			SET_INTEGER(ret, r);
+			break;
+		}
+		}
 		return;
 	}
 
@@ -384,13 +405,21 @@ enum {SINE, COSINE, TANGENT};
 
 	if (b == 0.0) Trap0(RE_ZERO_DIVIDE);
 
-	if (round && b < 0.0) b = fabs(b);
-
-	m = fmod(fmod(a, b) + b, b);
-
-	if (round && (almost_equal(a, a - m, 10) || almost_equal(b, b + m, 10))) {
-		m = 0.0;
+	switch (mode) {
+	case MODULO_T:
+		m = fmod(a, b);
+		break;
+	case MODULO_E:
+		if (b < 0.0) b = fabs(b);
+		// fall-thru
+	case MODULO_F:
+		m = fmod(fmod(a, b) + b, b);
+		if (almost_equal(a, a - m, 10) || almost_equal(b, b + m, 10)) m = 0.0;
+		break;
+	default:
+		m = 0; // just to silent warnings
 	}
+
 	switch (VAL_TYPE(val1)) {
 	case REB_DECIMAL:
 	case REB_PERCENT: SET_DECIMAL(ret, m); break;
@@ -407,13 +436,14 @@ enum {SINE, COSINE, TANGENT};
 */	REBNATIVE(mod)
 /*
 //	mod: native [
-//		{Compute a nonnegative remainder of A divided by B.}
-//		a [number! money! char! time!]
-//		b [number! money! char! time!] "Must be nonzero."
+//		{Returns the remainder of dividing two numbers using truncated division.}
+//		{The sign of the result follows the sign of the dividend.}
+//		a [number! money! char! time!] "Dividend"
+//		b [number! money! char! time!] "Divisor (must be nonzero)"
 //	]
 ***********************************************************************/
 {
-	modulus(D_RET, D_ARG(1), D_ARG(2), FALSE);
+	modulus(D_RET, D_ARG(1), D_ARG(2), MODULO_T);
 	return R_RET;
 }
 
@@ -422,13 +452,16 @@ enum {SINE, COSINE, TANGENT};
 */	REBNATIVE(modulo)
 /*
 //	modulo: native [
-//		{Wrapper for MOD that handles errors like REMAINDER. Negligible values (compared to A and B) are rounded to zero.}
-//		a [number! money! char! time!]
-//		b [number! money! char! time!] "Absolute value will be used."
+//		{Returns the modulo of dividing two numbers using Euclidean division.}
+//		{The result is always non-negative: 0 <= result < abs(divisor).}
+//		a [number! money! char! time!] "Dividend"
+//		b [number! money! char! time!] "Divisor (must be nonzero)"
+//		/floor "Use floor division; the sign of the result follows the sign of the divisor"
 //	]
 ***********************************************************************/
 {
-	modulus(D_RET, D_ARG(1), D_ARG(2), TRUE);
+	REBINT mode = D_REF(3) ? MODULO_F : MODULO_E;
+	modulus(D_RET, D_ARG(1), D_ARG(2), mode);
 	return R_RET;
 }
 
@@ -1040,7 +1073,7 @@ static REBDEC lerp_decimal(REBDEC s, REBDEC e, REBDEC t) {
 		VAL_SET(D_RET, REB_TUPLE);
 		VAL_TUPLE_LEN(D_RET) = len;
 		REBYTE *b3 = VAL_TUPLE(D_RET);
-		for (int i=0; i < len; i++) {
+		for (REBLEN i=0; i < len; i++) {
 			b3[i] = lerp_byte(b1[i], b2[i], t);
 		}
 	}
@@ -1055,17 +1088,18 @@ static REBDEC lerp_decimal(REBDEC s, REBDEC e, REBDEC t) {
 
 /***********************************************************************
 **
-*/	REBNATIVE(idivide)
+*/	REBNATIVE(integer_divide)
 /*
-//	idivide: native [
+//	integer-divide: native [
 //		{Returns the first integer divided by the second}
-//		value1  [integer!]
-//		value2  [integer!]
+//		value1  [number!]
+//		value2  [number!]
 //	]
 ***********************************************************************/
 {
-	REBI64 n = VAL_INT64(D_ARG(2));
-	if (n == 0) Trap0(RE_ZERO_DIVIDE);
-	SET_INTEGER(D_RET, VAL_INT64(D_ARG(1)) / n);
+	REBI64 a = IS_INTEGER(D_ARG(1)) ? VAL_INT64(D_ARG(1)) : (REBI64)VAL_DECIMAL(D_ARG(1));
+	REBI64 b = IS_INTEGER(D_ARG(2)) ? VAL_INT64(D_ARG(2)) : (REBI64)VAL_DECIMAL(D_ARG(2));
+	if (b == 0) Trap0(RE_ZERO_DIVIDE);
+	SET_INTEGER(D_RET, a / b);
 	return R_RET;
 }

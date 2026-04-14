@@ -95,9 +95,8 @@ append sys/boot-banner
   * Sandbox and security are not fully available.
   * Direct access to TCP HTTP required (no proxies).
   * Use at your own risk.
-  * ^[[1;32mTry/except^[[1;31m is deprecated and will be removed!^[[0m Use ^[[1;32mtry/with^[[0m instead.
-  * This Rebol version has switched map and construction syntax!
-    See: https://github.com/Oldes/Rebol-issues/issues/2589
+  * ^[[1;32m//^[[0m is now used as ^[[1;31minteger-divide^[[0m, for ^[[1;31mremainder^[[0m use ^[[1;32m%^[[0m or ^[[1;32m%%^[[0m (Euclidean division)!
+  * For Python compatible ^[[1;31mmodulo^[[0m use ^[[1;32mmodulo/floor^[[0m.
 
 ^[[1;33mSpecial functions^[[0m:
 

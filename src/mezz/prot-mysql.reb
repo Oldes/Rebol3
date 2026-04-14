@@ -372,8 +372,8 @@ mysql-driver: make object! [
 		append m "_binary 0x"
 		forall value [
 			i: to integer! first value
-			append m pick "0123456789ABCDEF" (to integer! i / 16) + 1
-			append m pick "0123456789ABCDEF" (i // 16) + 1
+			append m pickz "0123456789ABCDEF" (i // 16)
+			append m pickz "0123456789ABCDEF" (i % 16)
 		]
 		m
 	]
@@ -438,7 +438,7 @@ mysql-driver: make object! [
 		remainder-pair: func [val1 val2 /local new][
 			val1: either negative? val1/x [abs val1/x + 2147483647.0][val1/x]
 			val2: either negative? val2/x [abs val2/x + 2147483647.0][val2/x]
-			to-pair to-integer val1 // val2
+			to-pair to-integer val1 % val2
 		]
 		floor: func [value][
 			value: to-integer either negative? value [value - .999999999999999][value]
@@ -609,21 +609,21 @@ mysql-driver: make object! [
 	]
 	
 	write-int: func [value [integer!]][
-		join write-byte value // 256 write-byte value / 256
+		join write-byte value % 256 write-byte value / 256
 	]
 
 	write-int24: func [value [integer!]][
-		join write-byte value // 256 [
-			write-byte (to integer! value / 256) and 255
-			write-byte (to integer! value / 65536) and 255
+		join write-byte value % 256 [
+			write-byte (value // 256) and 255
+			write-byte (value // 65536) and 255
 		]
 	]
 
 	write-long: func [value [integer!]][
-		join write-byte value // 256 [
-			write-byte (to integer! value / 256) and 255
-			write-byte (to integer! value / 65536) and 255
-			write-byte (to integer! value / 16777216) and 255
+		join write-byte value % 256 [
+			write-byte (value // 256) and 255
+			write-byte (value // 65536) and 255
+			write-byte (value // 16777216) and 255
 		]
 	]
 

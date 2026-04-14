@@ -329,12 +329,18 @@ Rebol [
 ===end-group===
 
 
-===start-group=== "idivide"
-	--test-- "idivide"
-		--assert 2 == idivide 23 10
-		--assert all [error? e: try [idivide 2 0] e/id = 'zero-divide]
-		--assert all [error? e: try [idivide 2.0 1] e/id = 'expect-arg]
-		--assert all [error? e: try [idivide 2 1.0] e/id = 'expect-arg]
+===start-group=== "integer-divide"
+	--test-- "integer-divide"
+		--assert 2 == integer-divide 23 10
+		--assert 2 == integer-divide 23.5 10
+		--assert 2 == integer-divide 23 10.5
+		--assert all [error? e: try [integer-divide 2 0] e/id = 'zero-divide]
+
+	--test-- "//"
+		--assert 2 == (23 // 10)
+		--assert 2 == (23.5 // 10)
+		--assert 2 == (23 // 10.5)
+		--assert all [error? e: try [2 // 0] e/id = 'zero-divide]
 ===end-group===
 
 

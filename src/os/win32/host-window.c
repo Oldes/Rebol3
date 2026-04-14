@@ -8,7 +8,7 @@
 **
 **  Additional code modifications and improvements:
 **	Copyright 2012-2018 Saphirion AG & Atronix
-**	Copyright 2019-2025 Oldes
+**	Copyright 2019-2026 Oldes
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
 **  you may not use this file except in compliance with the License.

@@ -105,7 +105,7 @@ register-codec [
 			if size > 0 [
 				; skip to end of the last data block
 				pos: pos + size
-				if 0 < r: pos // 512 [ pos: pos + 513 - r ]
+				if 0 < r: pos % 512 [ pos: pos + 513 - r ]
 				binary/read/with bin 'AT :pos
 			]
 		]

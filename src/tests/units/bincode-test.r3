@@ -254,13 +254,13 @@ is-protected-error?: func[code][
 		--assert 8 = length? b/buffer
 		binary/read b [t1: UI32 t2: UI32LE]
 		time: now/utc
-		--assert time/date   = (1-Jan-1970 + (to integer! t1 / 86400))
-		--assert time/hour   = (to-integer t1 // 86400 / 3600)
-		--assert time/minute = (to-integer t1 // 86400 // 3600 / 60)
+		--assert time/date   = (1-Jan-1970 + (t1 // 86400))
+		--assert time/hour   = (t1 % 86400 // 3600)
+		--assert time/minute = (t1 % 86400 % 3600 // 60)
 		;lets say that seconds will be ok too:)
-		--assert time/date   = (1-Jan-1970 + (to integer! t2 / 86400))
-		--assert time/hour   = (to-integer t2 // 86400 / 3600)
-		--assert time/minute = (to-integer t2 // 86400 // 3600 / 60)
+		--assert time/date   = (1-Jan-1970 + (t2 // 86400))
+		--assert time/hour   = (t2 % 86400 // 3600)
+		--assert time/minute = (t2 % 86400 % 3600 // 60)
 
 	--test-- "BinCode - overwrite protected values"
 		out: copy #{} ;not yet protected
