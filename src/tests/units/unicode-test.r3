@@ -632,6 +632,10 @@ Rebol [
 		--assert all ["🙂b" == swap a next b  a/1 == #"🙂"  b == "aá"]
 		--assert all ["🙂b" == swap a tail b  a/1 == #"🙂"  b == "aá"]
 
+	--test-- "random"
+		s: "ábč🙂" random/seed 1
+		--assert "🙂báč" == random s
+		
 	--test-- "random/only"
 		s: "ábč🙂"
 		--assert loop 10 [unless find s random/only s [break/return false] true]
@@ -789,4 +793,104 @@ Rebol [
 
 ===end-group===
 
+===start-group=== "char column (terminal) width"
+	--test-- "zero width chars"
+		c: #"^(02)"
+		--assert 0 = c/width
+		c: #"^(82)"
+		--assert 0 = c/width
+		c: #"^(200b)"
+		--assert 0 = c/width
+		s: "a​b"
+		--assert 1 = s/1/width
+		--assert 0 = s/2/width
+		--assert 1 = s/3/width
+	--test-- "wide chars"
+		c: #"🙂"
+		--assert 2 = c/width
+		s: "a⚡中"
+		--assert 1 = s/1/width
+		--assert 2 = s/2/width
+		--assert 2 = s/3/width
+===end-group===
+
+===start-group=== "char utf8 size (number of bytes)"
+	--test-- "zero width chars"
+		c: #"^(200b)"
+		--assert 3 = c/size
+		s: "a​b"
+		--assert 1 = s/1/size
+		--assert 3 = s/2/size
+		--assert 1 = s/3/size
+	--test-- "wide chars"
+		c: #"🙂"
+		--assert 4 = c/size
+		s: "a⚡中"
+		--assert 1 = s/1/size
+		--assert 3 = s/2/size
+		--assert 3 = s/3/size
+===end-group===
+
+===start-group=== "string column (terminal) width"
+	--test-- "zero width chars"
+		s: "a​b"
+		--assert 2 = s/width
+		s: next s
+		--assert 1 = s/width
+		s: next s
+		--assert 1 = s/width
+		s: next s
+		--assert 0 = s/width
+	--test-- "wide chars"
+		s: "a⚡中"
+		--assert 5 = s/width
+		s: next s
+		--assert 4 = s/width
+		s: next s
+		--assert 2 = s/width
+		s: next s
+		--assert 0 = s/width
+===end-group===
+
+===start-group=== "string utf8 size (number of bytes)"
+	--test-- "zero width chars"
+		s: "a​b"
+		--assert 5 = s/size
+		s: next s
+		--assert 4 = s/size
+		s: next s
+		--assert 1 = s/size
+		s: next s
+		--assert 0 = s/size
+	--test-- "wide chars"
+		s: "a⚡中"
+		--assert 7 = s/size
+		s: next s
+		--assert 6 = s/size
+		s: next s
+		--assert 3 = s/size
+		s: next s
+		--assert 0 = s/size
+===end-group===
+
+===start-group=== "string codepoints length"
+	--test-- "zero width chars"
+		s: "a​b"
+		--assert 3 = s/length
+		s: next s
+		--assert 2 = s/length
+		s: next s
+		--assert 1 = s/length
+		s: next s
+		--assert 0 = s/length
+	--test-- "wide chars"
+		s: "a⚡中"
+		--assert 3 = s/length
+		s: next s
+		--assert 2 = s/length
+		s: next s
+		--assert 1 = s/length
+		s: next s
+		--assert 0 = s/length
+===end-group===
 ~~~end-file~~~

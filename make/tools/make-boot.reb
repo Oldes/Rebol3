@@ -763,6 +763,7 @@ make-obj-defs ob/options "OPTIONS_" 4
 ;make-obj-defs ob/intrinsic "INTRINSIC_" 4
 make-obj-defs ob/locale "LOCALE_" 4
 make-obj-defs ob/view "VIEW_" 4
+make-obj-defs ob/console "CONSOLE_" 4
 
 write-generated inc/gen-sysobj.h out
 

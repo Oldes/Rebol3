@@ -29,7 +29,7 @@ to-cstr: either system/version/4 = 3 [
 		out: insert out tab
 		forall str [
 			out: insert out reduce [to-integer first str ", "]
-			if zero? ((index? str) // 10) [out: insert out "^/^-"]
+			if zero? mod 10 index? str [out: insert out "^/^-"]
 		]
 		;remove/part out either (pick out -1) = #" " [-2][-4]
 		head out

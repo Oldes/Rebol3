@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,7 +21,7 @@
 ************************************************************************
 **
 **  Title: Device: Standard I/O for Win32
-**  Author: Carl Sassenrath
+**  Author: Carl Sassenrath, Oldes
 **  Purpose:
 **      Provides basic I/O streams support for redirection and
 **      opening a console window if necessary.
@@ -39,6 +39,7 @@
 ***********************************************************************/
 
 #include <stdio.h>
+#include <signal.h>
 #include <windows.h>
 #include <process.h>
 
@@ -49,7 +50,7 @@
 #include "host-lib.h"
 #include "sys-scan.h"
 
-#define BUF_SIZE (16*1024)		// MS restrictions apply
+#define BUF_SIZE (32*1024)
 #define UTF8_CHUNK_SIZE (BUF_SIZE / 4) // account for worst-case UTF-8 expansion
 
 #define SF_DEV_NULL 31			// local flag to mark NULL device
@@ -140,8 +141,9 @@ static int ANSI_Attr  = -1;
 DWORD dwOriginalOutMode = 0;
 DWORD dwOriginalInpMode = 0;
 WORD wOriginalAttributes = 0;
+BOOL bExitReadKeyLoop = FALSE;
 
-int Update_Graphic_Mode(int attribute, int value, boolean set);
+int Update_Graphic_Mode(int attribute, int value, BOOL set);
 const REBYTE* Parse_ANSI_sequence(const REBYTE *cp, const REBYTE *ep);
 
 // Virtual key conversion table. Sorted by first column!
@@ -181,7 +183,7 @@ const WORD Key_To_Event[] = {
 
 BOOL WINAPI Handle_Break(DWORD dwCtrlType)
 {
-	//printf("\nHandle_Break %i\n", dwCtrlType);
+	//printf("\nHandle_Break %i type: %i\n", Handled_Break, dwCtrlType);
 	if(Handled_Break) {
 		// CTRL-C was catched durring ReadConsoleW and was already processed
 		Handled_Break = FALSE;
@@ -193,7 +195,14 @@ BOOL WINAPI Handle_Break(DWORD dwCtrlType)
 	return TRUE;	// We handled it
 }
 
-void Set_Input_Mode(DWORD mode, boolean set) {
+static void Handle_Break_Raw(int sig) {
+	//printf("\nHandle_Break_Raw %i %i\n", sig, bExitReadKeyLoop);
+	//puts("");
+	bExitReadKeyLoop = TRUE;
+	RL_Escape(0);
+}
+
+static void Set_Input_Mode(DWORD mode, BOOL set) {
 	DWORD modes = 0;
 	GetConsoleMode(Std_Inp, &modes);
 	if (set) 
@@ -201,70 +210,48 @@ void Set_Input_Mode(DWORD mode, boolean set) {
 	else
 		SetConsoleMode(Std_Inp, modes & (~mode));
 }
-void Set_Cursor_Visible(boolean visible) {
+static void Set_Cursor_Visible(BOOL visible) {
 	CONSOLE_CURSOR_INFO cursorInfo;
 	GetConsoleCursorInfo(Std_Out, &cursorInfo);  // Get cursorinfo from output
 	cursorInfo.bVisible = visible;               // Set flag visible.
 	SetConsoleCursorInfo(Std_Out, &cursorInfo);  // Apply changes
 }
 
-#ifdef DEBUG_METHOD
-// Because this file deals with stdio, we must avoid using stdio for debug.
-// This funtion is of use wne needed.
-static dbgout(char *fmt, int d, char *s)
-{
-	char buf[255];
-	FILE *f = fopen("dbgout.txt", "a");
-	sprintf(buf, fmt, d, s);
-	fwrite(buf, strlen(buf), 1, f);
-	fclose(f);
+FORCE_INLINE // Find a Safe UTF-8 Boundary
+static size_t utf8_safe_boundary(const char* buf, size_t chunk) {
+	size_t end = chunk;
+	// Scan backward if needed (up to 3 bytes back)
+	while (end > 0 && (buf[end] & 0xC0) == 0x80) // 0x80-0xBF are UTF-8 continuation bytes
+		end--;
+	return end;
 }
-// example: dbgout("handle: %x %s\n", hdl, name);
-#endif
 
-#ifdef NOT_USED
-static void attach_console(void) {
-	void *h = LoadLibraryW(TEXT("kernel32.dll"));
-	(BOOL (_stdcall *)(DWORD))GetProcAddress(h, "AttachConsole")(-1);
-	FreeLibrary(h);
-}
-#endif
+static size_t Write_UTF8_To_Console(const char* utf8, size_t utf8_len, size_t offset, HANDLE hOutput) {
+	size_t chunk;
 
-static void Close_StdIO_Local(void)
-{
-	if (Std_Buf) {
-		OS_Free(Std_Buf);
-		Std_Buf = 0;
-		//FreeConsole();  // problem: causes a delay
+	// Convert UTF-8 buffer to Win32 wide-char format for console.
+	// Write to Console in safe chunks...
+	while (offset < utf8_len) {
+		chunk = MIN(utf8_len - offset, UTF8_CHUNK_SIZE);
+		chunk = utf8_safe_boundary(&utf8[offset], chunk);
+		if (chunk == 0) chunk = 1; // Avoid infinite loop on malformed data
+
+		int len = MultiByteToWideChar(CP_UTF8, 0, &utf8[offset], (int)chunk, Std_Buf, BUF_SIZE);
+		if (len <= 0 || !WriteConsoleW(hOutput, Std_Buf, len, NULL, 0))
+			return -1;
+
+		offset += chunk;
 	}
-	if (Std_Echo) {
-		CloseHandle(Std_Echo);
-		Std_Echo = 0;
-	}
+	return offset;
 }
 
-
-/***********************************************************************
-**
-*/	DEVICE_CMD Quit_IO(REBREQ *dr)
-/*
-***********************************************************************/
-{
-	REBDEV *dev = (REBDEV*)dr; // just to keep compiler happy above
-
-	// reset original modes on exit
-	if (Std_Inp) SetConsoleMode(Std_Inp, dwOriginalInpMode);
-	if (Std_Out) {
-		SetConsoleMode(Std_Out, dwOriginalOutMode);
-		SetConsoleTextAttribute(Std_Out, wOriginalAttributes);
-	}
-
-	Close_StdIO_Local();
-	OS_Close_StdIO();  // frees host's input buffer
-	//if (GET_FLAG(dev->flags, RDF_OPEN)) FreeConsole();
-	CLR_FLAG(dev->flags, RDF_OPEN);
-	return DR_DONE;
+static int Normalize_Virtual_Key(int vk) {
+	// Map the virtual key code to a supported Rebol control key event code
+	int k;
+	for (k = 0; Key_To_Event[k] && vk > Key_To_Event[k]; k += 2);
+	return (Key_To_Event[k] == vk) ? Key_To_Event[k + 1] : 0;
 }
+
 
 /***********************************************************************
 **
@@ -278,13 +265,13 @@ static void Close_StdIO_Local(void)
 #if _WIN32_WINNT >= 0x0500  // Windows 2000 or later
 	return GetConsoleWindow();
 #else
-#define MY_BUFSIZE 1024 // Buffer size for console window titles.
-	HWND hwndFound;     // This is what is returned to the caller.
+#define MY_BUFSIZE 1024    // Buffer size for console window titles.
+	HWND hwndFound = NULL; // This is what is returned to the caller.
 	WCHAR pszNewWindowTitle[MY_BUFSIZE]; // Contains fabricated
-										 // WindowTitle.
+	// WindowTitle.
 	WCHAR pszOldWindowTitle[MY_BUFSIZE]; // Contains original
-										 // WindowTitle.
-										 // Fetch current window title.
+	// WindowTitle.
+	// Fetch current window title.
 	GetConsoleTitleW(pszOldWindowTitle, MY_BUFSIZE);
 	// Format a "unique" NewWindowTitle.
 	swprintf_s(pszNewWindowTitle, MY_BUFSIZE, L"%llu/%lu",
@@ -305,26 +292,73 @@ static void Close_StdIO_Local(void)
 #endif
 }
 
+
+#ifdef DEBUG_METHOD
+// Because this file deals with stdio, we must avoid using stdio for debug.
+// This funtion is of use wne needed.
+static dbgout(char *fmt, int d, char *s)
+{
+	char buf[255];
+	FILE *f = fopen("dbgout.txt", "a");
+	sprintf(buf, fmt, d, s);
+	fwrite(buf, strlen(buf), 1, f);
+	fclose(f);
+}
+// example: dbgout("handle: %x %s\n", hdl, name);
+#endif
+
+
+/***********************************************************************
+**
+*/	DEVICE_CMD Quit_IO(REBREQ *dr)
+/*
+***********************************************************************/
+{
+	REBDEV *dev = (REBDEV*)dr; // just to keep compiler happy above
+	if (GET_FLAG(dev->flags, RDF_OPEN)) {
+		// reset original modes on exit
+		if (Std_Inp) {
+			SetConsoleMode(Std_Inp, dwOriginalInpMode);
+		}
+		if (Std_Out) {
+			SetConsoleMode(Std_Out, dwOriginalOutMode);
+			SetConsoleTextAttribute(Std_Out, wOriginalAttributes);
+		}
+		if (Std_Buf) {
+			OS_Free(Std_Buf);
+			Std_Buf = 0;
+		}
+		if (Std_Echo) {
+			CloseHandle(Std_Echo);
+			Std_Echo = 0;
+		}
+		signal(SIGINT, SIG_DFL);
+		OS_Close_StdIO();  // frees host's input buffer
+		FreeConsole();
+		CLR_FLAG(dev->flags, RDF_OPEN);
+	}
+	return DR_DONE;
+}
+
 /***********************************************************************
 **
 */	DEVICE_CMD Open_IO(REBREQ *req)
 /*
 ***********************************************************************/
 {
-	REBDEV *dev;
-//	HANDLE win;
+	REBDEV *dev = Devices[req->device];
 
-	dev = Devices[req->device];
-
-	// Avoid opening the console twice (compare dev and req flags):
+	// If the device is already open (by a previous request), there is no need
+	// to reinitialize the console. Just mark this request as open and return.
 	if (GET_FLAG(dev->flags, RDF_OPEN)) {
-		// Device was opened earlier as null, so req must have that flag:
+		// If the device was opened in null mode, propagate that to this request:
 		if (GET_FLAG(dev->flags, SF_DEV_NULL))
 			SET_FLAG(req->modes, RDM_NULL);
 		SET_FLAG(req->flags, RRF_OPEN);
-		return DR_DONE; // Do not do it again
+		return DR_DONE;
 	}
-
+	// In null mode, no real console is needed - all I/O will be discarded.
+	// Skip all handle acquisition and setup, just record the null flag on the device.
 	if (!GET_FLAG(req->modes, RDM_NULL)) {
 
 		// Get the raw stdio handles:
@@ -333,24 +367,25 @@ static void Close_StdIO_Local(void)
 		//Std_Err = GetStdHandle(STD_ERROR_HANDLE);
 		Std_Echo = 0;
 
-		// store original text attributes:
+		if (Std_Out == INVALID_HANDLE_VALUE || Std_Inp == INVALID_HANDLE_VALUE) {
+			goto error;
+		}
+
+		// Store original text attributes:
 		CONSOLE_SCREEN_BUFFER_INFO csbiInfo;
-		GetConsoleScreenBufferInfo(Std_Out, &csbiInfo);
-		wOriginalAttributes = csbiInfo.wAttributes;
+		if (GetConsoleScreenBufferInfo(Std_Out, &csbiInfo))
+			wOriginalAttributes = csbiInfo.wAttributes;
 
 		Redir_Out = (GetFileType(Std_Out) != FILE_TYPE_CHAR);
 		Redir_Inp = (GetFileType(Std_Inp) != FILE_TYPE_CHAR);
 
 #ifdef _WINDOWS
-// This code is needed only when the app is not copiled with Console subsystem
+// This code is needed only when the app is not compiled with Console subsystem
  		// If output not redirected, open a console:
 		if (!Redir_Out) {
-			if (!AllocConsole()) {
-				req->error = GetLastError();
-				return DR_ERROR;
-			}
+			if (!AllocConsole()) goto error;
 
-			win = GetConsoleHwnd();
+			HANDLE win = GetConsoleHwnd();
 			if (win) {
 				SetForegroundWindow(win);
 				BringWindowToTop(win);
@@ -358,13 +393,13 @@ static void Close_StdIO_Local(void)
 
 			// Get the new stdio handles:
 			Std_Out = GetStdHandle(STD_OUTPUT_HANDLE);
-
-			if (!Redir_Inp) {
-				Std_Inp = GetStdHandle(STD_INPUT_HANDLE);
-			}
+			//if (!Redir_Inp) {
+			//	Std_Inp = GetStdHandle(STD_INPUT_HANDLE);
+			//}
 		}
 #endif
 		Std_Buf = OS_Make(BUF_SIZE * sizeof(REBCHR));
+		if (!Std_Buf) goto error;
 
 		// store original modes
 		GetConsoleMode(Std_Out, &dwOriginalOutMode);
@@ -383,104 +418,38 @@ static void Close_StdIO_Local(void)
 			DWORD dwInpMode = CONSOLE_MODES;
 			DWORD dwOutMode = dwOriginalOutMode;
 
-			if (!SetConsoleMode(Std_Inp, dwInpMode)) {
-				printf("Failed to set input ConsoleMode! Error: %li\n", GetLastError());
-				return DR_ERROR;
-			}
+			if (!SetConsoleMode(Std_Inp, dwInpMode)) goto error;
 
 			if (!Emulate_ANSI) {
-				//dwInpMode |= ENABLE_VIRTUAL_TERMINAL_INPUT;
 				dwOutMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
-				if (SetConsoleMode(Std_Out, dwOutMode)) {
-					//SetConsoleMode(Std_Inp, dwInpMode);
-				} else {
+				if (!SetConsoleMode(Std_Out, dwOutMode)) {
 					Emulate_ANSI = 1; // failed to use VIRTUAL_TERMINAL_PROCESSING, so force emulation
 				}
 			}
-
-			// Try some Set Graphics Rendition (SGR) terminal escape sequences
-			/*
-			wprintf(L"\x1b[31mThis text has a red foreground using SGR.31.\r\n");
-			wprintf(L"\x1b[1mThis text has a bright (bold) red foreground using SGR.1 to affect the previous color setting.\r\n");
-			wprintf(L"\x1b[mThis text has returned to default colors using SGR.0 implicitly.\r\n");
-			wprintf(L"\x1b[34;46mThis text shows the foreground and background change at the same time.\r\n");
-			wprintf(L"\x1b[0mThis text has returned to default colors using SGR.0 explicitly.\r\n");
-			wprintf(L"\x1b[31;32;33;34;35;36;101;102;103;104;105;106;107mThis text attempts to apply many colors in the same command. Note the colors are applied from left to right so only the right-most option of foreground cyan (SGR.36) and background bright white (SGR.107) is effective.\r\n");
-			wprintf(L"\x1b[39mThis text has restored the foreground color only.\r\n");
-			wprintf(L"\x1b[49mThis text has restored the background color only.\r\n");
-			*/
 		}
-
 		// Handle stdio CTRL-C interrupt:
 		SetConsoleCtrlHandler(Handle_Break, TRUE);
 	}
-	else
+	else {
+		// Null mode: record on device so subsequent requests inherit it.
 		SET_FLAG(dev->flags, SF_DEV_NULL);
-
-	//SetConsoleOutputCP(65001); // Don't use, cause of crash on Win7! https://github.com/Oldes/Rebol3/issues/25
+	}
 
 	SET_FLAG(req->flags, RRF_OPEN);
 	SET_FLAG(dev->flags, RDF_OPEN);
-
 	return DR_DONE;
+
+error:
+	req->error = GetLastError();
+	return DR_ERROR;
 }
-
-
-/***********************************************************************
-**
-*/	DEVICE_CMD Close_IO(REBREQ *req)
-/*
- ***********************************************************************/
-{
-	REBDEV *dev = Devices[req->device];
-
-	Close_StdIO_Local();
-
-	CLR_FLAG(dev->flags, RRF_OPEN);
-
-	return DR_DONE;
-}
-
-// Find a Safe UTF-8 Boundary
-FORCE_INLINE
-static size_t utf8_chunk_end(const char *buf, size_t maxlen) {
-	size_t end = maxlen;
-	// Scan backward if needed (up to 3 bytes back)
-	while (end > 0 && (buf[end] & 0xC0) == 0x80) // 0x80-0xBF are UTF-8 continuation bytes
-		end--;
-	return end;
-}
-
-static size_t Write_UTF8_To_Console(const char *utf8, size_t utf8_len, size_t offset, HANDLE hOutput) {
-	BOOL ok = FALSE;
-	size_t chunk;
-
-	// Convert UTF-8 buffer to Win32 wide-char format for console.
-	// Write to Console in safe chunks...
-	while (offset < utf8_len) {
-		chunk = MIN(utf8_len - offset, UTF8_CHUNK_SIZE);
-		chunk = utf8_chunk_end(&utf8[offset], chunk);
-		if (chunk == 0) chunk = 1; // Avoid infinite loop on malformed data
-
-		int len = MultiByteToWideChar(CP_UTF8, 0, &utf8[offset], (int)chunk, Std_Buf, BUF_SIZE);
-		if (len > 0)
-			ok = WriteConsoleW(hOutput, Std_Buf, len, NULL, 0);
-		if (!ok) return -1;
-
-		offset += chunk;
-	}
-	return offset;
-}
-
 
 /***********************************************************************
 **
 */	DEVICE_CMD Write_IO(REBREQ *req)
 /*
 **		Low level "raw" standard output function.
-**
 **		Allowed to restrict the write to a max OS buffer size.
-**
 **		Returns the number of chars written.
 **
 ***********************************************************************/
@@ -585,16 +554,14 @@ static size_t Write_UTF8_To_Console(const char *utf8, size_t utf8_len, size_t of
 */	DEVICE_CMD Read_IO(REBREQ *req)
 /*
 **		Low level "raw" standard input function.
-**
 **		The request buffer must be long enough to hold result.
-**
 **		Result is NOT terminated (the actual field has length.)
 **
 ***********************************************************************/
 {
 	unsigned long total = 0;
 	int len;
-	BOOL ok;
+	BOOL ok = TRUE;
 
 	if (GET_FLAG(req->modes, RDM_NULL)) {
 		req->data[0] = 0;
@@ -630,18 +597,71 @@ static size_t Write_UTF8_To_Console(const char *utf8, size_t utf8_len, size_t of
 			}
 		}
 		else {
-			DWORD cNumRead, i; 
-			INPUT_RECORD irInBuf[128]; 
-			int counter=0;
-			ok = ReadConsoleInputW(Std_Inp, irInBuf, 128, &cNumRead);
-			for (i = 0; i < cNumRead; i++) 
-			{
-				printf("et: %u\n", irInBuf[i].EventType);
-				switch(irInBuf[i].EventType) 
-				{ 
-					case KEY_EVENT: // keyboard input 
-						puts("key");
+			WCHAR surrogate_high = 0;
+			req->key.uchar = 0;
+			req->key.virtu = 0;
+			req->key.flags = 0;
+			bExitReadKeyLoop = FALSE;
+			signal(SIGINT, Handle_Break_Raw);
+			while (1) {
+				DWORD cNumRead;
+				INPUT_RECORD ir;
+				if (WaitForSingleObject(Std_Inp, 40) != WAIT_OBJECT_0) {
+					if (bExitReadKeyLoop) {
+						req->key.uchar = 0x03; // CTRL+C
+						req->key.virtu = 0;
+						req->key.flags = 1 << EVF_CONTROL; // synthetic - set flags directly
+						signal(SIGINT, SIG_DFL);
+						return DR_DONE;
+					}
+					continue;
 				}
+				if (!ReadConsoleInputW(Std_Inp, &ir, 1, &cNumRead)) break;
+				if (cNumRead == 0 || ir.EventType != KEY_EVENT) continue;
+
+				KEY_EVENT_RECORD ker = ir.Event.KeyEvent;
+				if (!ker.bKeyDown) continue;
+
+				WCHAR wc = ker.uChar.UnicodeChar;
+
+				// Track modifier key state
+				if (ker.wVirtualKeyCode == VK_SHIFT
+					|| ker.wVirtualKeyCode == VK_CONTROL
+					|| ker.wVirtualKeyCode == VK_MENU)
+					continue;
+
+				//if (ker.wVirtualKeyCode == VK_ESCAPE) wc = 0; // return ESC as a word
+
+				// Handle surrogate pairs (characters outside BMP, e.g. emoji)
+				if (wc >= 0xD800 && wc <= 0xDBFF) { surrogate_high = wc; continue; }
+				if (wc >= 0xDC00 && wc <= 0xDFFF) {
+					if (surrogate_high == 0) continue; // orphan low surrogate - discard
+					req->key.uchar = 0x10000
+						+ (((REBU32)(surrogate_high - 0xD800)) << 10)
+						+ ((REBU32)(wc - 0xDC00));
+					surrogate_high = 0;
+				}
+				else if (wc == 0x08 || wc == 0x7F) { // normalize backspace
+					req->key.virtu = EVK_BACKSPACE;
+				}
+				else if (wc == 0x1B) {
+					req->key.virtu = EVK_ESCAPE;
+				}
+				else {
+					// For non-printable keys, look up the virtual key code
+					req->key.uchar = wc;
+					if (wc == 0) req->key.virtu = Normalize_Virtual_Key(ker.wVirtualKeyCode);
+				}
+				signal(SIGINT, SIG_DFL);
+				ASSIGN_FLAG(req->key.flags, EVF_SHIFT, GetKeyState(VK_SHIFT) < 0);
+				BOOL alt_pressed = GetKeyState(VK_MENU) < 0; // VK_MENU is the Alt key
+				BOOL ctrl_pressed = GetKeyState(VK_CONTROL) < 0;
+				// AltGr (right Alt) is sent as Ctrl+Alt on Windows; exclude it to avoid
+				// misreporting regular AltGr characters as Ctrl+Alt combinations
+				BOOL altgr = alt_pressed && ctrl_pressed && (GetKeyState(VK_RMENU) < 0);
+				ASSIGN_FLAG(req->key.flags, EVF_ALT, alt_pressed && !altgr);
+				ASSIGN_FLAG(req->key.flags, EVF_CONTROL, ctrl_pressed && !altgr);
+				return DR_DONE;
 			}
 		}
 
@@ -668,9 +688,9 @@ static size_t Write_UTF8_To_Console(const char *utf8, size_t utf8_len, size_t of
 ***********************************************************************/
 {
 	REBEVT evt;
-	DWORD  cNumRead, i, k, repeat; 
-	INPUT_RECORD irInBuf[8]; 
-	if (ReadConsoleInput(Std_Inp, irInBuf, 8, &cNumRead)) {
+	DWORD  cNumRead, i, repeat; 
+	INPUT_RECORD irInBuf[8];
+	if (Std_Inp && ReadConsoleInput(Std_Inp, irInBuf, 8, &cNumRead)) {
 		//printf("cNumRead: %u\n", cNumRead);
 		for (i = 0; i < cNumRead; i++) 
 		{
@@ -684,16 +704,14 @@ static size_t Write_UTF8_To_Console(const char *utf8, size_t utf8_len, size_t of
 					KEY_EVENT_RECORD ker = irInBuf[i].Event.KeyEvent;
 					//printf("key: %u %u %u %u %u\n", ker.uChar.UnicodeChar, ker.bKeyDown, ker.wRepeatCount, ker.wVirtualKeyCode, sizeof(REBEVT));
 					evt.data  = (u32)ker.uChar.UnicodeChar;
-					if (GetKeyState(VK_SHIFT) < 0) evt.flags |= (1 << EVF_SHIFT);
-					if (GetKeyState(VK_CONTROL) < 0) evt.flags |= (1 << EVF_CONTROL);
+					if (GetKeyState(VK_SHIFT) < 0) SET_FLAG(evt.flags, EVF_SHIFT);
+					if (GetKeyState(VK_CONTROL) < 0) SET_FLAG(evt.flags, EVF_CONTROL);
 
 					if (evt.data == 0) {
 						evt.type = ker.bKeyDown ? EVT_CONTROL : EVT_CONTROL_UP;
 						// Map the virtual key code to a supported Rebol control key event code
-						for (k = 0; Key_To_Event[k] && ker.wVirtualKeyCode > Key_To_Event[k]; k += 2);
-						if (Key_To_Event[k] == ker.wVirtualKeyCode) {
-							evt.data = Key_To_Event[k + 1];
-						}
+						int vk = Normalize_Virtual_Key(ker.wVirtualKeyCode);
+						if (vk) evt.data = vk;
 						else continue; // ignore not supported keys
 					}
 					else if (evt.data == 3 || evt.data == 27) {
@@ -811,22 +829,24 @@ static size_t Write_UTF8_To_Console(const char *utf8, size_t utf8_len, size_t of
 **
 ***********************************************************************/
 {
-	boolean value = req->modify.value;
+	BOOL value = req->modify.value;
 	switch (req->modify.mode) {
 	case MODE_CONSOLE_ECHO:
 		Set_Input_Mode(ENABLE_ECHO_INPUT, value);
 		break;
 	case MODE_CONSOLE_LINE:
-		Set_Input_Mode(ENABLE_LINE_INPUT | ENABLE_QUICK_EDIT_MODE | ENABLE_PROCESSED_INPUT, value);
-		Set_Input_Mode(ENABLE_MOUSE_INPUT, !value);
-		if (value) {
-			SET_FLAG(req->modes, RDM_READ_LINE);
+		if (value ^ GET_FLAG(req->modes, RDM_READ_LINE)) {
+			// Update input modes.
+			Set_Input_Mode(ENABLE_LINE_INPUT | ENABLE_QUICK_EDIT_MODE, value);
+			Set_Input_Mode(ENABLE_WINDOW_INPUT | ENABLE_EXTENDED_FLAGS, !value);
+			ASSIGN_FLAG(req->modes, RDM_READ_LINE, value);
 		}
-		else {
-			CLR_FLAG(req->modes, RDM_READ_LINE);
-			SET_FLAG(req->flags, RRF_PENDING);
-			SET_FLAG(Devices[1]->flags, RDO_AUTO_POLL);
-		}
+		// un/register CTRL+C handler for raw input mode.
+		
+		SetConsoleCtrlHandler(Handle_Break, value);
+		// Turn autopolling on when not in the line mode (required for async key reading).
+		ASSIGN_FLAG(req->modes, RRF_PENDING, !value);
+		ASSIGN_FLAG(Devices[req->device]->flags, RDO_AUTO_POLL, !value);
 		break;
 	case MODE_CONSOLE_ERROR:
 		Std_Err = value ? GetStdHandle(STD_ERROR_HANDLE) : 0;
@@ -887,7 +907,7 @@ static DEVICE_CMD_FUNC Dev_Cmds[RDC_MAX] =
 	0,	// init
 	Quit_IO,
 	Open_IO,
-	Close_IO,
+	0, // close
 	Read_IO,
 	Write_IO,
 	Poll_IO,	// poll
@@ -907,7 +927,7 @@ DEFINE_DEV(Dev_StdIO, "Standard IO", 1, Dev_Cmds, RDC_MAX, 0);
 
 /***********************************************************************
 **
-*/	int Update_Graphic_Mode(int attribute, int value, boolean set)
+*/	int Update_Graphic_Mode(int attribute, int value, BOOL set)
 /*
 **
 ***********************************************************************/

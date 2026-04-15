@@ -1100,43 +1100,51 @@ new_line:
 			return TOKEN_EMAIL; 
 		}
     next_ls:
-        switch (GET_LEX_VALUE(*cp)) {
+		switch (GET_LEX_VALUE(*cp)) {
 
-        case LEX_SPECIAL_AT:            /* @username */
-            return TOKEN_REF;
+		case LEX_SPECIAL_AT:            /* @username */
+			return TOKEN_REF;
 
-        case LEX_SPECIAL_PERCENT:
-			if (IS_LEX_DELIMIT(cp[1]) && cp[1] != '"' && cp[1] != '/' && cp[1] != '{') {
-				return TOKEN_WORD; // special case for having % as a word (reminder op!)
-			} else if (cp[1] == ':' && IS_LEX_DELIMIT(cp[2])) {
-				return TOKEN_SET;
-			}
+		case LEX_SPECIAL_PERCENT: {
 			int n = 1;
-			while (*cp) {
-				if (cp[n] == '{') {
-					cp = Scan_Raw_String(cp+n+1, scan_state, n);  // stores result string in BUF_SCAN
-					if (!cp) return -TOKEN_STRING;
-					scan_state->end = cp;
-					return TOKEN_STRING;
+			while (cp[n] == '%') n++;
+			if (cp[n] == '{') {
+				// raw-string scan; values like: %%{...}%%
+				while (*cp) {
+					if (cp[n] == '{') {
+						cp = Scan_Raw_String(cp + n + 1, scan_state, n);  // stores result string in BUF_SCAN
+						if (!cp) return -TOKEN_STRING;
+						scan_state->end = cp;
+						return TOKEN_STRING;
+					}
+					if (cp[n] != '%') break;
+					n++;
 				}
-				if (cp[n] != '%') break;
-				n++;
+				cp = scan_state->end;
 			}
-			cp = scan_state->end;
+			// special case for having %, %%, %%% as valid words (instead of invalid files)
+			else if (IS_LEX_DELIMIT(cp[n]) && cp[n] != '"' && cp[n] != '/') {
+				return TOKEN_WORD;
+			}
+			else if (cp[n] == ':' && IS_LEX_DELIMIT(cp[n + 1])) {
+				return TOKEN_SET;
+			} else
+				cp = scan_state->end;		
+
 			/* %"file name" or %filename */
-            if (*cp == '"') {
+			if (*cp == '"') {
 				cp = Scan_Quote(cp, scan_state);  // stores result string in BUF_SCAN
 				if (!cp) return -TOKEN_FILE;
 				scan_state->end = cp;
 				return TOKEN_FILE;
-            }
-            while (*cp == '/') {        /* deal with path delimiter */
-                cp++;
-                while (IS_LEX_AT_LEAST_SPECIAL(*cp)) cp++;
-            }
-            scan_state->end = cp;
-            return TOKEN_FILE;
-
+			}
+			while (*cp == '/') {        /* deal with path delimiter */
+				cp++;
+				while (IS_LEX_AT_LEAST_SPECIAL(*cp)) cp++;
+			}
+			scan_state->end = cp;
+			return TOKEN_FILE;
+		}
         case LEX_SPECIAL_COLON:         /* :word :12 (time) */
             if (IS_LEX_NUMBER(cp[1])) return TOKEN_TIME;
             if (ONLY_LEX_FLAG(flags, LEX_SPECIAL_WORD)) return TOKEN_GET;   /* common case */
@@ -1148,18 +1156,16 @@ new_line:
 				type = TOKEN_GET;
 				goto scan_arrow_word;
 			}
-			if (cp[1] == '%' && IS_LEX_DELIMIT(cp[2])) {
-				if (cp[2] == '"' || cp[2] == '/') { // no :%"" or :%/
-					scan_state->end = cp + 3;
-					return -TOKEN_GET;
-				}
-				return TOKEN_GET; // allowed :%
+			if (cp[1] == '%') {
+				// special words like :%, :%%, :%%% etc...
+				do { ++cp; } while (*cp == '%');
+				return (IS_LEX_DELIMIT(*cp)) ? TOKEN_GET : -TOKEN_GET;
 			}
-			if (cp[1] == '/') { // allow :///
-				cp++;
-				while (*cp == '/') cp++;
+			if (cp[1] == '/') {
+				// special words like ://, ://, :/// etc...
+				do { ++cp; } while (*cp == '/');
 				if (IS_LEX_DELIMIT(*cp)) {
-					scan_state->end = cp;
+					scan_state->end = cp; // must be modified, because / is delimiter!
 					return TOKEN_GET;
 				}
 				else cp = scan_state->begin;
@@ -1180,12 +1186,10 @@ new_line:
 			}
 			if (!IS_LEX_WORD(cp[1])) {
 				if ((*cp == '-' || *cp == '+') && IS_LEX_NUMBER(cp[1])) return -TOKEN_WORD;
-				if (*cp == '%' && IS_LEX_DELIMIT(cp[1])) {
-					if (cp[1] == '"' || cp[1] == '/') { // no '%"" or '%/
-						scan_state->end = cp + 2;
-						return -TOKEN_LIT;
-					}
-					return TOKEN_LIT; // allowed '%
+				if (*cp == '%') {
+					// special words like '%, '%%, '%%% etc...
+					do { ++cp; } while (*cp == '%');
+					return IS_LEX_DELIMIT(*cp) ? TOKEN_LIT : -TOKEN_LIT;
 				}
 			}
 			if (*cp == '\'') return -TOKEN_LIT; // no ''foo

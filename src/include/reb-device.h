@@ -84,6 +84,7 @@ enum {
 #define DR_PEND   1	// request is still pending
 #define DR_DONE   0	// request is complete w/o errors
 #define DR_ERROR -1	// request had an error
+#define DR_IGNORE -2 // unrecognized escape sequence
 
 // REBOL Device Flags and Options (bitnums):
 enum {
@@ -135,6 +136,12 @@ enum {
 	SERIAL_FLOW_CONTROL_HARDWARE,
 	SERIAL_FLOW_CONTROL_SOFTWARE
 };
+
+typedef struct {
+	REBU32 uchar;
+	REBU16 virtu;
+	REBU16 flags;
+} REBKEY;
 
 
 #pragma pack(4)
@@ -246,6 +253,8 @@ struct rebol_devreq {
 			u8	stop_bits;			// 1 or 2
 			u8	flow_control;		// hardware or software
 		} serial;
+
+		REBKEY key;
 
 	};
 };

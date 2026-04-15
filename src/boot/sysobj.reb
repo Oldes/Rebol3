@@ -227,7 +227,10 @@ catalog: object [
 		control
 		alt
 		pause
-		capital	
+		capital
+		backtab
+		backspace
+		begin
 	]
 	file-types: []
 ]
@@ -258,7 +261,11 @@ state: object [
 	]
 	last-error:  none ; used by WHY?
 	last-result: none ; used to store last console result
-	wait-list: []     ; List of ports to add to 'wait
+	;; The following 3 flags are updated by the `read-key` call
+	;; and can be used to detect if those keys were also pressed.
+	control?: shift?: alt?: none
+	quit?: none   ;; Used by `catch/quit` to indicate that a quit is requested.
+	wait-list: [] ;; List of ports to add to 'wait
 ]
 
 modules: object [
@@ -603,6 +610,10 @@ view: object [
 		work-origin:
 		work-size: 0x0
 	]
+]
+
+console: construct [
+	history: []
 ]
 
 license: none

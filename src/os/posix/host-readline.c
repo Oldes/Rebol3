@@ -49,9 +49,16 @@
 #include <errno.h>
 #include <wchar.h>
 
-int wcwidth(wchar_t wc);
-
 #include "reb-c.h"
+
+#define USE_OS_WCWIDTH
+#ifdef USE_OS_WCWIDTH
+int wcwidth(wchar_t wc);
+#else
+REBU32 UTF8_Decode_Codepoint(const REBYTE **RESTRICT str, REBCNT *RESTRICT len);
+REBINT UTF8_Width(REBU32 ch);
+REBLEN Length_As_Terminal_Width(const REBYTE* str, const REBYTE* end);
+#endif
 
 //#define TEST_MODE  // teset as stand-alone program
 
@@ -193,6 +200,8 @@ static struct termios Term_Attrs;	// Initial settings, restored on exit
 	Term_Init = FALSE;
 }
 
+
+#ifdef USE_OS_WCWIDTH
 /***********************************************************************
 **
 */ static int Get_UTF8_Chars(unsigned char *buffer, int byte_count)
@@ -216,18 +225,27 @@ static struct termios Term_Attrs;	// Initial settings, restored on exit
 	}
 	return width_count;
 }
+#else
+#define Get_UTF8_Chars(buf,len) (Length_As_Terminal_Width((const REBYTE*)buf, (const REBYTE*)(buf + len)))
+#endif
 
 /***********************************************************************
 **
-*/ static int Get_Char_Width(REBYTE *buffer)
+*/ static int Get_Char_Width(const REBYTE *buffer)
 /*
 **      Return width of the current char in columns.
 **
 ***********************************************************************/
 {
+#ifdef USE_OS_WCWIDTH
 	wchar_t wideChar = 0;
 	mbtowc(&wideChar, buffer, MB_CUR_MAX);
 	return wcwidth(wideChar);
+#else
+	REBLEN len = MB_CUR_MAX;
+	REBU32 codepoint = UTF8_Decode_Codepoint(&buffer, &len);
+	return UTF8_Width(codepoint);
+#endif
 }
 
 

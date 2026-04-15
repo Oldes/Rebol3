@@ -209,30 +209,57 @@ Rebol [
 
 ===start-group=== "Special % word"
 	--test-- "valid % word cases"
-		--assert word? try [load {%}]
-		--assert word? try [load {% }]
-		--assert word? try [load {%^-}]
-		--assert word? try [first load {[%]}]
+		--assert word? try [transcode/one {%}]
+		--assert word? try [transcode/one {% }]
+		--assert word? try [transcode/one {%^-}]
+		--assert word? try [first transcode/one {[%]}]
 	--test-- "valid % lit-word cases"
-		--assert lit-word? try [load {'%}]
-		--assert lit-word? try [load {'% }]
-		--assert lit-word? try [load {'%^-}]
-		--assert lit-word? try [first load {['%]}]
+		--assert lit-word? try [transcode/one {'%}]
+		--assert lit-word? try [transcode/one {'% }]
+		--assert lit-word? try [transcode/one {'%^-}]
+		--assert lit-word? try [first transcode/one {['%]}]
 	--test-- "valid % get-word cases"
-		--assert get-word? try [load {:%}]
-		--assert get-word? try [load {:% }]
-		--assert get-word? try [load {:%^-}]
-		--assert get-word? try [first load {[:%]}]
+		--assert get-word? try [transcode/one {:%}]
+		--assert get-word? try [transcode/one {:% }]
+		--assert get-word? try [transcode/one {:%^-}]
+		--assert get-word? try [first transcode/one {[:%]}]
 	--test-- "invalid % lit-word cases"
-		--assert all [error? e: try [load {'%""}] e/id = 'invalid e/arg1 = "word-lit"]
-		--assert all [error? e: try [load {'%/}]  e/id = 'invalid e/arg1 = "word-lit"]
+		--assert lit-word? try [transcode/one {'%""}] ;; 2 value! 
+		--assert all [error? e: try [transcode/one {'%/}]  e/id = 'invalid e/arg1 = "path"]
 	--test-- "invalid % get-word cases"
-		--assert all [error? e: try [load {:%""}] e/id = 'invalid e/arg1 = "word-get"]
-		--assert all [error? e: try [load {:%/}]  e/id = 'invalid e/arg1 = "word-get"]
+		--assert get-word? try [transcode/one {:%""}] ;; 2 value! 
+		--assert all [error? e: try [transcode/one {:%/}]  e/id = 'invalid e/arg1 = "path"]
 	--test-- "% used in object"
 		--assert all [
 			not error? try [o: make object! [%: 1]]
 			1 = o/%
+		]
+
+	--test-- "valid %% word cases"
+		--assert word? try [transcode/one {%%}]
+		--assert word? try [transcode/one {%% }]
+		--assert word? try [transcode/one {%%^-}]
+		--assert word? try [first transcode/one {[%%]}]
+	--test-- "valid %% lit-word cases"
+		--assert lit-word? try [transcode/one {'%%}]
+		--assert lit-word? try [transcode/one {'%% }]
+		--assert lit-word? try [transcode/one {'%%^-}]
+		--assert lit-word? try [first transcode/one {['%]}]
+	--test-- "valid %% get-word cases"
+		--assert get-word? try [transcode/one {:%%}]
+		--assert get-word? try [transcode/one {:%% }]
+		--assert get-word? try [transcode/one {:%%^-}]
+		--assert get-word? try [first transcode/one {[:%%]}]
+	--test-- "invalid %% lit-word cases"
+		--assert lit-word? try [transcode/one {'%%""}] ;; 2 value! 
+		--assert all [error? e: try [transcode/one {'%%/}]  e/id = 'invalid e/arg1 = "path"]
+	--test-- "invalid %% get-word cases"
+		--assert get-word? try [transcode/one {:%%""}] ;; 2 value! 
+		--assert all [error? e: try [transcode/one {:%%/}]  e/id = 'invalid e/arg1 = "path"]
+	--test-- "%% used in object"
+		--assert all [
+			not error? try [o: make object! [%%: 1]]
+			1 = o/%%
 		]
 
 ===end-group===

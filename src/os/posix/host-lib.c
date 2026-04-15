@@ -1485,3 +1485,13 @@ error:
     return 0;
 }
 
+/***********************************************************************
+**
+*/	REBINT OS_Is_TTY(void)
+/*
+**		Checks whether the standard input is connected to a terminal
+**
+***********************************************************************/
+{
+	return isatty(STDIN_FILENO);
+}

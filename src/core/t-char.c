@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -50,6 +50,29 @@
 	num = VAL_CHAR(a) - VAL_CHAR(b);
 	if (mode == -1) return (num >= 0);
 	return (num > 0);
+}
+
+/***********************************************************************
+**
+*/	REBINT PD_Char(REBPVS* pvs)
+/*
+***********************************************************************/
+{
+	if (pvs->setval) return PE_BAD_SET;
+	if (IS_WORD(pvs->select)) {
+		REBU32 len;
+		switch (VAL_WORD_CANON(pvs->select)) {
+		case SYM_WIDTH: len = UTF8_Width(VAL_CHAR(pvs->value)); break;
+		case SYM_SIZE:  len = UTF8_Codepoint_Size(VAL_CHAR(pvs->value)); break;
+		default: return PE_BAD_SELECT;
+		}
+		SET_INTEGER(pvs->store, len);
+		return PE_USE;
+	}
+	else
+		return PE_BAD_SELECT;
+
+	return PE_OK;
 }
 
 

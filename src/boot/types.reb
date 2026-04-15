@@ -39,7 +39,7 @@ REBOL [
 	decimal     self        decimal     *        *       -      *   [number scalar]
 	percent     self        decimal     *        *       -      *   [number scalar]
 	money       self        money       *        *       -      -   scalar
-	char        self        char        *        f*      -      -   scalar
+	char        self        char        *        f*      *      -   scalar
 	pair        self        pair        *        *       *      *   scalar
 	tuple       self        tuple       *        *       *      *   scalar
 	time        self        time        *        *       *      *   scalar

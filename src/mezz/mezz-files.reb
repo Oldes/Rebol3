@@ -92,6 +92,8 @@ input: func [
 	either hide [
 		also request-password prin LF
 	][
+		;; Make sure that we are using readline mode.
+		modify port 'line true
 		all [
 			line: read port
 			to string! line

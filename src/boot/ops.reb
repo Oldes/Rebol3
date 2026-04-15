@@ -18,8 +18,9 @@ REBOL [
 -  subtract
 *  multiply
 /  divide
-// modulo
+// integer-divide
 %  remainder
+%% modulo
 ** power
 =  equal?
 =? same?

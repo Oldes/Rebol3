@@ -62,6 +62,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <conio.h>   // used for OS_Request_Password
+#include <io.h>      // _isatty
 #include <windows.h>
 #include <process.h>
 #include <ShlObj.h>  // used for OS_Request_Dir
@@ -1572,5 +1573,16 @@ static INT CALLBACK BrowseCallbackProc(HWND hwnd, UINT uMsg, LPARAM lParam, LPAR
 	out[needed] = 0;
 	*wide = (REBYTE*)out;
 	return (REBLEN)needed;
+}
+
+/***********************************************************************
+**
+*/	REBINT OS_Is_TTY(void)
+/*
+**		Checks whether the standard input is connected to a terminal
+**
+***********************************************************************/
+{
+	return _isatty(_fileno(stdin));
 }
 

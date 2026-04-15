@@ -145,7 +145,6 @@ void Host_Repl(void) {
 			RESET_COLOR;
 			goto cleanup_and_return;
 		}
-
 		line_len = 0;
 		for (utf8byte = line; *utf8byte; utf8byte++) {
 			line_len++;
@@ -183,6 +182,10 @@ void Host_Repl(void) {
 						utf8byte += n;
 					}
 					break;
+				case ';':
+					// skip comment to the end of line;
+					line_len += AS_REBLEN(strlen(utf8byte)) - 1;
+					goto end_line;
 				}
 			}
 
@@ -230,6 +233,7 @@ void Host_Repl(void) {
 				}
 			}
 		}
+end_line:
 		if (state == INPUT_SINGLE_LINE_STRING) state = INPUT_NO_STRING;
 
 		if (input_len + line_len > input_max) {

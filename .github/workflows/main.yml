@@ -6,6 +6,7 @@ on:
     paths:
       - make/**
       - src/**
+      - '!src/tests/**'
       - .github/workflows/main.yml
 
   pull_request:
@@ -21,10 +22,10 @@ jobs:
     runs-on: windows-latest
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v5
 
     - name: Install Siskin Builder
-      uses: oldes/install-siskin@v0.18.5
+      uses: oldes/install-siskin@v0.21.15
 
     - name: Build 64bit Rebol/Bulk using MSVC
       run: ./siskin.exe make/rebol3.nest --msvc %rebol3-bulk-windows-x64
@@ -52,7 +53,7 @@ jobs:
 
     ###############################################################################
     # Collecting build artifacts...
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v5
       with:
         name: Rebol-CI-${{github.run_id}}-windows
         path: ./rebol3-*.exe
@@ -61,10 +62,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v5
 
       - name: Install Siskin Builder
-        uses: oldes/install-siskin@v0.18.5
+        uses: oldes/install-siskin@v0.21.15
 
       - name: Build 64bit Rebol/Bulk using gcc
         run: ./siskin make/rebol3.nest %rebol3-bulk-linux-x64
@@ -98,7 +99,7 @@ jobs:
       #    mv ./build/rebol3-bulk-x64-libc-clang ./rebol3-bulk-x64-libc-clang
       #    gzip -9 ./rebol3-bulk-x64-libc-clang
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: Rebol-CI-${{github.run_id}}-linux
           path: ./rebol3-*.gz
@@ -107,10 +108,10 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v5
 
       - name: Install Siskin Builder
-        uses: oldes/install-siskin@v0.18.5
+        uses: oldes/install-siskin@v0.21.15
 
       - name: Build 64bit Rebol/Bulk using clang
         run: ./siskin make/rebol3.nest %rebol3-bulk-macos-x64
@@ -137,7 +138,7 @@ jobs:
           mv ./build/rebol3-bulk-macos-x64 ./rebol3-bulk-macos-x64
           gzip -9 ./rebol3-bulk-macos-x64
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: Rebol-CI-${{github.run_id}}-macos
           path: ./rebol3-*.gz

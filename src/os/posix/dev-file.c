@@ -51,7 +51,7 @@
 #include "reb-host.h"
 #include "host-lib.h"
 
-#if (defined TO_LINUX) && !defined(__HAIKU__ )
+#if (defined TO_LINUX) && !defined(__HAIKU__ ) && !defined(STATIC_MUSL)
 #include <linux/stat.h>
 //#include <linux/fcntl.h>
 #include <fcntl.h>

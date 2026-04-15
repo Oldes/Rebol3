@@ -473,11 +473,15 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 		/* no break */
 	case REB_NATIVE:
 	case REB_ACTION:
-	case REB_OP:
 		CHECK_MARK(VAL_FUNC_SPEC(val), depth);
 		MARK_SERIES(VAL_FUNC_ARGS(val));
-		// There is a problem for user define function operators !!!
-		// Their bodies are not GC'd!
+		break;
+	case REB_OP:
+		if (VAL_GET_EXT(val) == REB_FUNCTION) {
+			CHECK_MARK(VAL_FUNC_BODY(val), depth);
+		}
+		CHECK_MARK(VAL_FUNC_SPEC(val), depth);
+		MARK_SERIES(VAL_FUNC_ARGS(val));
 		break;
 
 	case REB_IMAGE:

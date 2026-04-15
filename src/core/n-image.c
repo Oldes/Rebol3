@@ -402,7 +402,7 @@ double weighted_rgb_color_distance(long r1, long g1, long b1, long r2, long g2, 
 ***********************************************************************/
 {
 	REBVAL* value = D_ARG(1);
-	REBYTE r, g, b, gray;
+	REBYTE gray;
 
 	if (IS_TUPLE(value)) {
 		REBCLR* clr = (REBCLR*)VAL_TUPLE(value);
@@ -435,7 +435,7 @@ double weighted_rgb_color_distance(long r1, long g1, long b1, long r2, long g2, 
 ***********************************************************************/
 {
 	REBVAL* value = D_ARG(1);
-	REBYTE r, g, b, gray;
+	REBYTE gray;
 
 	if (IS_TUPLE(value)) {
 		REBCLR* clr = (REBCLR*)VAL_TUPLE(value);

@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,7 +21,7 @@
 ************************************************************************
 **
 **  Title: Device: Standard I/O for Posix
-**  Author: Carl Sassenrath
+**  Author: Carl Sassenrath, Oldes
 **  Purpose:
 **      Provides basic I/O streams support for redirection and
 **      opening a console window if necessary.
@@ -81,8 +81,25 @@ extern int  Read_Line(STD_TERM*, char*, int);
 extern void Close_StdIO(void);
 
 
-static struct termios original_settings;
+static struct termios settings_original;
+static struct termios settings_raw;
 struct pollfd poller;
+
+//#define DEBUG_STDIO
+#ifdef DEBUG_STDIO
+// Output debug messages to stderr (redirect to file like: 2>debug.log)
+static void Debug_Dump_Bytes(const char *label, const REBYTE *buf, int len) {
+	fprintf(stderr, "%s [%d bytes]:", label, len);
+	for (int i = 0; i < len; i++) {
+		if (buf[i] >= 0x20 && buf[i] < 0x7F)
+			fprintf(stderr, " '%c'", buf[i]);
+		else
+			fprintf(stderr, " %02X", buf[i]);
+	}
+	fprintf(stderr, "\n");
+	fflush(stderr);
+}
+#endif
 
 static int Get_Console_Size(int *cols, int *rows)
 {
@@ -99,12 +116,18 @@ static int Get_Console_Size(int *cols, int *rows)
 		if (ioctl(Std_Out, WIOCGETD, &w) != 0) {
 			return errno;
 		}
+		if (w.uw_vs == 0 || w.uw_hs == 0) return EINVAL;
 		*rows = w.uw_height / w.uw_vs;
 		*cols = w.uw_width / w.uw_hs;
+	#else
+		*rows = 24; // sensible defaults
+		*cols = 80;
 	#endif
 	#endif
 	return 0;
 }
+
+static int bExitReadKeyLoop = 0;
 
 static void Handle_Signal(int sig)
 {
@@ -120,6 +143,7 @@ static void Handle_Signal(int sig)
 //	SET_FLAG(evt.flags, EVF_HAS_CODE);
 //	RL_Event(&evt);
 
+	bExitReadKeyLoop = 1;
 	// Start escape sequence...
 	RL_Escape(0);
 }
@@ -147,7 +171,7 @@ static void Init_Signals(void)
 	signal(SIGTERM, Handle_Signal);
 
 	// Set up the signal handler for SIGWINCH (terminal window resize)
-    signal(SIGWINCH, Handle_Resize);
+	signal(SIGWINCH, Handle_Resize);
 }
 
 static void Close_StdIO_Local(void)
@@ -163,6 +187,330 @@ static void Close_StdIO_Local(void)
 		Std_Echo = 0;
 	}
 }
+
+//static int _read_byte(REBYTE *c) {
+//	int res = read(Std_Inp, c, 1);
+//	Debug_Dump_Bytes("read1", c, 1);
+//	return res == 1;
+//}
+//#define READ_BYTE(c) _read_byte(c) 
+
+#define READ_BYTE(c) (1 == read(Std_Inp, c, 1))
+
+static int Parse_CSI_Sequence(REBEVT *evt, REBYTE *c) {
+	// CSI sequences start with ESC [ and are followed by parameter bytes,
+	// an optional intermediate byte, and a final byte.
+	// Reference: https://invisible-island.net/xterm/ctlseqs/ctlseqs.html
+
+	evt->type = EVT_CONTROL;
+	if (!READ_BYTE(&c[1])) return DR_ERROR;
+
+	// Single-byte final sequences ESC [ <final>
+	switch (c[1]) {
+	case 'A': evt->data = EVK_UP;        return DR_DONE; // ESC[A
+	case 'B': evt->data = EVK_DOWN;      return DR_DONE; // ESC[B
+	case 'C': evt->data = EVK_RIGHT;     return DR_DONE; // ESC[C
+	case 'D': evt->data = EVK_LEFT;      return DR_DONE; // ESC[D
+	case 'E': evt->data = EVK_BEGIN;     return DR_DONE; // ESC[E  keypad Begin
+	case 'F': evt->data = EVK_END;       return DR_DONE; // ESC[F
+	case 'H': evt->data = EVK_HOME;      return DR_DONE; // ESC[H
+	case 'Z': evt->data = EVK_BACKTAB;   return DR_DONE; // ESC[Z  Shift+Tab
+	}
+
+	// All remaining sequences need at least one more byte
+	if (!READ_BYTE(&c[2])) return DR_ERROR;
+
+	switch (c[1]) {
+	case '1':
+		if (!READ_BYTE(&c[3])) return DR_ERROR;
+		if (c[2] == ';') {
+			// Modifier sequences ESC[1;<mod><final>
+			// Modifier: 2=Shift, 3=Alt, 4=Alt+Shift, 5=Ctrl, 6=Ctrl+Shift, 7=Ctrl+Alt, 8=Ctrl+Alt+Shift
+			switch (c[3]) {
+			case '2': evt->flags |= (1 << EVF_SHIFT);                                       break;
+			case '3': evt->flags |= (1 << EVF_ALT);                                         break;
+			case '4': evt->flags |= (1 << EVF_ALT)     | (1 << EVF_SHIFT);                  break;
+			case '5': evt->flags |= (1 << EVF_CONTROL);                                     break;
+			case '6': evt->flags |= (1 << EVF_CONTROL) | (1 << EVF_SHIFT);                  break;
+			case '7': evt->flags |= (1 << EVF_CONTROL) | (1 << EVF_ALT);                    break;
+			case '8': evt->flags |= (1 << EVF_CONTROL) | (1 << EVF_ALT) | (1 << EVF_SHIFT); break;
+			}
+			if (!READ_BYTE(&c[4])) return DR_ERROR;
+			switch (c[4]) {
+			case 'A': evt->data = EVK_UP;    return DR_DONE; // ESC[1;2A etc.
+			case 'B': evt->data = EVK_DOWN;  return DR_DONE;
+			case 'C': evt->data = EVK_RIGHT; return DR_DONE;
+			case 'D': evt->data = EVK_LEFT;  return DR_DONE;
+			case 'F': evt->data = EVK_END;   return DR_DONE;
+			case 'H': evt->data = EVK_HOME;  return DR_DONE;
+			case 'P': evt->data = EVK_F1;    return DR_DONE;
+			case 'Q': evt->data = EVK_F2;    return DR_DONE;
+			case 'R': evt->data = EVK_F3;    return DR_DONE;
+			case 'S': evt->data = EVK_F4;    return DR_DONE;
+			}
+		}
+		else if (c[3] == '~' || c[3] == '^') {
+			// F1-F8
+			if (c[3] == '^') SET_FLAG(evt->flags, EVF_CONTROL);
+			switch (c[2]) {
+			case '1': evt->data = EVK_F1; return DR_DONE; // ESC[11~
+			case '2': evt->data = EVK_F2; return DR_DONE; // ESC[12~
+			case '3': evt->data = EVK_F3; return DR_DONE; // ESC[13~
+			case '4': evt->data = EVK_F4; return DR_DONE; // ESC[14~
+			case '5': evt->data = EVK_F5; return DR_DONE; // ESC[15~
+			case '7': evt->data = EVK_F6; return DR_DONE; // ESC[17~
+			case '8': evt->data = EVK_F7; return DR_DONE; // ESC[18~
+			case '9': evt->data = EVK_F8; return DR_DONE; // ESC[19~
+			}
+		}
+		break;
+	case '2':
+		if (c[2] == '~') {
+			evt->data = EVK_INSERT; return DR_DONE;        // ESC[2~
+		}
+		if (!READ_BYTE(&c[3])) return DR_ERROR;
+		if (c[3] == '~' || c[3] == '^') {
+			if (c[3] == '^') SET_FLAG(evt->flags, EVF_CONTROL);
+			switch (c[2]) {
+			case '0': evt->data = EVK_F9;  return DR_DONE; // ESC[20~
+			case '1': evt->data = EVK_F10; return DR_DONE; // ESC[21~
+			case '3': evt->data = EVK_F11; return DR_DONE; // ESC[23~
+			case '4': evt->data = EVK_F12; return DR_DONE; // ESC[24~
+			}
+			SET_FLAG(evt->flags, EVF_SHIFT);
+			switch (c[2]) {
+			case '5': evt->data = EVK_F5;  return DR_DONE; // ESC[25~
+			case '6': evt->data = EVK_F6;  return DR_DONE; // ESC[26~
+			case '8': evt->data = EVK_F7;  return DR_DONE; // ESC[28~
+			case '9': evt->data = EVK_F8;  return DR_DONE; // ESC[29~
+			}
+		}
+		else if (c[2] == '0') {
+			// Bracketed paste mode markers ESC[200~ and ESC[201~
+			if (!READ_BYTE(&c[4])) return DR_ERROR;
+			if (c[4] == '~') {
+				switch (c[3]) {
+				case '0': evt->data = EVK_PASTE_START; return DR_DONE; // ESC[200~
+				case '1': evt->data = EVK_PASTE_END;   return DR_DONE; // ESC[201~
+				}
+			}
+		}
+		break;
+	case '3':
+		if (c[2] == '~') {
+			evt->data = EVK_DELETE; return DR_DONE;        // ESC[3~
+		}
+		if (c[2] == '^') {
+			SET_FLAG(evt->flags, EVF_CONTROL);
+			evt->data = EVK_DELETE; return DR_DONE;        // ESC[3^
+		}
+		if (!READ_BYTE(&c[3])) return DR_ERROR;
+		if (c[2] == ';' && c[3] == '5') {
+			if (1 != read(Std_Inp, &c[4], 1)) return DR_ERROR;
+			if (c[4] == '~') {
+				SET_FLAG(evt->flags, EVF_CONTROL);
+				evt->data = EVK_DELETE; return DR_DONE;    // ESC[3;5~
+			}
+		}
+		if (c[3] == '~') {
+			SET_FLAG(evt->flags, EVF_SHIFT);
+			switch (c[2]) {
+			case '1': evt->data = EVK_F9;  return DR_DONE; // ESC[31~
+			case '2': evt->data = EVK_F10; return DR_DONE; // ESC[32~
+			case '3': evt->data = EVK_F11; return DR_DONE; // ESC[33~
+			case '4': evt->data = EVK_F12; return DR_DONE; // ESC[34~
+			}
+		}
+		else if (c[3] == '^') {
+			SET_FLAG(evt->flags, EVF_CONTROL);
+			switch (c[2]) {
+			case '1': evt->data = EVK_F9;  return DR_DONE; // ESC[31^
+			case '2': evt->data = EVK_F10; return DR_DONE; // ESC[32^
+			case '3': evt->data = EVK_F11; return DR_DONE; // ESC[33^
+			case '4': evt->data = EVK_F12; return DR_DONE; // ESC[34^
+			}
+		}
+		break;
+	case '4': evt->data = EVK_END;       return DR_DONE;  // ESC[4~
+	case '5':
+		if (c[2] == '~') {
+			evt->data = EVK_PAGE_UP;   return DR_DONE;     // ESC[5~
+		}
+		if (!READ_BYTE(&c[3])) return DR_ERROR;
+		if (c[2] == ';' && c[3] == '2') {
+			if (1 != read(Std_Inp, &c[4], 1)) return DR_ERROR;
+			if (c[4] == '~') {
+				SET_FLAG(evt->flags, EVF_SHIFT);
+				evt->data = EVK_PAGE_UP;   return DR_DONE; // ESC[5;2~
+			}
+		}
+		break;
+	case '6':
+		if (c[2] == '~') {
+			evt->data = EVK_PAGE_DOWN; return DR_DONE;     // ESC[6~
+		}
+		if (!READ_BYTE(&c[3])) return DR_ERROR;
+		if (c[2] == ';' && c[3] == '2') {
+			if (!READ_BYTE(&c[4])) return DR_ERROR;
+			if (c[4] == '~') {
+				SET_FLAG(evt->flags, EVF_SHIFT);
+				evt->data = EVK_PAGE_DOWN; return DR_DONE; // ESC[6;2~
+			}
+		}
+		break;
+	case '7': evt->data = EVK_HOME;      return DR_DONE;  // ESC[7~
+	case '8': evt->data = EVK_END;       return DR_DONE;  // ESC[8~
+	}
+}
+#undef READ_BYTE
+
+static int Parse_SS3_Sequence(REBEVT *evt, REBYTE *c) {
+	// SS3 sequences start with ESC O, used by many terminals for function
+	// keys and keypad keys. Some terminals send these instead of or in
+	// addition to CSI sequences depending on their keypad mode (DECCKM).
+	// Reference: https://invisible-island.net/xterm/ctlseqs/ctlseqs.html
+	if (1 != read(Std_Inp, &c[1], 1)) return DR_ERROR;
+	evt->type = EVT_CONTROL;
+	switch (c[1]) {
+	// Arrow keys (sent instead of CSI sequences in application cursor key mode)
+	case 'A': evt->data = EVK_UP;    return DR_DONE; // ESC O A
+	case 'B': evt->data = EVK_DOWN;  return DR_DONE; // ESC O B
+	case 'C': evt->data = EVK_RIGHT; return DR_DONE; // ESC O C
+	case 'D': evt->data = EVK_LEFT;  return DR_DONE; // ESC O D
+
+	// Home/End (sent by some terminals instead of CSI sequences)
+	case 'H': evt->data = EVK_HOME;  return DR_DONE; // ESC O H
+	case 'F': evt->data = EVK_END;   return DR_DONE; // ESC O F
+
+	// F1-F4 (most common SS3 usage)
+	case 'P': evt->data = EVK_F1;    return DR_DONE; // ESC O P
+	case 'Q': evt->data = EVK_F2;    return DR_DONE; // ESC O Q
+	case 'R': evt->data = EVK_F3;    return DR_DONE; // ESC O R
+	case 'S': evt->data = EVK_F4;    return DR_DONE; // ESC O S
+	}
+	evt->type = EVT_KEY;
+	switch (c[1]) {
+	// Keypad keys (application keypad mode)
+	case 'M': evt->data = '\r'; return DR_DONE; // ESC O M  keypad Enter
+	case 'X': evt->data = '=';  return DR_DONE; // ESC O X  keypad =
+	case 'j': evt->data = '*';  return DR_DONE; // ESC O j  keypad *
+	case 'k': evt->data = '+';  return DR_DONE; // ESC O k  keypad +
+	case 'l': evt->data = ',';  return DR_DONE; // ESC O l  keypad ,
+	case 'm': evt->data = '-';  return DR_DONE; // ESC O m  keypad -
+	case 'n': evt->data = '.';  return DR_DONE; // ESC O n  keypad .
+	case 'o': evt->data = '/';  return DR_DONE; // ESC O o  keypad /
+	case 'p': evt->data = '0';  return DR_DONE; // ESC O p  keypad 0
+	case 'q': evt->data = '1';  return DR_DONE; // ESC O q  keypad 1
+	case 'r': evt->data = '2';  return DR_DONE; // ESC O r  keypad 2
+	case 's': evt->data = '3';  return DR_DONE; // ESC O s  keypad 3
+	case 't': evt->data = '4';  return DR_DONE; // ESC O t  keypad 4
+	case 'u': evt->data = '5';  return DR_DONE; // ESC O u  keypad 5
+	case 'v': evt->data = '6';  return DR_DONE; // ESC O v  keypad 6
+	case 'w': evt->data = '7';  return DR_DONE; // ESC O w  keypad 7
+	case 'x': evt->data = '8';  return DR_DONE; // ESC O x  keypad 8
+	case 'y': evt->data = '9';  return DR_DONE; // ESC O y  keypad 9
+	}
+	return DR_IGNORE; // unrecognized SS3 sequence
+}
+
+static int Parse_Escape_Sequence(REBEVT *evt, REBYTE *c) {
+	evt->type = EVT_CONTROL;
+
+	if (poll(&poller, 1, 0) <= 0) {
+		evt->data = EVK_ESCAPE;
+		return DR_DONE;
+	}
+	if (1 != read(Std_Inp, &c[0], 1)) return DR_ERROR;
+#ifdef DEBUG_STDIO
+	Debug_Dump_Bytes("esc[0]", c, 1);
+#endif
+
+	if (c[0] == '[') return Parse_CSI_Sequence(evt, c);
+	if (c[0] == 'O') return Parse_SS3_Sequence(evt, c);
+	if (c[0] == 'b' || c[0] == 'f') {
+		SET_FLAG(evt->flags, EVF_CONTROL);
+		evt->data = (c[0] == 'b') ? EVK_LEFT : EVK_RIGHT;
+		return DR_DONE;
+	}
+
+	// Unrecognized ESC <char> — treat as Alt+char
+	// Only applies to single printable or control characters
+	if (c[0] >= 0x20 && c[0] < 0x7F) {
+		// Alt+printable: ESC a = Alt+a, ESC A = Alt+A, etc.
+		evt->type = EVT_KEY;
+		evt->data = c[0];
+		SET_FLAG(evt->flags, EVF_ALT);
+		return DR_DONE;
+	}
+	if (c[0] >= 0x01 && c[0] < 0x20) {
+		// Alt+control: ESC ^A = Alt+Ctrl+A, etc.
+		evt->type = EVT_CONTROL;
+		evt->data = c[0];
+		SET_FLAG(evt->flags, EVF_ALT);
+		SET_FLAG(evt->flags, EVF_CONTROL);
+		return DR_DONE;
+	}
+	return DR_IGNORE; // unrecognized sequence
+}
+
+// Returns DR_DONE if a valid event was parsed, DR_ERROR on read failure, DR_IGNORE if unrecognized
+static int Read_Key_Event(REBEVT *evt) {
+	REBYTE c[8];
+	REBINT len;
+
+#ifdef DEBUG_STDIO
+	memset(c,0,8);
+#endif
+
+	if (read(Std_Inp, c, 1) <= 0) return DR_ERROR;
+
+	evt->type = EVT_KEY;
+	evt->data = 0;
+	evt->flags = 0;
+
+	if (c[0] == '\e') {
+		int res = Parse_Escape_Sequence(evt, c);
+#ifdef DEBUG_STDIO
+		switch(res) {
+		case DR_DONE:   Debug_Dump_Bytes("esc_ok", c, strlen(c)); break;
+		case DR_IGNORE: Debug_Dump_Bytes("esc_ig", c, strlen(c)); break;
+		case DR_ERROR:  Debug_Dump_Bytes("esc_er", c, strlen(c)); break;
+		}
+#endif
+		return res;
+	}
+	else if ((c[0] & 0x80) == 0) {
+#ifdef DEBUG_STDIO
+		 Debug_Dump_Bytes("ascii", c, strlen(c));
+#endif
+		// plain ASCII
+		// Normalize backspace
+		if (c[0] == 0x7F || c[0] == 0x08) {
+			evt->type = EVT_CONTROL;
+			if (c[0] != settings_original.c_cc[VERASE])
+				SET_FLAG(evt->flags, EVF_CONTROL);
+			evt->data = EVK_BACKSPACE;
+			return DR_DONE;
+		}
+		if (c[0] > 0 && c[0] <= 0x1F) {
+			SET_FLAG(evt->flags, EVF_CONTROL);
+		}
+		// else..
+		evt->data = c[0];
+	}
+	else {
+		// multi-byte UTF-8
+			 if ((c[0] & 0xE0) == 0xC0) len = 1;
+		else if ((c[0] & 0xF0) == 0xE0) len = 2;
+		else if ((c[0] & 0xF8) == 0xF0) len = 3;
+		else return DR_IGNORE; // invalid UTF-8 lead byte
+		if (len != read(Std_Inp, &c[1], len)) return DR_ERROR;
+		evt->data = RL_Decode_UTF8_Char(c, &len);
+	}
+	return DR_DONE;
+}
+
+
 
 /***********************************************************************
 **
@@ -204,7 +552,7 @@ static void Close_StdIO_Local(void)
 	Init_Signals();
 
 	poller.fd = STDIN_FILENO;
-    poller.events = POLLIN;
+	poller.events = POLLIN;
 
 	if (!GET_FLAG(req->modes, RDM_NULL)) {
 
@@ -217,7 +565,16 @@ static void Close_StdIO_Local(void)
 	else
 		SET_FLAG(dev->flags, SF_DEV_NULL);
 
-	tcgetattr(Std_Inp, &original_settings);
+	tcgetattr(Std_Inp, &settings_original);
+	settings_raw = settings_original;
+	settings_raw.c_lflag &= ~(ICANON | ECHO);// | ISIG);
+	settings_raw.c_iflag &= ~(IXON | IXOFF); // disable XON/XOFF flow control so Ctrl+Q and Ctrl+S reach the app
+	settings_raw.c_cc[VMIN]  = 1;
+	settings_raw.c_cc[VTIME] = 0;
+	// Keep ISIG enabled so Ctrl+C still generates SIGINT for RL_Escape
+	// but disable Ctrl+Z suspension specifically
+	settings_raw.c_cc[VSUSP] = _POSIX_VDISABLE; // disable Ctrl+Z -> SIGTSTP
+	settings_raw.c_cc[VQUIT] = _POSIX_VDISABLE; // optionally disable Ctrl+\ -> SIGQUIT
 
 	SET_FLAG(req->flags, RRF_OPEN);
 	SET_FLAG(dev->flags, RDF_OPEN);
@@ -226,6 +583,7 @@ static void Close_StdIO_Local(void)
 }
 
 
+#ifdef UNUSED
 /***********************************************************************
 **
 */	DEVICE_CMD Close_IO(REBREQ *req)
@@ -233,13 +591,12 @@ static void Close_StdIO_Local(void)
  ***********************************************************************/
 {
 	REBDEV *dev = Devices[req->device];
-
 	Close_StdIO_Local();
-
 	CLR_FLAG(dev->flags, RRF_OPEN);
 
 	return DR_DONE;
 }
+#endif
 
 
 /***********************************************************************
@@ -294,9 +651,7 @@ static void Close_StdIO_Local(void)
 */	DEVICE_CMD Read_IO(REBREQ *req)
 /*
 **		Low level "raw" standard input function.
-**
 **		The request buffer must be long enough to hold result.
-**
 **		Result is NOT terminated (the actual field has length.)
 **
 ***********************************************************************/
@@ -311,18 +666,72 @@ static void Close_StdIO_Local(void)
 
 	req->actual = 0;
 
-	//puts("Read_IO");
-
 	if (Std_Inp >= 0) {
-		if (!Term_IO) CLR_FLAG(req->modes, RDM_READ_LINE);
-		// Perform a processed read or a raw read?
-#ifndef HAS_SMART_CONSOLE
-		if (Term_IO && GET_FLAG(req->modes, RDM_READ_LINE)) 
-			total = Read_Line(Term_IO, req->data, len);
-		else
-#endif
-			total = read(Std_Inp, req->data, len);
+		if (Term_IO) {
+			if (GET_FLAG(req->modes, RDM_READ_LINE)) {
+				// readline
+				total = Read_Line(Term_IO, req->data, len);
+			}
+			else {
+				// read-key
+				REBEVT evt;
+				int result;
 
+				req->key.uchar = 0;
+				req->key.virtu = 0;
+				req->key.flags = 0;
+
+				bExitReadKeyLoop = 0;
+
+				do {
+					// Wait for input with timeout, allowing SIGINT to be checked periodically
+					struct pollfd pfd = { Std_Inp, POLLIN, 0 };
+					int ready = poll(&pfd, 1, 40); // 40ms timeout
+					if (ready < 0 && errno == EINTR) {
+						// Signal received (e.g. SIGINT) - check if we should exit
+						if (bExitReadKeyLoop) {
+				ctrl_c:
+							req->key.uchar = 0x03; // Ctrl+C
+							req->key.flags = 1 << EVF_CONTROL;
+							return DR_DONE;
+						}
+						continue;
+					}
+
+					if (ready <= 0) {
+						// Timeout or error - check escape flag
+						if (bExitReadKeyLoop) goto ctrl_c;
+						continue;
+					}
+					// Data is available - Read_Key_Event can now read safely.
+					// Parse_Escape_Sequence uses poll(0) internally to check if more
+					// bytes follow the ESC byte, which is still non-blocking as intended.
+					result = Read_Key_Event(&evt);
+
+				} while (result == DR_IGNORE);
+
+				if (result == DR_ERROR) {
+					req->error = errno;
+					return DR_ERROR;
+				}
+
+				// Map parsed event back to req->key
+				req->key.flags = evt.flags;
+				if (evt.type == EVT_CONTROL) {
+					req->key.uchar = 0;
+					req->key.virtu = evt.data;
+				} else {
+					req->key.uchar = evt.data;
+					req->key.virtu = 0;
+				}
+
+				return DR_DONE;
+			}
+		}
+		else {
+			// raw read
+			total = read(Std_Inp, req->data, len);
+		}
 		if (total < 0) {
 			req->error = errno;
 			return DR_ERROR;
@@ -350,167 +759,17 @@ static void Close_StdIO_Local(void)
 ***********************************************************************/
 {
 	REBEVT evt;
-	REBYTE c[8];
-	REBINT len;
-
 	evt.flags = 1 << EVF_HAS_CODE;
 	evt.model = EVM_CONSOLE;
 
 	while (poll(&poller, 1, 0) > 0) {
-		if ( read(Std_Inp, &c, 1) > 0 ) {
-			evt.type = EVT_KEY;
-			//printf("%u\n", c);
-			if (c[0] == '\e') {
-				evt.type = EVT_CONTROL;
-				// Escape sequences... is there really some system in it?!
-				// This may be helpful: https://stackoverflow.com/a/71659748
-				if (poll(&poller, 1, 0) <= 0) {
-					// no any other char
-					evt.data = EVK_ESCAPE;
-					goto throw_event;
-				}
-				if (2 != read(Std_Inp, &c, 2)) break;
-				//printf(" %s ", c);
-				if (c[0] == '[') {
-					switch(c[1]){
-					case 'A': evt.data = EVK_UP;    goto throw_event; //== "\e[A~"
-					case 'B': evt.data = EVK_DOWN;  goto throw_event;
-					case 'C': evt.data = EVK_RIGHT; goto throw_event;
-					case 'D': evt.data = EVK_LEFT;  goto throw_event;
-					case 'F': evt.data = EVK_END;   goto throw_event;
-					case 'H': evt.data = EVK_HOME;  goto throw_event;
-					}
-					if (c[1] == '1') {
-						if (2 != read(Std_Inp, &c[2], 2)) break;
-						//printf("%s ", c);
-						if(c[3] == '~' || c[3] == '^') {
-							if (c[3] == '^') SET_FLAG(evt.flags, EVF_CONTROL);
-							switch(c[2]){
-							case '1': evt.data = EVK_F1; goto throw_event; //== "\e[11~"
-							case '2': evt.data = EVK_F2; goto throw_event; //== "\e[12~"
-							case '3': evt.data = EVK_F3; goto throw_event;
-							case '4': evt.data = EVK_F4; goto throw_event;
-							case '5': evt.data = EVK_F5; goto throw_event;
-							case '7': evt.data = EVK_F6; goto throw_event;
-							case '8': evt.data = EVK_F7; goto throw_event;
-							case '9': evt.data = EVK_F8; goto throw_event;
-							}
-						}
-						else if(c[2] == ';' && c[3] == '2') {
-							SET_FLAG(evt.flags, EVF_SHIFT);
-							if (1 != read(Std_Inp, &c[4], 1)) break;
-							switch(c[4]){
-							case 'C': evt.data = EVK_RIGHT; goto throw_event; //== "\e[1;2C"
-							case 'D': evt.data = EVK_LEFT;  goto throw_event; //== "\e[1;2D"
-							}
-						}
-					}
-					else if (c[1] == '2') {
-						if (1 != read(Std_Inp, &c[2], 1)) break;
-						//printf("%s ", c);
-						if (c[2] == '~') {
-							evt.data = EVK_INSERT; goto throw_event; //== "\e[2~"
-						}
-						if (1 != read(Std_Inp, &c[3], 1)) break;
-						//printf("%s ", c);
-						if (c[3] == '~') {
-							switch(c[2]){
-							case '0': evt.data = EVK_F9;  goto throw_event; //== "\e[20~"
-							case '1': evt.data = EVK_F10; goto throw_event;
-							case '3': evt.data = EVK_F11; goto throw_event;
-							case '4': evt.data = EVK_F12; goto throw_event;
-							}
-							SET_FLAG(evt.flags, EVF_SHIFT);
-							switch(c[2]){
-							case '5': evt.data = EVK_F5;  goto throw_event; //== "\e[25~"
-							case '6': evt.data = EVK_F6;  goto throw_event;
-							case '8': evt.data = EVK_F7;  goto throw_event;
-							case '9': evt.data = EVK_F8;  goto throw_event;
-							}
-						}
-						if (c[3] == '^') {
-							SET_FLAG(evt.flags, EVF_CONTROL);
-							switch(c[2]){
-							case '0': evt.data = EVK_F9;  goto throw_event; //== "\e[20^"
-							case '1': evt.data = EVK_F10; goto throw_event;
-							case '3': evt.data = EVK_F11; goto throw_event;
-							case '4': evt.data = EVK_F12; goto throw_event;
-							}
-							SET_FLAG(evt.flags, EVF_SHIFT);
-							switch(c[2]){
-							case '5': evt.data = EVK_F5;  goto throw_event; //== "\e[25^"
-							case '6': evt.data = EVK_F6;  goto throw_event;
-							case '8': evt.data = EVK_F7;  goto throw_event;
-							case '9': evt.data = EVK_F8;  goto throw_event;
-							}
-						}
-						else {
-							if (1 != read(Std_Inp, &c[4], 1)) break;
-							if (c[4] == '~' && c[2] == '0') {
-								switch(c[3]){
-								case '0': evt.data = EVK_PASTE_START; goto throw_event; //== "\e[200~"
-								case '1': evt.data = EVK_PASTE_END;   goto throw_event; //== "\e[201~"
-								}
-							}
-						}
-					}
-					else if (c[1] > '2' && c[1] <= '8') {
-						if (1 != read(Std_Inp, &c[2], 1)) break;
-						//printf("%s ", c);
-						if (c[2] == '~') {
-							switch(c[1]){
-							case '3': evt.data = EVK_DELETE;    goto throw_event; //== "\e[3~"
-							case '5': evt.data = EVK_PAGE_UP;   goto throw_event;
-							case '6': evt.data = EVK_PAGE_DOWN; goto throw_event;
-							case '7': evt.data = EVK_HOME;      goto throw_event;
-							case '4':
-							case '8': evt.data = EVK_END;       goto throw_event;
-							}
-						}
-						else if (c[1] == '3') {
-							if (1 != read(Std_Inp, &c[3], 1)) break;
-							//printf("%s ", c);
-							if (c[3] == '~') {
-								SET_FLAG(evt.flags, EVF_SHIFT);
-								switch(c[2]){
-								case '1': evt.data = EVK_F9;    goto throw_event; //== "\e[31~"
-								case '2': evt.data = EVK_F10;   goto throw_event;
-								case '3': evt.data = EVK_F11;   goto throw_event;
-								case '4': evt.data = EVK_F12;   goto throw_event;
-								}
-							}
-						}
-					}
-				}
-				else if (c[0] == 'O') {
-					switch(c[1]){
-					case 'P': evt.data = EVK_F1; goto throw_event;
-					case 'Q': evt.data = EVK_F2; goto throw_event;
-					case 'R': evt.data = EVK_F3; goto throw_event;
-					case 'S': evt.data = EVK_F4; goto throw_event;
-					}
-				}
-				else if (c[0] == 'b' || c[0] == 'f') {
-					SET_FLAG(evt.flags, EVF_CONTROL);
-					evt.data = c[0] == 'b' ? EVK_LEFT : EVK_RIGHT;
-					goto throw_event;
-				}
-				// what to do with unrecognized sequencies?
-			}
-			else if ((c[0] & 0x80) == 0) evt.data = c[0];
-			else {
-				     if ((c[0] & 0xE0) == 0xC0) len = 1; // `len` as a number of missing bytes!
-				else if ((c[0] & 0xF0) == 0xE0) len = 2;
-				else if ((c[0] & 0xF8) == 0xF0) len = 3;
-				if (len != read(Std_Inp, &c[1], len)) break;
-				evt.data = RL_Decode_UTF8_Char(c, &len);
-			}
-throw_event:
-			RL_Event(&evt); // returns 0 if queue is full
-		}
+		int result = Read_Key_Event(&evt);
+		if (result == DR_DONE)
+			RL_Event(&evt);
+		else if (result == DR_ERROR)
+			break;
+		// DR_IGNORE: sequence was consumed but unrecognized, just continue
 	}
-
-	return DR_DONE;
 }
 
 /***********************************************************************
@@ -548,65 +807,41 @@ throw_event:
 ***********************************************************************/
 {
 	long total;
-	struct termios settings;
 	REBDEV *dev;
+	REBOOL value;
 	int flags;
 
 	dev = Devices[req->device];
+	value = (REBOOL)req->modify.value;
 
 	switch (req->modify.mode) {
 		case MODE_CONSOLE_ECHO:
 			if (Std_Out >= 0) {
-				if(req->modify.value) {
-					total = write(Std_Out, "\x1B[28m", 5);
-				} else {
-					total = write(Std_Out, "\x1B[8m", 4);
-				}
-				if (total < 0) {
+				if (value
+					? (write(Std_Out, "\x1B[28m", 5)) != 5 // echo ON
+					: (write(Std_Out, "\x1B[8m",  4)) != 4 // echo OFF 
+				) {
 					req->error = errno;
 					return DR_ERROR;
 				}
 			}
 			break;
 		case MODE_CONSOLE_LINE:
-    		//flags = fcntl(Std_Inp, F_GETFL, 0);
-    		//settings = original_settings;
-			if (req->modify.value) {
-				SET_FLAG(req->modes, RDM_READ_LINE);
-				CLR_FLAG(dev->flags, RDO_AUTO_POLL);
-				CLR_FLAG(req->flags, RRF_PENDING);
-				settings.c_lflag |= ICANON | ECHO;
-				//flags &= ~O_NONBLOCK;
+			if (value ^ GET_FLAG(req->modes, RDM_READ_LINE)) {
+				ASSIGN_FLAG(req->modes, RDM_READ_LINE, value);
 
-				tcsetattr(Std_Inp, TCSANOW, &original_settings);
-
+				tcsetattr(Std_Inp, TCSADRAIN , value ? &settings_original : &settings_raw);
 				if(!GET_FLAG(req->modes, RDM_CGI)) {
-					// Turn off bracketed paste - https://cirw.in/blog/bracketed-paste
-					printf("\e[?2004l");
+					// Set bracketed paste mode - https://cirw.in/blog/bracketed-paste
+					write(Std_Out, value ? "\e[?2004l" : "\e[?2004h", 8);
 				}
 			}
-			else {
-				//printf("char inp %s\n", dev->title);
-				settings = original_settings;
-				CLR_FLAG(req->modes, RDM_READ_LINE);
-				SET_FLAG(req->flags, RRF_PENDING);
-				SET_FLAG(dev->flags, RDO_AUTO_POLL);
-				settings.c_lflag &= ~(ICANON | ECHO);
-				// Set stdin to non-blocking mode
-  				//flags |= O_NONBLOCK;
-				tcsetattr(Std_Inp, TCSANOW, &settings);
-
-				if(!GET_FLAG(req->modes, RDM_CGI)) {
-					// Turn on bracketed paste - https://cirw.in/blog/bracketed-paste
-					printf("\e[?2004h");
-				}
-			}
-			//fcntl(Std_Inp, F_SETFL, flags);
-
-			
+			// Turn autopolling on when not in the line mode (required for async key reading).
+			ASSIGN_FLAG(req->modes, RRF_PENDING, !value);
+			ASSIGN_FLAG(dev->flags, RDO_AUTO_POLL, !value);
 			break;
 		case MODE_CONSOLE_ERROR:
-			Std_Out = req->modify.value ? STDERR_FILENO : STDOUT_FILENO;
+			Std_Out = value ? STDERR_FILENO : STDOUT_FILENO;
 			break;
 	}
 	return DR_DONE;
@@ -663,7 +898,7 @@ static DEVICE_CMD_FUNC Dev_Cmds[RDC_MAX] =
 	0,	// init
 	Quit_IO,
 	Open_IO,
-	Close_IO,
+	0, //Close_IO,
 	Read_IO,
 	Write_IO,
 	Poll_IO,

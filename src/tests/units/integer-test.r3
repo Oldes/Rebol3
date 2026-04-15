@@ -329,6 +329,21 @@ Rebol [
 ===end-group===
 
 
+===start-group=== "integer-divide"
+	--test-- "integer-divide"
+		--assert 2 == integer-divide 23 10
+		--assert 2 == integer-divide 23.5 10
+		--assert 2 == integer-divide 23 10.5
+		--assert all [error? e: try [integer-divide 2 0] e/id = 'zero-divide]
+
+	--test-- "//"
+		--assert 2 == (23 // 10)
+		--assert 2 == (23.5 // 10)
+		--assert 2 == (23 // 10.5)
+		--assert all [error? e: try [2 // 0] e/id = 'zero-divide]
+===end-group===
+
+
 ===start-group=== "integer issues"
 	--test-- "issue-502"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/502

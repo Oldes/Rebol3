@@ -128,12 +128,12 @@ as-red-only: does [
 ]
 
 assert: func [
-	assertion [logic! none!]
+	assertion [logic! none! error!]
 ][
 	;? assertion
 	qt-file-asserts: qt-file-asserts + 1
 	qt-test-assert: qt-test-assert + 1
-	either assertion [
+	either all [assertion not error? assertion] [
 		qt-file-passes: qt-file-passes + 1
 	][
 		either qt-red-only [

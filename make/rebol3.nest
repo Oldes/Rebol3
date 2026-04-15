@@ -18,7 +18,7 @@ temp:     %make/tmp/
 stack-size: 4194304 ;= 4MB (4 * 1024 * 1024)
 optimize:   2
 
-version: 3.21.10
+version: 3.21.16
 
 ;flags: "-ggdb3"
 ;define: DEBUG
@@ -108,6 +108,13 @@ target-turris: [
 	platform: Turris
 	vendor:   pc
 	compiler: gcc
+]
+
+static-musl: [
+	;@@ Needs: sudo apt install musl-tool
+	compiler: musl-gcc
+	flags: -static
+	define: STATIC_MUSL
 ]
 
 #if Linux? [
@@ -1421,6 +1428,22 @@ eggs: [
 				name:     %rebol3-bulk-linux-x64
 				:target-linux
 				:include-rebol-bulk
+				:make-x64-exe
+			]
+
+			;- static musl builds
+			"Rebol/Core linux-x86-musl-static" [
+				name:     %rebol3-core-linux-x64-musl-static
+				:target-linux
+				:include-rebol-core
+				:static-musl
+				:make-x64-exe
+			]
+			"Rebol/Bulk linux-x64-musl-static" [
+				name:     %rebol3-bulk-linux-x64-musl-static
+				:target-linux
+				:include-rebol-bulk
+				:static-musl
 				:make-x64-exe
 			]
 		]

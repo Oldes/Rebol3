@@ -47,6 +47,9 @@
 #include "reb-host.h"
 #include "host-lib.h"
 
+// Special access:
+extern REBDEV* Devices[];
+
 // Temporary globals: (either move or remove?!)
 // O: where it should be moved?
 // O: as the Std_IO_Req is shared with lib (DLL), I'm now storing it also in Host_Lib struct
@@ -189,4 +192,28 @@ static int Fetch_Buf(void)
 	OS_Do_Device(&Std_IO_Req, RDC_WRITE);
 
 	if (Std_IO_Req.error) Host_Crash("stdio write");
+}
+
+
+/***********************************************************************
+**
+*/	RL_API int OS_Read_Key(REBKEY *key)
+/*
+***********************************************************************/
+{
+	// Turn off readline mode, if active.
+	if (GET_FLAG(Std_IO_Req.modes, RDM_READ_LINE)) {
+		Std_IO_Req.modify.mode = MODE_CONSOLE_LINE;
+		Std_IO_Req.modify.value = FALSE;
+		OS_Do_Device(&Std_IO_Req, RDC_MODIFY);
+	}
+	// Turn off automatic events polling.
+	CLR_FLAG(Std_IO_Req.flags, RRF_PENDING);
+	CLR_FLAG(Devices[Std_IO_Req.device]->flags, RDO_AUTO_POLL);
+	// Read one key.
+	int err = OS_Do_Device(&Std_IO_Req, RDC_READ);
+
+	if (err != 0) return FALSE;
+	*key = Std_IO_Req.key;
+	return TRUE;
 }

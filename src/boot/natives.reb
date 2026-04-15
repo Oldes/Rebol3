@@ -318,8 +318,6 @@ try: native [
 	/all    "Catch also BREAK, CONTINUE, RETURN, EXIT and THROW exceptions."
 	/with   "On error, evaluate the handler and return its result"
 	handler [block! any-function!]
-	/except "** DEPRERCATED **"
-	code [block! any-function!]
 ]
 
 unless: native [

@@ -19,6 +19,7 @@ dt [ ;- delta time
 		%units/bincode-test.r3
 		%units/bitset-test.r3
 		%units/call-test.r3
+		%units/char-test.r3
 		%units/codecs-test.r3
 		%units/codecs-test-pdf.r3
 		%units/compare-test.r3
@@ -92,7 +93,7 @@ dt [ ;- delta time
 		;%units/xx-test.r3
 		;%units/_test.r3
 	][
-		try/except [wrap load file] func[error][
+		try/with [wrap load file] func[error][
 			repend failed-units [file error]
 		]
 	]

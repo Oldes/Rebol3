@@ -1982,6 +1982,81 @@ try/with [
 ===end-group===
 
 
+===start-group=== "SWAP"
+	;@@ https://github.com/Oldes/Rebol-issues/issues/2696
+	--test-- "swap string (different series)"
+		--assert all [
+			s1: "ab" s2: "AB"
+			"Ab" == swap s1 s2
+			"Ab" == s1
+			"aB" == s2
+		]
+		--assert all [
+			s1: "ab" s2: "🙂č"
+			"🙂b" == swap s1 s2
+			"🙂b" == s1
+			"ač" == s2 
+		]
+		--assert all [
+			"🙂b" == swap s: "ab" "🙂"
+			2 == length? s
+		]
+	--test-- "swap string (same series)"
+		--assert all [
+			s1: "ab" s2: next s1
+			"ba" == swap s1 s2
+			"ba" == s1
+			 "a" == s2
+		]
+		--assert all [
+			s1: "ab🙂" s2: next s1
+			"ba🙂" == swap s1 s2
+			"ba🙂" == s1
+			 "a🙂" == s2
+		]
+		--assert all [
+			s1: "ab🙂" s2: next s1
+			"a🙂" == swap s2 s1
+			"ba🙂" == s1
+			"a🙂" == s2
+		]
+		--assert all [
+			"b🙂" == swap s1: "🙂b" next s1
+		]
+	--test-- "swap invalidating index (known issue)"
+		--assert all [
+			"b🙂" == swap s1: "🙂b" s2: next s1
+			"🙂" == length? s2 ;@@ Known issue!!! The index is not valid anymore.
+		]
+	--test-- "swap binary"
+		--assert all [
+			s1: #{0102} s2: #{AABB}
+			#{AA02} == swap s1 s2
+			#{AA02} == s1
+			#{01BB} == s2
+		]
+		--assert all [
+			s1: #{01FF} s2: next s1
+			#{FF01} == swap s1 s2
+			#{FF01} == s1
+			  #{01} == s2
+		]
+	--test-- "swap block"
+		--assert all [
+			s1: [1 2] s2: [3 4]
+			[3 2] == swap s1 s2
+			[3 2] == s1
+			[1 4] == s2
+		]
+		--assert all [
+			s1: [1 2] s2: next s1
+			[2 1] == swap s1 s2
+			[2 1] == s1
+			[  1] == s2
+		]
+
+===end-group===
+
 
 ===start-group=== "RANDOM"
 	--test-- "random/only string!"

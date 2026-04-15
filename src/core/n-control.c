@@ -420,11 +420,15 @@
 		ret = DS_NEXT;
 		if (quit) {
 			// We are here because of a QUIT or HALT condition.
-			if (VAL_ERR_NUM(ret) == RE_QUIT)
+			if (VAL_ERR_NUM(ret) == RE_QUIT) {
+				// Notify the user that the exit is from the quit function.
+				SET_LOGIC(Get_System(SYS_STATE, STATE_QUITQ), TRUE);
 				*DS_RETURN = *(VAL_ERR_VALUE(ret));
-			else if (VAL_ERR_NUM(ret) == RE_HALT)
+			}
+			else if (VAL_ERR_NUM(ret) == RE_HALT) {
 				VAL_SET(DS_RETURN, REB_UNSET);
 				//Halt_Code(RE_HALT, 0); // Don't use this if we want to be able catch all!
+			}
 			else
 				Crash(RP_NO_CATCH);
 
@@ -902,13 +906,8 @@ callback:	// ...and the last result.
 	REBVAL  *error = Get_System(SYS_STATE, STATE_LAST_ERROR);
 	SET_NONE(error); // reset the last error
 
-
-	// If not used the new /with refine, try to use the deprecated /except
 	if (with) {
 		handler = *D_ARG(ARG_TRY_HANDLER);
-	} else {
-		with    =  D_REF(ARG_TRY_EXCEPT);
-		handler = *D_ARG(ARG_TRY_CODE);
 	}
 	// TRY exception will trim the stack
 	if (Try_Block(VAL_SERIES(D_ARG(ARG_TRY_BLOCK)), VAL_INDEX(D_ARG(ARG_TRY_BLOCK)))) {
