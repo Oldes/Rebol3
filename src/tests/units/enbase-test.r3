@@ -169,6 +169,9 @@ AAACAAIAAAMDCCGTADs=}
 		--assert strict-equal? 
 			"^(04)^(01)" 
 			to string! debase "0000010000000001" 2
+	;@@ https://github.com/Oldes/Rebol-issues/issues/2699
+		--assert #{01} = debase "01" 2
+		--assert #{01} = debase "00001" 2
 
 ===end-group===
 
