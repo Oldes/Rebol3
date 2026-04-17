@@ -154,6 +154,8 @@ AAACAAIAAAMDCCGTADs=}
 		--assert #{1234} = debase <1234> 16
 		--assert #{1234} = debase @1234  16
 		--assert #{01}   = debase @00000001 2
+	;@@ https://github.com/Oldes/Rebol-issues/issues/2699
+		--assert #{010400} = debase "10400" 16
 
 
 ===end-group===

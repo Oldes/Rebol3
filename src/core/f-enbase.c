@@ -537,9 +537,12 @@ err:
 	REBINT val;
 	REBSER *ser;
 
-	ser = Make_Binary(len / 2);
+	ser = Make_Binary(len + 1 / 2);
 	bp = STR_HEAD(ser);
 	cp = *src;
+
+	// If odd length, prime accumulator with implicit leading zero nibble.
+	if (len & 1) count = 1;
 
 	for (; len > 0; cp++, len--) {
 
