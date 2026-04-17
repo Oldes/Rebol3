@@ -6,22 +6,14 @@ This is just generated output from commits in [this repository](https://github.c
 
 ### Features:
 
+* [`61ff9d`](https://github.com/Oldes/Rebol3/commit/61ff9d961ce2ac64171bf8ce87a711f85e0c2825) Add link to latest Rebol/Bzip2 extension
 * [`2cba18`](https://github.com/Oldes/Rebol3/commit/2cba18ea64539c57652d84648b9b7765d8b30922) Allow odd input lengths for `debase` with base 2
 * [`4252da`](https://github.com/Oldes/Rebol3/commit/4252dac780693ebf4abcb1e732860119dac4fca1) Allow odd input lengths for `debase` with base 16
-
-  resolves: https://github.com/Oldes/Rebol-issues/issues/2699
 * [`e8ffb4`](https://github.com/Oldes/Rebol3/commit/e8ffb48ada75a99f1f04e026011ff055823b4fa2) Add `idivide` native for integer division
 
 ### Changes:
 
 * [`b97431`](https://github.com/Oldes/Rebol3/commit/b97431bca890e21a6f4cfd201139cbb20c18af12) Switch to `//` integer-divide, `%` remainder, `%%` modulo
-
-  https://github.com/Oldes/Rebol-issues/issues/2698
-  https://github.com/Oldes/Rebol-issues/issues/2450
-  https://github.com/Oldes/Rebol-issues/issues/2311
-  https://github.com/Oldes/Rebol-issues/issues/1332
-  https://github.com/Oldes/Rebol-issues/issues/1331
-  https://github.com/Oldes/Rebol-issues/issues/56
 * [`17b5ab`](https://github.com/Oldes/Rebol3/commit/17b5ab4d3a1491968adcdec1c1a6ca10ed4033db) Remove deprecated `try/except`
 * [`61cb80`](https://github.com/Oldes/Rebol3/commit/61cb809b041eee4081279688ea34d80eff3fdf54) Allow percent-words like `%%` (for future module op)
 * [`0d83b9`](https://github.com/Oldes/Rebol3/commit/0d83b949c6ed315c9b7acef6c745eb9b5d4001bb) Normalize `backspace` and `escape` key output across systems
