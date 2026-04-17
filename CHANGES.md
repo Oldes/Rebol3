@@ -7,9 +7,9 @@ This is just generated output from commits in [this repository](https://github.c
 ### Features:
 
 * [`61ff9d`](https://github.com/Oldes/Rebol3/commit/61ff9d961ce2ac64171bf8ce87a711f85e0c2825) Add link to latest Rebol/Bzip2 extension
-* [`2cba18`](https://github.com/Oldes/Rebol3/commit/2cba18ea64539c57652d84648b9b7765d8b30922) Allow odd input lengths for `debase` with base 2
+* [`2cba18`](https://github.com/Oldes/Rebol3/commit/2cba18ea64539c57652d84648b9b7765d8b30922) Allow not padded input lengths for `debase` with base 2
 * [`4252da`](https://github.com/Oldes/Rebol3/commit/4252dac780693ebf4abcb1e732860119dac4fca1) Allow odd input lengths for `debase` with base 16
-* [`e8ffb4`](https://github.com/Oldes/Rebol3/commit/e8ffb48ada75a99f1f04e026011ff055823b4fa2) Add `idivide` native for integer division
+* [`e8ffb4`](https://github.com/Oldes/Rebol3/commit/e8ffb48ada75a99f1f04e026011ff055823b4fa2) Add `integer-divide` native for integer division
 
 ### Changes:
 
