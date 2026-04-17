@@ -338,7 +338,7 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 	}
 
 #if (ALEVEL>0)
-	if (!IS_END(BLK_SKIP(series, len)) && series != DS_Series)
+	if (!IS_END(BLK_SKIP(series, len)) && series != DS_Series && !IS_SLICE_SERIES(series))
 		Crash(RP_MISSING_END);
 #endif
 }
@@ -380,7 +380,8 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 			return;
 		}
 #if (ALEVEL>0)
-		if (!IS_END(BLK_SKIP(ser, SERIES_TAIL(ser))) && ser != DS_Series)
+		// Sliced series do not necessarily end with null!
+		if (!IS_END(BLK_SKIP(ser, SERIES_TAIL(ser))) && ser != DS_Series && !IS_SLICE_SERIES(ser))
 			Crash(RP_MISSING_END);
 #endif
 		if (SERIES_WIDE(ser) != sizeof(REBVAL) && SERIES_WIDE(ser) != 4 && SERIES_WIDE(ser) != 0)

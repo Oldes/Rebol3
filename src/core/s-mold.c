@@ -725,7 +725,7 @@ STOID Mold_Block_Series(REB_MOLD *mold, REBSER *series, REBCNT index, REBYTE *se
 
 	if (!sep) sep = b_cast("[]");
 
-	if (IS_END(value)) {
+	if (SERIES_TAIL(series) <= index) { // empty
 		Append_Bytes(out, cs_cast(sep));
 		return;
 	}
@@ -741,12 +741,15 @@ STOID Mold_Block_Series(REB_MOLD *mold, REBSER *series, REBCNT index, REBYTE *se
 	Set_Block(value, series);
 
 	if (sep[1]) {
-		Append_Byte(out, sep[0]);
+		Append_Byte(out, sep[0]); // Opening bracket.
 	}
-//	else out->tail--;  // why?????
+
+	// I'm not using the original IS_END macro because the series may be sliced (and thus not null-terminated).
+	// SERIES_TAIL value is validated above.
+	REBLEN len = SERIES_TAIL(series) - index;
 
 	value = BLK_SKIP(series, index);
-	while (NOT_END(value)) {
+	while (len-- > 0) {
 		// check if we can end sooner with molding..
 		if (MOLD_HAS_LIMIT(mold) && MOLD_OVER_LIMIT(mold)) return;
 		if (VAL_GET_LINE(value)) {
@@ -762,7 +765,7 @@ STOID Mold_Block_Series(REB_MOLD *mold, REBSER *series, REBCNT index, REBYTE *se
 		line_flag = TRUE;
 		Mold_Value(mold, value, TRUE);
 		value++;
-		if (NOT_END(value))
+		if (len > 0)
 			Append_Byte(out, (sep[0] == '/') ? '/' : ' ');
 	}
 

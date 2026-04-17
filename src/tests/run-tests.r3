@@ -65,6 +65,7 @@ dt [ ;- delta time
 		%units/power-test.r3
 		%units/protect-test.r3
 		%units/series-test.r3
+		%units/slice-test.r3
 		%units/struct-test.r3
 		%units/task-test.r3
 		%units/time-test.r3

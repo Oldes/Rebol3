@@ -225,6 +225,8 @@ is_true:
 	 (VAL_INDEX(sval)==VAL_INDEX(tval)))
 		 return 0;
 
+	REBLEN len = VAL_TAIL(sval) >= VAL_INDEX(sval) ? VAL_TAIL(sval) - VAL_INDEX(sval) : 0;
+
 	// make sure that none of block is past tail
 	// https://github.com/Oldes/Rebol-issues/issues/2439
 	s = VAL_BLK_DATA_SAFE(sval);
@@ -232,12 +234,12 @@ is_true:
 
 	CHECK_STACK(&s);
 
-	while (!IS_END(s)) {
+	while (len--> 0) {
 		if ((diff = Cmp_Value(s, t, is_case)) != 0)
 			return diff;
 		s++, t++;
 	}
-	return VAL_TYPE(s) - VAL_TYPE(t);
+	return 0;// VAL_TYPE(s) - VAL_TYPE(t);
 }
 
 

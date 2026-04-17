@@ -24,7 +24,7 @@ Rebol [
 		s2: slice slc 2
 		2 == length? s2
 		s2 == #{03FF}
-		#{FF03} == swap slc next s2
+		#{FF0301} == swap slc next s2
 		bin/1 == 255
 	]
 --test-- "slice vector"
@@ -46,7 +46,25 @@ Rebol [
 		s2/1: 33
 		vec/1 == 33
 	]
-
+--test-- "slice block"
+	--assert all [
+		blk: [1 2 3 3 4 5 6]
+		slc: slice blk 3
+		3 == length? slc
+		slc == [1 2 3]
+		slc/2: 0
+		blk/2 == 0
+		slc == [1 0 3]
+		reverse slc
+		slc == [3 0 1]
+		1 == pick slc 3
+		none? pick slc 4
+		s2: slice slc 2
+		s2 == [3 0]
+		2 == length? s2
+		s2/1: 9
+		blk/1 == 9
+	]
 ===end-group===
 
 
