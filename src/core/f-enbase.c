@@ -486,9 +486,14 @@ static REBU64 base36_powers[BASE36_LENGTH] = {
 	REBYTE lex;
 	REBSER *ser;
 
-	ser = Make_Binary(len >> 3);
+	ser = Make_Binary((len + 7) >> 3);
 	bp = BIN_HEAD(ser);
 	cp = *src;
+
+	// Prime count with implicit leading zero bits to left-pad to a byte boundary.
+	count = len & 7;
+	if (count) count = 8 - count;
+
 
 	for (; len > 0; cp++, len--) {
 
@@ -537,9 +542,12 @@ err:
 	REBINT val;
 	REBSER *ser;
 
-	ser = Make_Binary(len / 2);
+	ser = Make_Binary(len + 1 / 2);
 	bp = STR_HEAD(ser);
 	cp = *src;
+
+	// If odd length, prime accumulator with implicit leading zero nibble.
+	if (len & 1) count = 1;
 
 	for (; len > 0; cp++, len--) {
 
