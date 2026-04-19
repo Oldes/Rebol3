@@ -12,7 +12,7 @@ REBOL [
 		Licensed under the Apache License, Version 2.0
 		See: http://www.apache.org/licenses/LICENSE-2.0
 	}
-	Version: 0.8.1
+	Version: 0.8.2
 	Needs: 3.18.5 ;; because using the new log-* functions
 	Date: 19-Apr-2026
 	File: %prot-http.r3
@@ -46,7 +46,8 @@ REBOL [
 	;;	0.5.5 19-Jul-2024 "Oldes" "CHANGE: updated for use with Rebol 3.17.2 and newer (query changes)"
 	;;	0.6.0 15-Mar-2025 "Oldes" "FIX: Use 'identity' encoding in HEAD request"
 	;;	0.7.0 18-Mar-2025 "Oldes" "FEAT: automatic cookies support"
-	;;	0.8.0 19-Apr-2026 "Oldes" "CHANGE: Control the maximum number of HTTP redirects via `port/spec/redirects`"
+	;;	0.8.0 19-Apr-2026 "Oldes" "CHANGE: Control the maximum number of HTTP redirects via `system/options/http-redirects`"
+	;;  0.8.2 19-Apr-2026 "Oldes" "CHANGE: Allow disabling redirects per connection via `port/spec/redirect?`"
 	;;]
 	exports: [set-cookies get-cookies]
 ]
@@ -98,13 +99,11 @@ sync-op: func [port body /local header state][
 				read state/connection
 			]
 			redirect [
-				either zero? port/spec/redirects [
-					state/state: 'ready
-				][
+				either port/spec/redirect? [
 					do-redirect port port/state/info/headers/location
 					state: port/state
 					state/awake: :read-sync-awake
-				]
+				][	state/state: 'ready ]
 			]
 		]
 	]
@@ -558,7 +557,7 @@ do-redirect: func [port [port!] new-uri [url! string! file!] /local spec state h
 	log-info 'HTTP ["Redirect to:^[[m" mold new-uri]
 
 	state/redirects: state/redirects + 1
-	if state/redirects > spec/redirects [
+	if state/redirects > system/options/http-redirects [
 		res: throw-http-error port {Too many redirections}
 	]
 
@@ -785,7 +784,7 @@ sys/make-scheme [
 		headers: []
 		content: none
 		timeout: 15
-		redirects: 10
+		redirect?: on
 	]
 	info: make system/standard/file-info [
 		response-line:
@@ -904,7 +903,7 @@ sys/make-scheme [
 			log-trace 'HTTP ["OPEN, state:" port/state]
 			if port/state [return port]
 			if none? port/spec/host [throw-http-error port "Missing host address"]
-			unless integer? port/spec/redirects [port/spec/redirects: 0]
+			unless integer? system/options/http-redirects [system/options/http-redirects: 0]
 			port/state: object [
 				state: 'inited
 				connection:
