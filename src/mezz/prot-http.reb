@@ -5,16 +5,16 @@ REBOL [
 	Type: module
 	Rights: {
 		Copyright 2012 REBOL Technologies
-		Copyright 2012-2025 Rebol Open Source Contributors
+		Copyright 2012-2026 Rebol Open Source Contributors
 		REBOL is a trademark of REBOL Technologies
 	}
 	License: {
 		Licensed under the Apache License, Version 2.0
 		See: http://www.apache.org/licenses/LICENSE-2.0
 	}
-	Version: 0.7.5
+	Version: 0.7.6
 	Needs: 3.18.5 ;; because using the new log-* functions
-	Date: 21-Oct-2025
+	Date: 19-Apr-2026
 	File: %prot-http.r3
 	Purpose: {
 		This program defines the HTTP protocol scheme for REBOL 3.
@@ -876,7 +876,10 @@ sys/make-scheme [
 				do-request port
 			][
 				result: sync-op port [parse-write-dialect port value]
-				unless binary [decode-result result]
+				if all [
+					not binary
+					find [GET POST] port/spec/method
+				] [decode-result result]
 				check-result result :all
 			]
 		]
