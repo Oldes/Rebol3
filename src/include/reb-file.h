@@ -37,7 +37,7 @@ enum {
 	RFM_READONLY,
 	RFM_TRUNCATE,
 	RFM_RESEEK,			// file index has moved, reseek
-	RFM_NAME_MEM,		// converted name allocated in mem
+//	RFM_NAME_MEM,		// converted name allocated in mem
 	RFM_DIR = 16,
 	RFM_DRIVES,         // used only on Windows to get logical drives letters (read %/)
 	RFM_PATTERN,        // used only on Posix for reading wildcard patterns (read %*.txt)

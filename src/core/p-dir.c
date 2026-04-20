@@ -111,7 +111,7 @@
 	len = SERIES_TAIL(ser);
 	dir->file.path = (REBCHR*)(ser->data);
 
-	Secure_Port(SYM_FILE, dir, path, ser);
+	Secure_Port(SYM_FILE, dir, path);
 
 	if (len == 0) return;
 	if (len == 1 && dir->file.path[0] == '.') {

@@ -45,7 +45,9 @@
 **
 ***********************************************************************/
 {
+	REBSER *os_path;
 	REBSER *ser;
+	REBVAL val = {0};
 
 	if (args & AM_OPEN_WRITE) SET_FLAG(file->modes, RFM_WRITE);
 	if (args & AM_OPEN_READ) SET_FLAG(file->modes, RFM_READ);
@@ -57,15 +59,17 @@
 	}
 
 	// Convert file name to OS format, let it GC later.
-	if (!(ser = Value_To_OS_Path(path, TRUE)))
+	if (!(os_path = Value_To_OS_Path(path, TRUE)))
 		Trap1(RE_BAD_FILE_PATH, path);
-	
-	file->file.path = (REBCHR*)(ser->data);
-	file->file.size = ser->tail * SERIES_WIDE(ser);
 
-	//SET_FLAG(file->modes, RFM_NAME_MEM);
+	file->file.path = (REBCHR*)(os_path->data);
+	file->file.size = os_path->tail * SERIES_WIDE(os_path);
 
-	Secure_Port(SYM_FILE, file, path, ser);
+	// Convert full OS path back to Rebol format.
+	ser = To_REBOL_Path(BIN_HEAD(os_path), BIN_LEN(os_path), OS_WIDE, FALSE);
+	SET_FILE(&val, ser);
+	// And check if access is allowed.
+	Secure_Port(SYM_FILE, file, &val);
 }
 
 

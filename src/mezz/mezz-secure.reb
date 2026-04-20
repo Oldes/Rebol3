@@ -139,10 +139,8 @@ secure: function/with [
 	][
 		case [
 			file? target [
-				val: to-local-file/full target
-				; This string must have OS-local encoding, because
-				; the check is done at a lower level of I/O.
-				if system/version/4 != 3 [val: to binary! val]
+				;; convert to absolute file
+				val: to-real-file target
 				target: 'file
 			]
 			url? target [val: target  target: 'net]

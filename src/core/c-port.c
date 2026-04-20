@@ -375,25 +375,24 @@ xx*/	REBINT Wait_Device(REBREQ *req, REBCNT timeout)
 
 /***********************************************************************
 **
-*/	void Secure_Port(REBCNT kind, REBREQ *req, REBVAL *name, REBSER *path)
+*/	void Secure_Port(REBCNT kind, REBREQ *req, REBVAL *path)
 /*
 **		kind: word that represents the type (e.g. 'file)
 **		req:  I/O request
-**		name: value that holds the original user spec
-**		path: the local path to compare with
+**		path: value that holds the original user spec
 **		
 ***********************************************************************/
 {
 	REBYTE *flags;
-	REBVAL val;
 
-	Set_String(&val, path);
-	flags = Security_Policy(kind, &val); // policy flags
+	ASSERT1(VAL_BYTE_SIZE(path), RP_MISC); // It must be UTF-8 encoded!
+
+	flags = Security_Policy(kind, path); // policy flags
 
 	// Check policy integer:
 	// Mask is [xxxx wwww rrrr] - each holds the action
-	if (GET_FLAG(req->modes, RFM_READ))  Trap_Security(flags[POL_READ], kind, name);
-	if (GET_FLAG(req->modes, RFM_WRITE)) Trap_Security(flags[POL_WRITE], kind, name);
+	if (GET_FLAG(req->modes, RFM_READ))  Trap_Security(flags[POL_READ], kind, path);
+	if (GET_FLAG(req->modes, RFM_WRITE)) Trap_Security(flags[POL_WRITE], kind, path);
 }
 
 /***********************************************************************
