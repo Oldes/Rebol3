@@ -24,6 +24,14 @@ Rebol [
 	--assert none? attempt first [(1 / 0)]
 ===end-group===
 
+===start-group=== "BIND"
+	;@@ https://github.com/Oldes/Rebol-issues/issues/2704
+	--test-- "bind error!"
+	--assert error? e: try [read %nonsense]
+	--assert ["cannot open:" %nonsense "reason:" 3] = reduce bind system/catalog/errors/(e/type)/(e/id) e
+===end-group===
+
+
 
 ===start-group=== "make error!"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/835
@@ -166,5 +174,6 @@ Rebol [
 		--assert all [error? e: try [system/catalog/errors/Math: none] e/id = 'locked-word]
 
 ===end-group===
+
 
 ~~~end-file~~~

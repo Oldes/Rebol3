@@ -291,8 +291,12 @@ static int Check_Char_Range(REBVAL *val, REBCNT limit)
 
 	// Get context from a word, object (or port);
 	arg = D_ARG(2);
-	if (IS_OBJECT(arg) || IS_MODULE(arg) || IS_PORT(arg))
+	if (IS_OBJECT(arg) || IS_MODULE(arg) || IS_PORT(arg) || IS_TASK(arg)) {
 		frame = VAL_OBJ_FRAME(arg);
+	}
+	else if (IS_ERROR(arg)) {
+		frame = VAL_ERR_OBJECT(arg);
+	}
 	else { // word
 		rel = (VAL_WORD_INDEX(arg) < 0);
 		frame = VAL_WORD_FRAME(arg);
