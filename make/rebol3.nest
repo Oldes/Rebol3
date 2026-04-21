@@ -334,6 +334,11 @@ host-files-view: [
 
 mezz-base-files: [
 ;-- base: low-level boot in lib context:
+;;  Using custom color themes.
+;;  NOTE: not using terminal's own palette!
+;	#either macos? [
+;		%mezz/base-ansi-light.reb
+;	][	%mezz/base-ansi-dark.reb]
 	%mezz/base-constants.reb
 	%mezz/base-funcs.reb
 	%mezz/base-series.reb
