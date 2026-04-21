@@ -42,8 +42,8 @@ probe: func [
 			word? :word
 			path? :word
 		][
-			prin ajoin [a/green mold :word a/reset ": " a/white]
-			prin try/with [mold/all get/any :word][[a/purple "Error:" system/state/last-error/id]] 
+			prin ajoin [a/green mold :word a/reset ": " a/gray]
+			prin try/with [mold/all get/any :word][[a/error "Error:" system/state/last-error/id]] 
 			print a/reset
 		][
 			print ajoin [a/green mold/all word a/reset]

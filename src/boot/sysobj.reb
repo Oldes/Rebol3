@@ -70,15 +70,27 @@ options: object [  ; Options supplied to REBOL during startup
 	domain-name: none ; Specifies system's domain name (used in SMTP scheme so far)
 	no-color: false
 	ansi: #[
-		gray:   "^[[1;30m"
-		red:    "^[[1;31m"
-		green:  "^[[1;32m"
-		yellow: "^[[1;33m"
-		blue:   "^[[1;34m"
-		purple: "^[[1;35m"
-		cyan:   "^[[1;36m"
-		white:	"^[[1;37m"
-		reset:  "^[[0m"
+		black:          "^[[30m"
+		gray:           "^[[38;5;243m"
+		red:            "^[[31m"
+		green:          "^[[32m"
+		yellow:         "^[[33m"
+		blue:           "^[[34m"
+		magenta:        "^[[35m"
+		cyan:           "^[[36m"
+		white:	        "^[[37m"
+		bright-red:     "^[[1;31m"
+		bright-green:   "^[[1;32m"
+		bright-yellow:  "^[[1;33m"
+		bright-blue:    "^[[1;34m"
+		bright-magenta: "^[[1;35m"
+		bright-cyan:    "^[[1;36m"	
+		bright-white:	"^[[1;37m"
+		reset:          "^[[0m"
+		bold:           "^[[1m"
+		italic:         "^[[3m"
+		underline:      "^[[4m"
+		error:          "^[[38;5;201m"
 	]
 ]
 
