@@ -68,6 +68,8 @@ Rebol [
 			e/id = 'bad-make-arg
 			e/arg2 = #{F09F99}
 		]
+	--test-- "to string! char!"
+		--assert #{F09F9982} == to binary! copy/part to string! #"🙂" 1
 
 ===end-group===
 

@@ -205,6 +205,7 @@ static REBSER *make_string(REBVAL *arg, REBOOL make)
 	// MAKE/TO <type> #"A"
 	else if (IS_CHAR(arg)) {
 		ser = Append_Byte(ser, VAL_CHAR(arg));
+		if (ser->tail > 1) UTF8_SERIES(ser);
 	}
 	// MAKE/TO <type> <any-value>
 //	else if (IS_NONE(arg)) {
