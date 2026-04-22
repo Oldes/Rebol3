@@ -3,7 +3,7 @@ REBOL [
 	Title: "REBOL 3 Mezzanine: Startup Banner"
 	Rights: {
 		Copyright 2012 REBOL Technologies
-		Copyright 2012-2025 Rebol Open Source Developers
+		Copyright 2012-2026 Rebol Open Source Developers
 		REBOL is a trademark of REBOL Technologies
 	}
 	License: {
@@ -18,10 +18,10 @@ make-banner: func [
 ][
 	if string? fmt [return fmt] ; aleady built
 	str: make string! 2000
-	append str format/pad [$0 #"╔" 74 "╗^/"] "" #"═"
+	append str format/pad [/reset #"╔" 74 "╗^/"] "" #"═"
 
-	spc: format [#"║" $30.107 74 $0 #"║"] ""
-	sf: [#"║" $30.107 "  " $35 72 $30.107 $0 #"║"]
+	spc: format [#"║" /banner 74 $0 #"║"] ""
+	sf: [#"║" /banner "  " /magenta 72 /reset #"║"]
 	parse fmt [
 		some [
 			[
@@ -34,7 +34,7 @@ make-banner: func [
 						| block! (b: reform b/1)
 						| string! (b: b/1)
 					]
-					(s: either none? b [none][format [#"║" $30.107 "    " $32 11 $31 59 $30 $0 #"║"] reduce [a b]])
+					(s: either none? b [none][format [#"║" /banner "    " /green 11 /red 59 /reset #"║"] reduce [a b]])
 			  | '* (s: star)
 			  | '- (s: spc)
 			]
@@ -89,19 +89,19 @@ system/license: make-banner [
 ;sys/boot-banner: ajoin ["REBOL/" system/product #" " system/version " (Oldes branch)"]
 ;system/license: "Licensed under the Apache License, Version 2.0."
 
-append sys/boot-banner
-{^/^[[1;33mImportant notes^[[0m:
+append sys/boot-banner format [
+	LF /bright-yellow "Important notes" /reset {:
 
   * Sandbox and security are not fully available.
   * Direct access to TCP HTTP required (no proxies).
   * Use at your own risk.
-  * ^[[1;32m//^[[0m is now used as ^[[1;31minteger-divide^[[0m, for ^[[1;31mremainder^[[0m use ^[[1;32m%^[[0m or ^[[1;32m%%^[[0m (Euclidean division)!
-  * For Python compatible ^[[1;31mmodulo^[[0m use ^[[1;32mmodulo/floor^[[0m.
+  * } /bright-green "//" /reset { is now used as } /bright-red "integer-divide" /reset {, for } /bright-red "remainder" /reset { use } /bright-green "%" /reset { or } /bright-green "%%" /reset { (Euclidean division)!
+  * For Python compatible } /bright-red "modulo" /reset " use " /bright-green "modulo/floor" /reset {.
 
-^[[1;33mSpecial functions^[[0m:
+} /bright-yellow {Special functions} /reset {:
 
-  ^[[1;32mHelp^[[0m  - show built-in help information
-}
+  } /bright-green "Help" /reset { - show built-in help information
+}] _
 
 if system/options/no-color [
 	sys/remove-ansi sys/boot-banner

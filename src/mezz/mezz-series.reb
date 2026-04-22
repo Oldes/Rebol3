@@ -3,7 +3,7 @@ REBOL [
 	Title: "REBOL 3 Mezzanine: Series Helpers"
 	Rights: {
 		Copyright 2012 REBOL Technologies
-		Copyright 2012-2023 Rebol Open Source Contributors
+		Copyright 2012-2026 Rebol Open Source Contributors
 		REBOL is a trademark of REBOL Technologies
 	}
 	License: {
@@ -425,14 +425,16 @@ pad: func [
 
 format: function [
 	"Format a string according to the format dialect."
-	rules {A block in the format dialect. E.g. [10 -10 #"-" 4 $32 "green" $0]}
+	rules {A block in the format dialect. E.g. [10 -10 #"-" 4 /green "green" /reset]}
 	values
 	/pad p {Pattern to use instead of spaces}
 ][
 	p: any [p #" "]
+	if none? :values [values: []]
 	unless block? :rules  [rules:  reduce [:rules ]]
 	unless block? :values [values: reduce [:values]]
 	no-color: system/options/no-color
+	ansi: system/options/ansi
 
 	; Compute size of output (for better mem usage):
 	val: 0
@@ -442,7 +444,7 @@ format: function [
 			integer! [abs rule]
 			string!  [length? rule]
 			char!    [1]
-			money!   [either no-color [0][2 + length? form rule]]
+			refinement! [any [all [not no-color length? ansi/:rule] 0]]
 			tag!     [length? rule] ;@@ does not handle variadic length results (for example month names)!
 		][0]
 	]
@@ -466,13 +468,9 @@ format: function [
 				change out :val
 				out: skip out pad ; spacing (remainder)
 			]
-			string!  [out: change out rule]
-			char!    [out: change out rule]
-			money!   [
-				unless no-color [
-					out: change out replace ajoin ["^[[" next form rule #"m"] #"." #";"
-				]
-			]
+			string!     [out: change out rule]
+			char!       [out: change out rule]
+			refinement! [out: change out any [ansi/:rule ""]]
 			tag! [
 				out: change out switch/default type?/word val: first+ values [
 					date! time! [
@@ -490,6 +488,7 @@ format: function [
 
 	; Provided enough rules? If not, append rest:
 	if not tail? values [append out values]
+	unless no-color [append out ansi/reset]
 	head out
 ]
 
