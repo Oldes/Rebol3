@@ -18,6 +18,6 @@ use [tmp][
 		"P236" "Pfister"
 		"H555" "Honeyman"
 	][
-		printf [5 9 5] reduce [code name tmp: soundex name code == tmp]
+		printf [5 9 5] [code name tmp: soundex name code == tmp]
 	]
 ]

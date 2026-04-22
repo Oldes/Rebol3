@@ -34,7 +34,7 @@ print ajoin ["^/Testing " num "x checksum of " length? bin " bytes.^/"]
 total: 0:0:0
 foreach m system/catalog/checksums [
 	t: dt [loop num [checksum bin m]]
-	printf [10] reduce [m t]
+	printf [10] [m t]
 	total: total + t
 ]
 print  "------------------------"

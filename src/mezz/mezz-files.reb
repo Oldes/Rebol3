@@ -309,7 +309,7 @@ list-dir: closure/with [
 				"^[[m"
 			]
 		][
-			format [date /yellow -8 /reset #" " /bright-yellow] reduce [
+			format [date /yellow -8 /reset #" " /bright-yellow] [
 				size
 				second split-path info/1
 			]

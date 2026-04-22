@@ -30,7 +30,7 @@ foreach level [1 5 9 22][
 		fc: attempt [ round/to (len / sz) 0.001 ]
 		t2: attempt [ to decimal! dt [out: decompress/size out m len] ]
 		ok: attempt [ equal? sum checksum out 'sha256 ]
-		printf [10 10 10 12 12] reduce [m sz fc t1 t2 ok]
+		printf [10 10 10 12 12] [m sz fc t1 t2 ok]
 	]
 	print  "------------------------"
 ]

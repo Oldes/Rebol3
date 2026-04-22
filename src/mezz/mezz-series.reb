@@ -426,13 +426,16 @@ pad: func [
 format: function [
 	"Format a string according to the format dialect."
 	rules {A block in the format dialect. E.g. [10 -10 #"-" 4 /green "green" /reset]}
-	values
+	values {Reduced if block!}
 	/pad p {Pattern to use instead of spaces}
 ][
 	p: any [p #" "]
-	if none? :values [values: []]
-	unless block? :rules  [rules:  reduce [:rules ]]
-	unless block? :values [values: reduce [:values]]
+	unless block? :rules  [rules: to block! :rules ]
+	values: case [
+		block? :values [reduce :values]
+		none?  :values [ [] ]
+		'else  [to block! :values]
+	]
 	no-color: system/options/no-color
 	ansi: system/options/ansi
 
@@ -561,7 +564,7 @@ format-date-time: function/with [
 printf: func [
 	"Formatted print."
 	fmt "Format"
-	val "Value or block of values"
+	val "Value or block of values (reduced)"
 ][
 	print format :fmt :val
 ]

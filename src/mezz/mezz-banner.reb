@@ -20,7 +20,7 @@ make-banner: func [
 	str: make string! 2000
 	append str format/pad [/reset #"╔" 74 "╗^/"] "" #"═"
 
-	spc: format [#"║" /banner 74 $0 #"║"] ""
+	spc: format [#"║" /banner 74 /reset #"║"] ""
 	sf: [#"║" /banner "  " /magenta 72 /reset #"║"]
 	parse fmt [
 		some [
@@ -34,7 +34,7 @@ make-banner: func [
 						| block! (b: reform b/1)
 						| string! (b: b/1)
 					]
-					(s: either none? b [none][format [#"║" /banner "    " /green 11 /red 59 /reset #"║"] reduce [a b]])
+					(s: either none? b [none][format [#"║" /banner "    " /green 11 /red 59 /reset #"║"] [a b]])
 			  | '* (s: star)
 			  | '- (s: spc)
 			]
@@ -67,7 +67,7 @@ sys/boot-banner: make-banner [
 			system/platform " | " system/build/target
 			any [all [system/build/compiler join " | " system/build/compiler] ()]
 		]
-	]
+	]	
 	= Build:    system/build/date
 	-
 	= Home: [to-local-file any [system/options/home %"_"]]
