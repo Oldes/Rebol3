@@ -3,6 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -92,7 +93,7 @@ enum {
 	REBI64 j;
 
 	if (GET_FLAG(flags, RF_TO)) {
-		if (scale == 0.0) Trap0(RE_ZERO_DIVIDE);
+		if (scale == 0.0) return dec;
 		scale = fabs(scale);
 	} else scale = 1.0;
 
