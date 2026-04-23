@@ -20,4 +20,5 @@ append system/options/ansi [
 	bright-red:     "^[[38;5;216m"
 	bright-white:   "^[[38;5;231m"
 	bright-yellow:  "^[[38;5;179m"
+	banner:         "^[[48;5;234m"
 ]

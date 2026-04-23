@@ -3,7 +3,7 @@ REBOL [
 	Title: "REBOL 3 Mezzanine: Help"
 	Rights: {
 		Copyright 2012 REBOL Technologies
-		Copyright 2012-2024 Rebol Open Source Contributors
+		Copyright 2012-2026 Rebol Open Source Contributors
 		REBOL is a trademark of REBOL Technologies
 	}
 	License: {
@@ -15,105 +15,101 @@ REBOL [
 import (module [
 	Title:  "Help related functions"
 	Name:    help
-	Version: 3.0.1
+	Version: 4.0.0
 	Exports: [? help about usage what license source dump-obj bugs changes]
 ][
 	buffer: none
 	cols:   80 ; default terminal width
 	max-desc-width: 45
+	ansi: system/options/ansi
 
 	help-text: {
-  ^[[4;1;36mUse ^[[1;32mHELP^[[1;36m or ^[[1;32m?^[[1;36m to see built-in info^[[m:
-  ^[[1;32m
-      help insert
-      ? insert
-  ^[[m
-  ^[[4;1;36mTo search within the system, use quotes^[[m:
-  ^[[1;32m
-      ? "insert"
-  ^[[m
-  ^[[4;1;36mTo browse online web documents^[[m:
-  ^[[1;32m
-      help/doc insert
-  ^[[m
-  ^[[4;1;36mTo view words and values of a context or object^[[m:
+  _Use `HELP` or `?` to see built-in info_:
+
+      `help insert`
+      `? insert`
+
+  _To search within the system, use quotes_:
+
+      `? "insert"`
+
+  _To browse online web documents_:
+
+      `help/doc insert`
+
+  _To view words and values of a context or object_:
+
+      `? lib`            - the runtime library
+      `? self`           - your user context
+      `? system`         - the system object
+      `? system/options` - special settings
   
-      ^[[1;32m? lib^[[m            - the runtime library
-      ^[[1;32m? self^[[m           - your user context
-      ^[[1;32m? system^[[m         - the system object
-      ^[[1;32m? system/options^[[m - special settings
+  _To see all words of a specific datatype_:
+
+      `? native!`
+      `? function!`
+      `? datatype!`
+
+  _To see all available codecs_:
+
+      `? codecs`
+
+  _Other debug functions_:
   
-  ^[[4;1;36mTo see all words of a specific datatype^[[m:
-  ^[[1;32m
-      ? native!
-      ? function!
-      ? datatype!
-  ^[[m
-  ^[[4;1;36mTo see all available codecs^[[m:
-  ^[[1;32m
-      ? codecs
-  ^[[m
-  ^[[4;1;36mOther debug functions^[[m:
+      `??`      - display a variable and its value
+      `probe`   - print a value (molded)
+      `source`  - show source code of func
+      `trace`   - trace evaluation steps
+      `what`    - show a list of known functions
   
-      ^[[1;32m??^[[m      - display a variable and its value
-      ^[[1;32mprobe^[[m   - print a value (molded)
-      ^[[1;32msource^[[m  - show source code of func
-      ^[[1;32mtrace^[[m   - trace evaluation steps
-      ^[[1;32mwhat^[[m    - show a list of known functions
+  _Other information_:
   
-  ^[[4;1;36mOther information^[[m:
-  
-      ^[[1;32mabout^[[m   - see general product info
-      ^[[1;32mlicense^[[m - show user license
-      ^[[1;32musage^[[m   - program cmd line options
+      `about`   - see general product info
+      `license` - show user license
+      `usage`   - program cmd line options
 }
 
 	help-usage: {
-  ^[[4;1;36mCommand line usage^[[m:
+  _Command line usage_:
   
-      ^[[1;32mREBOL |options| |script| |arguments|^[[m
+      `REBOL |options| |script| |arguments|`
   
-  ^[[4;1;36mStandard options^[[m:
+  _Standard options_:
   
-      ^[[1;32m--args data^[[m      Explicit arguments to script (quoted)
-      ^[[1;32m--do expr^[[m        Evaluate expression (quoted)
-      ^[[1;32m--help (-?)^[[m      Display this usage information (then quit)
-      ^[[1;32m--script file^[[m    Explicit script filename
-      ^[[1;32m--version tuple^[[m  Script must be this version or greater
+      `--args data`      Explicit arguments to script (quoted)
+      `--do expr`        Evaluate expression (quoted)
+      `--help (-?)`      Display this usage information (then quit)
+      `--script file`    Explicit script filename
+      `--version tuple`  Script must be this version or greater
   
-  ^[[4;1;36mSpecial options^[[m:
+  _Special options_:
   
-      ^[[1;32m--boot level^[[m     Valid levels: base sys mods
-      ^[[1;32m--debug flags^[[m    For user scripts (system/options/debug)
-      ^[[1;32m--halt (-h)^[[m      Leave console open when script is done
-      ^[[1;32m--import file^[[m    Import a module prior to script
-      ^[[1;32m--quiet (-q)^[[m     No startup banners or information
-      ^[[1;32m--secure policy^[[m  Can be: none allow ask throw quit
-      ^[[1;32m--trace (-t)^[[m     Enable trace mode during boot
-      ^[[1;32m--verbose^[[m        Show detailed startup information
-      ^[[1;32m--cgi (-c)^[[m       Starts in a CGI mode
-      ^[[1;32m--no-color^[[m       Reduce the use of ANSI color escape sequences
+      `--boot level`     Valid levels: base sys mods
+      `--debug flags`    For user scripts (system/options/debug)
+      `--halt (-h)`      Leave console open when script is done
+      `--import file`    Import a module prior to script
+      `--quiet (-q)`     No startup banners or information
+      `--secure policy`  Can be: none allow ask throw quit
+      `--trace (-t)`     Enable trace mode during boot
+      `--verbose`        Show detailed startup information
+      `--cgi (-c)`       Starts in a CGI mode
+      `--no-color`       Reduce the use of ANSI color escape sequences
 
-  ^[[4;1;36mOther quick options^[[m:
+  _Other quick options_:
   
-      ^[[1;32m-s^[[m               No security
-      ^[[1;32m+s^[[m               Full security
-      ^[[1;32m-v^[[m               Display version only (then quit)
+      `-s`               No security
+      `+s`               Full security
+      `-v`               Display version only (then quit)
   
-  ^[[4;1;36mExamples^[[m:
+  _Examples_:
   
       REBOL script.r
       REBOL -s script.r
       REBOL script.r 10:30 test@example.com
       REBOL --do "watch: on" script.r}
 
-	if system/options/no-color [
-		sys/remove-ansi help-text
-		sys/remove-ansi help-usage
-	]
-
 	output: func[value][
-		buffer: insert buffer form reduce value
+		buffer: insert buffer either block? :value [ajoin value][:value]
 	]
 
 	interpunction: charset ";.?!"
@@ -179,7 +175,7 @@ import (module [
 		/not-none "Ignore NONE values"
 		/local start wild type str result user?
 	][
-		result: clear ""
+		result: append clear "" LF
 		user?: same? obj system/contexts/user
 		; Search for matching strings:
 		wild: all [string? pattern  find pattern "*"]
@@ -215,15 +211,15 @@ import (module [
 					]
 				][ continue ]
 
-				str: join "^[[1;32m" form-pad either map? :obj [mold/flat :word][word] 15
-				append str "^[[m "
-				append str form-pad type 11 - min 0 ((length? str) - 15)
-				append result rejoin [
-					"  " str
-					either unset? :val [#"^/"][
-						ajoin ["^[[32m" form-val :val "^[[m^/"]
-					]
-				]
+                ;; construct in multiple steps to compensate padding with long names
+                str: ajoin [ansi/bright-green form-pad either map? :obj [mold/flat :word][word] 15 "^[[m "]
+                append str ajoin [ansi/bright-yellow form-pad type 11 - min 0 ((length? str) - 15)]
+                append result rejoin [
+                    "^[[m  " str
+                    either unset? :val [#"^/"][
+                        ajoin [ansi/green form-val :val "^[[m^/"]
+                    ]
+                ]
 			]
 		]
 		if system/options/no-color [sys/remove-ansi result]
@@ -231,11 +227,19 @@ import (module [
 	]
 
 	out-description: func [des [block!]][
-		foreach line des [
-			uppercase/part trim/lines line 1
-			dot line
+		if empty? des [exit]
+		des: trim/auto ajoin/with des LF
+		des: split-lines des
+		buffer: insert insert buffer SP dot uppercase/part des/1 1
+		foreach line next des [
+			buffer: insert insert buffer "^/                   " line
 		]
-		buffer: insert insert buffer #" " form des 
+	]
+	out-title: func[title /line][
+		output [
+			if line ["^/^/"]
+			ansi/bright-cyan "^[[4m" title "^[[m:"
+		]
 	]
 
 	?: help: func [
@@ -259,7 +263,7 @@ import (module [
 		catch [
 			case/all [
 				unset? :word [
-					output help-text
+					output ansi-colorize help-text
 					throw true
 				]
 				word? :word [
@@ -271,7 +275,7 @@ import (module [
 							output lf
 							if any-function? :value [
 								; don't display help in case that user redefined `codecs` with a function
-								output ajoin ["^[[1;32m" uppercase mold word "^[[m is " form-type :value ".^[[m"]
+								output [ansi/bright-green uppercase mold word "^[[m is " form-type :value ".^[[m"]
 								throw true
 							]
 						]
@@ -280,16 +284,16 @@ import (module [
 				string? :word  [
 					tmp: false
 					case/all [
-						not empty? value: dump-obj/weak/match system/contexts/lib :word [
-							output ajoin ["Found these related matches:^/" value]
+						not single? value: dump-obj/weak/match system/contexts/lib :word [
+							output ["Found these related matches:" value]
 							tmp: true
 						]
-						not empty? value: dump-obj/weak/match system/contexts/user :word [
-							output ajoin ["Found these related matches in the user context:^/" value]
+						not single? value: dump-obj/weak/match system/contexts/user :word [
+							output ["Found these related matches in the user context:" value]
 							tmp: true
 						]
 						not tmp [
-							output ajoin ["No information on: ^[[32m" :word "^[[m^/"]
+							output ["No information on: " ansi/green :word "^[[m^/"]
 						]
 					]
 					throw true
@@ -298,27 +302,29 @@ import (module [
 					spec: spec-of :value
 					either :word <> to word! :value [
 						; for example: value: string! help value 
-						output ajoin [
-						 "^[[1;32m" uppercase mold :word "^[[m is a datatype of value: ^[[32m" mold :value "^[[m^/"
+						output [
+							ansi/bright-green uppercase mold :word
+							"^[[m is a datatype of value: "
+							ansi/green mold :value "^[[m^/"
 						]
 					][
 						; for example: help string! 
-						output ajoin [
-						 "^[[1;32m" uppercase mold :word "^[[m is a datatype.^[[m^/"
+						output [
+						 ansi/bright-green uppercase mold :word "^[[m is a datatype.^[[m^/"
 						 "It is defined as" either find "aeiou" first spec/title [" an "] [" a "] spec/title ".^/"
-						 "It is of the general type ^[[1;32m" spec/type "^[[m.^/^/"
+						 "It is of the general type " ansi/bright-green spec/type "^[[m.^/^/"
 						]
-						unless empty? value: dump-obj/match system/contexts/lib :word [
-							output ajoin ["Found these related words:^/" value]
+						unless single? value: dump-obj/match system/contexts/lib :word [
+							output ["Found these related words:" value]
 						]
-						unless empty? value: dump-obj/match system/contexts/user :word [
-							output ajoin ["Found these related words in the user context:^/" value]
+						unless single? value: dump-obj/match system/contexts/user :word [
+							output ["Found these related words in the user context:" value]
 						]
 					]
 					throw true
 				]
 				refinement? :word [
-					output [mold :word "is" form-type :word "used in these functions:^/^/"]
+					output [mold :word " is " form-type :word " used in these functions:^/^/"]
 					str: copy ""
 					foreach [name val] system/contexts/lib [
 						if all [
@@ -326,21 +332,19 @@ import (module [
 							spec: spec-of :val
 							desc: find/case/tail spec :word
 						][
-							str: join "^[[1;32m" form-pad name 15
-							append str "^[[m "
+							str: ajoin [ansi/bright-green form-pad name 15 "^[[m "]
 							append str form-pad type? :val 11 - min 0 ((length? str) - 15)
-							append str join "^[[1;32m" mold :word
+							append str ajoin [ansi/bright-green mold :word]
 							if string? desc/1 [
-								append str " ^[[0;32m"
-								append str desc/1
+								append str ajoin [SP ansi/green desc/1]
 							]
-							output ajoin ["  " str "^[[m^/"]
+							output ["  " str "^[[m^/"]
 						]
 					]
 					throw true
 				]
 				not any [word? :word path? :word] [
-					output ajoin ["^[[1;32m" :word "^[[m is " form-type :word]
+					output [ansi/bright-green :word "^[[m is " form-type :word]
 					throw true
 				]
 				path? :word [
@@ -350,20 +354,27 @@ import (module [
 							value/id   = 'invalid-path
 							value/arg1 = :word
 						][
-							output ajoin ["There is no ^[[1;32m" value/arg2 "^[[m in path ^[[1;32m" value/arg1 "^[[m"]
+							output [
+								"There is no " ansi/bright-green value/arg2
+								"^[[m in path " ansi/bright-green value/arg1 "^[[m"
+							]
 							throw true
 						]
 						if all [
 							value/id = 'no-value
 							value/arg1 = first :word
 						][
-							output ["No information on^[[1;32m" :word "^[[m(path has no value)"]
+							output ["No information on " ansi/bright-green :word " ^[[m(path has no value)"]
 							throw true
 						]
 					]
 				]
 				port? :value [
-					output ajoin ["^[[1;32m" uppercase mold :word "^[[m is " a-an value/spec/title " ^[[1;32m" value/spec/ref "^[[m^/"]
+					output [
+						ansi/bright-green uppercase mold :word
+						"^[[m is " a-an value/spec/title SP
+						ansi/bright-green value/spec/ref "^[[m^/"
+					]
 				]
 				any-function? :value [
 					spec: copy/deep spec-of :value
@@ -388,53 +399,53 @@ import (module [
 						opt [refinement! refs:]
 						to end
 					]
-					output "^[[4;1;36mUSAGE^[[m:^/     "
+					out-title "USAGE"
+					output ["^/     "]
 					either op? :value [
-						output [args/1 word args/4]
-					] [
-						output ajoin ["^[[1;32m" uppercase mold word]
+						output [args/1 SP word SP args/4]
+					][
+						output [ansi/bright-green uppercase mold word]
 						foreach [arg def des] args [
 							buffer: insert insert buffer #" " mold arg
 						]
 						output "^[[m"
 					]
-
-					output "^/^/^[[4;1;36mDESCRIPTION^[[m:^/"
+					out-title/line "DESCRIPTION"
 					unless empty? desc [
 						foreach line desc [
 							trim/head/tail line
 							unless empty? line [
-								output ["    " dot uppercase/part line 1 #"^/"]
+								output ["^/     " dot uppercase/part line 1]
 							]
 						]
 					]
-					output ["    " uppercase form word "is" a-an form :type "value."]
+					output ["^/     " uppercase form word " is " a-an form :type " value."]
 
 					unless empty? args [
-						output "^/^/^[[4;1;36mARGUMENTS^[[m:"
+						out-title/line "ARGUMENTS"
 						foreach [arg def des] args [
-							output ajoin [
-								"^/     ^[[1;32m" pad mold arg 14 "^[[m"
-								"^[[32m" pad either def [mold def]["[any-type!]"] 10 "^[[m"
+							output [
+								"^/     " ansi/bright-green pad mold arg 14 "^[[m"
+								ansi/green pad either def [mold def]["[any-type!]"] 10 "^[[m"
 							]
 							out-description des
 						]
 					]
 
 					if refs [
-						output "^/^/^[[4;1;36mREFINEMENTS^[[m:"
+						out-title/line "REFINEMENTS"
 						parse back refs [
 							any [
-								set ref refinement! (output ajoin ["^/     ^[[1;32m" pad mold ref 14 "^[[m"])
+								set ref refinement! (output ["^/     " ansi/bright-green pad mold ref 14 "^[[m"])
 								opt [set des string! (output des)]
 								any [
 									set arg [word! | lit-word! | get-word!] 
 									set def opt block! 
 									copy des any string! (
-										output ajoin [
+										output [
 											"^/      "
-											"^[[1;33m" pad form arg 13  
-											"^[[0;32m" either def [mold def]["[any-type!]"] "^[[m"
+											ansi/bright-yellow pad form arg 13  
+											ansi/green either def [mold def]["[any-type!]"] "^[[m"
 										]
 										out-description des
 									)
@@ -443,19 +454,27 @@ import (module [
 						]
 					]
 					if rets [
-						output  "^/^/^[[4;1;36mRETURNS^[[m:"
-						if ret-desc [output ["^/    " ret-desc]]
-						output ["^/    " mold rets ]
+						out-title/line "RETURNS"
+						if ret-desc [output ["^/     " ret-desc]]
+						if block? rets [
+							parse rets [
+								any [
+									set arg word! (output ["^/     " ansi/bright-yellow pad mold arg 14 "^[[m"])
+									opt [set des string! (output des)]
+									| skip
+								]
+							]
+						]
 					]
 					output newline
 					throw true
 				]
 				module? :value [
-					output ajoin [
-						"^[[1;32m" uppercase mold :word "^[[m is " a-an "module with:^/"
-						"^[[4;1;36mSPEC^[[m:^/"
+					output [
+						ansi/bright-green uppercase mold :word "^[[m is " a-an "module with:^/"
+						out-title "SPEC"
 						dump-obj/not-none spec-of :value
-						"^/^[[4;1;36mBODY^[[m:^/"
+						out-title "BODY"
 						dump-obj :value
 					]
 					throw true
@@ -463,9 +482,9 @@ import (module [
 				'else [
 					word: uppercase mold word
 					type: form-type :value
-					output ajoin ["^[[1;32m" word "^[[m is " type " of value: ^[[32m"]
+					output [ansi/bright-green word "^[[m is " type " of value: " ansi/green]
 					output either any [any-object? value map? value] [
-						output lf dump-obj :value
+						dump-obj :value
 					][
 						max-desc-width: cols - (length? word) - (length? type) - 21
 						form-val :value
@@ -501,22 +520,25 @@ import (module [
 			]
 			if empty? tmp [continue]
 
-			output ajoin [{^[[4;1;36m} uppercase form type { CODECS^[[m:}]
+			out-title ajoin [uppercase form type " CODECS"]
 			foreach codec tmp [
-				output ajoin ["^/    ^[[4;1;33m" uppercase form codec/name "^[[m^/    ^[[1;32m" codec/title]
+				output [
+					"^/    ^[[4m" ansi/bright-yellow uppercase form codec/name
+					"^[[m^/    " ansi/bright-green codec/title
+				]
 				if all [tmp: select codec 'suffixes not empty? tmp] [
-					output ajoin ["^[[m^/    Suffixes: ^[[31m" codec/suffixes]
+					output ajoin ["^[[m^/    Suffixes: " ansi/red codec/suffixes]
 				]
 				tmp: exclude keys-of codec [name type title entry suffixes]
 				unless empty? tmp [
-					output ajoin ["^[[m^/    Includes: ^[[35m" tmp]
+					output ajoin ["^[[m^/    Includes: " ansi/magenta tmp]
 				]
 				output lf
 			]
 			output "^[[m^/^/"
 		]
 		output ajoin [
-			"^[[1mTIP:^[[m use for example ^[[1;32mhelp system/codecs/" codec/name "^[[m to see more info.^/"
+			"^[[1mTIP:^[[m use for example " ansi/bright-green "help system/codecs/" codec/name "^[[m to see more info.^/"
 		]
 		if system/options/no-color [sys/remove-ansi head buffer]
 	]
@@ -530,7 +552,7 @@ import (module [
 	usage: func [
 		"Prints command-line arguments"
 	][
-		print help-usage
+		print ansi-colorize help-usage
 	]
 
 
@@ -633,28 +655,28 @@ changes: func [
 	browse https://github.com/Oldes/Rebol3/blob/master/CHANGES.md
 	exit
 ]
-;
-;why?: func [
-;	"Explain the last error in more detail."
-;	'err [word! path! error! none! unset!] "Optional error value"
-;][
-;	case [
-;		unset? :err [err: none]
-;		word? err [err: get err]
-;		path? err [err: get err]
-;	]
-;
-;	either all [
-;		error? err: any [:err system/state/last-error]
-;		err/type ; avoids lower level error types (like halt)
-;	][
-;		err: lowercase ajoin [err/type #"-" err/id]
-;		browse join http://www.rebol.com/r3/docs/errors/ [err ".html"]
-;	][
-;		print "No information is available."
-;	]
-;	exit
-;]
+
+why?: func [
+	"Explain the last error in more detail."
+	'err [word! path! error! none! unset!] "Optional error value"
+][
+	case [
+		unset? :err [err: none]
+		word? err [err: get err]
+		path? err [err: get err]
+	]
+
+	either all [
+		error? err: any [:err system/state/last-error]
+		err/type ; avoids lower level error types (like halt)
+	][
+		err: lowercase ajoin [err/type #"-" err/id]
+		browse join http://www.rebol.com/r3/docs/errors/ [err ".html"]
+	][
+		print "No information is available."
+	]
+	exit
+]
 ;
 ;demo: function [
 ;	"Run R3 demo."
