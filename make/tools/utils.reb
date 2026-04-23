@@ -175,9 +175,9 @@ get-os-info: function[
 			system/platform = 'Windows
 			0 = call/shell/wait/output/error "ver" :tmp :err
 			parse tmp [
-				to num copy v: [some num #"." some num] to end (
+				to num copy v: [some num any [#"." some num]] to end (
 					out/ID: 'windows
-					out/VERSION_ID: to decimal! v
+					out/VERSION_ID: v
 				)
 			]
 		]
