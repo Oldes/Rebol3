@@ -32,6 +32,18 @@ Rebol [
 ===end-group===
 
 
+===start-group=== "Actions"
+	;@@ https://github.com/Oldes/Rebol-issues/issues/2704
+	e: try [read %nonsense]
+	--test-- "select error!"
+	--assert %nonsense == select e 'arg1
+	--assert none? select e 'arg1111
+	
+	--test-- "find error!"
+	--assert true? find e 'arg1
+	--assert none? find e 'arg1111
+===end-group===
+
 
 ===start-group=== "make error!"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/835

@@ -205,7 +205,7 @@ pick: action [
 
 find: action [
 	{Searches for a value; for series returns where found, else none.}
-	series [series! gob! port! bitset! typeset! object! map! none!]
+	series [series! map! any-object! gob! bitset! typeset! none!]
 	value [any-type!]
 	/part {Limits the search to a given length or position}
 	range [number! series! pair!]
@@ -225,7 +225,7 @@ find: action [
 
 select: action [
 	{Searches for a value; returns the value that follows, else none.}
-	series [series! port! map! object! module! none!]
+	series [series! map! any-object! none!]
 	value [any-type!]
 	/part {Limits the search to a given length or position}
 	range [number! series! pair!]
