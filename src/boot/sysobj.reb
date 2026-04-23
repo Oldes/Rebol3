@@ -78,6 +78,7 @@ options: object [  ; Options supplied to REBOL during startup
 		bold-off:          "^[[22m"
 		italic-off:        "^[[23m"
 		underline-off:     "^[[24m"
+		invert-off:        "^[[27m"
 		foreground:        "^[[39m" ;= Default foreground color
 		background:        "^[[49m" ;= Default background color
 		gray:              "^[[38;5;243m"
