@@ -420,7 +420,7 @@ static dbgout(char *fmt, int d, char *s)
 
 			if (!SetConsoleMode(Std_Inp, dwInpMode)) goto error;
 
-			if (!Emulate_ANSI) {
+			if (dwOutMode && !Emulate_ANSI) {
 				dwOutMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
 				if (!SetConsoleMode(Std_Out, dwOutMode)) {
 					Emulate_ANSI = 1; // failed to use VIRTUAL_TERMINAL_PROCESSING, so force emulation
@@ -475,7 +475,6 @@ error:
 	}
 
 	if (hOutput) {
-
 		bp = req->data;
 		ep = bp + req->length;
 
@@ -502,17 +501,20 @@ error:
 					}
 				}
 				else { // for Windows SubSystem - must be converted to Win32 wide-char format
-					//if found, write to the console content before it starts, else everything
-					if (cp) {
-						len = AS_REBLEN(Write_UTF8_To_Console(cs_cast(bp), cp-bp, 0, hOutput));
-					}
-					else {
-						len = AS_REBLEN(Write_UTF8_To_Console(cs_cast(bp), ep-bp, 0, hOutput));
-						bp = ep;
-					}
-					if (len < 0) {
-						req->error = GetLastError();
-						return DR_ERROR;
+					// When GetConsoleMode fails (at init), there is no real console attached, so output will be ignored.
+					if (dwOriginalOutMode) {
+						//if found, write to the console content before it starts, else everything
+						if (cp) {
+							len = AS_REBLEN(Write_UTF8_To_Console(cs_cast(bp), cp - bp, 0, hOutput));
+						}
+						else {
+							len = AS_REBLEN(Write_UTF8_To_Console(cs_cast(bp), ep - bp, 0, hOutput));
+							bp = ep;
+						}
+						if (len < 0) {
+							req->error = GetLastError();
+							return DR_ERROR;
+						}
 					}
 					//is escape char was found, parse the ANSI sequence...
 					if (cp) {
@@ -521,11 +523,12 @@ error:
 				}
 			} while (bp < ep);
 		} else {
-			// using MS built in ANSI processing
+			// Using MS built in ANSI processing
 			if (Redir_Out) { // Always UTF-8
 				ok = WriteFile(hOutput, req->data, req->length, &total, 0);
 			}
-			else {
+			else if (dwOriginalOutMode) {
+				// When dwOriginalOutMode is zero, there is no real console attached, so output will be ignored.
 				len = AS_REBLEN(Write_UTF8_To_Console(cs_cast(req->data), req->length, req->actual, hOutput));
 				if (len < 0) {
 					req->error = GetLastError();
