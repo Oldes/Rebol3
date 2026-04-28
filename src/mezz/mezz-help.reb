@@ -112,7 +112,7 @@ import (module [
 		buffer: insert buffer either block? :value [ajoin value][:value]
 	]
 
-	interpunction: charset ";.?!"
+	interpunction: charset ";.?!,:"
 	dot: func[value [string!]][
 		unless find interpunction last value [append value #"."]
 		value
@@ -226,12 +226,19 @@ import (module [
 		copy result
 	]
 
-	out-description: func [des [block!]][
+	out-description: func [des [block!] /local pos len][
 		if empty? des [exit]
 		des: trim/auto ajoin/with des LF
 		des: split-lines des
-		buffer: insert insert buffer SP dot uppercase/part des/1 1
-		foreach line next des [
+		;; determine if the first string fits the width of the terminal
+		if all [
+			pos: find/reverse/tail buffer LF
+			((length? sys/remove-ansi copy pos) + des/1/width) < cols
+		][
+			buffer: insert insert buffer SP dot uppercase/part des/1 1
+			++ des
+		]	
+		foreach line des [
 			buffer: insert insert buffer "^/                   " line
 		]
 	]
@@ -248,7 +255,7 @@ import (module [
 		/doc "Open web browser to related documentation"
 		/into "Help text will be inserted into provided string instead of printed"
 			string [string!] "Returned series will be past the insertion"
-		/local value spec args refs rets type ret desc arg def des ref str cols tmp ret-desc
+		/local value spec args refs rets type ret desc arg def des ref str tmp ret-desc
 	][
 		if all [
 			doc
@@ -436,8 +443,8 @@ import (module [
 						out-title/line "REFINEMENTS"
 						parse back refs [
 							any [
-								set ref refinement! (output ["^/     " ansi/bright-green pad mold ref 14 "^[[m"])
-								opt [set des string! (output des)]
+								set ref refinement! (output ["^/     " ansi/bright-green pad mold ref 13 "^[[m"])
+								opt [copy des any string! (out-description des)]
 								any [
 									set arg [word! | lit-word! | get-word!] 
 									set def opt block! 
