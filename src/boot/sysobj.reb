@@ -141,7 +141,7 @@ catalog: object [
 	boot-flags: [
 		script args do import version debug secure
 		help vers quiet verbose
-		secure-min secure-max trace halt cgi boot-level no-window no-color
+		secure-min secure-max trace halt cgi boot-level no-window no-color legacy-repl
 	]
 	bitsets: object [
 		crlf:          #(bitset! #{0024})                             ;charset "^/^M"

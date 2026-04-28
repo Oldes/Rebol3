@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -372,9 +372,14 @@ int main(int argc, char **argv) {
 			RL_Do_String(b_cast("unless system/options/quiet [print {^[[mClosing in 3s!} wait 3]"), 0, 0);
 			OS_Exit(-n, 0);
 		}
+#ifdef HAS_NEW_CONSOLE
+		if (args->options & RO_LEGACY_REPL)
+			Host_Repl();
+		else RL_Do_String(b_cast("rebol-console"), 0, 0);
+#else
 		Host_Repl();
+#endif
 	}
-
 	OS_Exit(0, 0);
 	return 0;
 }

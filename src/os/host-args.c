@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -62,6 +62,7 @@ const struct {const char *word; const int flag;} arg_words[] = {
 	{"halt",		RO_HALT},
 	{"help",		RO_HELP},
 	{"import",		RO_IMPORT | RO_EXT},
+	{"legacy-repl", RO_LEGACY_REPL},
 	{"no-color",    RO_NO_COLOR},
 	{"quiet",		RO_QUIET},
 	{"script",		RO_SCRIPT | RO_EXT},

@@ -85,15 +85,16 @@ import (module [
   _Special options_:
   
       `--boot level`     Valid levels: base sys mods
+      `--cgi (-c)`       Starts in CGI mode
       `--debug flags`    For user scripts (system/options/debug)
-      `--halt (-h)`      Leave console open when script is done
+      `--halt (-h)`      Keep console open after script completion
       `--import file`    Import a module prior to script
+      `--legacy-repl`    Run the interactive console in legacy (pre-modern) mode
+      `--no-color`       Reduce the use of ANSI color escape sequences
       `--quiet (-q)`     No startup banners or information
       `--secure policy`  Can be: none allow ask throw quit
       `--trace (-t)`     Enable trace mode during boot
       `--verbose`        Show detailed startup information
-      `--cgi (-c)`       Starts in a CGI mode
-      `--no-color`       Reduce the use of ANSI color escape sequences
 
   _Other quick options_:
   
