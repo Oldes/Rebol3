@@ -673,8 +673,8 @@ transcode: native [
 ]
 
 echo: native [
-    {Copies console output to a file.}
-    target [file! none! logic!]
+	{Copies console output to a file.}
+	target [file! none! logic!]
 ]
 
 now: native [
@@ -908,15 +908,30 @@ list-env: native [
 ]
 
 call: native [
-	{Run another program; return immediately with the process ID.}
-	command [any-string! block! file!] "An OS-local command line (quoted as necessary), a block with arguments, or an executable file"
-	/wait "Wait for command to terminate and then return the exit code"
-	/console "Runs command with I/O redirected to console"
-	/shell "Forces command to be run from shell"
-	/info {Returns process information object containing the ID of the process (or 0 if failed to run), includes the exit code when used with /wait}
-	/input in [string! binary! file! none!] "Redirects stdin to in"
-	/output out [string! binary! file! none!] "Redirects stdout to out"
-	/error err [string! binary! file! none!] "Redirects stderr to err"
+	{Execute an external process.}
+	{Returns the process ID by default, or the exit code with /wait.}
+	command [any-string! block! file!] {
+		Command to execute. Use a string for shell-style commands (e.g. "ls -la"),
+		a block for pre-split argument lists (e.g. ["ffmpeg" "-i" %in.mp4 %out.mp4]),
+		or a file! for direct executable paths without shell interpretation.}
+	/wait    "Block until the process exits and return its exit code"
+	/console "Attach the process to the current console for interactive I/O"
+	/shell   "Run the command through the system shell (e.g. cmd.exe or /bin/sh)"
+	/info    {
+		Return a process-info object instead of a plain integer.
+		Fields: id (PID), exit-code (only with /wait), error (OS error string, if any).}
+	/input "Redirect stdin."
+	in [string! binary! file! none!] {
+		string!/binary! pipes data directly (implies /wait);
+		file! reads from a file path; none! closes stdin.}
+	/output "Redirect stdout."
+	out [string! binary! file! none!] { 
+		string!/binary! captures output into the value (implies /wait);
+		file! writes to a file path; none! discards output.}
+	/error "Redirect stderr."
+	err [string! binary! file! none!] {
+		string!/binary! captures errors into the value (implies /wait);
+		file! writes to a file path; none! discards stderr.}
 ]
 
 
@@ -1017,8 +1032,8 @@ limit-usage: native [
 ]
 
 selfless?: native [
-    "Returns true if the context doesn't bind 'self."
-    context [any-word! any-object!] "A reference to the target context"
+	"Returns true if the context doesn't bind 'self."
+	context [any-word! any-object!] "A reference to the target context"
 ]
 
 map-event: native [
