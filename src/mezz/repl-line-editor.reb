@@ -2,6 +2,7 @@ Rebol [
 	Title:   "Line editor context"
 	Purpose: {Reusable line editor}
 	Name:    line-editor
+	Type:    module
 	Version: 0.1.0
 	Date:    24-Apr-2026
 	Needs:   3.21.16

@@ -93,7 +93,7 @@ rebol-console: function/with [
 				unless find [tab backtab #"^-"] key [
 					if status? == 'tab [
 						hide-status
-						either find [#" " #":" right] key [
+						either find [#" " #":" #"/" right] key [
 							completion/accept
 						][	completion/reset ]
 					]
