@@ -1639,6 +1639,7 @@ reapply:  // Go back here to start over with a new func
 	va_start(args, inum);
 	value = Apply_Function(blk, idx, value, args);
 	va_end(args);
+	SET_LOGIC(Get_System(SYS_STATE, STATE_QUITQ), FALSE);
 
 	return value;
 }
