@@ -227,7 +227,6 @@ completion!: context [
 								]
 							]
 						]
-						write/append %out ajoin [mold matches LF]
 					]
 				]
 			]
