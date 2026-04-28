@@ -79,17 +79,17 @@ completion!: context [
 			not empty? partial [ ; Word completion
 				kind: 'word
 				n: length? words
-				if lib-size < length? lib-context [
-					foreach word reverse skip words-of lib-context lib-size [
-						append words form word
-					]
-					lib-size: length? lib-context
-				]
 				if user-size < length? user-context [
 					foreach word reverse skip words-of user-context user-size [
 						append words form word
 					]
 					user-size: length? user-context
+				]
+				if lib-size < length? lib-context [
+					foreach word reverse skip words-of lib-context lib-size [
+						append words form word
+					]
+					lib-size: length? lib-context
 				]
 				if n < length? words [ words: unique words ]
 
