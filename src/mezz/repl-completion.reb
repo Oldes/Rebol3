@@ -234,6 +234,7 @@ completion!: context [
 			]
 		]
 		either block? matches [
+			if block? path [path: as path! path] ;; cast back to path before converting to string
 			prefix: dirize form path
 			forall matches [matches/1: ajoin [prefix matches/1]]
 			head matches
