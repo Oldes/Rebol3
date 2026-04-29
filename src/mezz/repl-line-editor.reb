@@ -3,8 +3,8 @@ Rebol [
 	Purpose: {Reusable line editor}
 	Name:    line-editor
 	Type:    module
-	Version: 0.1.0
-	Date:    24-Apr-2026
+	Version: 0.2.0
+	Date:    29-Apr-2026
 	Needs:   3.21.16
 	exports: [line-editor!]
 ]
@@ -18,7 +18,7 @@ line-editor!: context [
 	prev-col: col: 0
 	history: clear []
 	current-key: _
-	eval-ctx: context []
+	console-ctx: context []
 	ansi: system/options/ansi
 
 	init: func [][
@@ -148,15 +148,20 @@ line-editor!: context [
 	on-line: does [
 		result: try [transcode code: line]
 		prin clear-newline
-		code: bind/new/set result eval-ctx
-		code: bind code system/contexts/lib
-		set/any 'result try/all [
-			catch/quit code
-		]
-		if system/state/quit? [
-			system/state/quit?: false ;; quit only from this console
-			on-quit
-			break
+		either error? :result [
+			;; It's an error from transcode, no need to show the stack!
+			unset in :result 'where
+		][
+			code: bind result system/contexts/lib  ;; core values
+			code: bind code system/contexts/user   ;; e.g. values from startup scripts
+			code: bind/set code console-ctx        ;; per console session values
+			;; Evaluate code with protection from all errors and quit.
+			set/any 'result try/all [ catch/quit code ]
+			if system/state/quit? [
+				system/state/quit?: false ;; quit only from this console
+				on-quit
+				break
+			]
 		]
 		on-result
 	]
@@ -179,7 +184,7 @@ line-editor!: context [
 				]
 				emit LF
 			]
-			unset? :result [] ; ignored
+			unset? :result [prin LF] ; ignored
 		]
 		unset 'result
 		emit [clear-line prompt]
@@ -284,8 +289,10 @@ line-editor!: context [
 	ml-prompt:  _        ;; stored original prompt while inside multiline mode
 	ml-type:    _        ;; current bracket type
 	reset-multiline: does [
-		multiline: none
-		prompt: ml-prompt
+		if multiline [
+			multiline: none
+			prompt: ml-prompt
+		]
 	]
 
 	;-- Status line ---

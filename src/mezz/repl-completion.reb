@@ -45,7 +45,7 @@ completion!: context [
 		
 		matches: clear head matches
 		case [
-			partial/1 == #"%" [ ; File completion
+			partial/1 == #"%" [ ;- File completion ----
 				kind: 'file
 				partial: next partial
 				either empty? partial [
@@ -67,16 +67,15 @@ completion!: context [
 					]
 				]
 			]
-			find partial #"/" [ ; Path completion
+			find partial #"/" [ ;- Path completion ----
 				kind: 'path
 				append matches any [
-					scan-context system/contexts/sys
 					scan-context system/contexts/lib
 					scan-context user-context
 					[]
 				]
 			]
-			not empty? partial [ ; Word completion
+			not empty? partial [ ;- Word completion ----
 				kind: 'word
 				n: length? words
 				if user-size < length? user-context [
@@ -163,10 +162,6 @@ completion!: context [
 
 	;; Object/function completion support
 
-	collect-refs: function [fn [any-function!]][
-		parse spec-of :fn [ collect any [to refinement! set x: skip keep (form x)] ]
-	]
-
 	form-all: func[blk [block!]][ forall blk [change blk form blk/1] blk]
 
 	filter-matches: function [
@@ -177,65 +172,71 @@ completion!: context [
 		remove-each value block [ not find/match value pattern ]
 	]
 
-	scan-context: function/extern [
+	scan-context: function [
 		ctx [object!]
 	][
-		path: split partial #"/"
+		;; Working with local copy not to modify the original completion part!
+		local-part: copy partial
+		slash?: if #"/" = last local-part [ take/last local-part ]
+		unless attempt [path: transcode/one local-part][ return none ]
+		;; Casting to block to have propper formating with single segment path!
+		path-start: either word? path [path][path: as block! path path/1]
 		foreach [key val] ctx [
-			switch type? :val [
-				#(native!) #(action!) #(function!) #(closure!) [
-					if equal? path/1 form key [
-						matches: either empty? last path [ ; part is `word/` -> ["word" ""]
-							collect-refs :val
-						][
-							; possible optimization:
-							; if refinement is already present, do not offer it
-							filter-matches collect-refs :val last path
+			case [
+				any-function? :val [
+					if equal? path-start key [
+						;; Collect all function's refinements..
+						matches: parse spec-of :val [
+							collect any [to refinement! set x: skip keep (to word! x)]
 						]
+						if block? path [
+							;; Remove all refinements, which are already present.
+							remove-each m matches [find path m]
+							;; When there was not a slash at tail, user has partial refinement
+							unless slash? [
+								;; Remove all which does not start with the last path segment.
+								filter-matches form-all matches form take/last path
+							]
+						]
+						;; End the loop..
+						break
 					]
 				]
-				#(object!) #(module!) #(error!) #(port!) #(block!) [
-					if equal? path/1 form key [
+				any-object? :val [
+					if equal? path-start key [
 						matches: case [
 							; top level object
-							all [ empty? last path 2 = length? path ][
+							word? path [
 								form-all words-of :val
 							]
 							; subobject
-							empty? last path [
-								take/last path
-								result: get to path! load path
-								case [
-									any-object? result [ form-all words-of result ]
-								;	block? result [ rejoin ["1 - " length? result ] ]
-									'else ["???"]
-								]
+							slash? [
+								result: get/any path
+								if any-object? result [ form-all words-of result ]
 							]
 							'else [
-								either attempt [ get to path! load path ][
+								either attempt [ get/any path ][
 									; fully resolved path, nothing to add
 									[]
 								][
 									; partial word from subobject
-									partial2: take/last path
-									result: either single? path [
-										form-all words-of get load path/1
-									][
-										form-all words-of get to path! load path
-									]
+									partial2: form take/last path
+									if single? path [path: path/1]
+									result: form-all words-of get bind path ctx
 									filter-matches result partial2
 								]
 							]
 						]
+						;; End the loop..
+						break
 					]
 				]
 			]
 		]
 		either block? matches [
-			prefix: combine/with path #"/"
-			unless equal? #"/" last prefix [append prefix #"/"]
-			forall matches [matches/1: join prefix matches/1]
+			prefix: dirize form path
+			forall matches [matches/1: ajoin [prefix matches/1]]
 			head matches
 		][ none ]
-	][	partial ]
+	]
 ]
