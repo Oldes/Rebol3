@@ -487,9 +487,9 @@ static int Read_Key_Event(REBEVT *evt) {
 		// Normalize backspace
 		if (c[0] == 0x7F || c[0] == 0x08) {
 			evt->type = EVT_CONTROL;
-			if (c[0] != settings_original.c_cc[VERASE])
-				SET_FLAG(evt->flags, EVF_CONTROL);
 			evt->data = EVK_BACKSPACE;
+			if (c[0] != settings_raw.c_cc[VERASE])
+				SET_FLAG(evt->flags, EVF_CONTROL);
 			return DR_DONE;
 		}
 		if (c[0] > 0 && c[0] <= 0x1F) {
@@ -571,6 +571,7 @@ static int Read_Key_Event(REBEVT *evt) {
 	settings_raw.c_iflag &= ~(IXON | IXOFF); // disable XON/XOFF flow control so Ctrl+Q and Ctrl+S reach the app
 	settings_raw.c_cc[VMIN]  = 1;
 	settings_raw.c_cc[VTIME] = 0;
+	settings_raw.c_cc[VERASE] = 0x7F;
 	// Keep ISIG enabled so Ctrl+C still generates SIGINT for RL_Escape
 	// but disable Ctrl+Z suspension specifically
 	settings_raw.c_cc[VSUSP] = _POSIX_VDISABLE; // disable Ctrl+Z -> SIGTSTP
