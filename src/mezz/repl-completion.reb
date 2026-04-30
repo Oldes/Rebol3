@@ -59,7 +59,7 @@ completion!: context [
 					foreach file files [
 						file: dir/:file
 						if apply :parse [
-							file [partial to end]
+							file [opt [%./ file:] partial to end]
 							system/platform != 'Windows ;; Case-sensitive on Posix!
 						][
 							append matches as string! enhex file
