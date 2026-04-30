@@ -180,18 +180,21 @@ completion!: context [
 		slash?: if #"/" = last local-part [ take/last local-part ]
 		unless attempt [path: transcode/one local-part][ return none ]
 		;; Casting to block to have propper formating with single segment path!
-		path-start: either word? path [path][path: as block! path path/1]
+		path-start: either word? path [path][
+			path: bind as block! path ctx
+			path/1
+		]
 		foreach [key val] ctx [
-			case [
-				any-function? :val [
-					if equal? path-start key [
+			if equal? path-start key [
+				case [
+					any-function? :val [
 						;; Collect all function's refinements..
 						matches: parse spec-of :val [
-							collect any [to refinement! set x: skip keep (to word! x)]
+							collect any [to refinement! set ref: skip keep (to word! ref)]
 						]
 						if block? path [
 							;; Remove all refinements, which are already present.
-							remove-each m matches [find path m]
+							remove-each ref matches [find path ref]
 							;; When there was not a slash at tail, user has partial refinement
 							unless slash? [
 								;; Remove all which does not start with the last path segment.
@@ -200,30 +203,26 @@ completion!: context [
 						]
 						;; End the loop..
 						break
-					]
-				]
-				any-object? :val [
-					if equal? path-start key [
+					]			
+					any-object? :val [
 						matches: case [
-							; top level object
+							;; top level object
 							word? path [
 								form-all words-of :val
 							]
-							; subobject
+							;; subobject
 							slash? [
-								result: get/any path
+								result: get/any as path! path
 								if any-object? result [ form-all words-of result ]
 							]
 							'else [
-								either attempt [ get/any path ][
-									; fully resolved path, nothing to add
-									[]
-								][
-									; partial word from subobject
+								unless attempt [ get/any as path! path ][ ;; fully resolved path, nothing to add
+									;; partial word from subobject
 									partial2: form take/last path
-									if single? path [path: path/1]
-									result: form-all words-of get bind path ctx
-									filter-matches result partial2
+									path: either single? path [path/1][as path! path]
+									if any-object? result: get/any path [
+										filter-matches form-all words-of :result partial2
+									]
 								]
 							]
 						]
@@ -234,7 +233,7 @@ completion!: context [
 			]
 		]
 		either block? matches [
-			if block? path [path: as path! path] ;; cast back to path before converting to string
+			if block? path [path: as path! path] ;; Cast back to path before converting to string
 			prefix: dirize form path
 			forall matches [matches/1: ajoin [prefix matches/1]]
 			head matches
