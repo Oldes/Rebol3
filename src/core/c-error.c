@@ -872,13 +872,25 @@ error:
 
 /***********************************************************************
 **
-*/	void Trap_Security(REBCNT flag, REBCNT sym, REBVAL *value)
+*/	void Trap_Security(REBYTE *flags, REBCNT sym, REBVAL *value, REBCNT policy)
 /*
-**		Take action on the policy flags provided. The sym and value
+**		Take action on the policy flags provided. The sym (e.g. SYM_FILE) and value
 **		are provided for error message purposes only.
 **
 ***********************************************************************/
 {
+	REBCNT flag = flags[policy];
+	if (flag == SEC_ASK) {
+		flag = SEC_THROW;
+		REBVAL word, type;
+		Init_Word(&word, sym);
+		SET_INTEGER(&type, 1 + policy);
+		REBVAL* func = Get_System(SYS_STATE, STATE_CONFIRM_POLICY);
+		REBVAL* result = Apply_Func(NULL, func, &word, &type, value, 0);
+		if (IS_LOGIC(result) && VAL_LOGIC(result)) {
+			flag = SEC_ALLOW;
+		}
+	}
 	if (flag == SEC_THROW) {
 		if (!value) {
 			Init_Word(DS_TOP, sym);
@@ -901,7 +913,6 @@ error:
 ***********************************************************************/
 {
 	REBYTE *flags;
-	
 	flags = Security_Policy(sym, value);
-	Trap_Security(flags[policy], sym, value);
+	Trap_Security(flags, sym, value, policy);
 }

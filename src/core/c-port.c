@@ -391,8 +391,10 @@ xx*/	REBINT Wait_Device(REBREQ *req, REBCNT timeout)
 
 	// Check policy integer:
 	// Mask is [xxxx wwww rrrr] - each holds the action
-	if (GET_FLAG(req->modes, RFM_READ))  Trap_Security(flags[POL_READ], kind, path);
-	if (GET_FLAG(req->modes, RFM_WRITE)) Trap_Security(flags[POL_WRITE], kind, path);
+	if (GET_FLAG(req->modes, RFM_READ))
+		Trap_Security(flags, kind, path, POL_READ);
+	if (GET_FLAG(req->modes, RFM_WRITE))
+		Trap_Security(flags, kind, path, POL_WRITE);
 }
 
 /***********************************************************************

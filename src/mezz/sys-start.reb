@@ -219,14 +219,21 @@ start: func [
 			flags/secure-max ['quit]
 			file? script [
 				compose [
-					file throw
+					file ask
 					(path) [allow read]
-					(home) [allow read]
+					(home) [allow read allow execute]
 					(data) allow
 					(first script-path) allow
 				]
 			]
-			'else ['none] ;compose [file throw (file) [allow read] %. allow]] ; default
+			'else [
+				compose [
+					file ask
+					%. allow
+					(data) allow
+					(home) [allow read allow execute]
+				]
+			] ; default
 		])
 	]
 

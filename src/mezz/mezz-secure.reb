@@ -34,7 +34,7 @@ secure: function/with [
 		print " ^[[mThese can be set to:"
 		print [
 			"^[[1;32m     allow ^[[m - no security^/"
-			;"^[[1;32m     ask   "ask user for permission" ;-- yet not implemented!
+			"^[[1;32m     ask   ^[[m - ask user for permission^/"
 			"^[[1;32m     throw ^[[m - throw as an error^/"
 			"^[[1;32m     quit  ^[[m - exit the program immediately^/"
 			"^[[1;32m     file  ^[[m - a file path^/"
@@ -56,8 +56,6 @@ secure: function/with [
 				; file [allow read quit write]
 				block? pol [
 					foreach [item pol] pol [
-						if binary? item [item: to-string item] ; utf-8 decode
-						if string? item [item: to-rebol-file item]
 						repend out [item word-policy pol]
 					]
 				]
@@ -86,7 +84,22 @@ secure: function/with [
 		try/with [
 			assert/type [target [word! file! url!] pol [block! word! integer!]]
 		][	cause-error 'access 'security-error reduce [target pol] ]
-		set-policy target make-policy target pol pol-obj
+		set-policy target make-policy target pol
+	]
+
+	;; Sort file path exceptions.
+	foreach [target pol] pol-obj [
+		if block? pol [
+			;; last 2 values are defaults
+			tmp: take/last/part pol 2
+			sort/skip/compare pol 2 func[a b /local la lb] [
+				la: length? a
+				lb: length? b
+				either la <> lb [la > lb] [a > b]
+			]
+			;; restore defaults
+			append pol tmp
+		]
 	]
 
 	; ADD: check for policy level reductions!
@@ -94,7 +107,7 @@ secure: function/with [
 	exit
 ][
 	; Permanent values and sub-functions of SECURE:
-
+	pol-obj: _
 	acts: [allow ask throw quit]
 
 	assert-policy: func [tst kind arg] [unless tst [cause-error 'access 'security-error reduce [kind arg]]]
@@ -102,8 +115,8 @@ secure: function/with [
 	make-policy: func [
 		; Build the policy tuple used by lower level code.
 		target ; "For special cases: eval, memory"
-		pol ; word number or block
-		/local n m flags
+		pol    ; word number or block
+		/local n m key flags
 	][
 		; Special cases: [eval 100000]
 		if find [eval memory] target [
@@ -115,17 +128,23 @@ secure: function/with [
 		if word? pol [
 			n: find acts pol
 			assert-policy n target pol
-			return (index? n) - 1 * 1.1.1
+			return 1.1.1 * indexz? n
 		]
 		; Detailed case: [file [allow read throw write]]
-		flags: 0.0.0
+		key: case [
+			file? :target ['file]
+			url?  :target ['net ]
+			true [:target]
+		]
+		if block? flags: pol-obj/:key [flags: select flags key]
+
 		assert-policy block? pol target pol
 		foreach [act perm] pol [
 			n: find acts act
 			assert-policy n target act
-			m: select [read 1.0.0 write 0.1.0 execute 0.0.1] perm
+			m: select [read 1 write 2 execute 3] perm
 			assert-policy m target perm
-			flags: (index? n) - 1 * m or flags
+			flags/:m: indexz? n
 		]
 		flags
 	]
@@ -134,7 +153,6 @@ secure: function/with [
 		; Set the policy as tuple or block:
 		target
 		pol
-		pol-obj
 		/local val old
 	][
 		case [
@@ -171,11 +189,78 @@ secure: function/with [
 		]
 		blk
 	]
+
+	system/state/confirm-policy: confirm-policy: function [
+		policy [word!]    ;; one of: [file net eval memory secure protect debug envr call browse extension]
+		mode   [integer!] ;; 1=read 2=write 3=execute
+		value ;; e.g. file path or URL
+	][
+		lines: 3
+		;print ["policy:" mold policy "mode:" mold mode "value:" mold value]
+
+		print "^/^[[7;91m Security Request ======================================^[[m"
+		if system/options/script [
+			++ lines
+			print ajoin ["^[[7m Script ^[[27m: " system/options/script]
+		]
+		mode-name: pick ["READ" "WRITE" "EXECUTE"] mode
+
+		label: if :value [switch policy [
+			file
+			extension ["Path   "]
+			net       ["Host   "]
+			protect
+			envr      ["Target "]
+			call      ["Command"]
+			browse    ["URL    "]
+			secure    ["Policy "]
+		]]
+		action: switch/default policy [
+			file      [reform [mode-name either dir? :value ['directory]['file]]]
+			extension ["IMPORT a native extension"]
+			net       ["CONNECT"]
+			envr      [reform [mode-name "environment variable"]]
+			call      ["EXECUTE an external program"]
+			browse    ["BROWSE open"]
+			secure    ["MODIFY security policy"]
+		][  reform [mode-name policy]]
+		print ajoin ["^[[7m Action ^[[27m: " action]
+
+		if label [
+			++ lines
+			print ajoin ["^[[7m " label "^[[27m: " either file? :value [to-local-file value][form value]]
+		]
+		prin  {^[[1m Allow? [N]o / [Y]es / [Q]uit (default: no)^[[m}
+		until [
+			find "ynq^M^C" response: read-key
+		]
+		;; clear the confirmation dialog after user's answer
+		prin "^M^[[K" loop lines [prin "^[[1A^[[K"]
+		;; resolve user's response
+		switch response [
+			#"y" [
+				case [
+					all [policy = 'file file? value][
+						secure (compose/deep [(value) [
+							allow (pick [read write execute] mode)
+						]])
+					]
+					all [policy = 'net url? value][
+						secure (compose [(value) allow])
+					]
+				]
+				true
+			]
+			#"n" #"^M" [false]
+			#"q" #"^C" [quit/return 101]
+		]
+	]
 ]
 
 unless system/options/flags/secure-min [
 	; Remove all other access to the policies:
 	protect/hide in system/state 'policies
+	protect/hide in system/state 'confirm-policy
 ]
 
 protect-system-object: func [
