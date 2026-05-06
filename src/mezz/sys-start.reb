@@ -37,8 +37,7 @@ start: func [
 	sys/log/debug 'REBOL ["Starting... boot level:" boot-level]
 	;trace 1
 	;crash-here ; test error handling (undefined word)
-
-	boot-level: any [boot-level 'full]
+	boot-level: any [boot-level 'start]
 	start: 'done ; only once
 	init-schemes ; only once
 
@@ -213,28 +212,29 @@ start: func [
 
 	;-- Setup SECURE configuration
 	if select lib 'secure [
-		lib/secure (case [
-			flags/secure [secure]
-			flags/secure-min ['allow]
-			flags/secure-max ['quit]
-			file? script [
-				compose [
-					file ask
-					(path) [allow read]
+	probe flags
+		case [
+			flags/secure-min [lib/secure allow]
+			flags/secure-max [lib/secure ask]
+			flags/secure     [lib/secure (secure)]
+			true [
+				;; main exceptions...
+				lib/secure (compose [
+					(data)  allow
 					(home) [allow read allow execute]
-					(data) allow
-					(first script-path) allow
+				])
+				if file? script [
+					lib/secure (
+						compose [
+							(path) [allow read]
+							(home) [allow read allow execute]
+							(data)  allow
+							(first script-path) allow
+						]
+					)
 				]
 			]
-			'else [
-				compose [
-					file ask
-					%. allow
-					(data) allow
-					(home) [allow read allow execute]
-				]
-			] ; default
-		])
+		]
 	]
 
 	;-- Evaluate rebol.reb script:
@@ -262,6 +262,8 @@ start: func [
 		try/with [do data/user.reb][sys/log/error 'REBOL system/state/last-error]
 	]
 
+	boot-level: 'full
+	protect 'system/options/boot-level
 
 	;if :lib/secure [protect-system-object]
 

@@ -23,11 +23,7 @@ secure: function/with [
 ] system/state [
 
 	if unset? :policy [policy: 'help]
-
 	if policy = 'none [policy: 'allow] ; note: NONE is a word here (like R2)
-
-	pol-obj: get-policies ; a deep copy
-
 	if policy = 'help [
 		print " You can set policies for:^[[1;32m"
 		foreach [target pol] pol-obj [print ["    " target]]
@@ -46,11 +42,15 @@ secure: function/with [
 		;print "Type: help/doc secure for detailed documentation and examples."
 		exit
 	]
+	;; Get a deep copy of the current policy object
+	pol-obj: get-policies
 
 	if policy = 'query [
 		out: make block! 2 * length? pol-obj
 		foreach [target pol] pol-obj [
-			case [
+			lib/case [
+				;; Don't display `eval` and `memory` as these are special
+				find [eval memory] target [continue]
 				; file 0.0.0 (policies)
 				tuple? pol [repend out [target word-policy pol]]
 				; file [allow read quit write]
@@ -65,10 +65,13 @@ secure: function/with [
 		return out
 	]
 
-	; Check if SECURE is secured:
-	if pol-obj/secure <> 0.0.0 [
-		if pol-obj/secure == 2.2.2 [cause-error 'access 'security :policy]
-		quit/return 101 ; an arbitrary code
+	;; Check if SECURE is secured:
+	if all [check (n: pol-obj/secure/2) > 0 system/options/boot-level = 'full] [
+		if all [n == 1 not confirm-policy 'secure 2 policy][
+			either n == 2 [
+				cause-error 'access 'security :policy
+			][	quit/return 101 ]
+		]
 	]
 
 	; Bulk-set all policies:
@@ -90,25 +93,46 @@ secure: function/with [
 	;; Sort file path exceptions.
 	foreach [target pol] pol-obj [
 		if block? pol [
-			;; last 2 values are defaults
-			tmp: take/last/part pol 2
+			;; First 2 values are policy defaults (global)
+			pol: skip pol 2
+			;; Sort from the longest path to the shortest
 			sort/skip/compare pol 2 func[a b /local la lb] [
 				la: length? a
 				lb: length? b
 				either la <> lb [la > lb] [a > b]
 			]
-			;; restore defaults
-			append pol tmp
+			;; Global level reduction
+			rule: pol/-1
+			while [not tail? pol][
+				;; remove all exceptions with same policy as the global one
+				pol: either rule = pol/2 [remove/part pol 2][skip pol 2] 
+			]
+			if target = 'file [
+				;; Directory policy level reduction 
+				case: system/platform != 'Windows
+				pol: reverse head pol                     ;; work from least to most specific
+				while [series? pol/2][
+					cur: pol: skip pol 2                  ;; advance to next exception pair
+					unless dir? pol/-1 [continue]         ;; parent must be a directory!
+					while [series? cur/2][                ;; skip global fallback (tuple, not block)
+						cur: either all [
+							cur/1 = pol/-2                ;; same policy as parent?
+							find/match/:case cur/2 pol/-1 ;; path is under parent?
+						][  remove/part cur 2             ;; redundant, remove
+						][  skip cur 2 ]                  ;; keep, move on
+					]
+				]
+				pol: reverse head pol                     ;; restore original order
+			]
 		]
 	]
-
-	; ADD: check for policy level reductions!
 	set-policies pol-obj
 	exit
 ][
-	; Permanent values and sub-functions of SECURE:
-	pol-obj: _
-	acts: [allow ask throw quit]
+	;; Permanent values and sub-functions of SECURE:
+	pol-obj: _                   ;; shared policy object, valid only during `secure` evaluation
+	acts: [allow ask throw quit] ;; policy levels, index-based (0=allow 1=ask 2=throw 3=quit)
+	check: true ;; used to detect, if secure must be checked
 
 	assert-policy: func [tst kind arg] [unless tst [cause-error 'access 'security-error reduce [kind arg]]]
 
@@ -161,7 +185,10 @@ secure: function/with [
 				val: to-real-file target
 				target: 'file
 			]
-			url? target [val: target  target: 'net]
+			url? target [
+				val: target
+				target: 'net
+			]
 		]
 		old: select pol-obj target
 		assert-policy old target pol
@@ -169,11 +196,11 @@ secure: function/with [
 			; Convert tuple to block if needed:
 			if tuple? old [old: reduce [target old]]
 			remove/part find old val 2  ; can be in list only once
-			insert old reduce [val pol]
+			append old reduce [val pol]
 		][
 			old: pol
 		]
-		set in pol-obj target old
+		pol-obj/:target: old
 	]
 
 	word-policy: func [pol /local blk n][
@@ -190,18 +217,20 @@ secure: function/with [
 		blk
 	]
 
-	system/state/confirm-policy: confirm-policy: function [
+	system/state/confirm-policy: confirm-policy: func [
 		policy [word!]    ;; one of: [file net eval memory secure protect debug envr call browse extension]
 		mode   [integer!] ;; 1=read 2=write 3=execute
 		value ;; e.g. file path or URL
+		/local lines mode-name label action response
 	][
-		lines: 3
+		unless tty? [return false] ;; Deny automatically if not TTY (no terminal input possible)
+		lines: 4
 		;print ["policy:" mold policy "mode:" mold mode "value:" mold value]
 
-		print "^/^[[7;91m Security Request ======================================^[[m"
+		print "^/^[[91m╔══ Security Request ════════════════════════════╴^[[m"
 		if system/options/script [
 			++ lines
-			print ajoin ["^[[7m Script ^[[27m: " system/options/script]
+			print ajoin ["^[[91m╟── Script :^[[m " system/options/script]
 		]
 		mode-name: pick ["READ" "WRITE" "EXECUTE"] mode
 
@@ -223,22 +252,24 @@ secure: function/with [
 			call      ["EXECUTE an external program"]
 			browse    ["BROWSE open"]
 			secure    ["MODIFY security policy"]
+			protect   [pick [UNPROTECT PROTECT] mode]
 		][  reform [mode-name policy]]
-		print ajoin ["^[[7m Action ^[[27m: " action]
+		print ajoin ["^[[91m╟── Action :^[[m " action]
 
 		if label [
 			++ lines
-			print ajoin ["^[[7m " label "^[[27m: " either file? :value [to-local-file value][form value]]
+			print ajoin ["^[[91m╟── " label ":^[[m " either file? :value [to-local-file value][form value]]
 		]
-		prin  {^[[1m Allow? [N]o / [Y]es / [Q]uit (default: no)^[[m}
+		prin  {^[[91m║^/╚══ Allow?  ^[[m No / Yes / Once / Quit (default: no)}
 		until [
-			find "ynq^M^C" response: read-key
+			find "ynqo^M^C" response: read-key
 		]
-		;; clear the confirmation dialog after user's answer
+		;; clear the confirmati^/on dialog after user's answer
 		prin "^M^[[K" loop lines [prin "^[[1A^[[K"]
 		;; resolve user's response
 		switch response [
 			#"y" [
+				check: off
 				case [
 					all [policy = 'file file? value][
 						secure (compose/deep [(value) [
@@ -249,8 +280,10 @@ secure: function/with [
 						secure (compose [(value) allow])
 					]
 				]
+				check: on
 				true
 			]
+			#"o" [ true ]
 			#"n" #"^M" [false]
 			#"q" #"^C" [quit/return 101]
 		]

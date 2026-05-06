@@ -843,13 +843,15 @@ invalid_id:
 
 		// Is it a string (file or URL):
 		else if (ANY_BINSTR(policy) && name) {
+#ifdef TO_WINDOWS
+			REBFLG uncase = TRUE;
+#else
+			REBFLG uncase = !IS_FILE(policy);
+#endif
 			//Debug_Fmt("sec: %r %r", policy, name);
-			if (Match_Sub_Path(VAL_SERIES(policy), VAL_SERIES(name))) {
-				// Is the match adequate?
-				if (VAL_TAIL(name) >= len) {
-					len = VAL_TAIL(name);
-					flags = VAL_TUPLE(policy+1); // non-aligned
-				}
+			if (Match_Sub_Path(VAL_SERIES(policy), VAL_SERIES(name), uncase)) {
+				// records are sorted using length, so first match is the right one
+				return VAL_TUPLE(policy + 1);
 			}
 		}
 		else goto error;

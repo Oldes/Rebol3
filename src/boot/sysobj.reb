@@ -285,18 +285,19 @@ state: object [
 	; Mutable system state variables
 	note: "contains protected hidden fields"
 	policies: construct [ ; Security policies
-		file:    ; file access
-		net:     ; network access
-		eval:    ; evaluation limit
-		memory:  ; memory limit
-		secure:  ; secure changes
-		protect: ; protect function
-		debug:   ; debugging features
-		envr:    ; read/write
-		call:    ; execute only
-		browse:  ; execute only
-			0.0.0
-		extension: 2.2.2 ; execute only
+		file:      ; file access
+		net:       ; network access
+		eval:      ; evaluation limit
+		memory:    ; memory limit
+		secure:    ; secure changes	
+		protect:   ; protect/unprotect functions
+		debug:     ; debugging features
+		envr:      ; read/write
+		call:      ; execute only
+		browse:    ; execute only
+		extension: ; execute only
+			0.0.0  ;= ALLOW
+		
 	]
 	confirm-policy: _ ; used to hold secure's confirmation function (used from C side, hidden to user)
 	last-error:  none ; used by WHY?

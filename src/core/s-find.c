@@ -107,44 +107,35 @@
 
 /***********************************************************************
 **
-*/	REBFLG Match_Sub_Path(REBSER *s1, REBSER *s2)
+*/	REBFLG Match_Sub_Path(REBSER *s1, REBSER *s2, REBFLG uncase)
 /*
 **		Compare two file path series, regardless of char size.
 **		Return TRUE if s1 is a subpath of s2.
-**		Case insensitive.
 **
 ***********************************************************************/
 {
-	REBCNT len = s1->tail;
-	REBCNT n;
-	REBUNI c1 = 0;
-	REBUNI c2;
+	REBLEN l1 = s1->tail;
+	REBLEN l2 = s2->tail;
+	REBU32 c1, c2;
 
 //	Debug_Series(s1);
 //	Debug_Series(s2);
 
 	// s1 len must be <= s2 len
-	if (len > s2->tail) return FALSE;
+	if (l1 > l2) return FALSE;
+	REBYTE* b1 = BIN_DATA(s1);
+	REBYTE* b2 = BIN_DATA(s2);
 
-	for (n = 0; n < len; n++) { // includes terminator
-
-		c1 = GET_ANY_CHAR(s1, n);
-		c2 = GET_ANY_CHAR(s2, n);
-
-		if (c1 < UNICODE_CASES) c1 = LO_CASE(c1);
-		if (c2 < UNICODE_CASES) c2 = LO_CASE(c2);
-
-		if (c1 != c2) break;
+	for (; l1 > 0 && l2 > 0;) {
+		c1 = UTF8_Decode_Codepoint(&b1, &l1);
+		c2 = UTF8_Decode_Codepoint(&b2, &l2);
+		if (uncase) {
+			if (c1 < UNICODE_CASES) c1 = LO_CASE(c1);
+			if (c2 < UNICODE_CASES) c2 = LO_CASE(c2);
+		}
+		if (c1 != c2) return FALSE;
 	}
-
-	// a/b matches: a/b, a/b/, a/b/c
-	c2 = GET_ANY_CHAR(s2, n);
-	return (
-			n >= len  // all chars matched
-			&&  // Must be at end or at dir sep:
-			(c1 == '/' || c1 == '\\'
-			|| c2 == 0 || c2 == '/' || c2 == '\\')
-	);
+	return (l1 == 0);
 }
 
 
