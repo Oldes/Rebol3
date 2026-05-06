@@ -219,10 +219,14 @@
 	REBINT n;
 
 	if (IS_BINARY(v1) || IS_BINARY(v2)) uncase = FALSE;
-
-	n = Compare_Bytes(VAL_BIN_DATA(v1), VAL_BIN_DATA(v2), len, uncase);
-	if (n != 0) return n;
-	return l1 - l2;
+	if (uncase && (IS_UTF8_SERIES(VAL_SERIES(v1)) || IS_UTF8_SERIES(VAL_SERIES(v2)))) {
+		n = Compare_UTF8(VAL_BIN_DATA(v1), VAL_BIN_DATA(v2), len);
+		return (n >= 0) ? 0 : n - 2;
+	}
+	else {
+		n = Compare_Bytes(VAL_BIN_DATA(v1), VAL_BIN_DATA(v2), len, uncase);
+		return (n != 0) ? n : l1 - l2;
+	}
 }
 
 

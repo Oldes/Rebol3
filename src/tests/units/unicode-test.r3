@@ -450,6 +450,17 @@ Rebol [
 		--assert #{C48D62} == find bin "čb"
 		--assert #{C48D62} == find bin "čb"
 
+	--test-- "find in block!"
+		;@@ https://github.com/Oldes/Rebol-issues/issues/2706
+		--assert did find [1 "ce"] "ce"
+		--assert did find [1 "ce"] "Ce"
+		--assert did find [1 "če"] "če"
+		--assert did find [1 "če"] "Če"
+		--assert did find/case [1 "ce"] "ce"
+		--assert not find/case [1 "ce"] "Ce"
+		--assert did find/case [1 "če"] "če"
+		--assert not find/case [1 "če"] "Če"
+
 	--test-- "pick"
 		--assert #"á" == all [s: "áb" pick s 1]
 		--assert #"b" == all [s: "áb" pick s 2]
