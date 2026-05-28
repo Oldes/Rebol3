@@ -135,6 +135,8 @@ Script: [
 
 	vector-not-compatible: [{Vectors not compatible for operation}]
 	type-mismatch:         [{type mismatch:} :arg2 {must be same type as} :arg1]
+
+	fixed-sized-series:    {cannot change the length of a fixed-size series}
 ]
 
 Math: [

@@ -73,8 +73,10 @@
 
 	if (action != A_CHANGE) {
 		// Always expand dst_ser for INSERT and APPEND actions:
+		if (IS_FIXED_SIZE(dst_ser)) Trap0(RE_FIXED_SIZED_SERIES);
 		Expand_Series(dst_ser, dst_idx, size);
 	} else {
+		if (IS_FIXED_SIZE(dst_ser) && (size + dst_idx > tail || (GET_FLAG(flags, AN_PART) && size < dst_len))) Trap0(RE_FIXED_SIZED_SERIES);
 		if (size > dst_len) 
 			Expand_Series(dst_ser, dst_idx, size-dst_len);
 		else if (size < dst_len && GET_FLAG(flags, AN_PART))
@@ -94,7 +96,7 @@
 		memcpy(dst_ser->data + dst_idx, (REBYTE *)src_val, ilen);
 		dst_idx += ilen;
 	}
-	BLK_TERM(dst_ser);
+	if (!IS_FIXED_SIZE(dst_ser)) BLK_TERM(dst_ser);
 
 	return tail;
 }

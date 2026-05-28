@@ -1082,7 +1082,7 @@ REBCNT Get_Vector_Type_From_Symbol(REBCNT sym) {
 	}
 	else if (IS_END(bp)) {
 		// make vector! [] ;; some like: make vector! 0
-		type = 0;  // integer!
+		isfloat = 0;  // integer!
 		sign = 0;  // signed
 		bits = 32; // 32bit
 		goto data_spec;
@@ -1477,6 +1477,7 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 	case A_APPEND:
 	case A_INSERT:
 	case A_CHANGE:
+		if (IS_FIXED_SIZE_VALUE(value)) Trap0(RE_FIXED_SIZED_SERIES);
 		// Length of target (may modify index): (arg can be anything)
 		len = Partial1((action == A_CHANGE) ? value : arg, DS_ARG(AN_LENGTH));
 		index = VAL_INDEX(value);
@@ -1487,6 +1488,7 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 		break;
 
 	case A_CLEAR:
+		if (IS_FIXED_SIZE_VALUE(value)) Trap0(RE_FIXED_SIZED_SERIES);
 		index = VAL_INDEX(value);
 		if (index < VAL_TAIL(value)) {
 			// Null all values.

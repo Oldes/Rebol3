@@ -260,6 +260,7 @@ static int Check_Char_Range(REBVAL *val, REBCNT limit)
 	CLEAR(slice, sizeof(REBSER));
 	*slice = *VAL_SERIES(val);           // shallow-copy origin header (shares data buffer)
 	slice->series = VAL_SERIES(val);     // store origin as GC anchor
+	SERIES_SET_FLAG(slice->series, SER_SIZEP);
 	// advance data ptr to start index
 	slice->data += idx * (IS_VECTOR(val) ? VAL_VEC_WIDE(val) : SERIES_WIDE(slice));
 	SERIES_TAIL(slice) = nlen;           // clamp tail to requested length

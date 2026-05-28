@@ -442,6 +442,7 @@ enum {
 	SER_INT  = 1<<8,	// Series data is internal (loop frames) and should not be accessed by users
 	SER_UTF8 = 1<<9,	// Series contains not only ASCII characters
 	SER_SLICE= 1<<10,	// Series is sliced (side link contains the original)
+	SER_SIZEP= 1<<11,   // Series is protected from length modification only (e.g. sliced series)
 };
 
 #define SERIES_SET_FLAG(s, f) (SERIES_FLAGS(s) |=  (f))
@@ -467,8 +468,10 @@ enum {
 #define UTF8_SERIES(s)       SERIES_SET_FLAG(s, SER_UTF8)
 #define IS_UTF8_SERIES(s)    SERIES_GET_FLAG(s, SER_UTF8)
 #define IS_UTF8_STRING(v)    SERIES_GET_FLAG(VAL_SERIES(v), SER_UTF8)
-#define SLICE_SERIES(s)      SERIES_SET_FLAG(s, SER_EXT|SER_SLICE)
+#define SLICE_SERIES(s)      SERIES_SET_FLAG(s, SER_EXT|SER_SLICE|SER_SIZEP)
 #define IS_SLICE_SERIES(s)   SERIES_GET_FLAG(s, SER_SLICE)
+#define IS_FIXED_SIZE(s)     SERIES_GET_FLAG(s, SER_LOCK|SER_SIZEP)
+#define IS_FIXED_SIZE_VALUE(v) SERIES_GET_FLAG(VAL_SERIES(v), SER_LOCK|SER_SIZEP)
 
 #define TRAP_PROTECT(s) if (IS_PROTECT_SERIES(s)) Trap0(RE_PROTECTED)
 
