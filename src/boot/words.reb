@@ -172,6 +172,7 @@ limit
 case
 no-case
 accept
+capture
 break
 ; match words:
 skip

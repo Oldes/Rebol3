@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -610,6 +610,25 @@ FORCE_INLINE
 	PG_Reb_Stats->Series_Memory += length;
 
 	return series;
+}
+
+/***********************************************************************
+**
+*/	REBSER* Make_Slice(REBSER* ser, REBLEN index, REBLEN size, REBLEN wide)
+/*
+***********************************************************************/
+{
+	// Make a new series node used to hold a slice.
+	REBSER* slice = Make_Node(SERIES_POOL);
+	CLEAR(slice, sizeof(REBSER));
+	*slice = *ser;           // shallow-copy origin header (shares data buffer)
+	slice->series = ser;     // store origin as GC anchor
+	SERIES_SET_FLAG(slice->series, SER_SIZEP);
+	// advance data ptr to start index
+	slice->data += index * wide;
+	SERIES_TAIL(slice) = size;           // clamp tail to requested length
+	SLICE_SERIES(slice);                 // mark as slice: external buffer + GC origin tracking
+	return slice;
 }
 
 

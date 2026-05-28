@@ -1051,7 +1051,6 @@ REBCNT Get_Vector_Type_From_Symbol(REBCNT sym) {
 	REBINT bits = 64;
 	REBCNT size = 0;
 	REBLEN index = 0;
-	REBSER *vect;
 	REBVAL *iblk = 0;
 	REBVAL *val;
 	REBCNT vtype = UNKNOWN;

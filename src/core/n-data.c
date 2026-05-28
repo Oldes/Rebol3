@@ -242,7 +242,7 @@ static int Check_Char_Range(REBVAL *val, REBCNT limit)
 /*
 //	slice: native [
 //		"Make a lazy slice view into a series - no data is copied."
-//		series [any-block! binary! vector!]  "Source series"
+//		series [any-block! string! binary! vector!]  "Source series"
 //		length [integer!] "Number of elements to include"
 //	]
 ***********************************************************************/
@@ -251,22 +251,15 @@ static int Check_Char_Range(REBVAL *val, REBCNT limit)
 	REBLEN  nlen = VAL_INT64(D_ARG(2)); // requested slice length
 	REBCNT  idx  = VAL_INDEX(val);      // current position within the series
 	REBLEN  olen = VAL_LEN(val);        // available length from current index
+	REBSER* ser  = VAL_SERIES(val);
 
 	if (nlen < 1)    Trap1(RE_OUT_OF_RANGE, D_ARG(2)); // reject non-positive lengths
 	if (nlen > olen) nlen = olen;                      // clamp to available length
 
 	// Make a new series node used to hold a slice.
-	REBSER* slice = Make_Node(SERIES_POOL);
-	CLEAR(slice, sizeof(REBSER));
-	*slice = *VAL_SERIES(val);           // shallow-copy origin header (shares data buffer)
-	slice->series = VAL_SERIES(val);     // store origin as GC anchor
-	SERIES_SET_FLAG(slice->series, SER_SIZEP);
-	// advance data ptr to start index
-	slice->data += idx * (IS_VECTOR(val) ? VAL_VEC_WIDE(val) : SERIES_WIDE(slice));
-	SERIES_TAIL(slice) = nlen;           // clamp tail to requested length
-	SLICE_SERIES(slice);                 // mark as slice: external buffer + GC origin tracking
-	VAL_SERIES(val) = slice;             // point value at the new slice node
-	VAL_INDEX(val)  = 0;                 // reset index of the new slice value
+	ser = Make_Slice(ser, idx, nlen, (IS_VECTOR(val) ? VAL_VEC_WIDE(val) : SERIES_WIDE(ser)));
+	VAL_SERIES(val) = ser;              // point value at the new slice node
+	VAL_INDEX(val)  = 0;                // reset index of the new slice value
 	return R_ARG1;
 }
 
