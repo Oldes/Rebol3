@@ -422,12 +422,6 @@ assert-utf8: function [
 	source
 ]
 
-system/options/ansi/bold: "^[[1m"
-system/options/ansi/regular-yellow: "^[[33m"
-system/options/ansi/regular-cyan: "^[[36m"
-system/options/ansi/reset-green: "^[[0;32m"
-system/options/ansi/reset-cyan: "^[[0;36m"
-
 log: func [
 	"Prints out debug message"
 
@@ -456,7 +450,7 @@ log: func [
 
 		foreach line split-lines message [
 			print ajoin [
-				" " ansi/purple "[" id "] " ansi/bold
+				" " ansi/error "[" id "] " ansi/bold
 
 				either line/1 = #"*" [] [
 					"** Error: "
@@ -492,7 +486,7 @@ log: func [
 		info  [
 			if level > 0 [
 				print ajoin [
-					#" " ansi/yellow "[" id "] " ansi/regular-cyan message ansi/reset
+					#" " ansi/bright-yellow "[" id "] " ansi/cyan message ansi/reset
 				]
 			]
 		]
@@ -500,7 +494,7 @@ log: func [
 		more  [
 			if level > 1 [
 				print ajoin [
-					#" " ansi/regular-yellow "[" id "] " ansi/reset-cyan message ansi/reset
+					#" " ansi/yellow "[" id "] " ansi/cyan message ansi/reset
 				]
 			]
 		]
@@ -508,7 +502,7 @@ log: func [
 		debug [
 			if level > 2 [
 				print ajoin [
-					#" " ansi/regular-yellow "[" id "] " ansi/reset-green message ansi/reset
+					#" " ansi/yellow "[" id "] " ansi/green message ansi/reset
 				]
 			]
 		]
@@ -516,7 +510,7 @@ log: func [
 		#(true)  [
 			if level > 0 [
 				print ajoin [
-					#" " ansi/regular-yellow "[" id "] " message ansi/reset
+					#" " ansi/yellow "[" id "] " message ansi/reset
 				]
 			]
 		]

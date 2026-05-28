@@ -165,8 +165,13 @@ print-table: function [
 	foreach row block [format row]
 ]
 
-print-horizontal-line: does [
-	loop -1 + (query system/ports/output 'window-cols) [ prin #"-" ] prin lf
+print-hline: function [
+	"Print a horizontal line across the terminal"
+	/with string [any-string! char!] "Fill character or string"
+	/width cols [integer!] "Line width in columns"
+][
+	cols: any [cols -1 + query system/ports/output 'window-cols]
+	print format/pad [cols][""] any [string #"-"]
 ]
 
 ;@@ profile idea is based on code from https://gist.github.com/giesse/1232d7f71a15a3a8417ec6f091398811
@@ -183,7 +188,7 @@ profile: function [
 	count: min max any [count 10] 2 1000
 	unless quiet [
 		print ["^/Running" as-green length? blocks "code blocks" as-green count "times."]
-		print-horizontal-line
+		print-hline/width 76
 	]
 	res: collect [
 		foreach blk blocks [
@@ -233,8 +238,8 @@ profile: function [
 			"S.made"  6
 			"S.expa"  6
 			"Memory" 11
-			"Code" mold/flat
+			"Code" mold/only/flat
 		] res
-		print-horizontal-line
+		print-hline/width 76
 	]
 ]

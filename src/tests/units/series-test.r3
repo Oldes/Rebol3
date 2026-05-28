@@ -1793,6 +1793,45 @@ Rebol [
 		error? e: try [sort/skip/compare/all db 2 func [a b] [reverse b   a/2 < b/2]]
 		e/id = 'protected
 	]
+--test-- "SORT/compare block! (#2707)"
+	;@@ https://github.com/Oldes/Rebol-issues/issues/2707
+	blk: clear []
+	repeat i 32 [repend blk [i 0]] sort/skip/all/compare blk 2 func [a b] [a/2 < b/2] pa: pb: -1
+	--assert foreach [a b] blk [if b > pb [pa: a] if any [a < pa b < pb][break/return false] pa: a pb: b true]
+
+	clear blk repeat i 64 [repend blk [i 0]] sort/skip/all/compare blk 2 func [a b] [a/2 < b/2] pa: pb: -1
+	--assert foreach [a b] blk [if b > pb [pa: a] if any [a < pa b < pb][break/return false] pa: a pb: b true]
+
+	clear blk repeat i 264 [repend blk [i random 6]] sort/skip/all/compare blk 2 func [a b] [a/2 < b/2] pa: pb: -1
+	--assert foreach [a b] blk [if b > pb [pa: a] if any [a < pa b < pb][break/return false] pa: a pb: b true]
+
+	clear blk repeat i 264 [repend blk [100 - i random 6]] sort/skip/all/compare blk 2 func [a b] [a/2 < b/2] pa: 9999 pb: -1
+	--assert foreach [a b] blk [if b > pb [pa: a] if any [a > pa b < pb][break/return false] pa: a pb: b true]
+
+	clear blk repeat i 264 [repend blk [i random 6]] sort/skip/compare blk 2 2 pa: pb: -1
+	--assert foreach [a b] blk [if b > pb [pa: a] if any [a < pa b < pb][break/return false] pa: a pb: b true]
+
+	clear blk repeat i 264 [repend blk [i random 6]] sort/skip/all/compare/reverse blk 2 func [a b] [a/2 < b/2] pa: -1 pb: 999
+	--assert foreach [a b] blk [if b < pb [pa: a] if any [a > pa b > pb][break/return false] pa: a pb: b true]
+
+	clear blk repeat i 264 [repend blk [i random 6]] sort/skip/compare/reverse blk 2 2 pa: -1 pb: 999
+	--assert foreach [a b] blk [if b < pb [pa: a] if any [a < pa b > pb][break/return false] pa: a pb: b true]
+
+	clear blk repeat i 32 [repend blk [i 0]]
+	sorted: sort/skip/all/compare copy blk 2 func [a b] [a/2 < b/2]
+	--assert sorted = blk  ; equal keys → original order must be preserved
+
+	clear blk repeat i 34 [repend blk [i i]]
+	--assert blk = sort/skip/all/compare copy blk 2 func [a b] [a/2 < b/2]
+
+	clear blk          repeat i 34 [repend blk [35 - i  35 - i]]
+	expected: clear [] repeat i 34 [repend expected [i i]]
+	--assert expected = sort/skip/all/compare blk 2 func [a b] [a/2 < b/2]
+
+	; pairs [key original-index]: sort by key, verify ties preserve original order
+	blk: [3 1  1 2  2 3  1 4  3 5  2 6]
+	sorted: sort/skip/all/compare copy blk 2 func [a b] [a/1 < b/1]
+	--assert sorted = [1 2  1 4  2 3  2 6  3 1  3 5]
 
 --test-- "SORT/compare string!"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1100
@@ -2708,6 +2747,66 @@ try/with [
 	--assert #{410A}   = to-binary deline first transcode #{3C410D0A3E}
 
 ===end-group===
+
+===start-group=== "EMAIL"
+--test-- "email getters"
+	;@@ https://github.com/Oldes/Rebol-issues/issues/1489
+	e: someone@rebol.tech
+	--assert e/user = "someone"
+	--assert e/host = "rebol.tech"
+	;; when not at head...
+	e: find e ".tech"
+	--assert e/user = "someone"
+	--assert e/host = "rebol.tech"
+	;; when @ is missing
+	e: as email! "foo"
+	--assert e/user = "foo"
+	--assert e/host = none
+	;; with multiple @
+	e: as email! "aaa@bbb@ccc"
+	--assert e/user = "aaa"
+	--assert e/host = "bbb@ccc"
+--test-- "email setters"
+	e: someone@rebol.tech
+	e/host: "gmail.com"
+	--assert e = someone@gmail.com
+	e/user: "foo"
+	--assert e = foo@gmail.com
+	;; when @ is missing
+	clear e
+	e/user: "bob"
+	--assert e = #(email! "bob")
+	clear e
+	e/host: %rebol.tech
+	--assert e = #(email! "@rebol.tech")
+	;; unicode...
+	e/user: "šiška"
+	--assert e = šiška@rebol.tech
+
+--test-- "make email! block!"
+	;@@ https://github.com/Oldes/Rebol-issues/issues/2708
+	--assert (make email! [aaa]) = #(email! "aaa")
+	--assert (make email! [aaa bbb]) = aaa@bbb
+	--assert (make email! [aaa bbb cc]) = aaa@bbb.cc
+	--assert (make email! [aaa bbb cc dd]) = aaa@bbb.cc.dd
+	--assert all [error? e: try [make email! []] e/id = 'bad-make-arg]
+
+===end-group===
+
+===start-group=== "URL"
+--test-- "make url! block!"
+	;@@ https://github.com/Oldes/Rebol-issues/issues/2709
+	--assert (make url! [http]) = http://
+	--assert (make url! [http www.rebol.com %reboldoc.html]) = http://www.rebol.com/reboldoc.html
+	--assert all [error? e: try [make email! []] e/id = 'bad-make-arg]
+--test-- "form url!"
+	;@@ https://github.com/Oldes/Rebol-issues/issues/2710
+	;; `form` does not perform implicit dehexing like Rebol 2!
+	--assert {http://www.somesite.dom/odd%28dir%29/odd%7Bfile%20+%7D.txt} = form http://www.somesite.dom/odd%28dir%29/odd%7Bfile%20+%7D.txt
+	--assert "http://www.somesite.dom/odd%28dir%29/odd%7Bfile%7D.txt" = mold http://www.somesite.dom/odd%28dir%29/odd%7Bfile%7D.txt
+	--assert "odd(dir)/odd{file}.txt" = form %odd%28dir%29/odd%7Bfile%7D.txt
+===end-group===
+
 
 
 ===start-group=== "BINARY"

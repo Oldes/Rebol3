@@ -98,7 +98,7 @@ static void
 sm_merge(unsigned char *base,
          size_t left, size_t mid, size_t right,
          size_t size,
-	     cmp_t* cmp,
+         cmp_t* cmp,
          unsigned char *tmp)
 {
     size_t n_left = mid - left;
@@ -165,29 +165,29 @@ sm_collapse(unsigned char *base, sm_run *stack, size_t *depth,
         size_t n = *depth;
 
         if (!force) {
-			// Invariant A: stack[n-3] > stack[n-2] + stack[n-1]
-			// Checked first - a violation here can require merging the
-			// middle pair even when invariant B looks satisfied.
-			// Using if/else if ensures B is always evaluated independently,
-			// matching the fix applied to CPython after the 2015 formal
-			// verification finding (de Gouw et al.).
+            // Invariant A: stack[n-3] > stack[n-2] + stack[n-1]
+            // Checked first - a violation here can require merging the
+            // middle pair even when invariant B looks satisfied.
+            // Using if/else if ensures B is always evaluated independently,
+            // matching the fix applied to CPython after the 2015 formal
+            // verification finding (de Gouw et al.).
             if (n >= 3 &&
                 stack[n-3].len <= stack[n-2].len + stack[n-1].len) {
                 if (stack[n-3].len < stack[n-1].len) {
-					// Merge middle pair (n-3 with n-2)
+                    // Merge middle pair (n-3 with n-2)
                     sm_merge_at(base, stack, n-1, size, cmp, tmp);
                     stack[n-2] = stack[n-1];
                 } else {
-					// Merge top pair (n-2 with n-1)
+                    // Merge top pair (n-2 with n-1)
                     sm_merge_at(base, stack, n, size, cmp, tmp);
                 }
                 (*depth)--;
             } else if (stack[n-2].len <= stack[n-1].len) {
-				// Invariant B: stack[n-2] > stack[n-1]
+                // Invariant B: stack[n-2] > stack[n-1]
                 sm_merge_at(base, stack, n, size, cmp, tmp);
                 (*depth)--;
             } else {
-				// both invariants satisfied
+                // both invariants satisfied
                 break;
             }
         } else {
@@ -213,16 +213,17 @@ sm_find_run(unsigned char *base, size_t pos, const size_t nmemb,
 
     run_end = pos + 1;
 
-    if (cmp(base + run_end * size, base + pos * size) < 0) {
+    if (cmp(base + pos * size, base + run_end * size) > 0) {
         // Strictly descending: extend and reverse
         while (run_end < nmemb &&
-               cmp(base + run_end * size, base + (run_end-1) * size) < 0)
+            cmp(base + (run_end - 1) * size, base + run_end * size) > 0)
             run_end++;
         sm_reverse(base + pos * size, run_end - pos, size);
-    } else {
+    }
+    else {
         // Non-descending (ascending): just extend
         while (run_end < nmemb &&
-               cmp(base + run_end * size, base + (run_end-1) * size) >= 0)
+            cmp(base + (run_end - 1) * size, base + run_end * size) <= 0)
             run_end++;
     }
 

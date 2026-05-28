@@ -20,7 +20,8 @@ Rebol [
 
 --test-- "issue/1026"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1026
-	--assert all [error? e: try [to vector! []] e/id = 'bad-make-arg]
+	--assert #(int32! []) == make vector! 0
+	--assert #(int32! []) == make vector! []
 	
 --test-- "VECTOR can be initialized using a block with CHARs"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2348

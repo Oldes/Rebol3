@@ -199,11 +199,13 @@
 FORCE_INLINE
 /***********************************************************************
 **
-*/	REBYTE Luminosity(REBYTE r, REBYTE g, REBYTE b)
+*/	REBYTE Luminosity(REBYTE r, REBYTE g, REBYTE b, REBFLG luma)
 /*
 ***********************************************************************/
 {
-	return (REBYTE)((0.299 * r) + (0.587 * g) + (0.114 * b));
+	return luma
+		? (REBYTE)((0.299 * r) + (0.587 * g) + (0.114 * b))
+		: (REBYTE)((0.2126 * r) + (0.7152 * g) + (0.0722 * b));
 }
 
 FORCE_INLINE
@@ -242,7 +244,13 @@ FORCE_INLINE
 	
 	case SYM_LUMINOSITY: {
 		for (; len > 0; len--, rgba += 4, ++bin) {
-			bin[0] = Luminosity(rgba[C_R], rgba[C_G], rgba[C_B]);
+			bin[0] = Luminosity(rgba[C_R], rgba[C_G], rgba[C_B], FALSE);
+		}
+		break;
+	}
+	case SYM_LUMA: {
+		for (; len > 0; len--, rgba += 4, ++bin) {
+			bin[0] = Luminosity(rgba[C_R], rgba[C_G], rgba[C_B], TRUE);
 		}
 		break;
 	}

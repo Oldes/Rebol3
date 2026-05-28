@@ -62,5 +62,3 @@ abs: :absolute
 empty?: :tail?
 ---: :comment
 ;bind?: :bound? ;@@ https://github.com/Oldes/Rebol-issues/issues/2440
-
-rebol.com: http://www.rebol.com

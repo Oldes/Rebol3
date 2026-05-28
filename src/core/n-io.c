@@ -159,8 +159,8 @@ static REBSER *Read_All_File(char *fname)
 	if (D_REF(2) && IS_BLOCK(val)) SET_FLAG(mo.opts, MOPT_ONLY);
 
 	Mold_Value(&mo, val, TRUE);
-	if (len > mo.series->tail) len = mo.series->tail;
-	Set_String(D_RET, Copy_String(mo.series, 0, len));
+	if (mo.limit > mo.series->tail) mo.limit = mo.series->tail;
+	Set_String(D_RET, Copy_String(mo.series, 0, mo.limit));
 
 	return R_RET;
 }
@@ -598,25 +598,25 @@ chk_neg:
 {
 	REBVAL *arg = D_ARG(1);
 	REBSER *ser;
+	REBSER *os_path;
 	REBINT n;
-	REBVAL val;
 
-	ser = Value_To_OS_Path(arg, TRUE);
+	// Convert to absolute native OS path.
+	os_path = Value_To_OS_Path(arg, TRUE);
 	// it should be safe not to check result from Value_To_OS_Path (it always succeeds)
-	//if (!ser) Trap_Arg(arg); // !!! ERROR MSG
+	//if (!os_path) Trap_Arg(arg); // !!! ERROR MSG
 
-	Set_String(&val, ser); // may be unicode or utf-8
-	Check_Security(SYM_FILE, POL_EXEC, &val);
-
-	n = OS_Set_Current_Dir((void*)ser->data);  // use len for bool
-
-	// convert the full OS path back to Rebol format
-	// used in error or as a result
-	//ser = Value_To_REBOL_Path(&val, TRUE);
-	ser = To_REBOL_Path(BIN_HEAD(ser), BIN_LEN(ser), OS_WIDE, TRUE);
-	
+	// Convert full OS path back to Rebol format.
+	ser = To_REBOL_Path(BIN_HEAD(os_path), BIN_LEN(os_path), OS_WIDE, TRUE);
 	SET_FILE(arg, ser);
 
+	// Check if access to this directory is allowed?
+	// O: I think that it should be possible to enter protected directory.
+	// O: The check is performed only when a real action is requested.
+	///Check_Security(SYM_FILE, POL_EXEC, arg);
+
+	// Change the current directory.
+	n = OS_Set_Current_Dir((REBCHR*)BIN_HEAD(os_path));
 	if (NZ(n)) {
 		SET_INTEGER(D_RET, -n);
 		Trap2(RE_CANNOT_OPEN, arg, D_RET);

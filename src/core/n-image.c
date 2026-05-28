@@ -392,8 +392,9 @@ double weighted_rgb_color_distance(long r1, long g1, long b1, long r2, long g2, 
 */	REBNATIVE(luminosity)
 /*
 //	luminosity: native [
-//		"Convert a color or an image to grayscale using Luminosity formula"
+//		"Convert a color or an image to grayscale using the BT.709 Luminosity formula"
 //		target [tuple! image!] "Target RGB color or image (modifed)"
+//		/luma "Use BT.601 gamma-compressed values"
 //		return: [
 //			integer!  "When input is a tuple"
 //			image!    "When input is an image"
@@ -403,17 +404,18 @@ double weighted_rgb_color_distance(long r1, long g1, long b1, long r2, long g2, 
 {
 	REBVAL* value = D_ARG(1);
 	REBYTE gray;
+	REBFLG luma = D_REF(2);
 
 	if (IS_TUPLE(value)) {
 		REBCLR* clr = (REBCLR*)VAL_TUPLE(value);
-		SET_INTEGER(D_RET, Luminosity(clr->r, clr->g, clr->b));
+		SET_INTEGER(D_RET, Luminosity(clr->r, clr->g, clr->b, luma));
 		return R_RET;
 	}
 	else {
 		REBINT   len = VAL_IMAGE_LEN(value);
 		REBYTE* rgba = VAL_IMAGE_DATA(value);
 		for (; len > 0; len--, rgba += 4) {
-			gray = Luminosity(rgba[C_R], rgba[C_G], rgba[C_B]);
+			gray = Luminosity(rgba[C_R], rgba[C_G], rgba[C_B], luma);
 			rgba[C_R] = rgba[C_G] = rgba[C_B] = gray;
 		}
 		return R_ARG1;

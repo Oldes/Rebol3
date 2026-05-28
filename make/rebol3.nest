@@ -18,7 +18,8 @@ temp:     %make/tmp/
 stack-size: 4194304 ;= 4MB (4 * 1024 * 1024)
 optimize:   2
 
-version: 3.21.16
+version: 3.22.1
+remove-docstrings: off
 
 ;flags: "-ggdb3"
 ;define: DEBUG
@@ -334,6 +335,11 @@ host-files-view: [
 
 mezz-base-files: [
 ;-- base: low-level boot in lib context:
+;;  Using custom color themes.
+;;  NOTE: not using terminal's own palette!
+;	#either macos? [
+;		%mezz/base-ansi-light.reb
+;	][	%mezz/base-ansi-dark.reb]
 	%mezz/base-constants.reb
 	%mezz/base-funcs.reb
 	%mezz/base-series.reb
@@ -907,6 +913,15 @@ include-view: [
 	]
 ]
 
+include-new-console: [
+	mezz-lib-files: [
+		%mezz/repl-line-editor.reb
+		%mezz/repl-completion.reb
+		%mezz/repl-rebol-console.reb
+	]
+	define: HAS_NEW_CONSOLE
+]
+
 ;- native tests:                                                                
 include-test-extension: [
 	host-files: %os/host-ext-test.c
@@ -1013,6 +1028,7 @@ include-rebol-core: [
 	:include-codec-json
 
 	:include-mezz-date
+	:include-new-console
 
 	;:include-codec-rebin ;not yet ready!
 	

@@ -3,7 +3,7 @@ REBOL [
 	Title: "Make primary boot files"
 	Rights: {
 		Copyright 2012 REBOL Technologies
-		Copyright 2012-2024 Rebol Open Source Contributors
+		Copyright 2012-2026 Rebol Open Source Contributors
 		REBOL is a trademark of REBOL Technologies
 	}
 	License: {
@@ -11,7 +11,7 @@ REBOL [
 		See: http://www.apache.org/licenses/LICENSE-2.0
 	}
 	Author: "Carl Sassenrath"
-	Version: 2.100.0
+	Version: 3.21.0
 	Needs: 3.5.0
 	Purpose: {
 		A lot of the REBOL system is built by REBOL, and this program
@@ -38,7 +38,7 @@ src: root-dir/src/core
 Title:
 {REBOL
 Copyright 2012 REBOL Technologies
-Copyright 2012-2024 Rebol Open Source Contributors
+Copyright 2012-2026 Rebol Open Source Contributors
 REBOL is a trademark of REBOL Technologies
 Licensed under the Apache License, Version 2.0
 }
@@ -1097,11 +1097,14 @@ boot-task: load-boot %task.reb
 boot-ops:  load-boot %ops.reb
 ;boot-script: load-boot %script.reb
 
-write-generated gen-dir/gen-boot-code.reb entab mold reduce sections
+data: reduce sections
+data: either find [on true #(true)] select spec 'remove-docstrings [
+	mold/flat remove-docstrings data
+][	entab mold data ] ;; keep the original indentation (source is user readable)
 
-data: mold reduce sections
 insert data reduce ["; Copyright (C) REBOL Technologies " now newline]
-insert tail data make char! 0 ; scanner requires zero termination
+;write-generated gen-dir/gen-boot-code.reb data
+append data make char! 0 ; scanner requires zero termination
 
 data: to binary! map-conv-if-needed data
 comp-data: compress/level data 'zlib 9

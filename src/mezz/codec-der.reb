@@ -146,10 +146,10 @@ register-codec [
 					change skip tail data -2 " ..."
 				]
 				printf [
-					#" " $1.35 wr $.32 ":d=" $1.36 2 $.32
-					"hl=" $1.32 2 $.32
-					"l=" $1 wl $.32 #" " -5
-					#" " $1.36 18 $.32 $0] reduce [
+					#" " /bright-magenta wr /green ":d=" /bright-cyan 2 /green
+					"hl=" /bright-green 2 /green
+					"l=" /bold wl /green #" " -5
+					#" " /bright-cyan 18 /reset] reduce [
 					tag-pos  - 1         ; tag start position
 					depth    - 1         ; current depth
 					data-pos - tag-pos   ; length of header 

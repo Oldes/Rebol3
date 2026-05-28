@@ -1300,7 +1300,7 @@ register-codec [
 			][	tagData: none ]
 			repend swf/tags [tagId tagData]
 			if verbose > 0 [
-				printf [-4 #" " $33 27 $0] reduce [
+				printf [-4 #" " /yellow 27 /reset] reduce [
 					tagId
 					select swf-tags tagId
 					either tagData [

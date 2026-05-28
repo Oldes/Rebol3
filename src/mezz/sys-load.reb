@@ -1595,7 +1595,7 @@ download-extension: function [
 
 		log/error 'REBOL [
 			"Failed to download:" options/ansi/reset file ajoin [
-				options/ansi/purple error/type ": " error/id
+				options/ansi/error error/type ": " error/id
 			]
 		]
 

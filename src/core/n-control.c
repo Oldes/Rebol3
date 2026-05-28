@@ -204,7 +204,7 @@
 
 	// flags has PROT_SET bit (set or not)
 
-	Check_Security(SYM_PROTECT, POL_WRITE, val);
+	Check_Security(SYM_PROTECT, flags == 0 ? POL_READ : POL_WRITE, val);
 
 	if (D_REF(2)) SET_FLAG(flags, PROT_DEEP);
 	if (D_REF(3)) SET_FLAG(flags, PROT_WORDS);

@@ -1080,6 +1080,13 @@ REBCNT Get_Vector_Type_From_Symbol(REBCNT sym) {
 		iblk = spec;
 		goto data_spec;
 	}
+	else if (IS_END(bp)) {
+		// make vector! [] ;; some like: make vector! 0
+		type = 0;  // integer!
+		sign = 0;  // signed
+		bits = 32; // 32bit
+		goto data_spec;
+	}
 
 	// INTEGER! or DECIMAL!
 	if (IS_WORD(bp)) {

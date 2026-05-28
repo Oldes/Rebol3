@@ -99,6 +99,14 @@ static void Debug_Dump_Bytes(const char *label, const REBYTE *buf, int len) {
 	fprintf(stderr, "\n");
 	fflush(stderr);
 }
+static int _read_byte(REBYTE *c) {
+	int res = read(Std_Inp, c, 1);
+	Debug_Dump_Bytes("read1", c, 1);
+	return res == 1;
+}
+#define READ_BYTE(c) _read_byte(c) 
+#else
+#define READ_BYTE(c) (1 == read(Std_Inp, c, 1))
 #endif
 
 static int Get_Console_Size(int *cols, int *rows)
@@ -187,15 +195,6 @@ static void Close_StdIO_Local(void)
 		Std_Echo = 0;
 	}
 }
-
-//static int _read_byte(REBYTE *c) {
-//	int res = read(Std_Inp, c, 1);
-//	Debug_Dump_Bytes("read1", c, 1);
-//	return res == 1;
-//}
-//#define READ_BYTE(c) _read_byte(c) 
-
-#define READ_BYTE(c) (1 == read(Std_Inp, c, 1))
 
 static int Parse_CSI_Sequence(REBEVT *evt, REBYTE *c) {
 	// CSI sequences start with ESC [ and are followed by parameter bytes,
@@ -306,7 +305,7 @@ static int Parse_CSI_Sequence(REBEVT *evt, REBYTE *c) {
 		}
 		if (!READ_BYTE(&c[3])) return DR_ERROR;
 		if (c[2] == ';' && c[3] == '5') {
-			if (1 != read(Std_Inp, &c[4], 1)) return DR_ERROR;
+			if (!READ_BYTE(&c[4])) return DR_ERROR;
 			if (c[4] == '~') {
 				SET_FLAG(evt->flags, EVF_CONTROL);
 				evt->data = EVK_DELETE; return DR_DONE;    // ESC[3;5~
@@ -338,7 +337,7 @@ static int Parse_CSI_Sequence(REBEVT *evt, REBYTE *c) {
 		}
 		if (!READ_BYTE(&c[3])) return DR_ERROR;
 		if (c[2] == ';' && c[3] == '2') {
-			if (1 != read(Std_Inp, &c[4], 1)) return DR_ERROR;
+			if (!READ_BYTE(&c[4])) return DR_ERROR;
 			if (c[4] == '~') {
 				SET_FLAG(evt->flags, EVF_SHIFT);
 				evt->data = EVK_PAGE_UP;   return DR_DONE; // ESC[5;2~
@@ -361,15 +360,15 @@ static int Parse_CSI_Sequence(REBEVT *evt, REBYTE *c) {
 	case '7': evt->data = EVK_HOME;      return DR_DONE;  // ESC[7~
 	case '8': evt->data = EVK_END;       return DR_DONE;  // ESC[8~
 	}
+	return DR_IGNORE;
 }
-#undef READ_BYTE
 
 static int Parse_SS3_Sequence(REBEVT *evt, REBYTE *c) {
 	// SS3 sequences start with ESC O, used by many terminals for function
 	// keys and keypad keys. Some terminals send these instead of or in
 	// addition to CSI sequences depending on their keypad mode (DECCKM).
 	// Reference: https://invisible-island.net/xterm/ctlseqs/ctlseqs.html
-	if (1 != read(Std_Inp, &c[1], 1)) return DR_ERROR;
+	if (!READ_BYTE(&c[1])) return DR_ERROR;
 	evt->type = EVT_CONTROL;
 	switch (c[1]) {
 	// Arrow keys (sent instead of CSI sequences in application cursor key mode)
@@ -412,6 +411,7 @@ static int Parse_SS3_Sequence(REBEVT *evt, REBYTE *c) {
 	}
 	return DR_IGNORE; // unrecognized SS3 sequence
 }
+#undef READ_BYTE
 
 static int Parse_Escape_Sequence(REBEVT *evt, REBYTE *c) {
 	evt->type = EVT_CONTROL;
@@ -487,9 +487,9 @@ static int Read_Key_Event(REBEVT *evt) {
 		// Normalize backspace
 		if (c[0] == 0x7F || c[0] == 0x08) {
 			evt->type = EVT_CONTROL;
+			evt->data = EVK_BACKSPACE;
 			if (c[0] != settings_original.c_cc[VERASE])
 				SET_FLAG(evt->flags, EVF_CONTROL);
-			evt->data = EVK_BACKSPACE;
 			return DR_DONE;
 		}
 		if (c[0] > 0 && c[0] <= 0x1F) {
@@ -499,13 +499,30 @@ static int Read_Key_Event(REBEVT *evt) {
 		evt->data = c[0];
 	}
 	else {
-		// multi-byte UTF-8
-			 if ((c[0] & 0xE0) == 0xC0) len = 1;
-		else if ((c[0] & 0xF0) == 0xE0) len = 2;
-		else if ((c[0] & 0xF8) == 0xF0) len = 3;
-		else return DR_IGNORE; // invalid UTF-8 lead byte
-		if (len != read(Std_Inp, &c[1], len)) return DR_ERROR;
-		evt->data = RL_Decode_UTF8_Char(c, &len);
+		int extra;        // number of continuation bytes to read
+		int seq_len;      // total sequence length including lead byte
+
+			 if ((c[0] & 0xE0) == 0xC0) extra = 1; // 2-byte sequence
+		else if ((c[0] & 0xF0) == 0xE0) extra = 2; // 3-byte sequence
+		else if ((c[0] & 0xF8) == 0xF0) extra = 3; // 4-byte sequence
+		else return DR_IGNORE;
+
+		// Read continuation bytes
+		int remaining = extra, offset = 1;
+		while (remaining > 0) {
+			int n = read(Std_Inp, &c[offset], remaining);
+			if (n <= 0) return DR_ERROR;
+			offset += n;
+			remaining -= n;
+		}
+
+		// Validate continuation bytes
+		for (int i = 1; i <= extra; i++) {
+			if ((c[i] & 0xC0) != 0x80) return DR_IGNORE;
+		}
+
+		seq_len = extra + 1;
+		evt->data = RL_Decode_UTF8_Char(c, &seq_len);
 	}
 	return DR_DONE;
 }
@@ -538,9 +555,10 @@ static int Read_Key_Event(REBEVT *evt) {
 
 	dev = Devices[req->device];
 
-	// Avoid opening the console twice (compare dev and req flags):
+	// If the device is already open (by a previous request), there is no need
+	// to reinitialize the console. Just mark this request as open and return.
 	if (GET_FLAG(dev->flags, RDF_OPEN)) {
-		// Device was opened earlier as null, so req must have that flag:
+		// If the device was opened in null mode, propagate that to this request:
 		if (GET_FLAG(dev->flags, SF_DEV_NULL))
 			SET_FLAG(req->modes, RDM_NULL);
 		SET_FLAG(req->flags, RRF_OPEN);
@@ -770,6 +788,7 @@ static int Read_Key_Event(REBEVT *evt) {
 			break;
 		// DR_IGNORE: sequence was consumed but unrecognized, just continue
 	}
+	return DR_DONE;
 }
 
 /***********************************************************************
@@ -843,6 +862,9 @@ static int Read_Key_Event(REBEVT *evt) {
 		case MODE_CONSOLE_ERROR:
 			Std_Out = value ? STDERR_FILENO : STDOUT_FILENO;
 			break;
+		default:
+			req->error = 1;
+			return DR_ERROR;
 	}
 	return DR_DONE;
 }

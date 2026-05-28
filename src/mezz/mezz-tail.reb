@@ -33,4 +33,5 @@ if system/options/boot [
 ]
 
 ;protect system/standard
-protect-system-object
+protect-system
+unset 'protect-system

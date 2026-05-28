@@ -128,38 +128,21 @@ file-checksum: function [
 	]
 ]
 
-wait-for-key: func[
-	"Wait for single key press and return char (or word for control keys) as a result"
-	/only limit [bitset! string! block! none! char!] "Limit input to specified chars or control words"
-	/local port old-awake
+wait-key: func [
+	"Waits for a single keypress and returns it."
+	/only  "Optionally restricts accepted input to a specified set of keys."
+	 limit [bitset! string! block! char! word!] "Limit input to specified chars or control words"
+	/local key
 ][
-	;; using existing input port
-	port: system/ports/input
-	;; store awake actor and turn off read-line mode
-	old-awake: :port/awake
-	modify port 'line false ;@@ what if it is already off?
-	;; clear old data (in case user cancel's waiting)
-	port/data: none
-	;; define new awake, which checks single key
-	port/awake: func[event][
-		all [
-			event/type == 'key
-			any [
-				none? limit
-				try [ find limit event/key ]
-			]
-			event/port/data: event/key 
-			true
+	until [
+		key: read-key
+		any [
+			all [key == #"^C" return none] ;= CTRL+C
+			not only
+			limit = key
+			attempt [find limit key]
 		]
 	]
-	;; handle single char limit
-	if char? limit [limit: to string! limit]
-	;; wait for user input
-	wait/only port
-	;; put back original awake actor and read-line mode
-	port/awake: :old-awake
-	modify port 'line true
-	;; return result and clear port's data
-	also port/data port/data: none
+	key
 ]
 

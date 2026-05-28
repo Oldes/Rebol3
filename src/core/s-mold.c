@@ -284,26 +284,27 @@ typedef struct REB_Str_Flags {
 	REBCNT malign;
 	REBLEN chars;
 	REBLEN invalid;
+	REBFLG has_unicode;
+	REBLEN bytes;
 } REB_STRF;
 
 
 
-STOID Sniff_String(REBSER *ser, REBCNT idx, REB_STRF *sf)
+STOID Sniff_String(REBSER* ser, REBCNT idx, REB_STRF* sf, REB_MOLD* mold)
 {
-	// Scan to find out what special chars the string contains?
-	REBYTE *bp;
-	REBYTE *ep;
-	REBYTE *acc;
-	REBCNT c=0;
-	REBCNT state = 0;
+	// Scan to find out what special chars the string contains.
+	REBYTE* bp = STR_SKIP(ser, idx);
+	REBYTE* ep = STR_TAIL(ser);
+	REBCNT  c = 0;
+	REBCNT  state = 0;
+	REBLEN clen;
+	// Account for opening delimiter
+	REBCNT  limit = MOLD_HAS_LIMIT(mold) ? mold->limit - 1 : NO_LIMIT;
+	if (limit == 0) return;
 
-	bp = STR_SKIP(ser, idx);
-	ep = STR_TAIL(ser);
-
-	sf->invalid = 0;// NOT_FOUND;
+	sf->invalid = 0;
 
 	while (bp < ep) {
-		acc = bp;
 		for (; bp < ep; ++bp) {
 			if (UTF8_Decode_Step(&state, &c, *bp)) {
 				if (state != UTF8_REJECT)
@@ -314,12 +315,14 @@ STOID Sniff_String(REBSER *ser, REBCNT idx, REB_STRF *sf)
 		if (state != UTF8_ACCEPT) {
 			while (bp < ep && (*bp & 0xC0) == 0x80) {
 				c = *bp++;
-				if (c >= 0x7f || c == 0x1e) {  // non ASCII or ^ must be (00) escaped
+				if (c >= 0x7f || c == 0x1e) { // non ASCII or ^ must be (00) escaped
 					if (c < 0xA0 || c == 0x1e) { // do not AND with above
 						sf->invalid += 4;
 					}
-					else
-						sf->invalid += UTF8_Codepoint_Size(c)-1;
+					else {
+						sf->has_unicode = 1; // replacement char will be UTF-8 encoded
+						sf->invalid += UTF8_Codepoint_Size(c) - 1;
+					}
 				}
 				else if (IS_CHR_ESC(c)) {
 					sf->invalid += 1;
@@ -329,7 +332,18 @@ STOID Sniff_String(REBSER *ser, REBCNT idx, REB_STRF *sf)
 			continue;
 		}
 		bp++;
+		clen = UTF8_Codepoint_Size(c);
+		// Check limit before counting this char
+		if (limit != NO_LIMIT) {
+			if ((sf->chars + sf->newline + sf->escape + sf->paren) >= limit) break;
+			if (clen > 1) {
+				mold->limit += clen - 1;
+			}
+		}
+
 		sf->chars++;
+		sf->bytes += clen;
+
 		switch (c) {
 		case '{':
 			sf->brace_in++;
@@ -346,10 +360,13 @@ STOID Sniff_String(REBSER *ser, REBCNT idx, REB_STRF *sf)
 			break;
 		default:
 			if (c == 0x7f || c == 0x1e)
-				sf->paren += 4; // ^(7f) - 1 byte is already as UTF-8 codepoint + 3 for additional ^ ()
+				sf->paren += 4;
 			else if (c > 0x7f && c < 0xA0)
-				sf->paren += 3; // ^(12) - 2 bytes are already as UTF-8 codepoint + 3 for additional ^()
-			else if (IS_CHR_ESC(c)) sf->escape++;
+				sf->paren += 3;
+			else if (IS_CHR_ESC(c))
+				sf->escape++;
+			else if (c > 0x7f)
+				sf->has_unicode = 1;
 		}
 	}
 	if (sf->brace_in != sf->brace_out) sf->malign++;
@@ -408,7 +425,6 @@ STOID Mold_String_Series(REBVAL *value, REB_MOLD *mold)
 	const REBYTE *ep;
 	REBYTE *dp;
 	REBU32 c;
-	REBLEN len;
 	REBLEN dlen;
 	REBYTE *dend;
 
@@ -417,32 +433,34 @@ STOID Mold_String_Series(REBVAL *value, REB_MOLD *mold)
 		Append_Bytes(mold->series, "\"\"");  //Trap0(RE_PAST_END);
 		return;
 	}
-	len = VAL_LEN(value);
-	//TODO: check limit!!!
-	CHECK_MOLD_LIMIT(mold, len);
+	
+	if (MOLD_HAS_LIMIT(mold) && MOLD_OVER_LIMIT(mold)) return;
 
-	Sniff_String(ser, idx, &sf);
+	Sniff_String(ser, idx, &sf, mold);
+	if (sf.has_unicode)
+		UTF8_SERIES(mold->series); // Mark mold result as UTF8.
 
 	bp = STR_SKIP(ser, idx);
-	ep = STR_TAIL(ser);
-	REBLEN bytes = AS_REBLEN(ep - bp);
+	ep = bp + sf.bytes;
+	REBLEN bytes = sf.bytes;
 
 	// If it is a short quoted string, emit it as "string":
 	if (sf.chars <= MAX_QUOTED_STR && sf.quote == 0 && sf.newline < 3) {
 
-		dlen = len + sf.newline + sf.escape + sf.paren + 2 + sf.invalid;
+		dlen = bytes + sf.newline + sf.escape + sf.paren + 2 + sf.invalid;
 		dp = Prep_Mold_Series(mold, dlen);
 		dend = dp + dlen;
 
 		*dp++ = '"';
 		while (bp < ep && dp < dend) {
 			c = UTF8_Decode_Codepoint(&bp, &bytes);
-			if (c == UNI_ERROR)
-				c = bp[-1]; // UNI_REPLACEMENT_CHAR;
+			if (c == UNI_ERROR) c = UNI_REPLACEMENT_CHAR;
 			dp = Emit_Mold_Char(dp, c);
 		}
-
-		*dp++ = '"';
+		if (bp >= ep) {
+			// only close if we emitted everything within limit
+			*dp++ = '"';
+		}
 		*dp = 0;
 		return;
 	}
@@ -450,7 +468,7 @@ STOID Mold_String_Series(REBVAL *value, REB_MOLD *mold)
 	// It is a braced string, emit it as {string}:
 	if (!sf.malign) sf.brace_in = sf.brace_out = 0;
 
-	dlen = len + sf.brace_in + sf.brace_out + sf.escape + sf.paren + 2 + sf.invalid;
+	dlen = bytes + sf.brace_in + sf.brace_out + sf.escape + sf.paren + 2 + sf.invalid;
 	dp = Prep_Mold_Series(mold, dlen);
 	dend = dp + dlen;
 
@@ -466,16 +484,22 @@ STOID Mold_String_Series(REBVAL *value, REB_MOLD *mold)
 				*dp++ = c;
 				break;
 			}
+			// fall through
 		case '\n':
 		case '"':
 			*dp++ = c;
 			break;
+		case UNI_ERROR:
+			c = UNI_REPLACEMENT_CHAR;
+			// fall thru
 		default:
 			dp = Emit_Mold_Char(dp, c);
 		}
 	}
-
-	*dp++ = '}';
+	if (bp >= ep) {
+		// only close if we emitted everything within limit
+		*dp++ = '}';
+	}
 	*dp = 0;
 }
 
@@ -560,7 +584,7 @@ mold_constr:
 	// 2. contains a delimiter or invalid required chars
 	for (n = idx; n < VAL_TAIL(value); n++) {
 		c = bp[n];
-		if (c < 0x7F && IS_LEX_DELIMIT(c)) {
+		if (IS_LEX_DELIMIT(c)) {
 			// allow / inside urls...
 			if (c == '/' && required == ':') continue;
 			goto mold_constr;
@@ -1208,7 +1232,15 @@ STOID Mold_Error(REBVAL *value, REB_MOLD *mold, REBFLG molded)
 
 		// Forming a string:
 		if (!molded) {
-			Insert_String(ser, NO_LIMIT, VAL_SERIES(value), VAL_INDEX(value), VAL_LEN(value), 0);
+			//@@ `form` does not perform implicit dehexing like Rebol 2!
+			//@@ https://github.com/Oldes/Rebol-issues/issues/2710
+			//if (IS_URL(value)) {
+			//	REBSER* tmp = Dehex_String(VAL_BIN_DATA(value), VAL_LEN(value), '%', FALSE);
+			//	Append_Bytes(ser, SERIES_DATA(tmp));
+			//}
+			//else {
+				Insert_String(ser, NO_LIMIT, VAL_SERIES(value), VAL_INDEX(value), VAL_LEN(value), 0);
+			//}
 			return;
 		}
 

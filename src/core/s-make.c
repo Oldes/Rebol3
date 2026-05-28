@@ -318,8 +318,12 @@ x*/	REBCNT Insert_Value(REBSER *series, REBCNT index, REBVAL *item, REBCNT type,
 	//No need to terminate the series, because Make_Series guarantees completely cleared memory.
 	//TERM_SERIES(dst);
 
-	if ((IS_UTF8_SERIES(src) || src == BUF_SCAN) && !Is_ASCII(BIN_DATA(dst), length))
+	if ((IS_UTF8_SERIES(src) || src == BUF_SCAN) && !Is_ASCII(BIN_DATA(dst), length)) {
+		// Validate that the string ends with a valid UTF-8 byte.
+		dst->tail = UTF8_Validate_Index(BIN_DATA(dst), dst->tail+1);
+		STR_TERM(dst);
 		UTF8_SERIES(dst);
+	}
 
 	return dst;
 }

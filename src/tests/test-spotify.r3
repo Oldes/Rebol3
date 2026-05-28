@@ -18,7 +18,7 @@ test-all?: false ;; I don't want CI tests to stop my real playback
 errors: 0 ;; error counter (process return value)
 
 do-test: func[title code][
-	print-horizontal-line
+	print-hline
 	print as-yellow title
 	probe code
 	try/with code [

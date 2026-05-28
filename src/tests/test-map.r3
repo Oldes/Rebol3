@@ -26,7 +26,7 @@ print-result: function [count time coll data][
 		"Collisions: " $32.1 10 $0
 		"Time: "       $32.1  7 $32.2 -10 $0
 		
-	] reduce [
+	][
 		count
 		length? data
 		init-collisions - coll

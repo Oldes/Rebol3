@@ -75,7 +75,7 @@ read-rdap: function/with [url [url!] /quiet ][
 form-rdap: function/with [data [map!]][
 	clear out
 	clear entity-handles
-	print-horizontal-line
+	print-hline
 	foreach [key name] [
 		rdapConformance "Conformance: "
 		name            "Name       : "

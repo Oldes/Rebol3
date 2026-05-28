@@ -34,7 +34,7 @@ foreach [label test] [
 		result/cookies == #[name: "Rebol"]
 	]
 ][
-	print-horizontal-line
+	print-hline
 	print as-yellow label
 	either true == try probe test [
 		print as-green "OK"

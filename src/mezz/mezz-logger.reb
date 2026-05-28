@@ -16,23 +16,12 @@ REBOL [
 	type: module
 ]
 
-;; used ANSI decorations...
-!=error!: " ^[[35m["
-!=warn!:  " ^[[1;33m["
-!=info!:  " ^[[1;33m["
-!=debug!: 
-!=trace!: " ^[[33m["
-!error=!: "] ^[[1m"
-!warn=!:  "] ^[[31m"
-!info=!:  "] ^[[36m"
-!debug=!: "] ^[[0;36m"
-!trace=!: "] ^[[0;32m"
-!reset!:   "^[[0m"
-
 timestamp: none ;or e.g.: does[ajoin ["^[[90m" pad/with to decimal! now/precise 15 #"0"]]
 verbosity: 3 ;; default verbosity level (when not set in the system/options/log)
 log-levels: system/options/log
 emit: :print
+
+ansi: system/options/ansi
 
 log-error: function[
 	"Outputs critical issues and error messages (always visible)"
@@ -42,10 +31,10 @@ log-error: function[
 	foreach line split-lines message [
 		emit ajoin [
 			timestamp
-			!=error! id !error=!
+			SP ansi/magenta #"[" id "] " ansi/bright-magenta
 			either line/1 = #"*" []["** Error: "]
 			copy/part line 200 ;@@ I am not sure with this line length limit
-			!reset!
+			ansi/reset
 		]
 	]
 ]
@@ -55,9 +44,9 @@ log-warn: function[
 ][
 	if system/options/quiet [exit]
 	emit ajoin [
-		!=warn! id !warn=!
+		SP ansi/bright-yellow #"[" id "] " ansi/red
 		either block? message [reduce :message][message]
-		!reset!
+		ansi/reset
 	]
 ]
 log-info: function[
@@ -69,9 +58,9 @@ log-info: function[
 		1 > any [select log-levels id verbosity]
 	] [ exit ]
 	emit ajoin [
-		!=info! id !info=!
+		SP ansi/bright-yellow #"[" id "] " ansi/bright-cyan
 		either block? message [reduce :message][message]
-		!reset!
+		ansi/reset
 	]
 ]
 log-debug: function[
@@ -83,9 +72,9 @@ log-debug: function[
 		2 > any [select log-levels id verbosity]
 	] [ exit ]
 	emit ajoin [
-		!=debug! id !debug=!
+		SP ansi/yellow #"[" id "] " ansi/cyan
 		either block? message [reduce :message][message]
-		!reset!
+		ansi/reset
 	]
 ]
 log-trace: function[
@@ -97,9 +86,9 @@ log-trace: function[
 		3 > any [select log-levels id verbosity]
 	] [ exit ]
 	emit ajoin [
-		!=trace! id !trace=!
+		SP ansi/yellow #"[" id "] " ansi/green
 		either block? message [reduce :message][message]
-		!reset!
+		ansi/reset
 	]
 ]
 

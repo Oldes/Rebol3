@@ -843,13 +843,15 @@ invalid_id:
 
 		// Is it a string (file or URL):
 		else if (ANY_BINSTR(policy) && name) {
+#ifdef TO_WINDOWS
+			REBFLG uncase = TRUE;
+#else
+			REBFLG uncase = !IS_FILE(policy);
+#endif
 			//Debug_Fmt("sec: %r %r", policy, name);
-			if (Match_Sub_Path(VAL_SERIES(policy), VAL_SERIES(name))) {
-				// Is the match adequate?
-				if (VAL_TAIL(name) >= len) {
-					len = VAL_TAIL(name);
-					flags = VAL_TUPLE(policy+1); // non-aligned
-				}
+			if (Match_Sub_Path(VAL_SERIES(policy), VAL_SERIES(name), uncase)) {
+				// records are sorted using length, so first match is the right one
+				return VAL_TUPLE(policy + 1);
 			}
 		}
 		else goto error;
@@ -872,13 +874,25 @@ error:
 
 /***********************************************************************
 **
-*/	void Trap_Security(REBCNT flag, REBCNT sym, REBVAL *value)
+*/	void Trap_Security(REBYTE *flags, REBCNT sym, REBVAL *value, REBCNT policy)
 /*
-**		Take action on the policy flags provided. The sym and value
+**		Take action on the policy flags provided. The sym (e.g. SYM_FILE) and value
 **		are provided for error message purposes only.
 **
 ***********************************************************************/
 {
+	REBCNT flag = flags[policy];
+	if (flag == SEC_ASK) {
+		flag = SEC_THROW;
+		REBVAL word, type;
+		Init_Word(&word, sym);
+		SET_INTEGER(&type, 1 + policy);
+		REBVAL* func = Get_System(SYS_STATE, STATE_CONFIRM_POLICY);
+		REBVAL* result = Apply_Func(NULL, func, &word, &type, value, 0);
+		if (IS_LOGIC(result) && VAL_LOGIC(result)) {
+			flag = SEC_ALLOW;
+		}
+	}
 	if (flag == SEC_THROW) {
 		if (!value) {
 			Init_Word(DS_TOP, sym);
@@ -901,7 +915,6 @@ error:
 ***********************************************************************/
 {
 	REBYTE *flags;
-	
 	flags = Security_Policy(sym, value);
-	Trap_Security(flags[policy], sym, value);
+	Trap_Security(flags, sym, value, policy);
 }

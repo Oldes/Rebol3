@@ -65,6 +65,26 @@ Rebol [
 		--assert not number? "1"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/2672
 		--assert not number? ()
+
+	--test-- "datatype - comparison"
+		--assert #(integer!) =  #(integer!)
+		--assert #(integer!) == #(integer!)
+		--assert #(integer!) <= #(integer!)
+		--assert #(integer!) >= #(integer!)
+		--assert not (#(integer!) > #(integer!))
+		--assert not (#(integer!) < #(integer!))
+		--assert not (#(integer!) != #(integer!))
+
+		--assert not (#(op!) =  #(integer!))
+		--assert not (#(op!) == #(integer!))
+		--assert not (#(op!) <= #(integer!))
+		--assert      #(op!) >= #(integer!)
+		--assert      #(op!) > #(integer!)
+		--assert not (#(op!) < #(integer!))
+		--assert      #(op!) != #(integer!)
+
 ===end-group===
+===end-group===
+
 
 ~~~end-file~~~

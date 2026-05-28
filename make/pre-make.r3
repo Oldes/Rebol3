@@ -97,7 +97,7 @@ if file? src-dir [
 c-core-files: unique c-core-files
 c-host-files: unique c-host-files
 
-mezz-files: reduce [
+mezz-files: unique reduce [
 	;Boot Mezzanine Functions
 	unique mezz-base-files
 	unique mezz-sys-files
@@ -244,8 +244,9 @@ str-version: reform [
 	select os-info 'VERSION_ID
 ]
 
-;;format-date-time may not be available in older Builder tools!
-;;format-date-time now/utc "(yyyy-MM-dd hh:mm:ss UTC)"
+;;format-datetime may not be available in older Builder tools!
+if function? :format-date-time [format-datetime: :format-date-time]
+try [build-date: format-datetime build-date "yyyy-MM-dd hh:mm:ss"]
 
 short-str-version: next ajoin [{
 Rebol/} product SP version " (" build-date { UTC)

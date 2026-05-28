@@ -66,6 +66,22 @@ secure [%/ allow]
 	--assert (format <hh:mm:ss.sss> :value) == "12345:01:00.000"
 	--assert (format <hh:mm:ss.sssssss> :value) == "12345:01:00.0000000"
 
+--test-- "format/pad"
+	--assert (format     [-8 "-" 8] [123 456]     ) == "     123-456     "
+	--assert (format/pad [-8 "-" 8] [123 456] #".") == ".....123-456....."
+	--assert (format/pad [-8 "-" 8] [123 456] "+-") == "+-+-+123-456+-+-+"
+	--assert (format/pad [-4] "⚡" "x") == "xx⚡"
+
+--test-- "format rounding"
+	--assert (format [ 0.5 SP  0.1 SP  0.01 SP  0.001] [1.1234 1.1234 1.1234 1.1234]) == "1.0 1.1 1.12 1.123"
+	--assert (format [ 5.5 SP  5.1 SP  5.01 SP  5.001] [1.1234 1.1234 1.1234 1.1234]) == "1.0   1.1   1.12  1.123"
+	--assert (format [-5.5 SP -5.1 SP -5.01 SP -5.001] [1.1234 1.1234 1.1234 1.1234]) == "  1.0   1.1  1.12 1.123"
+	--assert (format [ 0.5 SP  0.1 SP  0.01 SP  0.001] [1.6789 1.6789 1.6789 1.6789]) == "1.5 1.7 1.68 1.679"
+	--assert (format [ 5.5 SP  5.1 SP  5.01 SP  5.001] [1.6789 1.6789 1.6789 1.6789]) == "1.5   1.7   1.68  1.679"
+	--assert (format [-5.5 SP -5.1 SP -5.01 SP -5.001] [1.6789 1.6789 1.6789 1.6789]) == "  1.5   1.7  1.68 1.679"
+	--assert (format [0.0] 1.6789) == "2.0"
+	--assert (format [5.0] 1.6789) == "2.0  "
+
 --test-- "issue-532"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/532
 	str: format [8 -8] ["this will overrun" 123]

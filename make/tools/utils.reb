@@ -31,6 +31,25 @@ load-file: func[file [file!] /header][
 	]
 ]
 
+remove-docstrings: function [code [block!]][
+    rule-block: [
+        any [
+            [
+                'action | 'native
+                | 'func | 'function | 'function/with
+                | 'closure | 'closure/with
+            ] ahead block! into rule-spec
+            | ahead [block! | paren!] into rule-block
+            | skip 
+        ]
+    ]
+    rule-spec: [
+        any [remove string! | skip]
+    ]
+    parse code rule-block
+    code
+]
+
 
 write-generated: func[file data][
 	write file data
@@ -175,9 +194,9 @@ get-os-info: function[
 			system/platform = 'Windows
 			0 = call/shell/wait/output/error "ver" :tmp :err
 			parse tmp [
-				to num copy v: [some num #"." some num] to end (
+				to num copy v: [some num any [#"." some num]] to end (
 					out/ID: 'windows
-					out/VERSION_ID: to decimal! v
+					out/VERSION_ID: v
 				)
 			]
 		]

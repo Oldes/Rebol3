@@ -374,12 +374,13 @@ x*/	int Do_Callback(REBSER *obj, u32 name, RXIARG *args, RXIARG *result)
 	RXICAL call;
 	REBSER *src;
 //	int Remove_after_first_run;
-	//Check_Security(SYM_EXTENSION, POL_EXEC, val);
 
 	if (!D_REF(2)) { // No /dispatch, use the DLL file:
-
+		
 		if (!IS_FILE(val)) Trap_Arg(val);
-
+		
+		Check_Security(SYM_EXTENSION, POL_EXEC, val);
+		
 		path = Value_To_OS_Path(val, FALSE);
 
 		// Try to load the DLL file:

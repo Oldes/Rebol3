@@ -53,6 +53,7 @@ options: object [  ; Options supplied to REBOL during startup
 	binary-base: 16    ; Default base for FORMed binary values (64, 16, 2)
 	decimal-digits: 15 ; Max number of decimal digits to print.
 	probe-limit: 16000 ; Max probed output size
+	http-redirects: 10 ; Max HTTP redirects allowed
 	module-paths: none ;@@ DEPRECATED!
 	default-suffix: %.reb ; Used by IMPORT if no suffix is provided
 	result-types: none
@@ -69,15 +70,53 @@ options: object [  ; Options supplied to REBOL during startup
 	domain-name: none ; Specifies system's domain name (used in SMTP scheme so far)
 	no-color: false
 	ansi: #[
-		gray:   "^[[1;30m"
-		red:    "^[[1;31m"
-		green:  "^[[1;32m"
-		yellow: "^[[1;33m"
-		blue:   "^[[1;34m"
-		purple: "^[[1;35m"
-		cyan:   "^[[1;36m"
-		white:	"^[[1;37m"
-		reset:  "^[[0m"
+		reset:             "^[[0m"
+		bold:              "^[[1m"
+		italic:            "^[[3m"
+		underline:         "^[[4m"
+		invert:            "^[[7m"
+		bold-off:          "^[[22m"
+		italic-off:        "^[[23m"
+		underline-off:     "^[[24m"
+		invert-off:        "^[[27m"
+		foreground:        "^[[39m" ;= Default foreground color
+		background:        "^[[49m" ;= Default background color
+		gray:              "^[[38;5;244m"
+		;; Basic foreground terminal palette
+		black:             "^[[30m"
+		red:               "^[[31m"
+		green:             "^[[32m"
+		yellow:            "^[[33m"
+		blue:              "^[[34m"
+		magenta:           "^[[35m"
+		cyan:              "^[[36m"
+		white:             "^[[37m"
+		bright-red:        "^[[91m"
+		bright-green:      "^[[92m"
+		bright-yellow:     "^[[93m"
+		bright-blue:       "^[[94m"
+		bright-magenta:    "^[[95m"
+		bright-cyan:       "^[[96m"
+		bright-white:      "^[[97m"
+		;; Basic background terminal palette
+		black-bg:          "^[[40m"
+		red-bg:            "^[[41m"
+		green-bg:          "^[[42m"
+		yellow-bg:         "^[[43m"
+		blue-bg:           "^[[44m"
+		magenta-bg:        "^[[45m"
+		cyan-bg:           "^[[46m"
+		white-bg:          "^[[47m"
+		bright-red-bg:     "^[[101m"
+		bright-green-bg:   "^[[102m"
+		bright-yellow-bg:  "^[[103m"
+		bright-blue-bg:    "^[[104m"
+		bright-magenta-bg: "^[[105m"
+		bright-cyan-bg:    "^[[106m"
+		bright-white-bg:   "^[[107m"
+		;; Some common color combinations
+		error:    "^[[38;5;201m"
+		banner:   "^[[30;107m"
 	]
 ]
 
@@ -102,7 +141,7 @@ catalog: object [
 	boot-flags: [
 		script args do import version debug secure
 		help vers quiet verbose
-		secure-min secure-max trace halt cgi boot-level no-window no-color
+		secure-min secure-max trace halt cgi boot-level no-window no-color legacy-repl
 	]
 	bitsets: object [
 		crlf:          #(bitset! #{0024})                             ;charset "^/^M"
@@ -246,19 +285,21 @@ state: object [
 	; Mutable system state variables
 	note: "contains protected hidden fields"
 	policies: construct [ ; Security policies
-		file:    ; file access
-		net:     ; network access
-		eval:    ; evaluation limit
-		memory:  ; memory limit
-		secure:  ; secure changes
-		protect: ; protect function
-		debug:   ; debugging features
-		envr:    ; read/write
-		call:    ; execute only
-		browse:  ; execute only
-			0.0.0
-		extension: 2.2.2 ; execute only
+		file:      ; file access
+		net:       ; network access
+		eval:      ; evaluation limit
+		memory:    ; memory limit
+		secure:    ; secure changes	
+		protect:   ; protect/unprotect functions
+		debug:     ; debugging features
+		envr:      ; read/write
+		call:      ; execute only
+		browse:    ; execute only
+		extension: ; execute only
+			0.0.0  ;= ALLOW
+		
 	]
+	confirm-policy: none ; used to hold secure's confirmation function (used from C side, hidden to user)
 	last-error:  none ; used by WHY?
 	last-result: none ; used to store last console result
 	;; The following 3 flags are updated by the `read-key` call
@@ -274,6 +315,7 @@ modules: object [
 	blend2d:       https://github.com/Siskin-framework/Rebol-Blend2D/releases/download/0.12.0/
 	blurhash:      https://github.com/Siskin-framework/Rebol-BlurHash/releases/download/1.0.0/
 	brotli:        https://github.com/Oldes/Rebol-Brotli/releases/download/0.1.0/
+	bzip2:         https://github.com/Oldes/Rebol-Bzip2/releases/download/1.1.0/
 	deflate:       https://github.com/Oldes/Rebol-Deflate/releases/download/0.1.0/
 	easing:        https://github.com/Siskin-framework/Rebol-Easing/releases/download/1.0.0/
 	mathpresso:    https://github.com/Siskin-framework/Rebol-MathPresso/releases/download/0.1.0/
@@ -614,6 +656,7 @@ view: object [
 
 console: construct [
 	history: []
+	current: none
 ]
 
 license: none

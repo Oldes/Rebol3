@@ -257,7 +257,7 @@ FORCE_INLINE
 **
 ***********************************************************************/
 {
-	do { index--; } while (index > 0 && (str[index] & 0xC0) == 0x80);
+	while (index > 0 && (str[--index] & 0xC0) == 0x80);
 	return index;
 }
 
@@ -270,9 +270,9 @@ FORCE_INLINE
 **
 ***********************************************************************/
 {
-	REBLEN size = 0;
-	do { index--; size++; } while (index > 0 && (str[index] & 0xC0) == 0x80);
-	return size;
+	REBLEN start = index;
+	while (index > 0 && (str[--index] & 0xC0) == 0x80);
+	return start - index;
 }
 
 /***********************************************************************
@@ -523,7 +523,6 @@ FORCE_INLINE
 	}
 	SERIES_TAIL(dst) -= nlen;
 	return dst;
-	
 }
 
 /***********************************************************************

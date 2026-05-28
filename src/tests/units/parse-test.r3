@@ -553,6 +553,49 @@ Rebol [
 	--assert error? try [parse s: [a b][change only ['a 'b] [z p]]]
 	--assert all [parse s: [a b][change ['a 'b] only [z p]]  s = [[z p]]]
 
+--test-- "CHANGE with position"
+;@@ https://github.com/Oldes/Rebol-issues/issues/2711
+	--assert all [
+		parse b: [1 2 3 4 5] [skip p: change [2 skip] ('x) to end]
+		b == [1 x 4 5]
+	]
+	--assert all [
+		parse b: [1 2 3 4 5] [skip p: 2 skip change p ('x) to end]
+		b == [1 x 4 5]
+	]
+	--assert all [
+		parse b: [1 2 3 4 5] [skip p: 2 skip change :p ('x) to end]
+		b == [1 x 4 5]
+	]
+	--assert all [
+		parse b: "12345" [skip p: change [2 skip] ('x) to end]
+		b == "1x45"
+	]
+	--assert all [
+		parse b: "12345" [skip p: 2 skip change p ('x) to end] b
+		b == "1x45"
+	]
+	--assert all [
+		parse b: "12345" [skip p: 2 skip change :p ('x) to end] b
+		b == "1x45"
+	]
+	--assert all [
+		parse b: [1 2 3 4 5] [skip (p: back tail b) change p ('x) skip]
+		b = [1 x 5]
+	]
+	--assert all [
+		parse b: "12345" [skip (p: back tail b) change p ('x) skip]
+		b = "1x5"
+	]
+	--assert all [
+		parse b: [1 2 3 4 5] [skip (p: back tail b) change :p ('x) skip]
+		b = [1 x 5]
+	]
+	--assert all [
+		parse b: "12345" [skip (p: back tail b) change :p ('x) skip]
+		b = "1x5"
+	]
+
 ===end-group===
 
 ===start-group=== "INSERT"

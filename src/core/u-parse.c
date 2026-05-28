@@ -1135,13 +1135,25 @@ bad_target:
 					//if (parse->type != VAL_TYPE(item) || VAL_SERIES(item) != series)
 					//	Trap1(RE_PARSE_SERIES, rules-1);
 					if (!ANY_SERIES(item)) Trap1(RE_PARSE_SERIES, rules-1);
+reset_input:
 					index = Set_Parse_Series(parse, item);
-					series = parse->series;
+					series = parse->series;				
 
-					// #2269 - reset the position if we are not in the middle of any rule
+					if (GET_FLAG(flags, PF_CHANGE)) {
+						if (begin > index) {
+							REBLEN tmp = index;
+							index = begin;
+							begin = tmp;
+						}
+						count = index - begin;
+						goto do_modify;
+					}
+					
 					// don't allow code like: [copy x :pos integer!]
-					if (flags != 0) Trap1(RE_PARSE_RULE, rules-1); 
+					if (flags != 0) Trap1(RE_PARSE_RULE, rules-1);
+					// #2269 - reset the position if we are not in the middle of any rule
 					begin = index;
+					
 					SET_FLAG(parse->flags, PF_ADVANCE);
 					continue;
 				}
@@ -1149,6 +1161,7 @@ bad_target:
 				// word - some other variable
 				if (IS_WORD(item)) {
 					item = Get_Var(item);
+					if (VAL_SERIES(item) == parse->series) goto reset_input;
 				}
 
 				// item can still be 'word or /word
@@ -1415,6 +1428,7 @@ do_remove:
 					index = begin;
 				}
 				if (flags & (1<<PF_INSERT | 1<<PF_CHANGE)) {
+do_modify:
 					count = GET_FLAG(flags, PF_INSERT) ? 0 : count;
 					cmd = GET_FLAG(flags, PF_INSERT) ? 0 : (1<<AN_PART);
 					item = rules++;

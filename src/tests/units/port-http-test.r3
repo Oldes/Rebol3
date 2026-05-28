@@ -40,6 +40,8 @@ system/schemes/http/spec/timeout: 30
 		--assert object? query https://www.google.com object!
 		--assert map?    query https://www.google.com map!
 		--assert block?  query https://www.google.com block!
+		;@@ https://github.com/Oldes/Rebol-issues/issues/2713
+		--assert object? query http://google.com object!
 
 	--test-- "read/seek/part"
 		; first results without read/part

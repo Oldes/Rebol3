@@ -101,17 +101,34 @@
 ***********************************************************************/
 {
 	REBINT len;
+	REBSER *os_path;
 	REBSER *ser;
+	REBVAL val = { 0 };
 	//REBYTE *flags;
 
 	SET_FLAG(dir->modes, RFM_DIR);
+	SET_FLAG(dir->modes, policy);
 
 	// We depend on To_Local_Path giving us 2 extra chars for / and *
-	ser = Value_To_OS_Path(path, TRUE);
-	len = SERIES_TAIL(ser);
-	dir->file.path = (REBCHR*)(ser->data);
+	os_path = Value_To_OS_Path(path, TRUE);
+	len = SERIES_TAIL(os_path);
+	dir->file.path = (REBCHR*)(os_path->data);
 
-	Secure_Port(SYM_FILE, dir, path, ser);
+	// Convert full OS path back to Rebol format.
+	ser = To_REBOL_Path(BIN_HEAD(os_path), BIN_LEN(os_path), OS_WIDE, !wild);
+	if (wild) {
+		for (REBLEN i = 0; i < ser->tail; i++) {
+			if (ser->data[i] == '*') {
+				ser->tail = i;
+				ser->data[0];
+				break;
+			}
+		}
+	}
+
+	SET_FILE(&val, ser);
+
+	Secure_Port(SYM_FILE, dir, &val);
 
 	if (len == 0) return;
 	if (len == 1 && dir->file.path[0] == '.') {

@@ -125,6 +125,11 @@ of_type:
 			break;
 		case OF_SPEC:
 			Set_Block(value, Clone_Block(VAL_FUNC_SPEC(value)));
+			if (type == REB_ACTION && IS_INTEGER(BLK_LAST(VAL_SERIES(value)))) {
+				// Prevent leaking special datatype ID location info in action specification
+				VAL_TAIL(value)--;
+				TERM_SERIES(VAL_SERIES(value));
+			}
 			Unbind_Block(VAL_BLK(value), TRUE);
 			break;
 		case OF_TYPES:

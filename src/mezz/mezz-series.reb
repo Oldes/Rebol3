@@ -3,7 +3,7 @@ REBOL [
 	Title: "REBOL 3 Mezzanine: Series Helpers"
 	Rights: {
 		Copyright 2012 REBOL Technologies
-		Copyright 2012-2023 Rebol Open Source Contributors
+		Copyright 2012-2026 Rebol Open Source Contributors
 		REBOL is a trademark of REBOL Technologies
 	}
 	License: {
@@ -354,13 +354,13 @@ extract: func [
 ]
 
 deduplicate: func [
-    "Removes duplicates from the data set."
-    set [block! string! binary!] "The data set (modified)"
-    /case "Use case-sensitive comparison"
-    /skip "Treat the series as records of fixed size"
-    size [integer!]
+	"Removes duplicates from the data set."
+	set [block! string! binary!] "The data set (modified)"
+	/case "Use case-sensitive comparison"
+	/skip "Treat the series as records of fixed size"
+	size [integer!]
 ] [
-    head insert set also unique/:case/:skip :set :size clear set
+	head insert set also unique/:case/:skip :set :size clear set
 ]
 
 alter: func [
@@ -410,93 +410,140 @@ collect: func [
 
 pad: func [
 	"Pad a FORMed value on right side with spaces" 
-    str "Value to pad, FORM it if not a string" 
-    n [integer!] "Total size (in characters) of the new string (pad on left side if negative)" 
-    /with "Pad with char" 
-    c [char!] 
-    return: [string!] "Modified input string at head"
+	str "Value to pad, FORM it if not a string" 
+	n [integer!] "Total size (in characters) of the new string (pad on left side if negative)" 
+	/with "Pad with char" 
+	c [char!] 
+	return: [string! "Modified input string at head"]
 ][
-    unless string? str [str: form str] 
-    head insert/dup 
-    any [all [n < 0 n: negate n str] tail str] 
-    any [c #" "] 
-    (n - length? str)
+	unless string? str [str: form str] 
+	head insert/dup 
+	any [all [n < 0 n: negate n str] tail str] 
+	any [c #" "] 
+	(n - length? str)
 ]
 
 format: function [
-	"Format a string according to the format dialect."
-	rules {A block in the format dialect. E.g. [10 -10 #"-" 4 $32 "green" $0]}
-	values
-	/pad p {Pattern to use instead of spaces}
-][
-	p: any [p #" "]
-	unless block? :rules  [rules:  reduce [:rules ]]
-	unless block? :values [values: reduce [:values]]
-	no-color: system/options/no-color
+	"Format a string by applying layout rules to a list of values."
+	rules {
+		A block of formatting rules applied left to right. Supported rule types:
+		```
+		integer!    - field width: positive = left-aligned, negative = right-aligned
+		              value is truncated if longer than the field
+		decimal!    - combined rounding and field width: the fractional part (e.g. .2 in 8.2)
+		              sets rounding precision, the integer part sets field width (0 = no field)
+		              sign controls alignment, same as integer!
+		              examples: 8.2 (left, width 8, 2 decimal places)
+		                       -8.2 (right, width 8, 2 decimal places)
+		                        0.2 (no field, just round to 2 decimal places)
+		string!     - inserted literally
+		char!       - inserted literally
+		refinement! - ANSI color/style code (e.g. /red, /bold, /reset);
+		              ignored when color output is disabled
+		tag!        - type-aware formatting: the tag specifies the format pattern
+		              and the next value determines how it is applied:
+		                date! time! - formatted via `format-datetime`
+		              unrecognised value types emit the tag and leave the value unconsumed
+		word!       - fetched and treated as one of the above
+		```
+		Example: `[10 -8.2 #"-" /green <dd-mmm-yyyy> /reset]`}
+	values {
+		Values consumed by integer!, decimal!, and tag! rules, in order.
+		If a block!, it is reduced before use.
+		Any values not consumed by rules are appended at the end.}
+	/pad p {
+		String or character to use for padding instead of a space.
+		Multi-character strings are tiled and trimmed to fit the field width exactly.
+		Example: "+-" in a width-8 field produces "+-+-+-+-"}
+] bind [
+	p: to string! any [p " "]
+	plen: p/width ;; length of the padding in columns
 
-	; Compute size of output (for better mem usage):
-	val: 0
-	foreach rule rules [
-		if word? :rule [rule: get rule]
-		val: val + switch/default type?/word :rule [
-			integer! [abs rule]
-			string!  [length? rule]
-			char!    [1]
-			money!   [either no-color [0][2 + length? form rule]]
-			tag!     [length? rule] ;@@ does not handle variadic length results (for example month names)!
-		][0]
+	unless block? :rules  [rules: to block! :rules ]
+	values: case [
+		block? :values [reduce :values]
+		none?  :values [ [] ]
+		'else  [to block! :values]
 	]
-
-	out: make string! val
-	insert/dup out p val
-
-	; Process each rule:
+	out: clear ""
+	;; Process each rule:
 	foreach rule rules [
 		if word? :rule [rule: get rule]
 		switch type?/word :rule [
-			integer! [
-				pad: rule
-				val: form first+ values
-				clear at val 1 + abs rule
-				if negative? rule [
-					pad: rule + length? val
-					if negative? pad [out: skip out negate pad]
-					pad: length? val
-				]
-				change out :val
-				out: skip out pad ; spacing (remainder)
-			]
-			string!  [out: change out rule]
-			char!    [out: change out rule]
-			money!   [
-				unless no-color [
-					out: change out replace ajoin ["^[[" next form rule #"m"] #"." #";"
-				]
-			]
-			tag! [
-				out: change out switch/default type?/word val: first+ values [
-					date! time! [
-						format-date-time val rule
+			integer! decimal! [
+				val: first+ values
+				if all [
+					decimal? rule
+					number? :val
+				][
+					;; Extract the fractional part of the rule as the rounding scale.
+					;; E.g. 8.2 -> ".2" -> 0.2, which is passed to round/to as the precision.
+					scale: find form rule #"."
+					;; Scientific notation (e.g. 1e-2) needs a leading 1 to parse correctly as decimal.
+					if find scale #"e" [insert scale #"1"]
+					scale: to decimal! scale
+					;; scale = 0.0 means no fractional precision was specified (e.g. rule was 8.0),
+					;; so just round to the nearest integer instead of using round/to.
+					val: either zero? scale [round val][round/to val scale]
+					;; The integer part of the rule is the field width (0 means no padding).
+					if zero? rule: to integer! rule [
+						append out val
+						continue
 					]
+				]
+				val: form :val
+				;; truncate to field width
+				clear at val 1 + abs rule
+				either negative? rule [
+					;; right-align: pad on the left
+					pad-len: (abs rule) - val/width
+					if pad-len > 0 [
+						insert val copy/part p mod pad-len plen
+						insert/dup val p pad-len / plen
+					]
+					append out val
+				][
+					;; left-align: pad on the right
+					append out val
+					pad-len: rule - val/width
+					if pad-len > 0 [
+						append/dup out p pad-len / plen
+						append out copy/part p mod pad-len plen
+					]
+				]
+			]
+			string! char! [append out rule]
+			refinement!   [append out any [ansi/:rule ""]]
+			tag! [
+				append out switch/default type?/word val: first+ values [
+					date! time! [ format-datetime val rule ]
 					;TODO: other types formatting...
 				][	
-					; when there is not expected value, ignore it and output just the rule
+					;; when there is not expected value, ignore it and output just the rule
 					-- values
 					form rule
 				]
 			]
 		]
 	]
-
-	; Provided enough rules? If not, append rest:
+	;; Provided enough rules? If not, append rest:
 	if not tail? values [append out values]
-	head out
-]
+	copy out
+] :system/options
 
-format-date-time: function/with [
-	"replaces a subset of ISO 8601 abbreviations such as yyyy-MM-dd hh:mm:ss"
-	value [date! time!]
-	rule  [string! tag!]
+format-datetime: function/with [
+	"Formats date! or time! values using ISO 8601-style abbreviations." {
+	```
+	 format-datetime now "yyyy-MM-dd hh:mm:ss.sss"  ;== 2026-05-06 19:03:45.123
+	 format-datetime now/date "dddd, mmmm dd yyyy"  ;== Wednesday, May 06 2026
+	```
+	Supported tokens:
+	```
+	 yyyy/mm/dd  dddd/ddd  mmmm/mmm/mm/m  hh/h  ss/s  unixepoch  ±zz:zz/zzzz
+	 .sss     ;; handles fractional seconds (pads/trims to match token length)
+	```}
+	value [date! time!]  {Input date/time to format}
+	rule  [string! tag!] {Format pattern with tokens to replace}
 ][
 	;-- inspired by https://github.com/greggirwin/red-formatting/blob/master/format-date-time.red
 	tmp: to string! rule
@@ -560,9 +607,9 @@ format-date-time: function/with [
 
 
 printf: func [
-	"Formatted print."
-	fmt "Format"
-	val "Value or block of values"
+	"Print a formatted string to the console. See `format` for the format dialect"
+	fmt "Format rules — a block or single rule"
+	val "Value or block of values consumed by the rules (block is reduced)"
 ][
 	print format :fmt :val
 ]

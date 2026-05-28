@@ -37,8 +37,7 @@ start: func [
 	sys/log/debug 'REBOL ["Starting... boot level:" boot-level]
 	;trace 1
 	;crash-here ; test error handling (undefined word)
-
-	boot-level: any [boot-level 'full]
+	boot-level: any [boot-level 'start]
 	start: 'done ; only once
 	init-schemes ; only once
 
@@ -212,22 +211,28 @@ start: func [
 	]
 
 	;-- Setup SECURE configuration
-	if select lib 'secure [
-		lib/secure (case [
-			flags/secure [secure]
-			flags/secure-min ['allow]
-			flags/secure-max ['quit]
-			file? script [
-				compose [
-					file throw
-					(path) [allow read]
-					(home) [allow read]
-					(data) allow
-					(first script-path) allow
+	if find lib 'secure [
+		case [
+			flags/secure-min [lib/secure allow]
+			flags/secure-max [lib/secure ask]
+			flags/secure     [lib/secure (secure)]
+			true [
+				;; main exceptions...
+				lib/secure (compose [
+					file ask        ;; ask on file access, except...
+					(data)  allow   ;; full access in the data directory..
+					(home) [allow read allow execute] ;; read+exe in home
+				])
+				if file? script [
+					lib/secure (
+						compose [
+							(path) [allow read]       ;; allow read in the startup directory
+							(first script-path) allow ;; full control in the script's directory
+						]
+					)
 				]
 			]
-			'else ['none] ;compose [file throw (file) [allow read] %. allow]] ; default
-		])
+		]
 	]
 
 	;-- Evaluate rebol.reb script:
@@ -255,8 +260,8 @@ start: func [
 		try/with [do data/user.reb][sys/log/error 'REBOL system/state/last-error]
 	]
 
-
-	;if :lib/secure [protect-system-object]
+	boot-level: 'full
+	protect 'system/options/boot-level
 
 	; Import module?
 	if import [lib/import :import]

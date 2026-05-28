@@ -171,9 +171,10 @@ Rebol [
 		--assert b = mold a
 
 	--test-- "mold/part string!"
-		--assert     {"a} = mold/part "abcd" 2
-		--assert       "" = mold/part "abcd" 0
 		--assert       "" = mold/part "abcd" -2
+		--assert       "" = mold/part "abcd"  0
+		--assert      {"} = mold/part "abcd"  1
+		--assert     {"a} = mold/part "abcd"  2
 		--assert {"abcd"} = mold/part "abcd" 10
 
 	--test-- "mold/form string with a special chars"

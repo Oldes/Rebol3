@@ -77,6 +77,19 @@ Rebol [
 	--assert  2.0 = round/half-ceiling  1.5
 	--assert -1.0 = round/half-ceiling -1.5
 
+	--test-- "round/to"
+	x: 11.6543212345679
+	--assert 11 == round/to x 0
+	--assert 12 == round/to x 1
+	--assert 12.0 == round/to x 1.0
+	--assert 11.7 == round/to x 0.1
+	--assert 11.65 == round/to x 0.01
+	--assert 11.654 == round/to x 0.001
+	--assert 11.65432123 == round/to x 1e-8
+	--assert 11.6543212345679 == round/to x 1e-300
+	--assert 11.6543212345679 == round/to x 1e-400
+	--assert 11.6543212345679 == round/to x 0.0
+
 	--test-- "round/even/to"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2324
 	--assert 2 = round/even/to 1.555555 1

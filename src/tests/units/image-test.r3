@@ -427,18 +427,38 @@ FFFFFFDC1616212121212121
 
 ===start-group=== "Luminosity / Grayscale"
 ;; Use to convert images (or single colors) to grayscale
---test-- "Luminosity tuple"
-	--assert  76 == luminosity 255.0.0
-	--assert 149 == luminosity 0.255.0
-	--assert  29 == luminosity 0.0.255
-	--assert 158 == luminosity 255.128.64
---test-- "Luminosity image"
+--test-- "Luminosity tuple (BT.709)"
+	--assert  54 == luminosity 255.0.0
+	--assert 182 == luminosity 0.255.0
+	--assert  18 == luminosity 0.0.255
+	--assert 150 == luminosity 255.128.64
+--test-- "Luminosity image (BT.709)"
 	--assert all [
 		img: make image! [2x1]
 		img/1: 255.128.64.255 
 		img/2: 64.128.255.128
 		#{FF8040FF4080FF80} == to binary! img
-		#{9E9E9EFF7B7B7B80} == to binary! luminosity img ;@@ image is modified!
+		#{969696FF7B7B7B80} == to binary! luminosity img ;@@ image is modified!
+		#{969696FF7B7B7B80} == to binary! img
+		#{967B} == gray-bin: img/luminosity
+		255.0.0 == img/color: red     ;; fills image with red color, alpha is not modified
+		#{FF0000FFFF000080} == to binary! img
+		#{967B} == img/gray: gray-bin ;; fills image with gray data, returns input binary
+		#{969696FF7B7B7B80} == to binary! img
+	]
+
+--test-- "Luminosity/luma tuple (BT.601)"
+	--assert  76 == luminosity/luma 255.0.0
+	--assert 149 == luminosity/luma 0.255.0
+	--assert  29 == luminosity/luma 0.0.255
+	--assert 158 == luminosity/luma 255.128.64
+--test-- "Luminosity/luma image (BT.601)"
+	--assert all [
+		img: make image! [2x1]
+		img/1: 255.128.64.255 
+		img/2: 64.128.255.128
+		#{FF8040FF4080FF80} == to binary! img
+		#{9E9E9EFF7B7B7B80} == to binary! luminosity/luma img ;@@ image is modified!
 		#{9E9E9EFF7B7B7B80} == to binary! img
 		#{9E7B} == gray-bin: img/luminosity
 		255.0.0 == img/color: red     ;; fills image with red color, alpha is not modified

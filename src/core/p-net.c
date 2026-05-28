@@ -215,6 +215,8 @@ enum Transport_Types {
 			arg = Obj_Value(spec, STD_PORT_SPEC_NET_HOST);
 			val = Obj_Value(spec, STD_PORT_SPEC_NET_PORT);
 
+			Check_Security(SYM_NET, POL_EXEC, Obj_Value(spec, STD_PORT_SPEC_NET_REF));
+
 			if (OS_Do_Device(sock, RDC_OPEN)) Trap_Port(RE_CANNOT_OPEN, port, -12);
 			SET_OPEN(sock);
 

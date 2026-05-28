@@ -547,33 +547,23 @@ static struct digest {
 
 /***********************************************************************
 **
-*/	REBNATIVE(dehex)
+*/	REBSER* Dehex_String(REBYTE* input, REBLEN length, const REBCHR escape_char, REBFLG as_uri)
 /*
-**		Works for any string.
-**
 ***********************************************************************/
 {
-	REBVAL *arg        = D_ARG(1);
-//	REBOOL  ref_escape = D_REF(2);
-//	REBVAL *val_escape = D_ARG(3);
-	REBOOL as_uri      = D_REF(4);
-	REBINT len = (REBINT)VAL_LEN(arg); // due to len -= 2 below
 	REBU32 n;
-	REBSER *ser;
-	REBYTE *bp, *dp;
-
-	const REBCHR escape_char = D_REF(2) ? VAL_CHAR(D_ARG(3)) : '%';
+	REBSER* ser;
+	REBYTE* bp, * dp;
+	REBI64 len = (REBI64)length;
 	const REBCHR space_char = escape_char == '=' ? '_' : '+';
 
-	ASSERT1(VAL_BYTE_SIZE(arg), RP_BAD_SIZE);
-	bp = VAL_BIN_DATA(arg);
-
-	dp = Reset_Buffer(BUF_SCAN, len+1); // count also the terminating null byte
+	bp = input;
+	dp = Reset_Buffer(BUF_SCAN, len + 1); // count also the terminating null byte
 
 	for (; len > 0; len--) {
-		if (*bp == escape_char && len > 2 && Scan_Hex2(bp+1, &n)) {
+		if (*bp == escape_char && len > 2 && Scan_Hex2(bp + 1, &n)) {
 			*dp++ = (REBYTE)n;
-			bp  += 3;
+			bp += 3;
 			len -= 2;
 		}
 		else if (*bp == space_char && as_uri) {
@@ -584,10 +574,28 @@ static struct digest {
 			*dp++ = *bp++;
 		}
 	}
-
 	*dp = 0;
-	ser = Copy_String(BUF_SCAN, 0, AS_REBLEN(dp - BIN_HEAD(BUF_SCAN)));
+	return Copy_String(BUF_SCAN, 0, AS_REBLEN(dp - BIN_HEAD(BUF_SCAN)));
+}
 
+/***********************************************************************
+**
+*/	REBNATIVE(dehex)
+/*
+**		Works for any string.
+**
+***********************************************************************/
+{
+	REBVAL *arg        = D_ARG(1);
+//	REBOOL  ref_escape = D_REF(2);
+//	REBVAL *val_escape = D_ARG(3);
+//	REBOOL as_uri      = D_REF(4);
+	REBSER *ser;
+
+	const REBCHR escape_char = D_REF(2) ? VAL_CHAR(D_ARG(3)) : '%';
+
+	ASSERT1(VAL_BYTE_SIZE(arg), RP_BAD_SIZE);
+	ser = Dehex_String(VAL_BIN_DATA(arg), VAL_LEN(arg), escape_char, D_REF(4));
 	Set_Series(VAL_TYPE(arg), D_RET, ser);
 
 	return R_RET;

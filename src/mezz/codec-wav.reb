@@ -56,10 +56,10 @@ register-codec [
 				chunk: any [ attempt [to tag! id]  id ]
 				if verbose > 0 [
 					printf [
-						$32
-						"CHUNK: " $1 7 $0
-						"at: "    $1 w $0
-						"bytes: " $1 w $0
+						/green
+						"CHUNK: " /bold 7 /reset
+						"at: "    /bold w /reset
+						"bytes: " /bold w
 					] reduce [mold chunk starts size]
 				]
 				append chunks chunk
@@ -133,7 +133,7 @@ register-codec [
 						binary/read bin [tmp: BYTES :size]
 						try [tmp: to string! tmp]
 						append chunks tmp
-						if verbose > 1 [printf [$33 tmp $0] ""]  
+						if verbose > 1 [print as-yellow tmp]  
 					]
 				][
 					binary/read/into bin [BYTES :size] tail chunks

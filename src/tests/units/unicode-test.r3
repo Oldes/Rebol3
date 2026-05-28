@@ -68,6 +68,8 @@ Rebol [
 			e/id = 'bad-make-arg
 			e/arg2 = #{F09F99}
 		]
+	--test-- "to string! char!"
+		--assert #{F09F9982} == to binary! copy/part to string! #"🙂" 1
 
 ===end-group===
 
@@ -332,6 +334,43 @@ Rebol [
 		--assert (unique/skip "baaččbač" 2) == "baaččb"
 		--assert (unique/skip "b🙂aččb🙂č" 2) == "b🙂aččb🙂č"
 
+	--test-- "mold/part"
+		str: "═════"
+		--assert {"}   == mold/part str 1
+		--assert {"═}  == mold/part str 2
+		--assert {"══} == mold/part str 3
+		--assert {"══} == copy/part mold str 3
+	--test-- "mold/part with LF"
+		str: "^/═════"
+		--assert {"}     == mold/part str 1
+		--assert {"^^}   == mold/part str 2
+		--assert {"^^/}  == mold/part str 3
+		--assert {"^^/═} == mold/part str 4
+		--assert {"^^/═} == copy/part mold str 4
+	--test-- "mold/part with {"
+		str: "{═════"
+		--assert {"}     == mold/part str 1
+		--assert {"^{}   == mold/part str 2
+		--assert {"^{═}  == mold/part str 3
+		--assert {"^{══} == mold/part str 4
+		--assert {"^{══} == copy/part mold str 4
+	--test-- "mold/part long"
+		str: "{═════{═════{═════{═════{═════{═════{═════^""
+		--assert {"}     == mold/part str 1
+		--assert {"^{}   == mold/part str 2
+		--assert {"^{═}  == mold/part str 3
+		--assert {"^{══} == mold/part str 4
+		--assert "{^^{═" == copy/part mold str 4
+	--test-- "copy/part mold/part"
+		str: "═════"
+		--assert {"═} == copy/part mold/part str 4 2
+		--assert {"══} == copy/part mold/part str 4 3
+		--assert {"═══} == copy/part mold/part str 4 4
+		--assert {"═══} == copy/part mold/part str 4 5
+		--assert {"════} == copy/part mold/part str 6 5
+		--assert {"═════"} == copy/part mold/part str 8 8
+
+
 ===end-group===
 
 
@@ -447,6 +486,17 @@ Rebol [
 		--assert     #{62} == find bin #"b"
 		--assert #{C48D62} == find bin "čb"
 		--assert #{C48D62} == find bin "čb"
+
+	--test-- "find in block!"
+		;@@ https://github.com/Oldes/Rebol-issues/issues/2706
+		--assert did find [1 "ce"] "ce"
+		--assert did find [1 "ce"] "Ce"
+		--assert did find [1 "če"] "če"
+		--assert did find [1 "če"] "Če"
+		--assert did find/case [1 "ce"] "ce"
+		--assert not find/case [1 "ce"] "Ce"
+		--assert did find/case [1 "če"] "če"
+		--assert not find/case [1 "če"] "Če"
 
 	--test-- "pick"
 		--assert #"á" == all [s: "áb" pick s 1]

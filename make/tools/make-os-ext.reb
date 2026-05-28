@@ -78,7 +78,7 @@ out: rejoin [
 	xlib
 ]
 
-print out ;wait-for-key
+print out ;read-key
 
 if cnt > 0 [
 	write-generated root-dir/src/include/host-lib.h out

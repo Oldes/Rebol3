@@ -105,11 +105,11 @@ ask: func [
 	"Ask the user for input."
 	question [series!] "Prompt to user"
 	/hide "Turns off echoing inputs"
-	/char "Waits only on single key press and returns char as a result"
-	 limit [bitset! string! block! char! none!] "Limit input to specified chars or control words"
+	/only "Waits only on single key press and returns char as a result"
+	 limit [bitset! string! block! char! word!] "Limit input to specified chars or control words"
 ][
 	prin question
-	either char [wait-for-key/only limit][input/:hide]
+	either only [wait-key/only limit][input/:hide]
 ]
 
 confirm: func [
@@ -204,10 +204,10 @@ dir-tree: func [
 	unless block? value [exit]
 
 	str: [
-		"^[[31;1m    " ;├───"
-		"^[[31;1m    " ;│   "
-		"^[[31;1m    " ;└───"
-		"^[[31;1m    " ;    "
+		"^[[31;1m├───"
+		"^[[31;1m│   "
+		"^[[31;1m└───"
+		"^[[31;1m    "
 	]
 
 	sort/compare value func[a b][
@@ -294,7 +294,7 @@ list-dir: closure/with [
 
 		date: info/3
 		date/zone: 0
-		date: ajoin [" ^[[32m" format-date-time date "dd-mmm-yyyy  hh:mm" "^[[m "]
+		date: ajoin [" ^[[32m" format-datetime date "dd-mmm-yyyy  hh:mm" "^[[m "]
 
 		size: any [info/2 0]
 		if size >= 100'000'000 [size: join to integer! round (size / 1'000'000) "M"]
@@ -309,11 +309,9 @@ list-dir: closure/with [
 				"^[[m"
 			]
 		][
-			format [date $33 -8 $0 #" "] reduce [
+			format [date /yellow -8 /reset #" " /bright-yellow] [
 				size
-				"^[[33;1m"
 				second split-path info/1
-				"^[[m"
 			]
 		]
 	]
