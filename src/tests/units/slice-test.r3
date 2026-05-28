@@ -60,6 +60,89 @@ Rebol [
 	]
 ===end-group===
 
+
+===start-group=== "Slice string"
+--test-- "slice string"
+	--assert all [
+		str: "123456"
+		slc: slice str 3
+		3 == length? slc
+		slc == "123"
+		slc/2: #"x"
+		str/2 ==  #"x"
+		"3x1" == reverse slc
+		str == "3x1456"
+		#"1" == pick slc 3
+		none? pick slc 4
+		s2: slice slc 2
+		2 == length? s2
+		s2 == "3x"
+		"x31" == swap slc next s2
+		str/1 == #"x"
+	]
+--test-- "traverse string slice"
+	--assert all [
+		str: "123456x"
+		slc: slice at str 4 3
+		slc == "456"
+		sum: 0
+		foreach v slc [sum: sum + v]
+		sum == 159
+	]
+	--assert all [
+		sum: 0
+		foreach [a b] slc [sum: sum + a + any [b 0]]
+		sum == 159
+	]
+	--assert all [
+		sum: 0
+		forall slc [sum: sum + slc/1]
+		sum == 159
+	]
+	--assert all [
+		sum: 0
+		forskip slc 2 [sum: sum + slc/1]
+		sum == 106
+	]
+	--assert all [
+		sum: 0
+		while [not tail? slc][sum: sum + first ++ slc]
+		sum == 159
+		tail? slc
+		head? slc: head slc
+	]
+--test-- "parse string capture"
+	str: "123456"
+	--assert all [
+		parse str ["12" capture slc 3 skip "6"]
+		slc == "345"
+	]
+--test-- "slice string protection"
+	str: "abcde"
+	slc: slice at str 3 2
+	--assert all [error? e: try [append str 'x] e/id = 'fixed-sized-series]
+	--assert all [error? e: try [insert str 'x] e/id = 'fixed-sized-series]
+	--assert all [error? e: try [ clear str]    e/id = 'fixed-sized-series]
+
+	--assert all [error? e: try [append slc 'x] e/id = 'fixed-sized-series]
+	--assert all [error? e: try [insert slc 'x] e/id = 'fixed-sized-series]
+	--assert all [error? e: try [ clear slc]    e/id = 'fixed-sized-series]
+
+	;; change is allowed when it doesn't change size
+	--assert all [change slc 'y    slc = "yd"  str = "abyde"]
+	--assert all [change slc "xy"  slc = "xy"  str = "abxye"]
+
+	--assert all [change str "12"   str = "12xye" slc = "xy"]
+	--assert all [change str "123"  str = "123ye" slc = "3y"]
+	--assert all [change str "1234" str = "1234e" slc = "34"]
+
+	--assert all [error? e: try [change/part slc 'x 2] e/id = 'fixed-sized-series]
+	--assert all [error? e: try [change str "123456"   e/id = 'fixed-sized-series]]
+
+
+
+===end-group===
+
 ===start-group=== "Slice vector"
 --test-- "slice vector"
 	--assert all [
