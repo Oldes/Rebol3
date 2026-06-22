@@ -226,8 +226,9 @@ start: func [
 				if file? script [
 					lib/secure (
 						compose [
-							(path) [allow read]       ;; allow read in the startup directory
-							(first script-path) allow ;; full control in the script's directory
+							;; full control in the startup and script's directory
+							(path) allow
+							(first script-path) allow 
 						]
 					)
 				]

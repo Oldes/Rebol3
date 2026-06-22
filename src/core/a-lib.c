@@ -995,7 +995,7 @@ RL_API u32 *RL_Words_Of_Object(REBSER *obj)
 **	Arguments:
 **		obj  - object pointer (e.g. from RXA_OBJECT)
 **	Notes:
-**		Returns a word array similar to MAP_WORDS().
+**		Returns a word array similar to MAP_WORDS (first element is size).
 **		The array is allocated with OS_MAKE. You can OS_FREE it any time.
 */
 {
@@ -1004,10 +1004,11 @@ RL_API u32 *RL_Words_Of_Object(REBSER *obj)
 	REBVAL *syms;
 
 	syms = FRM_WORD(obj, 1);
-	words = OS_Make(obj->tail * sizeof(u32)); // One less, because SELF not included.
-	for (index = 0; index < (obj->tail-1); syms++, index++) {
+	words = OS_Make((obj->tail + 1) * sizeof(u32));
+	for (index = 1; index < obj->tail; syms++, index++) {
 		words[index] = VAL_BIND_CANON(syms);
 	}
+	words[0] = index;
 	words[index] = 0;
 	return words;
 }

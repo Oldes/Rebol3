@@ -1094,3 +1094,30 @@ static REBDEC lerp_decimal(REBDEC s, REBDEC e, REBDEC t) {
 	SET_INTEGER(D_RET, a / b);
 	return R_RET;
 }
+
+/***********************************************************************
+**
+*/	REBNATIVE(distance)
+/*
+//	distance: native [
+//		{Returns the distance between two points}
+//		value1  [pair!]
+//		value2  [pair!]
+//		/taxicab "Use Manhattan distance (sum of absolute differences)"
+//	]
+***********************************************************************/
+{
+	REBDEC dx = VAL_PAIR_X(D_ARG(1)) - VAL_PAIR_X(D_ARG(2));
+	REBDEC dy = VAL_PAIR_Y(D_ARG(1)) - VAL_PAIR_Y(D_ARG(2));
+	REBDEC dist;
+	if (D_REF(3)) {
+		// Manhattan distance
+		dist = fabs(dx) + fabs(dy);
+	}
+	else {
+		// Euclidean distance
+		dist = hypot(dx, dy);
+	}
+	SET_DECIMAL(D_RET, dist);
+	return R_RET;
+}

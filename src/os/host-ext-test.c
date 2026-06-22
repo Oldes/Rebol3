@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -74,6 +74,7 @@ enum test_cmd_words {
 	CMD_xword0,
 	CMD_xword1,
 	CMD_xobj1,
+	CMD_xobj2,
 	CMD_calls,
 	CMD_calla,
 	CMD_img0,
@@ -90,6 +91,7 @@ enum test_cmd_words {
 	CMD_echo,
 	CMD_path,
 	CMD_stru,
+
 };
 char *RX_Spec =
 	"REBOL [\n"
@@ -106,6 +108,7 @@ char *RX_Spec =
 	"xword0: command [{return system word from internal string}]\n"
 	"xword1: command [{return word from string} str [string!]]\n"
 	"xobj1:  command [{return obj field value} obj [object!] field [word! lit-word!]]\n"
+	"xobj2:  command [{print object's field names and types} obj [object!]]\n"
 	"calls:  command [{test sync callback} context [object!] word [word!]]\n"
 	"calla:  command [{test async callback} context [object!] word [word!]]\n"
 	"img0:   command [{return 10x20 image}]\n"
@@ -152,6 +155,7 @@ char *RX_Spec =
 			"[xword0]\n"
 			"[xword1 {system}]\n"
 			"[xobj1 system 'version]\n"
+			"[xobj2 system]\n"
 
 
 			// We just use this context as example. Normally, it would be
@@ -287,6 +291,30 @@ RXIEXT int RX_Call(int cmd, RXIFRM *frm, void *ctx) {
 		RXA_TYPE(frm, 1) = RL_GET_FIELD(RXA_OBJECT(frm, 1), RXA_WORD(frm, 2), &RXA_ARG(frm, 1));
 		break;
 
+	case CMD_xobj2: //command [{print object's field names and type ids} obj [object!]]
+	{
+		REBSER* obj = RXA_OBJECT(frm, 1);
+		REBCNT* words = RL_WORDS_OF_OBJECT(obj);
+		REBCNT type, index;
+		RXIARG val;
+		printf("Object has %u fields:\n", words[0]-1); // one less, because first value is the length!
+		for (size_t i = 1; words[i] != 0; i++) {
+			// Get field's name
+			REBYTE* name = RL_WORD_STRING(words[i]);
+			// Test if word is found.
+			index = RL_FIND_WORD(words, words[i]);
+			// Get fields value as RXIARG and its type.
+			type = RL_GET_FIELD(obj, words[i], &val);
+			printf(" field %u\ttype: %u\tname: %s\n", index, type, name);
+			// Release the name when not needed anymore!
+			OS_Free(name);
+		}
+		// Release the words array.
+		OS_Free(words);
+		// Return unset value
+		RXA_TYPE(frm, 1) = RXT_UNSET;
+		break;
+	}
 	case CMD_calls: //command [{test sync callback} context [object!] word [word!]]
 		RXA_TYPE(frm, 1) = Test_Sync_Callback(RXA_OBJECT(frm, 1), RXA_WORD(frm, 2), &RXA_ARG(frm, 1));
 		break;
@@ -468,10 +496,13 @@ RXIEXT int RX_Call(int cmd, RXIFRM *frm, void *ctx) {
 		if (spec && spec->series) {
 			REBSTI *info = (REBSTI *)BIN_HEAD(spec->series);
 			REBSTF *field = (REBSTF *)info + 1;
+			REBYTE *word;
 			printf("struct id: %u fields: %u\n", info->id, info->count);
 			for (REBCNT i = 0; i < info->count; ++i, ++field) {
-				printf(" field name: %s\n", RL_WORD_STRING(field->sym));
+				word = RL_WORD_STRING(field->sym); // allocates a new string!
+				printf(" field name: %s\n", word);
 				printf("       type: %u size: %u\n", field->type, field->size);
+				OS_Free(word); // release the string
 			}
 		}
 		return RXR_VALUE;
