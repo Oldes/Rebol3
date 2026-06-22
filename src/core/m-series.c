@@ -70,6 +70,7 @@
 	REBCNT x;
 
 	if (delta == 0) return;
+	ASSERT1(!IS_FIXED_SIZE(series), RP_BAD_SERIES);
 
 	// Optimized case of head insertion:
 	if (index == 0 && SERIES_BIAS(series) >= delta) {

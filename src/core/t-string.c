@@ -964,8 +964,6 @@ FORCE_INLINE
 	case A_APPEND:
 	case A_INSERT:
 	case A_CHANGE:
-		if (IS_FIXED_SIZE_VALUE(value)) Trap0(RE_FIXED_SIZED_SERIES);
-		//Modify_String(action, value, arg);
 		// Length of target (may modify index): (arg can be anything)
 		len = Partial1((action == A_CHANGE) ? value : arg, DS_ARG(AN_LENGTH));
 		index = VAL_INDEX(value);

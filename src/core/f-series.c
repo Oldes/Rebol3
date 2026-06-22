@@ -160,6 +160,7 @@
 	case A_REMOVE:
 		// /PART length
 		TRAP_PROTECT(VAL_SERIES(value));
+		TRAP_FIXED_SIZE(VAL_SERIES(value));
 		if (DS_REF(ARG_REMOVE_KEY)) {
 			if (ANY_BLOCK(value)) {
 				len = 2;

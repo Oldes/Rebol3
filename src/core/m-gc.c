@@ -310,10 +310,14 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 
 	MARK_SERIES(series);
 
-	// If not a block, go no further
-	if (SERIES_WIDE(series) != sizeof(REBVAL) || IS_BARE_SERIES(series)) return;
+	// If not a block or if sliced block, go no further
+	if (
+		SERIES_WIDE(series) != sizeof(REBVAL)
+		|| IS_BARE_SERIES(series)
+		|| IS_SLICE_SERIES(series))
+		return;
 
-	ASSERT2(RP_SERIES_OVERFLOW, SERIES_TAIL(series) < SERIES_REST(series));
+	ASSERT2(SERIES_TAIL(series) < SERIES_REST(series), RP_SERIES_OVERFLOW);
 
 	//Moved to end: ASSERT1(IS_END(BLK_TAIL(series)), RP_MISSING_END);
 
