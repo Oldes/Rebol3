@@ -329,12 +329,12 @@ typedef void(*CFUNC)(void *);
 // with a negative size, which is not allowed in C.
 #define STATIC_ASSERT(e) do {(void)sizeof(char[1 - 2*!(e)]);} while(0)
 
-#define FLAGIT(f)           (1<<(f))
-#define GET_FLAG(v,f)       (((v) & (1<<(f))) != 0)
-#define GET_FLAGS(v,f,g)    (((v) & ((1<<(f)) | (1<<(g)))) != 0)
-#define SET_FLAG(v,f)       ((v) |= (1<<(f)))
-#define CLR_FLAG(v,f)       ((v) &= ~(1<<(f)))
-#define CLR_FLAGS(v,f,g)    ((v) &= ~((1<<(f)) | (1<<(g))))
+#define FLAGIT(f)           (1u<<(f))
+#define GET_FLAG(v,f)       (((v) & FLAGIT(f)) != 0)
+#define GET_FLAGS(v,f,g)    (((v) & (FLAGIT(f) | FLAGIT(g))) != 0)
+#define SET_FLAG(v,f)       ((v) |= FLAGIT(f))
+#define CLR_FLAG(v,f)       ((v) &= ~FLAGIT(f))
+#define CLR_FLAGS(v,f,g)    ((v) &= ~(FLAGIT(f) | FLAGIT(g)))
 #define ASSIGN_FLAG(f, b, set) ((set) ? SET_FLAG(f, b) : CLR_FLAG(f, b))
 
 #ifndef MIN
