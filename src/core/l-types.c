@@ -653,6 +653,7 @@ end_date:
 {
 	const REBYTE *ep, *xp;
 	REBYTE buf[MAX_NUM_LEN+4];
+	char *se;
 
 	//ep = cp;
 	//ep = Grab_Int(ep, &n);
@@ -680,12 +681,12 @@ end_date:
 		}
 		else return 0;
 	} else {
-		VAL_PAIR_X(value) = (float)atof((char*)(&buf[0])); //n;
+		VAL_PAIR_X(value) = (float)STRTOD((char*)(&buf[0]), &se);
 	}
 #else
-	VAL_PAIR_X(value) = (float)atof((char*)(&buf[0])); //n;
+	VAL_PAIR_X(value) = (float)STRTOD((char*)(&buf[0]), &se);
 #endif // !USE_NO_INFINITY
-	
+
 	if (*ep != 'x' && *ep != 'X') return 0;
 	ep++;
 
@@ -714,10 +715,10 @@ end_date:
 		else return 0;
 	}
 	else {
-		VAL_PAIR_Y(value) = (float)atof((char*)(&buf[0])); //n;
+		VAL_PAIR_Y(value) = (float)STRTOD((char*)(&buf[0]), &se);
 	}
 #else
-	VAL_PAIR_Y(value) = (float)atof((char*)(&buf[0])); //n;
+	VAL_PAIR_Y(value) = (float)STRTOD((char*)(&buf[0]), &se);
 #endif // !USE_NO_INFINITY
 
 	if (len > (REBCNT)(xp - cp)) return 0;
