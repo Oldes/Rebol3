@@ -200,7 +200,7 @@ X*/	REBINT CRC_String(REBVAL *val)
 	REBCNT m, n;
 	REBCNT hash;
 
-	if (len == UNKNOWN) len = (REBINT)LEN_BYTES(str);
+	if (len == UNKNOWN) len = LEN_BYTES(str);
 
 	hash = len + (REBYTE)LO_CASE(*str);
 
