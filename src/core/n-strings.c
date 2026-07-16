@@ -559,7 +559,6 @@ static struct digest {
 ***********************************************************************/
 {
 	REBU32 n;
-	REBSER* ser;
 	REBYTE* bp, * dp;
 	REBI64 len = (REBI64)length;
 	const REBCHR space_char = escape_char == '=' ? '_' : '+';
