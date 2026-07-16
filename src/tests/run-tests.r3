@@ -52,6 +52,7 @@ dt [ ;- delta time
 		%units/module-test.r3
 		%units/mold-test.r3
 		%units/money-test.r3
+		%units/native-test.r3
 		%units/object-test.r3
 		%units/os-test.r3
 		%units/pair-test.r3

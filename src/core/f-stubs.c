@@ -871,10 +871,9 @@ FORCE_INLINE
 /*
 ***********************************************************************/
 {
-	if (val < mini) val = mini;
-	else if (val > maxi) val = maxi;
-	return val;
+	return MAX(mini, MIN(maxi, val));
 }
+
 FORCE_INLINE
 /***********************************************************************
 **
@@ -882,9 +881,7 @@ FORCE_INLINE
 /*
 ***********************************************************************/
 {
-	if (val < mind) val = mind;
-	else if (val > maxd) val = maxd;
-	return val;
+	return fmax(mind, fmin(maxd, val));
 }
 
 /***********************************************************************
