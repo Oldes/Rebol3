@@ -482,7 +482,7 @@ static REBU64 base36_powers[BASE36_LENGTH] = {
 	REBYTE *bp;
 	const REBYTE *cp;
 	REBCNT count = 0;
-	REBINT accum = 0;
+	REBCNT accum = 0;
 	REBYTE lex;
 	REBSER *ser;
 
@@ -585,7 +585,7 @@ err:
 	REBYTE *bp;
 	const REBYTE *cp;
 	REBCNT flip, pos;
-	REBINT accum;
+	REBCNT accum;
 	REBYTE lex;
 	REBSER *ser;
 
