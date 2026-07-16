@@ -537,12 +537,12 @@ err:
 	REBYTE *bp;
 	const REBYTE *cp;
 	REBCNT count = 0;
-	REBINT accum = 0;
+	REBCNT accum = 0;
 	REBYTE lex;
 	REBINT val;
 	REBSER *ser;
 
-	ser = Make_Binary(len + 1 / 2);
+	ser = Make_Binary((len + 1) / 2);
 	bp = STR_HEAD(ser);
 	cp = *src;
 
