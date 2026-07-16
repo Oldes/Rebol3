@@ -692,8 +692,8 @@ static int Read_Key_Event(REBEVT *evt) {
 			}
 			else {
 				// read-key
-				REBEVT evt;
-				int result;
+				REBEVT evt = {0};
+				int result = DR_IGNORE;
 
 				req->key.uchar = 0;
 				req->key.virtu = 0;
