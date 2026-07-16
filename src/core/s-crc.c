@@ -113,16 +113,15 @@ static REBCNT *CRC32_Table = 0;
 
 /***********************************************************************
 **
-*/	REBINT Compute_CRC24(REBYTE *str, REBCNT len)
+*/	REBCNT Compute_CRC24(const REBYTE *str, REBCNT len)
 /*
 ***********************************************************************/
 {
-	REBYTE	n;
-	REBINT crc = (REBINT)len + (REBINT)((REBYTE)(*str));
+	REBCNT crc = CRCINIT; // originally there was not standard seed: len + *str
 
-	for (; len > 0; len--) {
-		n = (REBYTE)((crc >> CRCSHIFTS) ^ (REBYTE)(*str++));
-		crc = MASK_CRC(crc << 8) ^ (REBINT)CRC24_Table[n];
+	while (len--) {
+		REBYTE n = (REBYTE)(crc >> CRCSHIFTS) ^ *str++;
+		crc = MASK_CRC(crc << 8) ^ CRC24_Table[n];
 	}
 
 	return crc;
@@ -224,29 +223,30 @@ X*/	REBINT CRC_String(REBVAL *val)
 
 /***********************************************************************
 **
-*/	REBINT Compute_IPC(REBYTE *data, REBCNT length)
+*/	REBCNT Compute_IPC(const REBYTE *data, REBCNT length)
 /*
 **		Compute an IP checksum given some data and a length.
 **		Used only on BINARY values.
 **
 ***********************************************************************/
 {
-	REBCNT	lSum = 0;	// stores the summation
-	REBYTE	*up = data;
+	REBCNT hash = 0;
+	const REBYTE* up = data;
 
 	while (length > 1) {
-		lSum += (up[0] << 8) | up[1];
+		hash += ((REBCNT)up[0] << 8) | up[1];
 		up += 2;
 		length -= 2;
 	}
 
 	// Handle the odd byte if necessary
-	if (length) lSum += *up;
+	if (length) hash += *up;
 
-	// Add back the carry outs from the 16 bits to the low 16 bits
-	lSum = (lSum >> 16) + (lSum & 0xffff);	// Add high-16 to low-16
-	lSum += (lSum >> 16);					// Add carry
-	return (REBINT)( (~lSum) & 0xffff);		// 1's complement, then truncate
+	// Fold 32-bit sum to 16 bits
+	hash  = (hash >> 16) + (hash & 0xFFFF);
+	hash += (hash >> 16);
+
+	return (~hash) & 0xFFFF;
 }
 
 

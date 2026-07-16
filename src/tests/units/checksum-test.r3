@@ -64,8 +64,8 @@ Rebol [
 		--assert       65537 = checksum "^@" 'adler32
 		--assert    11731034 = checksum "X^A" 'adler32
 		--assert   695534982 = checksum "message digest" 'adler32
-		--assert -1965353716 = checksum "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789" 'adler32
-		--assert -1749675927 = checksum "12345678901234567890123456789012345678901234567890123456789012345678901234567890" 'adler32
+		--assert  2329613580 = checksum "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789" 'adler32
+		--assert  2545291369 = checksum "12345678901234567890123456789012345678901234567890123456789012345678901234567890" 'adler32
 
 
 ===end-group===

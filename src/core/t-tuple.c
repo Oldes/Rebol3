@@ -372,7 +372,7 @@
 
 	case A_RANDOM:
 		if (D_REF(2)) { // seed
-			Set_Random(Compute_CRC24(vp, len));
+			Set_Random((REBI64)Compute_CRC24(vp, len));
 			return R_UNSET;
 		}
 		for (; len > 0; len--, vp++) {
