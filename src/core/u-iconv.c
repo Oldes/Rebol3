@@ -824,7 +824,6 @@ convert_to:
 
 	const char *fromcode = cs_cast(norm_codepage_name(from_cp));
 	const char *tocode;
-	REBFLG bToString = FALSE;
 
 	if (!fromcode) {
 		Trap1(RE_INVALID_ARG, val_from);
@@ -834,7 +833,6 @@ convert_to:
 		if (!tocode) Trap1(RE_INVALID_ARG, val_to);
 	} else {
 		tocode = "UTF-8";
-		bToString = TRUE;
 	}
 	//printf("iconv_open %s %s\n", tocode, fromcode);
 	cd = iconv_open(tocode, fromcode);
@@ -888,7 +886,7 @@ convert_to:
 		if (src_size == 0) break;
 	}
 	SERIES_TAIL(dest) = (REBCNT)((REBYTE*)dst - BIN_HEAD(dest));
-	if (!bToString) {
+	if (strcmp(tocode, "UTF-8") != 0) {
 		SET_BINARY(D_RET, dest);
 	}
 	else {
