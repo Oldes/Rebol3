@@ -170,8 +170,11 @@ struct rebol_device {
 #define DEFINE_DEV(w,t,v,c,m,s) REBDEV w = { \
 	.title = t, \
 	.version = v, \
+	.date = 0, \
 	.commands = c, \
 	.max_command = m, \
+	.flags = 0, \
+	.pending = 0, \
 	.req_size = s \
 }
 
