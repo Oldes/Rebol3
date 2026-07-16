@@ -359,7 +359,7 @@ static struct digest {
 	else if (sym == SYM_HASH) {  // /hash
 		if(!D_REF(ARG_CHECKSUM_WITH)) Trap0(RE_MISSING_ARG);
 		if (!IS_INTEGER(spec)) Trap1(RE_BAD_REFINE, D_ARG(ARG_CHECKSUM_SPEC));
-		sum = MAX(1, VAL_INT32(spec)); // size of the hash table
+		sum = (REBCNT)MAX(1, VAL_INT64(spec)); // size of the hash table
 		sum = Hash_Value(data) % sum;
 	}
 	else if (sym == SYM_CRC24) {
