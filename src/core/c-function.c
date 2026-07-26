@@ -218,7 +218,7 @@
 		REBVAL *args = BLK_HEAD(VAL_FUNC_ARGS(value))+1;
 		REBCNT w = 0;
 		for (; NOT_END(args); args++) {
-			if(IS_REFINEMENT(args) && VAL_WORD_CANON(args) == SYM_LOCAL) break;
+			if(IS_REFINEMENT(args)) break;
 			else if(IS_WORD(args))
 				w++;
 		}

@@ -217,6 +217,13 @@ Rebol [
 	--assert op? try [.: make op! [[a "val1" b "val2" /local c ][ c: none join a b ]]]
 	--assert "a"."b" = "ab"
 	--assert "a".["b" "c"] = "abc"
+--test-- "make op! from function with refinement"
+	;@@ https://github.com/Oldes/Rebol-issues/issues/2720
+	fun: func[a b /p][(abs a - b) <= (abs a * 0.01)]
+	--assert all [
+		op? try [aeq: make op! :fun]
+		1.011 aeq 1.01
+	]
 --test-- "body-of op!"
 	--assert (body-of :+*) = [a + (a * b)]
 	--assert (body-of :. ) = [c: none join a b]
