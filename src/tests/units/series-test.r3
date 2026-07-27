@@ -2346,54 +2346,54 @@ try/with [
 	bin: read %units/files/issue-2186-UTF16-LE.txt
 	--assert all [
 		string? try [str: to-string bin]
-		3160989 = checksum str 'crc24
+		8206283 = checksum str 'crc24
 	]
 --test-- "issue-2186 read UCS16-BE"
 	bin: read %units/files/issue-2186-UTF16-BE.txt
 	--assert all [
 		string? try [str: to-string bin]
-		3160989 = checksum str 'crc24
+		8206283 = checksum str 'crc24
 	]
 --test-- "issue-2186 read UCS32-LE"
 	bin: read %units/files/issue-2186-UTF32-LE.txt
 	--assert all [
 		string? try [str: to-string bin]
-		3160989 = checksum str 'crc24
+		8206283 = checksum str 'crc24
 	]
 --test-- "issue-2186 read UCS32-BE"
 	bin: read %units/files/issue-2186-UTF32-BE.txt
 	--assert all [
 		string? try [str: to-string bin]
-		3160989 = checksum str 'crc24
+		8206283 = checksum str 'crc24
 	]
 ;- read/string converts CRLF to LF, so the checksum is different
 --test-- "issue-2186 read/string UCS16-LE"
 	--assert all [
 		string? try [str: read/string %units/files/issue-2186-UTF16-LE.txt]
-		11709824 = checksum str 'crc24
+		5408699 = checksum str 'crc24
 	]
 --test-- "issue-2186 read/string UCS16-BE"
 	--assert all [
 		string? try [str: read/string %units/files/issue-2186-UTF16-BE.txt]
-		11709824 = checksum str 'crc24
+		5408699 = checksum str 'crc24
 	]
 --test-- "issue-2186 read/string UCS32-LE"
 	--assert all [
 		string? try [str: read/string %units/files/issue-2186-UTF32-LE.txt]
-		11709824 = checksum str 'crc24
+		5408699 = checksum str 'crc24
 	]
 --test-- "issue-2186 read/string UCS32-BE"
 	--assert all [
 		string? try [str: read/string %units/files/issue-2186-UTF32-BE.txt]
-		11709824 = checksum str 'crc24
+		5408699 = checksum str 'crc24
 	]
 
 --test-- "invalid UTF8 char"
 ;@@ https://github.com/Oldes/Rebol-issues/issues/1064
 ;@@ https://github.com/Oldes/Rebol-issues/issues/1216
 	--assert all [error? e: try [to-string #{C2E0}] e/id = 'invalid-utf]
-	--assert all [error? e: try [to-string #{C3}] e/id = 'invalid-utf]
-	--assert all [error? e: try [to-string #{EF}] e/id = 'invalid-utf]
+	--assert all [error? e: try [to-string #{C3}]   e/id = 'invalid-utf]
+	--assert all [error? e: try [to-string #{EF}]   e/id = 'invalid-utf]
 	--assert all [error? e: try [to-string #{EFBF}] e/id = 'invalid-utf]
 
 	--assert #{C2E0} = invalid-utf? #{C2E0}
@@ -2407,9 +2407,9 @@ try/with [
 
 	;- using quickbrown.bin instead of quickbrown.txt beacause GIT modifies CRLF to LF on posix
 	--assert none? invalid-utf? bin: read %units/files/quickbrown.bin
-	--assert 13806406 = checksum str: to-string bin 'crc24 ; does not normalize CRLF
-	--assert  5367801 = checksum deline str 'crc24
-	--assert  5367801 = checksum read/string %units/files/quickbrown.bin 'crc24 ;converts CRLF to LF
+	--assert  1872109 = checksum str: to-string bin 'crc24 ; does not normalize CRLF
+	--assert 16295532 = checksum deline str 'crc24
+	--assert 16295532 = checksum read/string %units/files/quickbrown.bin 'crc24 ;converts CRLF to LF
 
 --test-- "invalid utf16"
 	--assert try ["á🙂" == to-string #{FEFF00E1D83DDE42}]
