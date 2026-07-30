@@ -1273,7 +1273,12 @@ data_spec:
 
 	if (IS_INTEGER(sel) || IS_DECIMAL(sel)) {
 		n = Int32(sel);
-		if (n == 0) return (pvs->setval) ? PE_BAD_RANGE : PE_NONE; // allow PICK with zero index but not for POKE
+		// allow PICK with zero index but not for POKE
+		if (n == 0) return (pvs->setval) ? PE_BAD_RANGE : PE_NONE;
+		// Negative selector is relative to the vector's current position (VAL_INDEX),
+		// not the tail: e.g. pick (skip v 2) -1 addresses the element right before
+		// the current one. The ++ here aligns it with the "index = n + VAL_INDEX - 1"
+		// formula used below for positive selectors, so both branches share one path.
 		if (n < 0) n++;
 	} else if (IS_WORD(sel)) {
 		if (set == 0) {
@@ -1292,7 +1297,8 @@ data_spec:
 
 	if (pvs->setval == 0) {
 
-		// Check range:
+		// Check range: n <= 0 means the (possibly negative) selector landed
+		// at or before the head of the series -- nothing to pick there.
 		if (n <= 0 || (REBCNT)n > vect->tail) return PE_NONE;
 
 		// Get element value:
@@ -1304,6 +1310,7 @@ data_spec:
 	//--- Set Value...
 	TRAP_PROTECT(vect);
 
+	// Same range rule as PICK above, but out-of-range is an error for POKE.
 	if (n <= 0 || (REBCNT)n > vect->tail) return PE_BAD_RANGE;
 	Set_Vector_Value(bits, vp, n-1, set);
 	return PE_OK;
