@@ -835,6 +835,49 @@ Rebol [
 	--assert #(u16! [1 2]) < #(u16! [2 2])
 	--assert #(u16! [2 2]) > #(u16! [1 2])
 
+	--test-- "compare vectors - i64"
+		vi1: #(int64! [-1 2]) vi2: #(int64! [1 2])
+		--assert vi1 < vi2
+		--assert not (vi1 > vi2)
+		--assert vi1 = vi1
+		--assert #(i64! [9223372036854775807]) > #(i64! [9223372036854775806]) 
+
+	--test-- "compare vectors - u64"
+		vi1: #(uint64! [1 2]) vi2: #(uint64! [1 3])
+		--assert vi1 < vi2
+		--assert not (vi1 > vi2)
+		--assert #(u64! [0#FFFFFFFFFFFFFFFF]) > #(u64! [0#FEFFFFFFFFFFFFFF])
+
+	--test-- "compare vectors - f32"
+		vf1: #(f32! [-1 2]) vf2: #(f32! [1 2])
+		--assert vf1 < vf2
+		--assert not (vf1 > vf2)
+		--assert vf1 = vf1
+
+	--test-- "compare vectors - f64 - negative zero"
+		vz1: #(float64! [-0.0])
+		vz2: #(float64! [ 0.0])
+		--assert vz1 = vz2
+		--assert not vz1 < vz2
+		--assert not vz1 > vz2
+
+	--test-- "compare vectors - cross-signedness at 64-bit width"
+		vs: #(i64! [-1])
+		vu: #(u64! [0#FFFFFFFFFFFFFFFF])  ;; UINT64_MAX — same bit pattern as -1 in two's complement
+		--assert not vs = vu   ;; must NOT silently treat as equal
+		--assert     vs < vu   ;; -1 is numerically far less than UINT64_MAX
+
+		--assert #(u64! [1 2])  = #(u32! [1 2])
+		--assert #(i64! [1 2])  = #(i32! [1 2])
+		--assert #(i64! [1 2]) != #(i32! [1 3])
+		--assert #(i64! [-1])   = #(i32! [-1])
+		--assert #(i64! [-1])   < #(i32! [0])
+		--assert #(i64! [-1])  != #(u32! [-1])
+
+	--test-- "compare vectors - incompatible categories should error"
+		--assert error? try [#(i64! [1 2]) = #(f64! [1.0 2.0])]
+
+
 ===end-group===
 
 

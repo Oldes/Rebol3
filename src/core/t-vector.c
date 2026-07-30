@@ -854,29 +854,55 @@ return_number:
 	REBCNT l2 = VAL_LEN(b);
 	REBCNT len = MIN(l1, l2);
 	REBCNT n;
-	REBVAL v1;
-	REBVAL v2;
-	REBYTE *d1 = VAL_SERIES(a)->data;
-	REBYTE *d2 = VAL_SERIES(b)->data;
 	REBCNT b1 = VECT_TYPE(VAL_SERIES(a));
 	REBCNT b2 = VECT_TYPE(VAL_SERIES(b));
+	REBYTE* d1 = VAL_SERIES(a)->data;
+	REBYTE* d2 = VAL_SERIES(b)->data;
+	REBVAL v1, v2;
+	REBINT cmp = 0;
 
-	if (
-		(b1 >= VTSF08 && b2 < VTSF08)
-		|| (b2 >= VTSF08 && b1 < VTSF08)
-	) Trap0(RE_NOT_SAME_TYPE);
+	REBOOL float1 = (b1 >= VTSF08);
+	REBOOL float2 = (b2 >= VTSF08);
+	if (float1 != float2) Trap0(RE_NOT_SAME_TYPE);
 
 	for (n = 0; n < len; n++) {
 		get_vect(b1, d1, n + VAL_INDEX(a), &v1);
 		get_vect(b2, d2, n + VAL_INDEX(b), &v2);
-		if (VAL_UNT64(&v1) != VAL_UNT64(&v2)) break;
+
+		if (float1) {
+			REBDEC f1 = VAL_DECIMAL(&v1), f2 = VAL_DECIMAL(&v2);
+			cmp = (f1 > f2) - (f1 < f2);   // -0.0 == 0.0 falls out naturally: cmp == 0
+		}
+		else {
+			REBOOL uns1 = (b1 >= VTUI08 && b1 <= VTUI64);
+			REBOOL uns2 = (b2 >= VTUI08 && b2 <= VTUI64);
+
+			if (!uns1 && !uns2) {
+				REBI64 i1 = VAL_INT64(&v1), i2 = VAL_INT64(&v2);
+				cmp = (i1 > i2) - (i1 < i2);
+			}
+			else if (uns1 && uns2) {
+				REBU64 u1 = VAL_UNT64(&v1), u2 = VAL_UNT64(&v2);
+				cmp = (u1 > u2) - (u1 < u2);
+			}
+			else {
+				REBOOL neg1 = !uns1 && VAL_INT64(&v1) < 0;
+				REBOOL neg2 = !uns2 && VAL_INT64(&v2) < 0;
+				if (neg1 != neg2) cmp = neg1 ? -1 : 1;
+				else if (neg1) {
+					REBI64 i1 = VAL_INT64(&v1), i2 = VAL_INT64(&v2);
+					cmp = (i1 > i2) - (i1 < i2);
+				}
+				else {
+					REBU64 u1 = VAL_UNT64(&v1), u2 = VAL_UNT64(&v2);
+					cmp = (u1 > u2) - (u1 < u2);
+				}
+			}
+		}
+		if (cmp != 0) break;
 	}
 
-	if (n != len) {
-		if (VAL_UNT64(&v1) > VAL_UNT64(&v2)) return 1;
-		return -1;
-	}
-
+	if (cmp != 0) return cmp;
 	return l1 - l2;
 }
 
