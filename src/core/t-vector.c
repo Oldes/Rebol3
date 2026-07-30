@@ -412,6 +412,7 @@ void Find_Maximum_Of_Vector(REBSER *vect, REBVAL *ret) {
 **
 ***********************************************************************/
 {
+#define RETURN_NONE()     {SET_NONE(ret); return TRUE;}
 #define RETURN_DECIMAL(v) {SET_DECIMAL(ret, v); return TRUE;}
 #define RETURN_NUMBER(v)  {SET_DECIMAL(ret, v); goto return_number;}
 
@@ -430,11 +431,13 @@ void Find_Maximum_Of_Vector(REBSER *vect, REBVAL *ret) {
 		break;
 	case SYM_MIN:
 	case SYM_MINIMUM:
+		if (SERIES_TAIL(vect) == 0) RETURN_NONE();
 		if (vqv) RETURN_NUMBER(vqv->minimum);
 		Find_Minimum_Of_Vector(vect, ret);
 		break;
 	case SYM_MAX:
 	case SYM_MAXIMUM:
+		if (SERIES_TAIL(vect) == 0) RETURN_NONE();
 		if (vqv) RETURN_NUMBER(vqv->maximum);
 		Find_Maximum_Of_Vector(vect, ret);
 		break;
@@ -444,8 +447,9 @@ void Find_Maximum_Of_Vector(REBSER *vect, REBVAL *ret) {
 			Query_Vector_Statictics(vect, &out);
 			vqv = &out;
 		}
-		if (field == SYM_RANGE) RETURN_NUMBER((vqv->maximum - vqv->minimum));
+		if (vqv->length == 0) RETURN_NONE();
 		if (field == SYM_SUM) RETURN_NUMBER(vqv->sum);
+		if (field == SYM_RANGE) RETURN_NUMBER((vqv->maximum - vqv->minimum));
 		if (field == SYM_MEAN || field == SYM_AVERAGE) RETURN_DECIMAL(vqv->mean);
 		if (field == SYM_MEDIAN) RETURN_DECIMAL(Query_Vector_Median(vect));
 		if (field == SYM_VARIANCE) RETURN_DECIMAL(vqv->variance);
@@ -460,6 +464,7 @@ return_number:
 	if (VECT_TYPE(vect) < VTSF08) SET_INTEGER(ret, (REBI64)VAL_DECIMAL(ret));
 	return TRUE;
 
+#undef RETURN_NONE
 #undef RETURN_DECIMAL
 #undef RETURN_NUMBER
 }

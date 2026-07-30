@@ -803,6 +803,9 @@ Rebol [
 	    0.0530094331227943
 	]
 
+	--test-- "QUERY on empty vector"
+	--assert (query #(u8! []) all-get-modes) == [_ _ _ _ _ _ _ _ _ _]
+
 
 ===end-group===
 
