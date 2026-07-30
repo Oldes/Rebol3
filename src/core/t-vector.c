@@ -1566,6 +1566,51 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 		VAL_INDEX(value) = index;
 		break;
 
+	case A_TAKE:
+		bits = VECT_TYPE(vect);
+		index = VAL_INDEX(value);
+		REBOOL do_part = D_REF(ARG_TAKE_PART);
+		REBCNT tail = SERIES_TAIL(vect);
+		REBCNT start;
+
+		if (index > tail) index = tail;
+
+		len = do_part ? Partial1(value, D_ARG(ARG_TAKE_RANGE)) : 1;
+
+		if (D_REF(ARG_TAKE_LAST)) {
+			if (len > tail) len = tail;
+			start = tail - len;
+		}
+		else {
+			if (index + len > tail) len = tail - index;
+			start = index;
+		}
+
+		if (len == 0) {
+			if (do_part) {
+				ser = Make_Vector(0, 0, 1, VECT_BIT_SIZE(bits), 0);
+				// NOTE: Make_Vector's `type`/`sign` params need deriving from
+				// bits the same way Make_Vector_Spec does -- it's not just bit-width.
+				SET_VECTOR(D_RET, ser);
+			}
+			else {
+				SET_NONE(D_RET);
+			}
+			return R_RET;
+		}
+		if (do_part) {
+			ser = Copy_Series_Part(vect, start, len);
+			ser->size = vect->size; // preserve type/sign/dims attributes
+			SET_VECTOR(D_RET, ser);
+		}
+		else {
+			get_vect(bits, vect->data, start, D_RET);
+			SET_TYPE(D_RET, (bits >= VTSF08) ? REB_DECIMAL : REB_INTEGER);
+		}
+		Remove_Series(vect, start, len);
+		return R_RET;
+
+
 	case A_CLEAR:
 		index = VAL_INDEX(value);
 		if (index < VAL_TAIL(value)) {

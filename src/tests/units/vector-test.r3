@@ -906,6 +906,71 @@ Rebol [
 ===end-group===
 
 
+===start-group=== "TAKE"
+	;@@ https://github.com/Oldes/Rebol-issues/issues/2714
+	--test-- "take of vector!"
+		v: #(i32! [10 20 30 40 50])
+		--assert (take v) == 10
+		--assert (take/last v) == 50
+		--assert (take/part v 2) == #(i32! [20 30])
+		--assert (take/part/last v 1) == #(i32! [40])
+		--assert empty? v
+		--assert none? take v
+		--assert none? take/last v
+
+	--test-- "take/part with count exceeding remaining length should clamp, not error"
+		v: #(i32! [1 2 3])
+		--assert (take/part v 100) == #(i32! [1 2 3])
+
+	--test-- "take of vector! not at head"
+		v: #(i32! [10 20 30 40 50])
+		v2: skip v 2                    ; v2 view starts at "30" (index 2)
+		--assert (take v2) == 30        ; default take is relative to current position, not absolute head
+		--assert v2 == #(i32! [40 50])
+		--assert  v == #(i32! [10 20 40 50]) ; same underlying series -- shrinks for both refs
+
+	--test-- "take/last of vector! not at head"
+		v: #(i32! [10 20 30 40 50])
+		v2: skip v 3                    ; view = [40 50]
+		--assert (take/last v2) == 50
+		--assert v2 == #(i32! [40])
+		--assert v == #(i32! [10 20 30 40])
+
+	--test-- "take/part of vector! not at head - v1"
+		v: skip #(i32! [10 20 30 40 50]) 2
+		--assert (take/part v 2) == #(i32! [30 40])
+		--assert v == #(i32! [50])
+		--assert (head v) == #(i32! [10 20 50])
+
+	--test-- "take/part of vector! not at head - v2"
+		v: #(i32! [10 20 30 40 50])
+		v2: skip v 1                    ; view = [20 30 40 50]
+		--assert (take/part v2 2) == #(i32! [20 30])
+		--assert v2 == #(i32! [40 50])
+		--assert v == #(i32! [10 40 50])
+
+	--test-- "take/part/last of vector! not at head"
+		v: skip #(i32! [10 20 30 40 50]) 2
+		--assert (take/part/last v 4) == #(i32! [30 40 50])
+		--assert empty? v
+		--assert (head v) == #(i32! [10 20])
+
+	--test-- "take/part/last must not reach before the current index"
+		v: #(i32! [10 20 30 40 50])
+		v2: skip v 3                    ; view = [40 50], only 2 elements visible
+		--assert (take/part/last v2 5) == #(i32! [40 50])   ; clamp to what's visible, not the full tail
+		--assert empty? v2
+		--assert v == #(i32! [10 20 30])   ; the hidden prefix [10 20 30] must survive untouched
+
+	--test-- "take/last exactly at the visible boundary"
+		v: #(i32! [10 20 30 40 50])
+		v2: skip v 2                    ; view = [30 40 50], visible = 3
+		--assert (take/part/last v2 3) == #(i32! [30 40 50])   ; exactly all visible elements
+		--assert empty? v2
+		--assert v == #(i32! [10 20])
+===end-group===
+
+
 ===start-group=== "PICK"
 	--test-- "PICK of vector!"
 	;@@  https://github.com/Oldes/Rebol-issues/issues/748
