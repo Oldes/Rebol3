@@ -806,6 +806,20 @@ Rebol [
 	--test-- "QUERY on empty vector"
 	--assert (query #(u8! []) all-get-modes) == [_ _ _ _ _ _ _ _ _ _]
 
+	--test-- "QUERY on single value vector"
+	--assert (query #(u8! [1])  all-modes) == [
+	    minimum: 1
+	    maximum: 1
+	    range: 0
+	    sum: 1
+	    mean: 1.0
+	    median: 1.0
+	    variance: 0.0
+	    sample-variance: _
+	    population-deviation: 0.0
+	    sample-deviation: _
+	]
+	--assert (query #(u8! [1]) all-get-modes) == [1 1 0 1 1.0 1.0 0.0 _ 0.0 _]
 
 ===end-group===
 

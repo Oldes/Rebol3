@@ -453,9 +453,12 @@ void Find_Maximum_Of_Vector(REBSER *vect, REBVAL *ret) {
 		if (field == SYM_MEAN || field == SYM_AVERAGE) RETURN_DECIMAL(vqv->mean);
 		if (field == SYM_MEDIAN) RETURN_DECIMAL(Query_Vector_Median(vect));
 		if (field == SYM_VARIANCE) RETURN_DECIMAL(vqv->variance);
-		if (field == SYM_SAMPLE_VARIANCE) RETURN_DECIMAL(vqv->sum_of_squares / (SERIES_TAIL(vect) - 1));
 		if (field == SYM_POPULATION_DEVIATION) RETURN_DECIMAL(sqrt(vqv->variance));
-		if (field == SYM_SAMPLE_DEVIATION) RETURN_DECIMAL(sqrt(vqv->sum_of_squares / (SERIES_TAIL(vect) - 1)));
+		if (field == SYM_SAMPLE_VARIANCE || field == SYM_SAMPLE_DEVIATION) {
+			if (vqv->length <= 1) RETURN_NONE();  // undefined: needs at least 2 points
+			REBDEC sample_var = vqv->sum_of_squares / (vqv->length - 1);
+			RETURN_DECIMAL(field == SYM_SAMPLE_VARIANCE ? sample_var : sqrt(sample_var));
+		}
 		return FALSE;
 	}
 	return TRUE;
