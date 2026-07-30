@@ -198,7 +198,7 @@ Rebol [
 	--assert o/minimum = 0
 	--assert o/maximum = 0
 --test-- "QUERY on vector"
-	--assert [signed type size length minimum maximum range sum mean median variance population-deviation sample-deviation] = query v none
+	--assert [signed type size length minimum maximum range sum mean median variance sample-variance population-deviation sample-deviation] = query v none
 	--assert [16 integer!] = query v [:size :type]
 	--assert block? b: query v [signed length]
 	--assert all [not b/signed b/length = 2]
@@ -717,8 +717,8 @@ Rebol [
 
 ===start-group=== "VECTOR statictics"
 ;@@ https://github.com/Oldes/Rebol-issues/issues/2648
-	all-modes: [minimum maximum range sum mean median variance population-deviation sample-deviation]
-	all-get-modes: [:minimum :maximum :range :sum :mean :median :variance :population-deviation :sample-deviation]
+	all-modes: [minimum maximum range sum mean median variance sample-variance population-deviation sample-deviation]
+	all-get-modes: [:minimum :maximum :range :sum :mean :median :variance :sample-variance :population-deviation :sample-deviation]
 	--test-- "int8! vector statictics"
 	v: #(int8! [-2 -1 1 2 4])
 	--assert (query v all-modes) == [
@@ -728,7 +728,8 @@ Rebol [
 	    sum: 4
 	    mean: 0.8
 	    median: 1.0
-	    variance: 22.8
+	    variance: 4.56
+	    sample-variance: 5.7
 	    population-deviation: 2.13541565040626
 	    sample-deviation: 2.38746727726266
 	]
@@ -740,7 +741,8 @@ Rebol [
 	    4
 	    0.8
 	    1.0
-	    22.8
+	    4.56
+	    5.7
 	    2.13541565040626
 	    2.38746727726266
 	]
@@ -754,7 +756,8 @@ Rebol [
 	    sum: 53
 	    mean: 10.6
 	    median: 11.0
-	    variance: 89.2
+	    variance: 17.84
+	    sample-variance: 22.3
 	    population-deviation: 4.22374241638857
 	    sample-deviation: 4.72228758124704
 	]
@@ -766,7 +769,8 @@ Rebol [
 	    53
 	    10.6
 	    11.0
-	    89.2
+	    17.84
+	    22.3
 	    4.22374241638857
 	    4.72228758124704
 	]
@@ -780,7 +784,8 @@ Rebol [
 	    sum: 16.79
 	    mean: 1.679
 	    median: 1.655
-	    variance: 0.02529
+	    variance: 0.002529
+	    sample-variance: 0.00281
 	    population-deviation: 0.0502891638427207
 	    sample-deviation: 0.0530094331227943
 	]
@@ -792,7 +797,8 @@ Rebol [
 	    16.79
 	    1.679
 	    1.655
-	    0.02529
+	    0.002529
+	    0.00281
 	    0.0502891638427207
 	    0.0530094331227943
 	]

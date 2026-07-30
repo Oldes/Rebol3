@@ -574,6 +574,7 @@ standard: object [
 		mean:       ; average
 		median:
 		variance:
+		sample-variance:
 		population-deviation:
 		sample-deviation:
 	]

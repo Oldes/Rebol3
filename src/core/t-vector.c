@@ -222,39 +222,41 @@ typedef struct Vector_Query_Values {
 	REBDEC maximum;
 	REBDEC sum;
 	REBDEC mean;
-	REBDEC variance;
+	REBDEC sum_of_squares;  // M2 accumulator, not yet normalized
+	REBDEC variance;        // population variance, sum_of_squares / length
 	REBDEC median;
 } REBVQV;
 
-static void Query_Vector_Statictics(REBSER *vect, REBVQV *out) {
+static void Query_Vector_Statictics(REBSER* vect, REBVQV* out) {
 	REBLEN len = SERIES_TAIL(vect);
 	REBCNT type = VECT_TYPE(vect);
-	REBCNT n = 0;
-	REBYTE *data = SERIES_DATA(vect);
-	REBDEC num, diff;
+	REBYTE* data = SERIES_DATA(vect);
+	REBDEC num, delta, delta2;
+	REBLEN n;
 
 	CLEARS(out);
 	if (len == 0) return;
 	out->length = len;
-	out->minimum = get_vect_decimal(type, data, 0);
-	out->maximum = out->minimum;
-	for (; n < len; n++) {
+
+	// Seed all running stats from the first element
+	num = get_vect_decimal(type, data, 0);
+	out->minimum = out->maximum = out->sum = out->mean = num;
+
+	for (n = 1; n < len; n++) {
 		num = get_vect_decimal(type, data, n);
-		// Min/Max
 		if (num < out->minimum) out->minimum = num;
 		else if (num > out->maximum) out->maximum = num;
-		// Sum
 		out->sum += num;
+
+		// Welford's online mean/variance update (single pass, numerically stable)
+		delta = num - out->mean;        // deviation from mean *before* update
+		out->mean += delta / (n + 1);   // incremental mean update
+		delta2 = num - out->mean;       // deviation from mean *after* update
+		out->sum_of_squares += delta * delta2;  // accumulate M2 (sum of squared deviations)
 	}
-	// Mean
-	out->mean = out->sum / len;
-	// Calculate squared differences and variance
-	for (n = 0; n < len; n++) {
-		num = get_vect_decimal(type, data, n);
-		diff = num - out->mean;
-		out->variance += diff * diff;  // More efficient than pow()
-	}
+	out->variance = out->sum_of_squares / len;  // normalize M2 -> population variance
 }
+
 static REBDEC Query_Vector_Median(REBSER *vect) {
 	REBLEN len = SERIES_TAIL(vect);
 	REBCNT type = VECT_TYPE(vect);
@@ -447,8 +449,9 @@ void Find_Maximum_Of_Vector(REBSER *vect, REBVAL *ret) {
 		if (field == SYM_MEAN || field == SYM_AVERAGE) RETURN_DECIMAL(vqv->mean);
 		if (field == SYM_MEDIAN) RETURN_DECIMAL(Query_Vector_Median(vect));
 		if (field == SYM_VARIANCE) RETURN_DECIMAL(vqv->variance);
-		if (field == SYM_POPULATION_DEVIATION) RETURN_DECIMAL(sqrt(vqv->variance / SERIES_TAIL(vect)));
-		if (field == SYM_SAMPLE_DEVIATION) RETURN_DECIMAL(sqrt(vqv->variance / (SERIES_TAIL(vect) - 1)));
+		if (field == SYM_SAMPLE_VARIANCE) RETURN_DECIMAL(vqv->sum_of_squares / (SERIES_TAIL(vect) - 1));
+		if (field == SYM_POPULATION_DEVIATION) RETURN_DECIMAL(sqrt(vqv->variance));
+		if (field == SYM_SAMPLE_DEVIATION) RETURN_DECIMAL(sqrt(vqv->sum_of_squares / (SERIES_TAIL(vect) - 1)));
 		return FALSE;
 	}
 	return TRUE;
@@ -1502,6 +1505,7 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 			Query_Vector_Field(vect, SYM_MEAN, OFV(obj, STD_VECTOR_INFO_MEAN), &results);
 			Query_Vector_Field(vect, SYM_MEDIAN, OFV(obj, STD_VECTOR_INFO_MEDIAN), &results);
 			Query_Vector_Field(vect, SYM_VARIANCE, OFV(obj, STD_VECTOR_INFO_VARIANCE), &results);
+			Query_Vector_Field(vect, SYM_SAMPLE_VARIANCE, OFV(obj, STD_VECTOR_INFO_SAMPLE_VARIANCE), &results);
 			Query_Vector_Field(vect, SYM_POPULATION_DEVIATION, OFV(obj, STD_VECTOR_INFO_POPULATION_DEVIATION), &results);
 			Query_Vector_Field(vect, SYM_SAMPLE_DEVIATION, OFV(obj, STD_VECTOR_INFO_SAMPLE_DEVIATION), &results);
 			SET_OBJECT(value, obj);
