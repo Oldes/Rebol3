@@ -1170,3 +1170,35 @@ static REBDEC lerp_decimal(REBDEC s, REBDEC e, REBDEC t) {
 	SET_DECIMAL(D_RET, dist);
 	return R_RET;
 }
+
+/***********************************************************************
+**
+*/	REBNATIVE(factorial)
+/*
+//	factorial: native [
+//		{Calculate the factorial of given value}
+//		value  [integer!]
+//		return: [integer! decimal!] "Exact for n <= 20, approximate (double) for n <= 170"
+//	]
+***********************************************************************/
+{
+	REBI64 n = VAL_INT64(D_ARG(1));
+	if (n < 0)
+		Trap1(RE_OUT_OF_RANGE, D_ARG(1)); // or your existing negative-arg error
+	if (n > 170) {
+		// Beyond this, result exceeds a double's range (170! < DBL_MAX < 171!)
+		// and would silently produce +inf. Reject until bignum! is implemented.
+		Trap1(RE_OUT_OF_RANGE, D_ARG(1));
+	}
+	else if (n > 20) {
+		REBDEC result = 1.0;
+		for (REBI64 i = 2; i <= n; i++) result *= i;
+		SET_DECIMAL(D_RET, result);
+	}
+	else {
+		REBU64 result = 1;
+		for (REBI64 i = 2; i <= n; i++) result *= i;
+		SET_INTEGER(D_RET, result);
+	}
+	return R_RET;
+}

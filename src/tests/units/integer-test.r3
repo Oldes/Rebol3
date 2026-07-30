@@ -394,4 +394,16 @@ Rebol [
 		--assert prime? 99'504'028'301'131
 ===end-group===
 
+===start-group=== "factorial"
+	--test-- "factorial"
+		--assert error? try [factorial -1]
+		--assert 1 == factorial 0
+		--assert 1 == factorial 1
+		--assert 2 == factorial 2
+		--assert 6 == factorial 3
+		--assert 2432902008176640000 == factorial 20
+		--assert 7.25741561530799e306 = factorial 170
+		--assert error? try [factorial 171]
+===end-group===
+
 ~~~end-file~~~
