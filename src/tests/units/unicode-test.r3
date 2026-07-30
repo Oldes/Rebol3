@@ -710,7 +710,7 @@ Rebol [
 	--test-- "sort block of strings"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/2716
 		--assert ["abå" "cd" "ef"] == sort ["ef" "cd" "abå"]
-		--assert ["abå" "cd" "ef"] == ssort/unstable ["ef" "cd" "abå"]
+		--assert ["abå" "cd" "ef"] == sort/unstable ["ef" "cd" "abå"]
 		--assert ["ef" "cd" "abå"] == sort/reverse ["ef" "cd" "abå"]
 		--assert ["ef" "cd" "abå"] == sort/reverse/unstable ["ef" "cd" "abå"]
 
@@ -738,6 +738,32 @@ Rebol [
 		--assert all [s: "ábč"  ""    == take/part s -6  s == "ábč"]
 		--assert all [s: "ábč" b: next s "á" == take/part s b s == "bč"]
 		--assert all [s: "ábč" b: tail s "ábč" == take/part s b s == ""]
+	--test-- "take/part/last"
+		;@@ https://github.com/Oldes/Rebol-issues/issues/2721
+		--assert (take/last/part "monēre" 3) == "ēre"
+		--assert all [s: "aábbcč" "č" == take/part/last s 1 s == "aábbc"]
+		--assert all [s: "aábbcč" "cč" == take/part/last s 2 s == "aább"]
+		--assert all [s: "aábbcč" "bcč" == take/part/last s 3 s == "aáb"]
+		--assert all [s: "aábbcč" "bbcč" == take/part/last s 4 s == "aá"]
+		--assert all [s: "aábbcč" "ábbcč" == take/part/last s 5 s == "a"]
+		--assert all [s: "aábbcč" "aábbcč" == take/part/last s 6 s == ""]
+	--test-- "take/part/last with string not at head"
+		--assert  "c" == take/last/part next "abc" 1
+		--assert  "č" == take/last/part next "ábč" 1
+		--assert "bc" == take/last/part next "abc" 2
+		--assert "bč" == take/last/part next "ábč" 2
+		--assert "bc" == take/last/part next "abc" 3
+		--assert "bč" == take/last/part next "ábč" 3
+
+	--test-- "take/last" [
+		--assert all [
+			s: "aábbcč"
+			x: copy ""
+			while [c: take/last s][ append x c]
+			x == "čcbbáa"
+			s == ""
+		]
+	]
 	--test-- "take/part tail"
 		--assert all [s: "ábč"  "č" == take/part tail :s -1 s == "áb"]
 		--assert all [s: "ábč"  "bč" == take/part tail :s -2 s == "á"]

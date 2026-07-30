@@ -1017,21 +1017,21 @@ find:
 		ret = 1; // skip size
 		if (args & AM_FIND_SKIP) {
 			ret = Int32(D_ARG(ARG_FIND_SIZE));
-			if(!ret) goto is_none;
+			if(!ret) return R_NONE;
 		}
 
 		if (action == A_SELECT) args |= AM_FIND_TAIL;
 
 		ret = find_string(value, index, tail, arg, len, args, ret, D_ARG(ARG_FIND_WILD));
 
-		if (ret > (REBCNT)tail) goto is_none;
+		if (ret > (REBCNT)tail) return R_NONE;
 		if (args & AM_FIND_ONLY) len = 1;
 
 		if (action == A_FIND) {
 			VAL_INDEX(value) = ret;
 		}
 		else {
-			if (ret >= (REBCNT)tail) goto is_none;
+			if (ret >= (REBCNT)tail) return R_NONE;
 			if (IS_BINARY(value)) {
 				SET_INTEGER(value, *BIN_SKIP(VAL_SERIES(value), ret));
 			}
@@ -1056,7 +1056,7 @@ find:
 				|| REB_I32_SUB_OF(len, 1, &len)
 				|| REB_I32_ADD_OF(index, len, &index)
 				|| index < 0 || index >= tail) {
-				if (action == A_PICK) goto is_none;
+				if (action == A_PICK) return R_NONE;
 				Trap_Range(arg);
 			}
 		}
@@ -1091,32 +1091,52 @@ pick_it:
 		break;
 
 	case A_TAKE:
+		ser = VAL_SERIES(value);
 		if (D_REF(ARG_TAKE_ALL)) {
-			if (tail <= index) goto zero_str;
+			if (tail <= index) goto empty_str;
 			len = tail - index;
 			SET_TRUE(D_ARG(ARG_TAKE_PART));
 		}
 		else if (D_REF(ARG_TAKE_PART)) {
-			len = Partial(value, 0, D_ARG(ARG_TAKE_RANGE), 0);
-			if (len == 0) {
-zero_str:
-				Set_Series(VAL_TYPE(value), D_RET, Make_Binary(0));
-				return R_RET;
+			REBVAL* part = D_ARG(ARG_TAKE_RANGE);
+			if (D_REF(ARG_TAKE_LAST) && IS_UTF8_SERIES(ser)) {
+				// special case for Unicode when taking from the tail
+				REBINT range;
+				if (IS_INTEGER(part) || IS_DECIMAL(part)) {
+					range = MIN(UTF8_Index_To_Position(BIN_SKIP(ser, VAL_INDEX(value)), tail), Int32(part));
+				}
+				else {
+					// part provided as a series position
+					if (VAL_SERIES(part) != VAL_SERIES(value))
+						Trap1(RE_INVALID_PART, part);
+					range = UTF8_Index_To_Position(BIN_SKIP(ser, VAL_INDEX(value)), tail)
+						  - UTF8_Index_To_Position(BIN_SKIP(ser, VAL_INDEX(value)), VAL_INDEX(part));
+				}
+				index = UTF8_Skip(ser, tail, -range);
+				if (index == UNKNOWN) index = 0; // e.g.: take/part/last "abc" 100
+				len = tail - index; // in bytes
+
+				if (len == 0) goto empty_str;
+				Set_Series(VAL_TYPE(value), value, Copy_String(ser, index, len));
+				goto finish_take;
 			}
+			len = Partial(value, 0, part, 0);
+			if (len == 0) goto empty_str;
 		} else 
 			len = 1;
 
 		index = VAL_INDEX(value); // /part can change index
+		if (tail <= index) return R_NONE;
 
-		// take/last:
-		if (tail <= index) goto is_none;
-		if (D_REF(ARG_TAKE_LAST)) index = tail - len;
-		if (index < 0 || index >= tail) {
-			if (!D_REF(ARG_TAKE_PART)) goto is_none;
-			goto zero_str;
+		if (D_REF(ARG_TAKE_LAST)) {
+			index = IS_UTF8_SERIES(ser) ? UTF8_Skip(ser, tail, -len) : tail - len;
+		}
+		if (index >= tail) {
+			if (!D_REF(ARG_TAKE_PART)) return R_NONE;;
+			goto empty_str;
 		}
 
-		ser = VAL_SERIES(value);
+		
 		// if no /part, just return value, else return string:
 		if (!D_REF(ARG_TAKE_PART)) {
 			if (IS_BINARY(value)) {
@@ -1129,8 +1149,12 @@ zero_str:
 			}
 		}
 		else Set_Series(VAL_TYPE(value), value, Copy_String(ser, index, len));
+	finish_take:
 		Remove_Series(ser, index, len);
 		break;
+	empty_str:
+		Set_Series(VAL_TYPE(value), D_RET, Make_Binary(0));
+		return R_RET;
 
 	case A_CLEAR:
 		if (index < tail) {
@@ -1234,7 +1258,7 @@ zero_str:
 			return R_UNSET;
 		}
 		if (D_REF(4)) { // /only
-			if (index >= tail) goto is_none;
+			if (index >= tail) return R_NONE;
 			index += (REBCNT)Random_Int(D_REF(3)) % (tail - index);  // /secure
 			if ((VAL_BIN_HEAD(value)[index] & 0xC0) == 0x80) {
 				index = UTF8_Prev_Char_Position(VAL_BIN_HEAD(value), index);
@@ -1256,9 +1280,6 @@ ser_exit:
 str_exit:
 	Set_Series(type, D_RET, ser);
 	return R_RET;
-
-is_none:
-	return R_NONE;
 }
 
 
