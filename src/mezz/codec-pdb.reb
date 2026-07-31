@@ -2,7 +2,7 @@ REBOL [
 	Title:  "Codec: PDB (Pilot	Database) file format"
 	Name:    pdb
 	Type:    module
-	Version: 0.0.1
+	Version: 0.0.2
 	Options: [delay]
 	Author: "Oldes"
 	History: [31-Jul-2026 "Oldes" {Initial version}]
@@ -18,7 +18,7 @@ register-codec [
 	decode: func [
 		{Extract content of the PDB file}
 		data  [binary! file! url!]
-		/local bin start end compression text
+		/local bin start end text
 	][
 		clear pdb-info
 		clear pdb-data
@@ -56,7 +56,7 @@ register-codec [
 			append pdb-data copy/part atz data start end - start
 		]
 		pdb-record0: binary/read pdb-data/1 [
-			compression: UI16   ;; 1 = No compression, 2 = PalmDOC compression, 17480 (0x4448) = HUFF/CD compression.
+			UI16  ;compression: ;; 1 = No compression, 2 = PalmDOC compression, 17480 (0x4448) = HUFF/CD compression.
 			UI16  ;reserved:    ;; Always set to 0.
 			UI32  ;length:      ;; The total length of the uncompressed text in bytes.
 			UI16  ;rec-count:   ;; The number of text records that follow (excluding Record 0).
@@ -65,11 +65,12 @@ register-codec [
 			BYTES ;rest:        
 		]
 		if verbose [? pdb-header ? pdb-record0]
-		text: rejoin switch/default compression [
+		text: rejoin switch/default pdb-record0/1 [
 			2      [ map-each rec next pdb-data [depalmdoc rec] ]
 			0#4448 [do make error! "HUFF/CD compression not supported!"]
 		][	next pdb-data ]
-		text: iconv/to text 'cp1250 'utf8
+		clear skip text pdb-record0/3 ;; clear possible padding
+		try [text: iconv/to text 'cp1250 'utf8]
 		text
 	]
 
@@ -103,7 +104,7 @@ register-codec [
 	pdb-data: []
 	pdb-record0: _
 
-	to-text: func[bin][to string! trim/tail bin]
+	to-text: func[bin][iconv/to trim/tail bin 'cp1250 'utf8]
 
 	decode-palm-date: function [timestamp [integer!]][
 		;; seconds from 1904-01-01T00:00:00
@@ -148,5 +149,5 @@ register-codec [
 		]
 		copy out
 	]
-	verbose: on
+	verbose: not system/options/quiet
 ]
