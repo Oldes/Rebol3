@@ -345,6 +345,7 @@ modules: object [
 	css:              https://src.rebol.tech/mezz/codec-css.reb
 	csv:              https://src.rebol.tech/mezz/codec-csv.reb
 	ico:              https://src.rebol.tech/mezz/codec-ico.reb
+	pdb:              https://src.rebol.tech/mezz/codec-pdb.reb
 	pdf:              https://src.rebol.tech/mezz/codec-pdf.reb
 	srt:              https://src.rebol.tech/mezz/codec-srt.reb
 	swf:              https://src.rebol.tech/mezz/codec-swf.reb
