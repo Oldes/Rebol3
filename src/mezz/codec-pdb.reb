@@ -2,10 +2,13 @@ REBOL [
 	Title:  "Codec: PDB (Pilot	Database) file format"
 	Name:    pdb
 	Type:    module
-	Version: 0.0.2
+	Version: 0.0.3
 	Options: [delay]
 	Author: "Oldes"
-	History: [31-Jul-2026 "Oldes" {Initial version}]
+	History: [
+		31-Jul-2026 "Oldes - Initial version"
+		 1-Aug-2026 "Oldes - Simple encoder"
+	]
 	Purpose: {To decode a text from some PalmDoc book files.}
 ]
 
@@ -72,6 +75,58 @@ register-codec [
 		clear skip text pdb-record0/3 ;; clear possible padding
 		try [text: iconv/to text 'cp1250 'utf8]
 		text
+	]
+
+	encode: function [
+		"Create a minimal uncompressed PDB (TEXt/REAd) file from text"
+		text [binary! string!]
+	][
+		unless binary? text [
+			text: iconv/to to binary! text 'utf8 'cp1250
+		]
+		length: length? text
+		chunks: 1 + to integer! round/ceiling length / 4096  ;; content record count (including record0)
+		offset: 78 + (chunks * 8)   ;; where record0 starts
+
+		bin: binary make binary! (length + offset)
+
+		;; --- fixed 78-byte header ---
+		binary/write bin append/dup clear #{} 0 32  ;; name: 32 zero bytes
+		binary/write bin [
+			UI16  0              ;; attr
+			UI16  0              ;; version
+			UNIXTIME-NOW         ;; created
+			UNIXTIME-NOW         ;; modified
+			UI32  0              ;; backup
+			UI32  0              ;; mod-number
+			UI32  0              ;; app-info offset
+			UI32  0              ;; sort-info offset
+			BYTES "TEXt"         ;; type
+			BYTES "REAd"         ;; creator
+			UI32  0              ;; id-seed
+			UI32  1              ;; next-id
+			UI16  :chunks        ;; record count (incl. record0)
+		]
+		;; --- record info list: offset(UI32) attr(UI8) uniqueID(UI24) per record ---
+		binary/write bin [UI32 :offset UI8 0 UI24 0]
+		offset: offset + 16      ;; record0 is 16 bytes
+		chunks: chunks - 1
+		repeat i chunks [
+			binary/write bin [UI32 :offset UI8 0 UI24 :i]
+			offset: offset + 4096
+		]
+		;; --- record0: the 16-byte PalmDOC header ---
+		binary/write bin[
+			UI16 1               ;; compression = none
+			UI16 0               ;; reserved
+			UI32 :length         ;; total uncompressed text length
+			UI16 :chunks         ;; content record count
+			UI16 4096            ;; max record size
+			UI32 0               ;; current position
+		]
+		;; --- content records, verbatim cp1250 bytes ---
+		binary/write bin text
+		bin/buffer
 	]
 
 	identify: func [data [binary!]][
