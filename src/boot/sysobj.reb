@@ -568,6 +568,7 @@ standard: object [
 		type:       ; integer! or decimal! so far
 		size:       ; size per value in bits
 		length:     ; number of values
+		shape:      ; cols and rows as a pair for shaped vectors (matrix)!
 		minimum:
 		maximum:
 		range:      ; maximum - minimum

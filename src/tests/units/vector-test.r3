@@ -1309,4 +1309,44 @@ Rebol [
 		]
 ===end-group===
 
+===start-group=== "MATRIX (shaped vectors)"
+	--test-- "Make shaped vector"
+		--assert all [
+			vector? try [m: make vector! [u8! 3x2 [1 2 3 4 5 6]]]
+			m/shape = 3x2
+			m/3 == 3
+			m/(3x1) == 3
+			(pick m 2x2) == 5
+			m/(3x1): 33
+			poke m 2x2 55
+			m/(3x1) == 33
+			(pick m 2x2) == 55
+		]
+		--assert all [
+			vector? try [m: make vector! [u8! 2x3 [1 2 3 4 5 6]]]   ; 2 cols, 3 rows (X=cols, Y=rows)
+			(pick m 1x1) == 1    
+			(pick m 2x1) == 2    ;; second column, first row
+			(pick m 1x2) == 3    ;; first column, second row
+			(pick m 2x3) == 6    ;; last col, last row
+			(pick m 3x1) == none ;; col 3 doesn't exist (only 2 cols)
+			(pick m 1x4) == none ;; row 4 doesn't exist (only 3 rows)
+		]
+		;; degenerate case for a plain vector
+		--assert all [
+			v: #(f64! [10 20 30])
+			(pick v 3x1) == 30.0 ;; matches pick v 3
+			(pick v 1x2) == none ;; only 1 row exists
+		]
+
+	--test-- "Pinning the asymmetry"
+		--assert all [
+			vector? try [m: make vector! [u8! 3x2 [1 2 3 10 20 30]]] ;; 3 cols, 2 rows
+			m2: skip m 3         ;; cursor moved to start of "row 2" in flat terms
+			(pick m2 1) == 10    ;; scalar pick IS relative to cursor
+			(pick m2 1x1) == 1   ;; pair pick is ALWAYS absolute, ignores the skip entirely
+			(pick m2 2x1) == 2   ;; still addresses the whole grid, same as pick m 2x1
+		]
+
+===end-group===
+
 ~~~end-file~~~

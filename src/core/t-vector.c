@@ -426,6 +426,14 @@ void Find_Maximum_Of_Vector(REBSER *vect, REBVAL *ret) {
 	case SYM_LENGTH:
 		SET_INTEGER(ret, vect->tail);
 		break;
+	case SYM_SHAPE:
+	{
+		REBCNT rows = vect->size >> 8;
+		if (rows <= 1) RETURN_NONE();
+		REBCNT cols = vect->tail / rows;
+		SET_PAIR(ret, cols, rows);
+		break;
+	}
 	case SYM_SIGNED:
 		SET_LOGIC(ret, !(VECT_TYPE(vect) >= VTUI08 && VECT_TYPE(vect) <= VTUI64));
 		break;
@@ -1112,9 +1120,10 @@ REBOOL Get_Vector_Spec_From_Symbol(REBCNT sym, REBINT *type, REBINT *sign, REBIN
 	REBVAL *bp = VAL_BLK_DATA(spec);
 	REBINT type = -1; // 0 = int,    1 = float
 	REBINT sign = -1; // 0 = signed, 1 = unsigned
-	REBINT dims = 1;
+	REBINT rows = 1;  // -> passed as Make_Vector's `dims` param (this is what persists in ser->size)
+	REBCNT cols = 0;  // -> passed as Make_Vector's `size` param (only used transiently to compute total length)
 	REBINT bits = 64;
-	REBCNT size = 0;
+	//REBCNT size = 0;
 	REBLEN index = 0;
 	REBSER *vect;
 	REBVAL *iblk = 0;
@@ -1138,7 +1147,7 @@ REBOOL Get_Vector_Spec_From_Symbol(REBCNT sym, REBINT *type, REBINT *sign, REBIN
 		// using signed and 64 bits as a default
 		type = IS_INTEGER(bp) ? 0 : 1;
 		sign = 0;
-		size = VAL_LEN(spec);
+		cols = VAL_LEN(spec);
 		iblk = spec;
 		goto data_spec;
 	}
@@ -1185,17 +1194,23 @@ size_spec:
 		val = Get_Var(val);
 	// SIZE
 	if (IS_INTEGER(val)) {
-		size = Int32(val);
-		if (size < 0) return 0;
+		cols = Int32(val);
+		if (cols < 0) return 0;
 		val = ++bp;
 		if (IS_GET_WORD(val))
 			val = Get_Var(val);
+	}
+	else if (IS_PAIR(val)) {
+		cols = VAL_PAIR_X_INT(val); //== cols
+		rows = VAL_PAIR_Y_INT(val); //== rows
+		if (cols <= 0 || rows <= 0) Trap_Range(val);
+		val = ++bp;
 	}
 	// Initial data:
 	if (IS_BLOCK(val) || IS_BINARY(val)) {
 		REBCNT len = VAL_LEN(val);
 		if (IS_BINARY(val)) len /= (bits >> 3);
-		if (len > size && size == 0) size = len;
+		if (len > cols && cols == 0) cols = len;
 		iblk = val;
 		val = ++bp;
 		if (IS_GET_WORD(val))
@@ -1211,7 +1226,7 @@ size_spec:
 
 	if (NOT_END(val)) return 0;
 data_spec:
-	vect = Make_Vector(type, sign, dims, bits, size);
+	vect = Make_Vector(type, sign, rows, bits, cols);
 	if (!vect) return 0;
 	if (iblk) Set_Vector_Row(vect, iblk);
 
@@ -1269,7 +1284,7 @@ data_spec:
 	REBINT n;
 	//REBINT dims;
 	
-	REBYTE *vp;
+	REBYTE *vp = vect->data;
 
 	if (IS_INTEGER(sel) || IS_DECIMAL(sel)) {
 		n = Int32(sel);
@@ -1287,11 +1302,28 @@ data_spec:
 			return PE_OK;
 		} else
 			return PE_BAD_SET;
-	} else  return PE_BAD_SELECT;
+	}
+	else if (IS_PAIR(sel)) {
+		REBCNT rows = vect->size >> 8;               // stored value
+		REBCNT cols = rows ? vect->tail / rows : 0;  // derived
+		REBINT col = VAL_PAIR_X_INT(sel);
+		REBINT row = VAL_PAIR_Y_INT(sel);
+
+		if (col < 1 || row < 1 || (REBCNT)col > cols || (REBCNT)row > rows)
+			return (pvs->setval) ? PE_BAD_RANGE : PE_NONE;
+
+		n = (row - 1) * cols + (col - 1);
+		if (pvs->setval == 0) {
+			get_vect(bits, vp, n, pvs->store);
+			SET_TYPE(pvs->store, (bits >= VTSF08) ? REB_DECIMAL : REB_INTEGER);
+			return PE_USE;
+		}
+		Set_Vector_Value(bits, vp, n, set);
+		return PE_OK;
+	}
+	else  return PE_BAD_SELECT;
 
 	n += VAL_INDEX(val);
-	vect = VAL_SERIES(val);
-	vp   = vect->data;
 	
 	//dims = vect->size >> 8;
 
@@ -1539,6 +1571,7 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 			Query_Vector_Field(vect, SYM_TYPE,   OFV(obj, STD_VECTOR_INFO_TYPE), &results);
 			Query_Vector_Field(vect, SYM_SIZE,   OFV(obj, STD_VECTOR_INFO_SIZE), &results);
 			Query_Vector_Field(vect, SYM_LENGTH, OFV(obj, STD_VECTOR_INFO_LENGTH), &results);
+			Query_Vector_Field(vect, SYM_SHAPE,  OFV(obj, STD_VECTOR_INFO_SHAPE), &results);
 			Query_Vector_Field(vect, SYM_MINIMUM, OFV(obj, STD_VECTOR_INFO_MINIMUM), &results);
 			Query_Vector_Field(vect, SYM_MAXIMUM, OFV(obj, STD_VECTOR_INFO_MAXIMUM), &results);
 			Query_Vector_Field(vect, SYM_RANGE, OFV(obj, STD_VECTOR_INFO_RANGE), &results);
@@ -1747,7 +1780,9 @@ bad_make:
 	REBSER *vect = VAL_SERIES(value);
 	REBYTE *data = vect->data;
 	REBCNT bits  = VECT_TYPE(vect);
-//	REBCNT dims  = vect->size >> 8;
+	REBCNT rows = vect->size >> 8;
+	REBCNT cols = (rows > 1) ? vect->tail / rows : 0;
+	REBOOL row_aligned;
 	REBCNT len;
 	REBCNT n;
 	REBCNT c;
@@ -1763,17 +1798,13 @@ bad_make:
 		len = VAL_LEN(value);
 		n = VAL_INDEX(value);
 	}
-
+	row_aligned = (rows > 1) && (n == 0);
 	if (molded) {
-//		REBCNT type = (bits >= VTSF32) ? REB_DECIMAL : REB_INTEGER;
-//		if (GET_MOPT(mold, MOPT_MOLD_ALL)) {
-//			Emit(mold, "#(T ", value);
-//			if (bits >= VTUI08 && bits <= VTUI64) Append_Bytes(mold->series, "unsigned ");
-//			Emit(mold, "N I I [", type + 1, VECT_BIT_SIZE(bits), len);
-//		}
-//		else {
-			Emit(mold, "#(S [", Get_Sym_Name(SYM_INT8X + bits));
-//		}
+		Emit(mold, "#(S ", Get_Sym_Name(SYM_INT8X + bits));
+		if (rows > 1) {
+			Emit(mold, "IxI ", cols, rows);
+		}
+		Append_Byte(mold->series, '[');
 		if (indented && len > 10) {
 			mold->indent++;
 			New_Indented_Line(mold);
@@ -1781,6 +1812,10 @@ bad_make:
 		CHECK_MOLD_LIMIT(mold, len);
 	}
 
+	if (indented && row_aligned) {
+		mold->indent++;
+		New_Indented_Line(mold);
+	}
 	c = 0;
 	for (; n < vect->tail; n++) {
 		if (MOLD_HAS_LIMIT(mold) && MOLD_OVER_LIMIT(mold)) return;
@@ -1791,12 +1826,23 @@ bad_make:
 			l = Emit_Decimal(buf, VAL_DECIMAL(&v), 0, '.', mold->digits);
 		}
 		Append_Bytes_Len(mold->series, buf, l);
-		if (indented && (++c > 9) && (n+1 < vect->tail)) {
+		if (row_aligned) {
+			if ((n + 1) % cols == 0 && (n + 1 < vect->tail)) {
+				New_Indented_Line(mold);
+				continue;
+			}
+		}
+		else if (indented && (++c > 9) && (n + 1 < vect->tail)) {
 			New_Indented_Line(mold);
 			c = 0;
+			continue;
 		}
-		else
-			Append_Byte(mold->series, ' '); 
+		Append_Byte(mold->series, ' ');
+	}
+	if (indented && row_aligned) {
+		mold->indent--;
+		New_Indented_Line(mold);
+		len = 0;
 	}
 
 	if (len) mold->series->tail--; // remove final space
