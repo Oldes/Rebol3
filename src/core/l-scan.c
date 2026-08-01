@@ -578,7 +578,11 @@ new_line:
 
 	while (*src) {
 		chr = *src++;
-		if (SERIES_FULL(buf)) Extend_Series(buf, 1);
+		if (SERIES_FULL(buf)) {
+			Extend_Series(buf, 1);
+			dst = BIN_SKIP(buf, buf->tail);	// buffer may have moved - refresh
+		}
+
 		if (chr == LF) lines++;
 		else if (chr == '}' && src[0] == '%') {
 			n = 1;
@@ -622,7 +626,10 @@ new_line:
 
 	while (src < end && *src != term) {
 		len = UTF8_Next_Char_Size(src, 0);
-		if (SERIES_FULL(buf)) Extend_Series(buf, len);
+		if (SERIES_FULL(buf)) {
+			Extend_Series(buf, len);
+			dst = BIN_SKIP(buf, buf->tail);	// buffer may have moved - refresh
+		}
 		
 		if (len == 1) {
 			chr = *src++;
