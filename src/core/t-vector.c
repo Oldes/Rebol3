@@ -428,7 +428,7 @@ void Find_Maximum_Of_Vector(REBSER *vect, REBVAL *ret) {
 		break;
 	case SYM_SHAPE:
 	{
-		REBCNT rows = vect->size >> 8;
+		REBCNT rows = VECT_ROWS(vect);
 		if (rows <= 1) RETURN_NONE();
 		REBCNT cols = vect->tail / rows;
 		SET_PAIR(ret, cols, rows);
@@ -1046,9 +1046,9 @@ REBOOL Get_Vector_Spec_From_Symbol(REBCNT sym, REBINT *type, REBINT *sign, REBIN
 {
 	REBINT type = -1; // 0 = int,    1 = float
 	REBINT sign = -1; // 0 = signed, 1 = unsigned
-	REBINT dims = 1;
+	REBINT rows = 1;
 	REBINT bits = 32;
-	REBCNT size = 0;
+	REBCNT cols = 0;
 	REBVAL *iblk = 0;
 	REBSER *vect;
 
@@ -1061,16 +1061,23 @@ REBOOL Get_Vector_Spec_From_Symbol(REBCNT sym, REBINT *type, REBINT *sign, REBIN
 	}
 	if (!Get_Vector_Spec_From_Symbol(VAL_WORD_CANON(bp), &type, &sign, &bits)) return 0;
 	bp++;
+	// Shape:
+	if (IS_PAIR(bp)) {
+		cols = VAL_PAIR_X_INT(bp);
+		rows = VAL_PAIR_Y_INT(bp);
+		if (cols <= 0 || rows <= 0) return 0;
+		bp++;
+	}
 	// Initial data:
 	if (IS_BLOCK(bp) || IS_BINARY(bp)) {
 		REBCNT len = VAL_LEN(bp);
 		if (IS_BINARY(bp)) len /= (bits >> 3);
-		if (len > size && size == 0) size = len;
+		if (len > cols && cols == 0) cols = len;
 		iblk = bp;
 		bp++;
 	}
 	else if (IS_END(bp)) {
-		size = 0;
+		cols = 0;
 	}
 	else return 0;
 	// Index offset:
@@ -1078,7 +1085,7 @@ REBOOL Get_Vector_Spec_From_Symbol(REBCNT sym, REBINT *type, REBINT *sign, REBIN
 		VAL_INDEX(value) = (Int32s(bp, 1) - 1);
 	}
 
-	vect = Make_Vector(type, sign, dims, bits, size);
+	vect = Make_Vector(type, sign, rows, bits, cols);
 	if (!vect) return 0;
 	if (iblk) Set_Vector_Row(vect, iblk);
 
@@ -1281,9 +1288,7 @@ data_spec:
 	REBVAL *set = pvs->setval;
 	REBSER *vect = VAL_SERIES(val);
 	REBINT bits = VECT_TYPE(vect);
-	REBINT n;
-	//REBINT dims;
-	
+	REBINT n;	
 	REBYTE *vp = vect->data;
 
 	if (IS_INTEGER(sel) || IS_DECIMAL(sel)) {
@@ -1300,11 +1305,19 @@ data_spec:
 			val = pvs->value = pvs->store;
 			if(!Query_Vector_Field(vect, VAL_WORD_CANON(sel), val, NULL)) return PE_BAD_SELECT;
 			return PE_OK;
-		} else
+		}
+		else if (VAL_WORD_CANON(sel) == SYM_SHAPE && IS_PAIR(set)) {
+			REBINT ncols = VAL_PAIR_X_INT(set);
+			REBINT nrows = VAL_PAIR_Y_INT(set);
+			if (ncols * nrows != vect->tail) return PE_BAD_ARGUMENT;
+			vect->size = (vect->size & 0xFF) | nrows << 8;
+			return PE_OK;
+		}
+		else
 			return PE_BAD_SET;
 	}
 	else if (IS_PAIR(sel)) {
-		REBCNT rows = vect->size >> 8;               // stored value
+		REBCNT rows = VECT_ROWS(vect);               // stored value
 		REBCNT cols = rows ? vect->tail / rows : 0;  // derived
 		REBINT col = VAL_PAIR_X_INT(sel);
 		REBINT row = VAL_PAIR_Y_INT(sel);
@@ -1324,8 +1337,6 @@ data_spec:
 	else  return PE_BAD_SELECT;
 
 	n += VAL_INDEX(val);
-	
-	//dims = vect->size >> 8;
 
 	if (pvs->setval == 0) {
 
@@ -1488,7 +1499,7 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 	case A_COPY:
 		len = Partial(value, 0, D_ARG(3), 0); // Can modify value index.
 		ser = Copy_Series_Part(vect, VAL_INDEX(value), len);
-		ser->size = vect->size; // attributes
+		ser->size = D_REF(ARG_COPY_PART) ? (vect->size & 0xFF) | (1 << 8) :  vect->size; // attributes
 		SET_VECTOR(value, ser);
 		break;
 
@@ -1782,7 +1793,7 @@ bad_make:
 	REBCNT bits  = VECT_TYPE(vect);
 	REBCNT rows = vect->size >> 8;
 	REBCNT cols = (rows > 1) ? vect->tail / rows : 0;
-	REBOOL row_aligned;
+	REBOOL shaped;
 	REBCNT len;
 	REBCNT n;
 	REBCNT c;
@@ -1798,21 +1809,21 @@ bad_make:
 		len = VAL_LEN(value);
 		n = VAL_INDEX(value);
 	}
-	row_aligned = (rows > 1) && (n == 0);
+	shaped = (rows > 1) && (n == 0);
 	if (molded) {
 		Emit(mold, "#(S ", Get_Sym_Name(SYM_INT8X + bits));
-		if (rows > 1) {
+		if (shaped) {
 			Emit(mold, "IxI ", cols, rows);
 		}
 		Append_Byte(mold->series, '[');
-		if (indented && len > 10) {
+		if (indented && !shaped && len > 10) {
 			mold->indent++;
 			New_Indented_Line(mold);
 		}
 		CHECK_MOLD_LIMIT(mold, len);
 	}
 
-	if (indented && row_aligned) {
+	if (indented && shaped) {
 		mold->indent++;
 		New_Indented_Line(mold);
 	}
@@ -1826,7 +1837,7 @@ bad_make:
 			l = Emit_Decimal(buf, VAL_DECIMAL(&v), 0, '.', mold->digits);
 		}
 		Append_Bytes_Len(mold->series, buf, l);
-		if (row_aligned) {
+		if (shaped) {
 			if ((n + 1) % cols == 0 && (n + 1 < vect->tail)) {
 				New_Indented_Line(mold);
 				continue;
@@ -1839,7 +1850,7 @@ bad_make:
 		}
 		Append_Byte(mold->series, ' ');
 	}
-	if (indented && row_aligned) {
+	if (indented && shaped) {
 		mold->indent--;
 		New_Indented_Line(mold);
 		len = 0;

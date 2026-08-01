@@ -374,6 +374,7 @@ static REBCNT bit_sizes[4] = { 8, 16, 32, 64 };
 static REBCNT byte_sizes[4] = { 1, 2, 4, 8 };
 
 #define VECT_TYPE(s) ((s)->size & 0xff)
+#define VECT_ROWS(s) ((s)->size >> 8)
 #define VECT_BIT_SIZE(bits) (bit_sizes[bits & 3])
 #define VECT_BYTE_SIZE(bits) (byte_sizes[bits & 3])
 #define VAL_VEC_WIDTH(v) VECT_BYTE_SIZE(VECT_TYPE(VAL_SERIES(v)))
