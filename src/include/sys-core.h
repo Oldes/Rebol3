@@ -389,7 +389,7 @@ enum {
 #else
 #define CHECK_STACK(v) if ((REBUPT)(v) <= Stack_Limit) Trap_Stack();
 #endif
-#define STACK_BOUNDS (STACK_SIZE - (24 * 1024)) // made somewhat smaller than linker setting to allow trapping it
+#define STACK_BOUNDS (STACK_SIZE - (32 * 1024)) // made somewhat smaller than linker setting to allow trapping it
 //NOTE: in VS Debug build the stack overflow is detected before trying to expand the data stack!
 //      So use Relase build to test the stack expansion.
 
