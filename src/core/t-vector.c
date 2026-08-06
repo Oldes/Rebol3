@@ -725,11 +725,29 @@ return_number:
 	REBYTE *data1 = vect1->data;
 	REBYTE *data2 = vect2->data;
 
-	len = MIN(len1, len2);
+	REBCNT rows1 = vect1->size >> 8;
+	REBCNT rows2 = vect2->size >> 8;
+	REBOOL shaped1 = rows1 > 1;
+	REBOOL shaped2 = rows2 > 1;
+
+	if (shaped1 && shaped2) {
+		if (rows1 != rows2 || len1 != len2)   // len here already encodes cols via tail/rows, but check explicitly
+			Trap0(RE_VECTOR_NOT_COMPATIBLE);  // shapes differ, not just types
+		len = len1;
+	}
+	else if (shaped1 || shaped2) {
+		if (len1 != len2)
+			Trap0(RE_VECTOR_NOT_COMPATIBLE);  // total counts must still match for elementwise broadcast
+		len = len1;
+	}
+	else {
+		len = MIN(len1, len2);   // plain-vector behavior
+	}
+
 
 	if (bits1 != bits2)	Trap0(RE_VECTOR_NOT_COMPATIBLE);
 	dest = Make_Series(MAX(len,1), SERIES_WIDE(vect1), FALSE);
-	dest->size = vect1->size; // attributes
+	dest->size = shaped1 ? vect1->size : (shaped2 ? vect2->size : vect1->size);   // inherit whichever side is shaped
 	data = dest->data;
 	SERIES_TAIL(dest) = len;
 	SET_VECTOR(out, dest);
@@ -868,6 +886,16 @@ return_number:
 	REBYTE* d2 = VAL_SERIES(b)->data;
 	REBVAL v1, v2;
 	REBINT cmp = 0;
+
+	REBCNT rows1 = VAL_SERIES(a)->size >> 8;
+	REBCNT rows2 = VAL_SERIES(b)->size >> 8;
+
+	// Shape is structural, not just content: two vectors with identical flat
+	// data in different shapes must never compare equal (e.g. 2x3 vs 3x2).
+	// Checking rows alone is sufficient — cols is derived from rows+tail, and
+	// a tail-length mismatch is already caught below via l1-l2, so this only
+	// closes the same-total-length-different-rows gap.
+	if (rows1 != rows2) return (rows1 > rows2) ? 1 : -1;
 
 	REBOOL float1 = (b1 >= VTSF08);
 	REBOOL float2 = (b2 >= VTSF08);

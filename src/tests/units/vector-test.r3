@@ -198,7 +198,7 @@ Rebol [
 	--assert o/minimum = 0
 	--assert o/maximum = 0
 --test-- "QUERY on vector"
-	--assert [signed type size length minimum maximum range sum mean median variance sample-variance population-deviation sample-deviation] = query v none
+	--assert [signed type size length shape minimum maximum range sum mean median variance sample-variance population-deviation sample-deviation] = query v none
 	--assert [16 integer!] = query v [:size :type]
 	--assert block? b: query v [signed length]
 	--assert all [not b/signed b/length = 2]
@@ -1346,6 +1346,48 @@ Rebol [
 			(pick m2 1x1) == 1   ;; pair pick is ALWAYS absolute, ignores the skip entirely
 			(pick m2 2x1) == 2   ;; still addresses the whole grid, same as pick m 2x1
 		]
+
+	--test-- "Math ops with shaped vectors"
+		;; both shaped, matching shape -- elementwise, result inherits shape
+		a: #(u16! 2x3 [1 2 3 4 5 6])
+		b: #(u16! 2x3 [10 20 30 40 50 60])
+		--assert (a + b) == #(u16! 2x3 [11 22 33 44 55 66])
+		--assert (b + a) == #(u16! 2x3 [11 22 33 44 55 66])
+		;; both shaped, same total length but different shape -- must trap, not silently truncate
+		c: #(u16! 3x2 [1 2 3 4 5 6])
+		--assert error? try [a + c]  ; 2x3 vs 3x2 -- same 6 elements, incompatible shape
+		--assert error? try [c + a]
+		;; both shaped, genuinely different length -- must trap
+		d: #(u16! 2x2 [1 2 3 4])
+		--assert error? try [a + d]
+		--assert error? try [d + a]
+		;; one shaped, one plain, matching total length -- allowed, inherits shaped side's shape
+		e: #(u16! [1 1 1 1 1 1])
+		--assert (a + e) == #(u16! 2x3 [2 3 4 5 6 7])
+		--assert (e + a) == #(u16! 2x3 [2 3 4 5 6 7])
+		;; mismatched-length plain-vs-shaped
+		f: #(u16! [1 1 1 1])   ; 4 elements, vs a's 6
+		--assert error? try [a + f]
+		--assert error? try [f + a]
+		;; Scalar broadcast still carries shape through
+		--assert (a + 1) == #(u16! 2x3 [2 3 4 5 6 7])
+		;; * elementwise multiplication
+		--assert (a * b) == #(u16! 2x3 [10 40 90 160 250 360])
+	
+	--test-- "Shaped vectors compare"
+		g: #(u16! 3x2 [1 2 3 4 5 6])
+		h: #(u16! 2x3 [1 2 3 4 5 6])
+		--assert not (g = h)
+		--assert not (g == h)
+		--assert     (g != h)
+		;; same shape, same content -- still equal, no regression
+		i: #(u16! 2x3 [1 2 3 4 5 6])
+		--assert (h = i)
+		--assert (h == i)
+		;; plain vs. shaped, same flat content -- confirm the strict rule is intended
+		p: #(u16! [1 2 3 4 5 6])
+		--assert not (p = h)
+
 
 ===end-group===
 
