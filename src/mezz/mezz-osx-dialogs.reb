@@ -11,7 +11,7 @@ REBOL [
     }
     Title:  "macOS AppleScript dialogs"
     Name:    osx-dialogs
-    Version: 1.0.0
+    Version: 1.1.0
     type: module
     Exports: [request-dir request-file request-color]
 ]
@@ -20,6 +20,7 @@ REBOL [
 do in lib [
     unset 'request-dir
     unset 'request-file
+    unset 'request-color
 ]
 
 applescript-ctx: make object! [
@@ -73,18 +74,16 @@ double-escape: function/with [
         collect into out  ;; Collect results into output string
         any [
             ;; Keep sequences of normal characters
-            keep tmp: normal-chars any [
-                ;; Handle line feed character - convert to literal \n
-                lf keep ("\n")
-                ;; Handle special characters - prefix with backslash
-                | ahead special-char keep (#"\") keep skip
-            ]
+            keep some normal-chars
+            ;; Handle line feed character - convert to literal \n
+            | lf keep ("\n")
+            ;; Handle special characters - prefix with backslash
+            | keep (#"\") keep skip
         ]
     ]
     out  ;; Return escaped string
 ][
-    special-char: make bitset! {$`"\^/}
-    normal-chars: complement special-char
+    normal-chars: complement make bitset! {$`'"\^/}
 ]
 
 request-file: function/with [
@@ -119,9 +118,9 @@ request-file: function/with [
     if filter [
         append self/filters "of type {"
         ;; Process each filter pair (name, filter)
-        foreach filter list [
-            if any-string? filter [
-                append self/filters ajoin [#"^"" double-escape filter {", }]
+        foreach value list [
+            if any-string? value [
+                append self/filters ajoin [#"^"" double-escape value {",}]
             ]
         ]
         ;; Replace final comma with closing brace
