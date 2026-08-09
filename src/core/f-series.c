@@ -347,6 +347,14 @@ chkMoney:
 		return Compare_Binary_Vals(s, t);
 
 	case REB_VECTOR:
+		// Element type is the primary key under /case, matching the
+		// ANY_NUMBER handling above (integer! before decimal!). VECT_TYPE's
+		// enum order is signed ints, unsigned ints, then floats.
+		if (is_case) {
+			REBINT vt1 = (REBINT)VECT_TYPE(VAL_SERIES(s));
+			REBINT vt2 = (REBINT)VECT_TYPE(VAL_SERIES(t));
+			if (vt1 != vt2) return vt1 - vt2;
+		}
 		return Compare_Vector(s, t);
 
 	case REB_DATATYPE:

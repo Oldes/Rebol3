@@ -870,76 +870,136 @@ return_number:
 #undef VEC_OP_LOOP_NO_ZERO
 #endif
 
+// Exact comparison of a 64-bit integer against a REBDEC, with no precision loss.
+// Widening the integer to REBDEC would break above 2^53, so instead we compare
+// against the float's integral part and let the fraction settle ties.
+// NaN policy: NaN orders LAST (greater than every number) so trichotomy holds
+// and sorts terminate; two NaNs compare equal.
+static REBINT cmp_i64_dec(REBI64 i, REBDEC d) {
+	if (isnan(d)) return -1;                            // i < NaN
+	// +/-2^63 are exactly representable as doubles, so these bounds are exact.
+	if (d >=  9223372036854775808.0) return -1;         // d above int64 range -> i < d
+	if (d <  -9223372036854775808.0) return  1;         // d below int64 range -> i > d
+	REBDEC t  = floor(d);
+	REBI64 ti = (REBI64)t;                              // safe: t is in range now
+	if (i < ti) return -1;
+	if (i > ti) return  1;
+	return (d > t) ? -1 : 0;                            // same integral part; fraction -> i < d
+}
+
+static REBINT cmp_u64_dec(REBU64 u, REBDEC d) {
+	if (isnan(d)) return -1;                            // u < NaN
+	if (d >= 18446744073709551616.0) return -1;         // d above uint64 range
+	if (d <  0.0) return 1;                             // any unsigned >= 0 > negative d
+	REBDEC t  = floor(d);
+	REBU64 tu = (REBU64)t;
+	if (u < tu) return -1;
+	if (u > tu) return  1;
+	return (d > t) ? -1 : 0;
+}
+
 /***********************************************************************
 **
 */	REBINT Compare_Vector(REBVAL *a, REBVAL *b)
 /*
+**		Compares two vectors by value, not by storage representation.
+**
+**		Ordering keys, in priority order:
+**		  1. shape (row count)  -- structural; a 2x3 never equals a 3x2
+**		  2. element values     -- compared numerically, ignoring element
+**		                           type (int/uint/float all interoperate,
+**		                           mirroring `1 = 1.0` for plain numbers)
+**		  3. length
+**
+**		Element type identity is NOT considered here; that distinction
+**		belongs to strict equality (==) in CT_Vector.
+**
 ***********************************************************************/
 {
 	REBCNT l1 = VAL_LEN(a);
 	REBCNT l2 = VAL_LEN(b);
 	REBCNT len = MIN(l1, l2);
 	REBCNT n;
-	REBCNT b1 = VECT_TYPE(VAL_SERIES(a));
-	REBCNT b2 = VECT_TYPE(VAL_SERIES(b));
-	REBYTE* d1 = VAL_SERIES(a)->data;
-	REBYTE* d2 = VAL_SERIES(b)->data;
+	REBSER *s1 = VAL_SERIES(a);
+	REBSER *s2 = VAL_SERIES(b);
+	REBCNT b1 = VECT_TYPE(s1);
+	REBCNT b2 = VECT_TYPE(s2);
+	REBYTE *d1 = s1->data;
+	REBYTE *d2 = s2->data;
 	REBVAL v1, v2;
 	REBINT cmp = 0;
 
-	REBCNT rows1 = VAL_SERIES(a)->size >> 8;
-	REBCNT rows2 = VAL_SERIES(b)->size >> 8;
-
-	// Shape is structural, not just content: two vectors with identical flat
-	// data in different shapes must never compare equal (e.g. 2x3 vs 3x2).
-	// Checking rows alone is sufficient — cols is derived from rows+tail, and
-	// a tail-length mismatch is already caught below via l1-l2, so this only
-	// closes the same-total-length-different-rows gap.
+	// --- 1. Shape is structural and takes priority over content.
+	// Only `rows` needs comparing: `cols` is derived from rows+tail, so a
+	// cols-only difference implies a tail difference, already caught by the
+	// length fallback at the end.
+	REBCNT rows1 = s1->size >> 8;
+	REBCNT rows2 = s2->size >> 8;
 	if (rows1 != rows2) return (rows1 > rows2) ? 1 : -1;
 
 	REBOOL float1 = (b1 >= VTSF08);
 	REBOOL float2 = (b2 >= VTSF08);
-	if (float1 != float2) Trap0(RE_NOT_SAME_TYPE);
+	REBOOL uns1   = (b1 >= VTUI08 && b1 <= VTUI64);
+	REBOOL uns2   = (b2 >= VTUI08 && b2 <= VTUI64);
 
+	// --- 2. Element-by-element numeric comparison.
+	// NOTE: there is deliberately no raw-bits fast path here. Comparing
+	// VAL_UNT64 to find "the first difference" disagrees with the typed
+	// ordering below in two cases (-0.0 vs 0.0 compare as different bits but
+	// equal values; a 64-bit signed -1 and unsigned UINT64_MAX share bits but
+	// differ numerically), so detection and ordering must be one computation.
 	for (n = 0; n < len; n++) {
 		get_vect(b1, d1, n + VAL_INDEX(a), &v1);
 		get_vect(b2, d2, n + VAL_INDEX(b), &v2);
 
-		if (float1) {
+		if (float1 && float2) {
 			REBDEC f1 = VAL_DECIMAL(&v1), f2 = VAL_DECIMAL(&v2);
-			cmp = (f1 > f2) - (f1 < f2);   // -0.0 == 0.0 falls out naturally: cmp == 0
+			if (isnan(f1) || isnan(f2))
+				cmp = isnan(f1) ? (isnan(f2) ? 0 : 1) : -1;   // NaN orders last
+			else
+				cmp = (f1 > f2) - (f1 < f2);                  // -0.0 == 0.0 falls out naturally
+		}
+		else if (float1 != float2) {
+			// Mixed float/int: compare numerically (no trap). Normalize so the
+			// integer side drives the helper, then flip if the float was A.
+			REBDEC  d  = float1 ? VAL_DECIMAL(&v1) : VAL_DECIMAL(&v2);
+			REBVAL *iv = float1 ? &v2 : &v1;
+			REBOOL  iu = float1 ? uns2 : uns1;
+			cmp = iu ? cmp_u64_dec(VAL_UNT64(iv), d)
+			         : cmp_i64_dec(VAL_INT64(iv), d);
+			if (float1) cmp = -cmp;
+		}
+		else if (!uns1 && !uns2) {
+			// Both signed: exact 64-bit signed compare (getters sign-extend,
+			// so differing storage widths are already normalized here).
+			REBI64 i1 = VAL_INT64(&v1), i2 = VAL_INT64(&v2);
+			cmp = (i1 > i2) - (i1 < i2);
+		}
+		else if (uns1 && uns2) {
+			REBU64 u1 = VAL_UNT64(&v1), u2 = VAL_UNT64(&v2);
+			cmp = (u1 > u2) - (u1 < u2);
 		}
 		else {
-			REBOOL uns1 = (b1 >= VTUI08 && b1 <= VTUI64);
-			REBOOL uns2 = (b2 >= VTUI08 && b2 <= VTUI64);
-
-			if (!uns1 && !uns2) {
+			// Mixed signed/unsigned: sign settles it first; once both are
+			// known non-negative, an unsigned compare is exact.
+			REBOOL neg1 = !uns1 && VAL_INT64(&v1) < 0;
+			REBOOL neg2 = !uns2 && VAL_INT64(&v2) < 0;
+			if (neg1 != neg2) cmp = neg1 ? -1 : 1;
+			else if (neg1) {
 				REBI64 i1 = VAL_INT64(&v1), i2 = VAL_INT64(&v2);
 				cmp = (i1 > i2) - (i1 < i2);
 			}
-			else if (uns1 && uns2) {
+			else {
 				REBU64 u1 = VAL_UNT64(&v1), u2 = VAL_UNT64(&v2);
 				cmp = (u1 > u2) - (u1 < u2);
 			}
-			else {
-				REBOOL neg1 = !uns1 && VAL_INT64(&v1) < 0;
-				REBOOL neg2 = !uns2 && VAL_INT64(&v2) < 0;
-				if (neg1 != neg2) cmp = neg1 ? -1 : 1;
-				else if (neg1) {
-					REBI64 i1 = VAL_INT64(&v1), i2 = VAL_INT64(&v2);
-					cmp = (i1 > i2) - (i1 < i2);
-				}
-				else {
-					REBU64 u1 = VAL_UNT64(&v1), u2 = VAL_UNT64(&v2);
-					cmp = (u1 > u2) - (u1 < u2);
-				}
-			}
 		}
-		if (cmp != 0) break;
+
+		if (cmp != 0) return cmp;
 	}
 
-	if (cmp != 0) return cmp;
-	return l1 - l2;
+	// --- 3. Common prefix matched; shorter vector sorts first.
+	return (l1 > l2) - (l1 < l2);
 }
 
 
@@ -1291,12 +1351,23 @@ data_spec:
 **
 */	REBINT CT_Vector(REBVAL *a, REBVAL *b, REBINT mode)
 /*
+**		mode 3   : same?        -- identical series + index
+**		mode 1,2 : strict equal -- element type must match too
+**		mode 0   : equal        -- numeric comparison, type-transparent
+**		mode <0  : ordering
+**
 ***********************************************************************/
 {
 	REBINT num;
 
 	if (mode == 3)
 		return VAL_SERIES(a) == VAL_SERIES(b) && VAL_INDEX(a) == VAL_INDEX(b);
+
+	// Strict equality additionally requires the same element type.
+	// Loose equality deliberately ignores it, so #(i32! [1]) = #(f32! [1.0])
+	// holds, mirroring `1 = 1.0` for plain numbers.
+	if (mode >= 1 && VECT_TYPE(VAL_SERIES(a)) != VECT_TYPE(VAL_SERIES(b)))
+		return 0;
 
 	num = Compare_Vector(a, b);
 	if (mode >= 0) return (num == 0);

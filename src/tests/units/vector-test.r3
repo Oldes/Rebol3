@@ -874,8 +874,30 @@ Rebol [
 		--assert #(i64! [-1])   < #(i32! [0])
 		--assert #(i64! [-1])  != #(u32! [-1])
 
-	--test-- "compare vectors - incompatible categories should error"
-		--assert error? try [#(i64! [1 2]) = #(f64! [1.0 2.0])]
+	--test-- "cross-category loose equality now works, no trap"
+		--assert #(i32! [1 2]) = #(f32! [1.0 2.0])
+		--assert #(f64! [1.0 2.0]) = #(i64! [1 2])
+		--assert #(u16! [1 2]) = #(f64! [1.0 2.0])
+
+	--test-- "...but strict equality still separates them"
+		--assert      #(i32! [1 2]) !== #(f32! [1.0 2.0])
+		--assert not (#(i32! [1 2])  == #(f32! [1.0 2.0]))
+
+	--test-- "ordering across categories"
+		--assert #(i32! [1]) < #(f32! [1.5])
+		--assert #(f32! [0.5]) < #(i32! [1])
+		--assert #(i32! [2]) > #(f64! [1.999])
+
+	--test-- "PRECISION: must not collapse via double-widening"
+		--assert not (#(i64! [9007199254740993]) = #(f64! [9007199254740992.0]))
+		--assert #(i64! [9007199254740993]) > #(f64! [9007199254740992.0])
+
+	--test-- "out-of-range floats resolve by magnitude, not by overflowing the cast"
+		--assert #(i64! [ 9223372036854775807]) < #(f64! [ 1e30])
+		--assert #(i64! [-9223372036854775808]) > #(f64! [-1e30])
+
+	--test-- "-0.0 against integer zero"
+		--assert #(i32! [0]) = #(f64! [-0.0])
 
 
 ===end-group===
@@ -1089,6 +1111,48 @@ Rebol [
 			error? e: try [sort/compare #(i8!  [2 4 1 3]) func[a b][a < b]]
 			e/id = 'feature-na
 		]
+===end-group===
+
+
+===start-group=== "sort/case with vectors"
+
+	--test-- "element type as primary /case key, deterministic across permutations"
+		--assert (sort/case [#(f32! [1.0]) #(i32! [1])]) == [#(i32! [1]) #(f32! [1.0])]
+		--assert (sort/case [#(i32! [1]) #(f32! [1.0])]) == [#(i32! [1]) #(f32! [1.0])]
+
+	--test-- "VECT_TYPE enum order: signed ints, then unsigned, then floats"
+		--assert (sort/case [#(f64! [0]) #(u8! [0]) #(i64! [0]) #(i8! [0]) #(f32! [0]) #(u64! [0])])
+		                 == [#(i8! [0]) #(i64! [0]) #(u8! [0]) #(u64! [0]) #(f32! [0]) #(f64! [0])]
+
+	--test-- "type outranks value under /case"
+		--assert (sort/case [#(i32! [99]) #(f32! [-99.0])]) == [#(i32! [99]) #(f32! [-99.0])]
+
+	--test-- "plain sort ignores element type, orders purely by value"
+		--assert (sort [#(i32! [99]) #(f32! [-99.0])]) == [#(f32! [-99.0]) #(i32! [99])]
+		--assert (sort [#(f32! [1.0]) #(i32! [0]) #(i64! [2])])
+		            == [#(i32! [0]) #(f32! [1.0]) #(i64! [2])]
+
+	--test-- "same element type: /case and plain sort agree"
+		--assert (sort/case [#(i32! [3]) #(i32! [1]) #(i32! [2])]) == [#(i32! [1]) #(i32! [2]) #(i32! [3])]
+		--assert (sort      [#(i32! [3]) #(i32! [1]) #(i32! [2])]) == [#(i32! [1]) #(i32! [2]) #(i32! [3])]
+
+	--test-- "type vs shape precedence under /case"
+		--assert (sort/case [#(f32! 6x1 [0 0 0 0 0 0]) #(i32! 3x2 [0 0 0 0 0 0])])
+		                 == [#(i32! 3x2 [0 0 0 0 0 0]) #(f32! 6x1 [0 0 0 0 0 0])]
+
+	--test-- "element type outranks shape under /case"
+		;; i32! has rows=3, f32! has rows=1 -- type wins, so i32! sorts first
+		--assert (sort/case [#(f32! 6x1 [0 0 0 0 0 0]) #(i32! 2x3 [0 0 0 0 0 0])])
+		                 == [#(i32! 2x3 [0 0 0 0 0 0]) #(f32! 6x1 [0 0 0 0 0 0])]
+
+	--test-- "shape still decides within a same-element-type group"
+		--assert (sort/case [#(i32! 2x3 [0 0 0 0 0 0]) #(i32! 6x1 [0 0 0 0 0 0])])
+		                 == [#(i32! 6x1 [0 0 0 0 0 0]) #(i32! 2x3 [0 0 0 0 0 0])]
+
+	--test-- "plain sort ignores element type, shape still primary"
+		--assert (sort [#(f32! 6x1 [0 0 0 0 0 0]) #(i32! 2x3 [0 0 0 0 0 0])])
+		            == [#(f32! 6x1 [0 0 0 0 0 0]) #(i32! 2x3 [0 0 0 0 0 0])]
+
 ===end-group===
 
 
@@ -1384,7 +1448,7 @@ Rebol [
 		i: #(u16! 2x3 [1 2 3 4 5 6])
 		--assert (h = i)
 		--assert (h == i)
-		;; plain vs. shaped, same flat content -- confirm the strict rule is intended
+		;; plain vs. shaped, same flat content
 		p: #(u16! [1 2 3 4 5 6])
 		--assert not (p = h)
 
