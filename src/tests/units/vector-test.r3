@@ -229,6 +229,10 @@ Rebol [
 	--assert false = reflect v 'signed
 	--assert [unsigned integer! 16 2] = reflect v 'spec
 	--assert [unsigned integer! 16 2] = spec-of v
+	--assert [unsigned integer! 8 2x2] = spec-of #(u8! 2x2)
+	;; signed and float spellings round-trip too
+	--assert (spec-of #(i16! 2x2 [1 2 3 4])) = [integer! 16 2x2]
+	--assert (spec-of #(f32! 2x2 [1 2 3 4])) = [decimal! 32 2x2]
 --test-- "ACCESSORS on vector"
 	--assert 16 = v/size
 	--assert  2 = v/length
@@ -1477,6 +1481,16 @@ Rebol [
 ===end-group===
 
 ===start-group=== "MATRIX (shaped vectors)"
+	--test-- "Compact construction: shape without full data zero-fills"
+		--assert (transcode/one {#(u8! 2x2))}      ) == #(uint8! 2x2 [0 0 0 0])
+		--assert (transcode/one {#(u8! 2x2 []))}   ) == #(uint8! 2x2 [0 0 0 0])
+		--assert (transcode/one {#(u8! 2x2 [1 2]))}) == #(uint8! 2x2 [1 2 0 0])
+		;; matches the make spelling
+		--assert #(u8! 2x2) == make vector! [u8! 2x2]
+		;; rows 1 -- no annotation, but still allocated
+		--assert (mold #(i32! 3x1)) == "#(int32! [0 0 0])"
+		;; the plain-size form stays rejected (integer slot is the index)
+		--assert error? transcode/one/error {#(u8! 2)}
 	--test-- "Make shaped vector"
 		--assert all [
 			vector? try [m: make vector! [u8! 3x2 [1 2 3 4 5 6]]]
