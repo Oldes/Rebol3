@@ -664,7 +664,8 @@ RL_API void *RL_Make_Vector(REBINT type, REBINT sign, REBINT dims, REBINT bits, 
 {
 	// check if bits is valid 
 	if(!(bits == 8 || bits == 16 || bits == 32 || bits == 64)) return 0;
-	return Make_Vector(type, sign, dims, bits, size);
+
+	return Make_Vector_Series(size, bits/8, dims);
 }
 
 RL_API void RL_Protect_GC(REBSER *series, u32 flags)

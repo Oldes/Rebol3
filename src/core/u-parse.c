@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -70,6 +70,7 @@ enum parse_flags {
 	PF_COLLECT,
 	PF_KEEP,
 	PF_PICK,
+	PF_CAPTURE
 };
 
 #define MAX_PARSE_DEPTH 512
@@ -914,11 +915,15 @@ bad_target:
 						SET_FLAG(flags, PF_COPY);
 					case SYM_SET:
 						SET_FLAG(flags, PF_SET_OR_COPY);
+					set_command:
 						item = rules++;
 						if (!(IS_WORD(item) || IS_SET_WORD(item))) Trap1(RE_PARSE_VARIABLE, item);
 						if (VAL_CMD(item)) Trap1(RE_PARSE_COMMAND, item);
 						word = item;
 						continue;
+					case SYM_CAPTURE:
+						SET_FLAG(flags, PF_CAPTURE);
+						goto set_command;
 
 					case SYM_NOT:
 						SET_FLAG(flags, PF_NOT);
@@ -1388,6 +1393,10 @@ post:
 							}
 						}
 					}
+				}
+				else if (GET_FLAG(flags, PF_CAPTURE)) {
+					ser = Make_Slice(series, begin, count, SERIES_WIDE(series));
+					Set_Var_Series(word, parse->type, ser, 0);
 				}
 				if (GET_FLAG(flags, PF_KEEP)) {
 					if (ser && GET_FLAG(flags, PF_COPY)) {

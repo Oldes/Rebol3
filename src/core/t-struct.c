@@ -135,7 +135,6 @@ static
 void Get_Struct_Field_Value(REBSTU* stu, REBSTF* field, REBVAL* val)
 {
 	if (field->array) {
-		REBSER* ser;
 		REBINT type = field->type;
 
 		// Look up the vector-compatible symbol for this field type
@@ -143,7 +142,7 @@ void Get_Struct_Field_Value(REBSTU* stu, REBSTF* field, REBVAL* val)
 
 		if (type > STRUCT_TYPE_DOUBLE || sym == NOT_FOUND) {
 			// Type has no vector equivalent — fall back to a block of scalars
-			ser = Make_Block(field->dimension);
+			REBSER* ser = Make_Block(field->dimension);
 			REBCNT n = 0;
 			SET_TYPE(val, REB_BLOCK);
 
@@ -153,23 +152,20 @@ void Get_Struct_Field_Value(REBSTU* stu, REBSTF* field, REBVAL* val)
 				get_scalar(stu, field, n, &elem);
 				Append_Val(ser, &elem);
 			}
+			VAL_SERIES(val) = ser;
+			VAL_INDEX(val) = 0;
 		}
 		else {
 			// Type maps to a known vector word — use a vector for efficiency
-			ser = Make_Vector_From_Word(sym, field->dimension);
-
+			Make_Vector_From_Word(val, sym, field->dimension);
+			ASSERT1(NZ(VAL_SERIES(val)), RP_INTERNAL);
 			// Bulk-copy the raw field bytes directly into the vector's data buffer
 			COPY_MEM(
-				SERIES_DATA(ser),
+				VAL_VEC_HEAD(val),
 				STRUCT_DATA_BIN(stu) + field->offset,
 				field->dimension * field->size
 			);
-			SET_TYPE(val, REB_VECTOR);
 		}
-
-		// Point val at the newly created series, starting at index 0
-		VAL_SERIES(val) = ser;
-		VAL_INDEX(val) = 0;
 	}
 	else {
 		// Non-array field - retrieve a single scalar value directly
@@ -397,7 +393,7 @@ static REBOOL assign_scalar(REBSTU *stu,
 						return FALSE;
 					}
 					if (IS_VECTOR(val)) {
-						if (field->size != VAL_VEC_WIDTH(val)) {
+						if (field->size != VAL_VEC_WIDE(val)) {
 							return FALSE;
 						}
 						COPY_MEM(STRUCT_DATA_BIN(stu) + field->offset, VAL_BIN_DATA(val), field->dimension * field->size);

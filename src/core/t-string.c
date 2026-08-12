@@ -285,7 +285,7 @@ static REBSER *make_binary(REBVAL *arg, REBOOL make)
 	// MAKE/TO BINARY! <vector!>
 	case REB_VECTOR:
 		// result is in little-endian!
-		ser = Copy_Bytes(VAL_DATA(arg), VAL_LEN(arg) * VAL_VEC_WIDTH(arg));
+		ser = Copy_Bytes(VAL_DATA(arg), VAL_LEN(arg) * VAL_VEC_WIDE(arg));
 		break;
 
 	case REB_BLOCK:
@@ -964,7 +964,6 @@ FORCE_INLINE
 	case A_APPEND:
 	case A_INSERT:
 	case A_CHANGE:
-		//Modify_String(action, value, arg);
 		// Length of target (may modify index): (arg can be anything)
 		len = Partial1((action == A_CHANGE) ? value : arg, DS_ARG(AN_LENGTH));
 		index = VAL_INDEX(value);
@@ -1092,6 +1091,7 @@ pick_it:
 
 	case A_TAKE:
 		ser = VAL_SERIES(value);
+		if (IS_FIXED_SIZE(ser)) Trap0(RE_FIXED_SIZED_SERIES);
 		if (D_REF(ARG_TAKE_ALL)) {
 			if (tail <= index) goto empty_str;
 			len = tail - index;
@@ -1157,6 +1157,7 @@ pick_it:
 		return R_RET;
 
 	case A_CLEAR:
+		if (IS_FIXED_SIZE_VALUE(value)) Trap0(RE_FIXED_SIZED_SERIES);
 		if (index < tail) {
 			if (index == 0) Reset_Series(VAL_SERIES(value));
 			else {
@@ -1219,8 +1220,10 @@ pick_it:
 			(args & (AM_TRIM_HEAD | AM_TRIM_LINES | AM_TRIM_ALL | AM_TRIM_WITH)))
 		)
 			Trap0(RE_BAD_REFINES);
-		if (IS_BINARY(value))
+		if (IS_BINARY(value)) {
+			if (IS_FIXED_SIZE_VALUE(value)) Trap0(RE_FIXED_SIZED_SERIES);
 			Trim_Binary(VAL_SERIES(value), VAL_INDEX(value), VAL_LEN(value), args, D_ARG(ARG_TRIM_STR));
+		}
 		else
 			Trim_String(VAL_SERIES(value), VAL_INDEX(value), VAL_LEN(value), args, D_ARG(ARG_TRIM_STR));
 		break;

@@ -341,48 +341,6 @@ typedef struct rebol_xy_int {
 
 /***********************************************************************
 **
-**	VECTOR
-**
-***********************************************************************/
-
-#define	SET_VECTOR(v,s) VAL_SERIES(v)=(s), VAL_INDEX(v)=0, VAL_SET(v, REB_VECTOR)
-
-// Encoding Format:
-//		stored in series->size for now
-//		[d d d d   d d d d   0 0 0 0   t s b b]
-
-// Encoding identifiers:
-enum {
-	VTSI08 = 0,
-	VTSI16,
-	VTSI32,
-	VTSI64,
-
-	VTUI08,
-	VTUI16,
-	VTUI32,
-	VTUI64,
-
-	VTSF08,		// not used
-	VTSF16,		// not used
-	VTSF32,
-	VTSF64,
-	VT_MAX,
-};
-
-static REBCNT bit_sizes[4] = { 8, 16, 32, 64 };
-static REBCNT byte_sizes[4] = { 1, 2, 4, 8 };
-
-#define VECT_TYPE(s) ((s)->size & 0xff)
-#define VECT_ROWS(s) ((s)->size >> 8)
-#define VECT_BIT_SIZE(bits) (bit_sizes[bits & 3])
-#define VECT_BYTE_SIZE(bits) (byte_sizes[bits & 3])
-#define VAL_VEC_WIDTH(v) VECT_BYTE_SIZE(VECT_TYPE(VAL_SERIES(v)))
-
-
-
-/***********************************************************************
-**
 */	struct Reb_Series
 /*
 **		Series header points to data and keeps track of tail and size.
@@ -483,6 +441,8 @@ enum {
 	SER_MON  = 1<<7,	// Monitoring
 	SER_INT  = 1<<8,	// Series data is internal (loop frames) and should not be accessed by users
 	SER_UTF8 = 1<<9,	// Series contains not only ASCII characters
+	SER_SLICE= 1<<10,	// Series is sliced (side link contains the original)
+	SER_SIZEP= 1<<11,   // Series is protected from length modification only (e.g. sliced series)
 };
 
 #define SERIES_SET_FLAG(s, f) (SERIES_FLAGS(s) |=  (f))
@@ -508,8 +468,13 @@ enum {
 #define UTF8_SERIES(s)       SERIES_SET_FLAG(s, SER_UTF8)
 #define IS_UTF8_SERIES(s)    SERIES_GET_FLAG(s, SER_UTF8)
 #define IS_UTF8_STRING(v)    SERIES_GET_FLAG(VAL_SERIES(v), SER_UTF8)
+#define SLICE_SERIES(s)      SERIES_SET_FLAG(s, SER_EXT|SER_SLICE|SER_SIZEP)
+#define IS_SLICE_SERIES(s)   SERIES_GET_FLAG(s, SER_SLICE)
+#define IS_FIXED_SIZE(s)     SERIES_GET_FLAG(s, SER_LOCK|SER_SIZEP)
+#define IS_FIXED_SIZE_VALUE(v) SERIES_GET_FLAG(VAL_SERIES(v), SER_LOCK|SER_SIZEP)
 
 #define TRAP_PROTECT(s) if (IS_PROTECT_SERIES(s)) Trap0(RE_PROTECTED)
+#define TRAP_FIXED_SIZE(s) if (IS_FIXED_SIZE(s)) Trap0(RE_FIXED_SIZED_SERIES)
 
 #ifdef SERIES_LABELS
 #define LABEL_SERIES(s,l) s->label = (l)
@@ -561,6 +526,7 @@ typedef struct Reb_Series_Ref
 		REBSER	*side;		// lookaside block for lists/hashes/images
 		REBINT  back;		// (Used in DO for stack back linking)
 //		REBFRM	*frame;		// (may also be used as frame for binding blocks)
+		REBFLG  vtype;      // vector! type encoding
 	} link;
 } REBSRI;
 
@@ -660,6 +626,70 @@ typedef struct Reb_Series_Ref
 			if (MOLD_OVER_LIMIT(mold)) return;                \
 			if (MOLD_REST(mold) < len) len = MOLD_REST(mold); \
 		}
+
+/***********************************************************************
+**
+**	VECTOR
+**
+***********************************************************************/
+
+// Encoding identifiers:
+enum {
+	VTSI08, VTSI16, VTSI32, VTSI64,
+	VTUI08, VTUI16, VTUI32, VTUI64,
+	VTSF08, VTSF16, VTSF32, VTSF64, // VTSF08 and VTSF16 not used!
+	VT_MAX,
+};
+
+#define VECT_BB_MASK    0x00000003  // bits 1..0   -- bit-width code (0-3)
+#define VECT_SIGN_MASK  0x00000004  // bit  2      -- signed flag
+#define VECT_TYPE_MASK  0x00000008  // bit  3      -- float flag
+
+#define VECT_BB_SHIFT    0
+#define VECT_SIGN_SHIFT  2
+#define VECT_TYPE_SHIFT  3
+
+// Encode vector element type from components
+#define VECT_MAKE_TYPE(bb, sign, isfloat) \
+    ( (isfloat) ? (VTSF08 + (bb)) \
+    : (sign)    ? (VTSI08 + (bb)) \
+    :             (VTUI08 + (bb)) )
+
+#define VECT_INFO_TYPE_MASK   0x000000FF
+#define VECT_INFO_ROWS_SHIFT  8
+
+#define VAL_VEC_INFO(v)   ((v)->data.series.link.vtype)           // raw packed field
+#define VAL_VEC_TYPE(v)   (VAL_VEC_INFO(v) & VECT_INFO_TYPE_MASK) // one of VTSI08..VTSF64
+#define VAL_VEC_ROWS(v)   ((REBCNT)VAL_VEC_INFO(v) >> VECT_INFO_ROWS_SHIFT)
+#define VAL_VEC_SET_ROWS(v,r) \
+	(VAL_VEC_INFO(v) = (VAL_VEC_INFO(v) & VECT_INFO_TYPE_MASK) | ((r) << VECT_INFO_ROWS_SHIFT))
+#define VAL_VEC_COLS(v) \
+	(VAL_VEC_ROWS(v) ? VAL_TAIL(v) / VAL_VEC_ROWS(v) : 0)
+
+// Derive width from the low 2 bits of the enum value
+#define VECT_BITS(vtype) (8 << (vtype & 3))
+#define VECT_WIDE(vtype) (1 << (vtype & 3))
+// Sign: unsigned identifiers start at VTUI08=4, so bit 2 is the sign flag
+#define VECT_SIGN(vtype) ((vtype & 4) == 0) // 0=signed, 1=unsigned
+// Float: float identifiers start at VTSF08=8, so bit 3 is the float flag
+#define VECT_DECI(vtype) ((vtype & 8) != 0)
+#define VECT_DIMS(vtype) 1 // TODO!
+
+#define VAL_VEC_BITS(v)  (VECT_BITS(VAL_VEC_INFO(v)))
+#define VAL_VEC_WIDE(v)  (VECT_WIDE(VAL_VEC_INFO(v)))
+#define VAL_VEC_SIGN(v)  (VECT_SIGN(VAL_VEC_INFO(v)))  
+#define VAL_VEC_DECI(v)  (VECT_DECI(VAL_VEC_INFO(v)))  
+
+#define VAL_VEC_TAIL(v)  VAL_TAIL(v)
+#define VAL_VEC_HEAD(v)  (VAL_BIN_HEAD(v))
+#define VAL_VEC_DATA(v)  (VAL_BIN_HEAD(v) + VAL_INDEX(v) * VAL_VEC_WIDE(v))
+
+#define SET_VECTOR(v,s,t) \
+	VAL_SERIES(v)=(s), \
+	VAL_VEC_INFO(v) = ((t) & VECT_INFO_TYPE_MASK) | (1 << VECT_INFO_ROWS_SHIFT), \
+	VAL_INDEX(v)=0, \
+	VAL_SET(v, REB_VECTOR)
+
 
 /***********************************************************************
 **
@@ -1331,7 +1361,6 @@ typedef struct Reb_All {
 } REBALL;
 
 #define VAL_ALL_BITS(v) ((v)->data.all.bits)
-
 
 /***********************************************************************
 **

@@ -169,7 +169,7 @@
 /*
 ***********************************************************************/
 {
-	//Print("Make_Native: %s spec %d", Get_Sym_Name(type+1), SERIES_TAIL(spec));
+	//Debug_Fmt("Make_Native: %s spec %d", Get_Sym_Name(type+1), SERIES_TAIL(spec));
 	VAL_FUNC_SPEC(value) = spec;
 	VAL_FUNC_ARGS(value) = Check_Func_Spec(spec);
 	VAL_FUNC_CODE(value) = func;

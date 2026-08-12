@@ -236,6 +236,33 @@ static int Check_Char_Range(REBVAL *val, REBCNT limit)
 	return R_ARG2;
 }
 
+/***********************************************************************
+**
+*/	REBNATIVE(slice)
+/*
+//	slice: native [
+//		"Make a lazy slice view into a series - no data is copied."
+//		series [any-block! string! binary! vector!]  "Source series"
+//		length [integer!] "Number of elements to include"
+//	]
+***********************************************************************/
+{
+	REBVAL* val  = D_ARG(1);
+	REBLEN  nlen = VAL_INT64(D_ARG(2)); // requested slice length
+	REBCNT  idx  = VAL_INDEX(val);      // current position within the series
+	REBLEN  olen = VAL_LEN(val);        // available length from current index
+	REBSER* ser  = VAL_SERIES(val);
+
+	if (nlen < 1)    Trap1(RE_OUT_OF_RANGE, D_ARG(2)); // reject non-positive lengths
+	if (nlen > olen) nlen = olen;                      // clamp to available length
+
+	// Make a new series node used to hold a slice.
+	ser = Make_Slice(ser, idx, nlen, (IS_VECTOR(val) ? VAL_VEC_WIDE(val) : SERIES_WIDE(ser)));
+	VAL_SERIES(val) = ser;              // point value at the new slice node
+	VAL_INDEX(val)  = 0;                // reset index of the new slice value
+	return R_ARG1;
+}
+
 
 /***********************************************************************
 **

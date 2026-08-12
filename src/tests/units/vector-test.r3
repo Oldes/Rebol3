@@ -37,12 +37,17 @@ Rebol [
 	data: [1 2 3 4]
 	size: 2
 	--assert {#(uint8! [1 2 3 4])}   == mold make vector! [uint8! :data]
-	--assert {#(uint8! [1 2])}       == mold make vector! [uint8! :size :data]
+	--assert {#(uint8! [1 2])}       == mold make vector! [uint8! :size :data] ;; truncates
 	index: 3
 	--assert {#(uint8! [3 4])}       == mold make vector! [uint8! :data :index]
 	size: 4
 	--assert {#(uint8! [3 4])}       == mold make vector! [uint8! :size [1 2 3 4 5] :index]
 	--assert {#(uint8! [1 2 3 4] 3)} == mold/all make vector! [uint8! :size [1 2 3 4 5] :index]
+
+	;; Using large data
+	data: append/dup copy [] 1 10000
+	--assert {#(uint8! [1 1])}   == mold make vector! [uint8! 2 :data]
+	--assert {#(uint8! 2x2 [1 1 1 1])}   == mold/flat make vector! [uint8! 2x2 :data]
 
 --test-- "Make vector using direct values"
 	--assert (make vector! [1 2 3 4]) == #(int64! [1 2 3 4])
@@ -52,6 +57,12 @@ Rebol [
 	--assert #(uint8! []) == transcode/one "#(uint8!)"
 	--assert #(uint32! []) == transcode/one "#(uint32!)"
 	--assert #(float32! []) == transcode/one "#(float32!)"
+
+--test-- "Make vector with negative size is a range error"
+	--assert all [error? e: try [make vector! [u8! -5]]   e/id = 'out-of-range]
+	--assert all [error? e: try [make vector! -5]         e/id = 'out-of-range]
+	--assert all [error? e: try [make vector! [u8! -2x3]] e/id = 'out-of-range]
+	--assert all [error? e: try [make vector! [u8! 2x-3]] e/id = 'out-of-range]
 
 --test-- "Make vector from binary"
 	--assert #(uint8! []) == attempt [to vector! #{}]
@@ -185,6 +196,13 @@ Rebol [
     ])
     3 4
 ]}
+
+--test-- "MOLD/flat on shaped vector"
+	v: #(u8! 3x2 [1 2 3 4 5 6])
+	--assert (mold/flat v) == "#(uint8! 3x2 [1 2 3 4 5 6])"
+	--assert (mold/all/flat v) == "#(uint8! 3x2 [1 2 3 4 5 6])"
+	--assert not find mold/flat v "^/"
+
 
 --test-- "QUERY on vector as object"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2352
@@ -717,11 +735,22 @@ Rebol [
 
 ===start-group=== "VECTOR statictics"
 ;@@ https://github.com/Oldes/Rebol-issues/issues/2648
-	all-modes: [minimum maximum range sum mean median variance sample-variance population-deviation sample-deviation]
-	all-get-modes: [:minimum :maximum :range :sum :mean :median :variance :sample-variance :population-deviation :sample-deviation]
+	--test-- "Query modes"
+		all-modes: query #(u8![]) none
+		--assert all-modes
+		== [signed type size length shape minimum maximum range sum mean median variance sample-variance population-deviation sample-deviation]
+		all-get-modes: collect [foreach m all-modes [keep to get-word! m]]
+		--assert all-get-modes
+		== [:signed :type :size :length :shape :minimum :maximum :range :sum :mean :median :variance :sample-variance :population-deviation :sample-deviation]
+	
 	--test-- "int8! vector statictics"
 	v: #(int8! [-2 -1 1 2 4])
 	--assert (query v all-modes) == [
+	    signed: #(true)
+	    type: integer!
+	    size: 8
+	    length: 5
+	    shape: _
 	    minimum: -2
 	    maximum: 4
 	    range: 6
@@ -734,22 +763,17 @@ Rebol [
 	    sample-deviation: 2.38746727726266
 	]
 
-	--assert (query v all-get-modes) == [
-	    -2
-	    4
-	    6
-	    4
-	    0.8
-	    1.0
-	    4.56
-	    5.7
-	    2.13541565040626
-	    2.38746727726266
-	]
+	--assert (query v all-get-modes) 
+	== [#(true) integer! 8 5 _ -2 4 6 4 0.8 1.0 4.56 5.7 2.13541565040626 2.38746727726266]
 
 	--test-- "uint64! vector statictics"
 	v: #(uint64! [4 9 11 12 17])
 	--assert (query v all-modes) == [
+	    signed: #(false)
+	    type: integer!
+	    size: 64
+	    length: 5
+	    shape: _
 	    minimum: 4
 	    maximum: 17
 	    range: 13
@@ -762,22 +786,17 @@ Rebol [
 	    sample-deviation: 4.72228758124704
 	]
 
-	--assert (query v all-get-modes) == [
-	    4
-	    17
-	    13
-	    53
-	    10.6
-	    11.0
-	    17.84
-	    22.3
-	    4.22374241638857
-	    4.72228758124704
-	]
+	--assert (query v all-get-modes) 
+	== [#(false) integer! 64 5 _ 4 17 13 53 10.6 11.0 17.84 22.3 4.22374241638857 4.72228758124704]
 
 	--test-- "float64! vector statictics"
 	v: #(float64! [1.62 1.72 1.64 1.7 1.78 1.64 1.65 1.64 1.66 1.74])
 	--assert (query v all-modes) == [
+	    signed: #(true)
+	    type: decimal!
+	    size: 64
+	    length: 10
+	    shape: _
 	    minimum: 1.62
 	    maximum: 1.78
 	    range: 0.16
@@ -790,24 +809,19 @@ Rebol [
 	    sample-deviation: 0.0530094331227943
 	]
 
-	--assert (query v all-get-modes) == [
-	    1.62
-	    1.78
-	    0.16
-	    16.79
-	    1.679
-	    1.655
-	    0.002529
-	    0.00281
-	    0.0502891638427207
-	    0.0530094331227943
-	]
+	--assert (query v all-get-modes)
+	== [#(true) decimal! 64 10 _ 1.62 1.78 0.16 16.79 1.679 1.655 0.002529 0.00281 0.0502891638427207 0.0530094331227943]
 
 	--test-- "QUERY on empty vector"
-	--assert (query #(u8! []) all-get-modes) == [_ _ _ _ _ _ _ _ _ _]
+	--assert (query #(u8! []) all-get-modes) == [#(false) integer! 8 0 _ _ _ _ _ _ _ _ _ _ _]
 
 	--test-- "QUERY on single value vector"
 	--assert (query #(u8! [1])  all-modes) == [
+	    signed: #(false)
+	    type: integer!
+	    size: 8
+	    length: 1
+	    shape: _
 	    minimum: 1
 	    maximum: 1
 	    range: 0
@@ -819,7 +833,53 @@ Rebol [
 	    population-deviation: 0.0
 	    sample-deviation: _
 	]
-	--assert (query #(u8! [1]) all-get-modes) == [1 1 0 1 1.0 1.0 0.0 _ 0.0 _]
+	--assert (query #(u8! [1]) all-get-modes)
+	== [#(false) integer! 8 1 _ 1 1 0 1 1.0 1.0 0.0 _ 0.0 _]
+
+	--test-- "median covers the same range as the other statistics"
+		v: skip #(i8! [100 1 2 3]) 1     ;; visible = [1 2 3]
+		--assert 2.0 = v/mean
+		--assert 2.0 = v/median          ;; over the whole series it'd be 2.5
+		--assert 1   = v/minimum
+		--assert 3   = v/maximum
+
+	--test-- "QUERY on vector not at head"
+		v: next #(int8! [100 1 2 3])
+		--assert (query v all-modes) == [
+		    signed: #(true)
+		    type: integer!
+		    size: 8
+		    length: 3
+		    shape: _
+		    minimum: 1
+		    maximum: 3
+		    range: 2
+		    sum: 6
+		    mean: 2.0
+		    median: 2.0
+		    variance: 0.666666666666667
+		    sample-variance: 1.0
+		    population-deviation: 0.816496580927726
+		    sample-deviation: 1.0
+		]
+		v: tail v
+		--assert (query v all-modes) == [
+		    signed: #(true)
+		    type: integer!
+		    size: 8
+		    length: 0
+		    shape: _
+		    minimum: _
+		    maximum: _
+		    range: _
+		    sum: _
+		    mean: _
+		    median: _
+		    variance: _
+		    sample-variance: _
+		    population-deviation: _
+		    sample-deviation: _
+		]
 
 ===end-group===
 
@@ -971,11 +1031,38 @@ Rebol [
 		--assert v2 == #(i32! [40 50])
 		--assert v == #(i32! [10 40 50])
 
+	--test-- "take/part with negative length"
+		;; negative /part takes backwards from the current position
+		v: #(u8! [1 2 3 4 5 6])
+		--assert (take/part tail v -2) == #(u8! [5 6])
+		--assert v == #(u8! [1 2 3 4])
+
+		v: #(u8! [1 2 3 4 5 6])
+		--assert (take/part skip v 3 -2) == #(u8! [2 3])
+		--assert v == #(u8! [1 4 5 6])
+
+		;; clamped at the head, like blocks
+		v: #(u8! [1 2 3])
+		--assert (take/part skip v 1 -5) == #(u8! [1])
+		--assert v == #(u8! [2 3])
+
+		;; zero and head-position cases
+		v: #(u8! [1 2 3])
+		--assert (take/part v -2) == #(u8! [])
+		--assert v == #(u8! [1 2 3])
+
 	--test-- "take/part/last of vector! not at head"
 		v: skip #(i32! [10 20 30 40 50]) 2
 		--assert (take/part/last v 4) == #(i32! [30 40 50])
 		--assert empty? v
 		--assert (head v) == #(i32! [10 20])
+
+	--test-- "take/part/last with negative length"
+		;; matches block behaviour -- /last already counts back from the tail
+		v: #(u8! [1 2 3 4 5 6])
+		--assert (take/part/last v -2) == #(u8! [])
+		--assert v == #(u8! [1 2 3 4 5 6])
+		--assert (take/part/last [1 2 3 4 5 6] -2) == []
 
 	--test-- "take/part/last must not reach before the current index"
 		v: #(i32! [10 20 30 40 50])
@@ -990,6 +1077,7 @@ Rebol [
 		--assert (take/part/last v2 3) == #(i32! [30 40 50])   ; exactly all visible elements
 		--assert empty? v2
 		--assert v == #(i32! [10 20])
+
 ===end-group===
 
 
@@ -1201,6 +1289,16 @@ Rebol [
 			e/arg1 = #{0304}
 		]
 
+	--test-- "INSERT/APPEND from a same-type vector not at head"
+		--assert (append #(i32! [1 2]) next #(i32! [3 4])) == #(i32! [1 2 4])
+		--assert (append #(i64! [1 2]) skip #(i64! [3 4 5]) 2) == #(i64! [1 2 5])
+		--assert all [
+			(insert v: #(i32! [1 2]) next #(i32! [3 4])) == #(i32! [1 2])
+			v == #(i32! [4 1 2])
+		]
+		;; width 1 was already correct -- regression guard
+		--assert (append #(i8! [1 2]) next #(i8! [3 4])) == #(i8! [1 2 4])
+
 	--test-- "INSERT vector number"
 		--assert all [
 			(insert v: #(i8! [1 2]) 3) == #(i8! [1 2])
@@ -1371,6 +1469,11 @@ Rebol [
 			(clear v) == #(i8! [])
 			empty? v
 		]
+		--assert all [
+			v: #(u32! [4294967295 1])
+			(clear next v) == #(u32! [])
+			v == #(u32! [4294967295])
+		]
 ===end-group===
 
 ===start-group=== "MATRIX (shaped vectors)"
@@ -1435,8 +1538,18 @@ Rebol [
 		--assert error? try [f + a]
 		;; Scalar broadcast still carries shape through
 		--assert (a + 1) == #(u16! 2x3 [2 3 4 5 6 7])
+		--assert (1 + a) == #(u16! 2x3 [2 3 4 5 6 7])
 		;; * elementwise multiplication
 		--assert (a * b) == #(u16! 2x3 [10 40 90 160 250 360])
+
+	--test-- "Math with a skipped shaped operand must not inherit the shape"
+		a: #(u16! 2x3 [1 2 3 4 5 6])
+		e: #(u16! [1 1 1 1 1])
+		--assert all [
+			r: (skip a 1) + e
+			r = #(uint16! [3 4 5 6 7])
+			none? r/shape
+		]
 	
 	--test-- "Shaped vectors compare"
 		g: #(u16! 3x2 [1 2 3 4 5 6])
@@ -1452,6 +1565,77 @@ Rebol [
 		p: #(u16! [1 2 3 4 5 6])
 		--assert not (p = h)
 
+	--test-- "reshape"
+		m: make vector! [u8! 3x2 [1 2 3 4 5 6]]
+		--assert (m/shape: 2x3) = 2x3
+		--assert m/shape = 2x3
+		--assert error? try [m/shape: 3x20]
+		m/shape: 6x1
+		--assert none? m/shape
+
+	--test-- "reshape is per-value"
+		m: make vector! [u8! 3x2 [1 2 3 4 5 6]]
+		a: m
+		a/shape: 2x3
+		--assert m/shape = 3x2
+
+	--test-- "mold of shaped vector"
+		--assert (mold #(u8! 3x2 [1 2 3 4 5 6])) == {#(uint8! 3x2 [
+    1 2 3
+    4 5 6
+])}
+	--test-- "mold round-trip of shaped vector"
+		m: make vector! [u8! 3x2 [1 2 3 4 5 6]]
+		--assert equal? m load mold m
+		--assert not find mold next m "3x2"
+		--assert equal? (next m) (load mold/all next m)
+		--assert not find mold/flat m "^/"
+
+	--test-- "CHANGE is allowed when the length is unchanged"
+		--assert all [
+			r: change v: #(u8! 2x2 [1 2 3 4]) 10
+			v == #(u8! 2x2 [10 2 3 4])
+			2 = index? r
+			r == skip v 1          ;; same series, same index, same shape
+			r/shape = 2x2          ;; return keeps the shape, like skip/next
+		]
+		--assert all [
+			r: change v: #(u8! 2x2 [1 2 3 4]) [10 20]
+			v == #(u8! 2x2 [10 20 3 4])
+			3 = index? r
+		]
+		--assert all [
+			r: skip #(u8! 2x2 [1 2 3 4]) 1
+			r/shape = 2x2
+		]
+
+	--test-- "CHANGE that would alter the length still traps"
+		v: #(u8! 2x2 [1 2 3 4])
+		--assert all [error? e: try [change/part v 9 2]     e/id = 'fixed-sized-series]
+		--assert all [error? e: try [change/dup  v 9 8]     e/id = 'fixed-sized-series]
+		--assert all [error? e: try [change skip v 3 [1 2]] e/id = 'fixed-sized-series]
+		;; and the vector is untouched after the trap
+		--assert v == #(u8! 2x2 [1 2 3 4])
+
+	--test-- "Shaped vectors are zeroed with change/dup, not clear"
+		m: make vector! [u8! 3x2 [1 2 3 4 5 6]]
+		--assert all [error? e: try [clear m]  e/id = 'fixed-sized-series]
+		change/dup m 0 length? m
+		--assert m == #(u8! 3x2 [0 0 0 0 0 0])
+		--assert m/shape = 3x2
+
+	--test-- "COPY of a shaped vector"
+		m: make vector! [u8! 3x2 [1 2 3 4 5 6]]
+		--assert all [r: copy m  r/shape = 3x2  r == m  not same? r m]
+		;; the copy is length-locked too
+		--assert all [r: copy m  error? try [append r 7]]
+
+	--test-- "partial COPY drops the shape"
+		m: make vector! [u8! 3x2 [1 2 3 4 5 6]]
+		--assert all [r: copy/part m 4     none? r/shape  r == #(u8! [1 2 3 4])]
+		--assert all [r: copy skip m 1     none? r/shape]
+		;; ...and is not length-locked
+		--assert all [r: copy/part m 4     vector? append r 7]
 
 ===end-group===
 
