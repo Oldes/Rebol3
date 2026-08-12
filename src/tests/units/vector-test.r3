@@ -275,6 +275,54 @@ Rebol [
 	--assert #(f64! [1.0 3.0 2.0]) = head reverse next #(f64! [1 2 3])
 ===end-group===
 
+
+===start-group=== "VECTOR from binary data"
+
+	--test-- "binary is copied verbatim in native byte order"
+		;; the raw COPY_MEM means TO BINARY! round-trips exactly
+		v: #(u16! [1 2 3])
+		--assert v == make vector! compose [u16! (to binary! v)]
+		v: #(i32! [-1 2 3])
+		--assert v == make vector! compose [i32! (to binary! v)]
+		v: #(f64! [1.5 -2.5])
+		--assert v == make vector! compose [f64! (to binary! v)]
+		;; ...and via the compact syntax
+		--assert (transcode/one {#(u16! #{010002000300})}) == make vector! [u16! #{010002000300}]
+
+	--test-- "binary length is clamped to the allocation"
+		--assert 2 = length? v: make vector! [u16! 2 #{010002000300}]
+		--assert v == #(u16! [1 2])
+		--assert 4 = length? v: make vector! [u8! 2x2 #{0102030405}]
+		--assert v == #(u8! 2x2 [1 2 3 4])
+
+	--test-- "binary shorter than one element is rejected"
+		;; APPEND already traps on this -- the constructors must agree
+		--assert all [error? e: try [append #(i16! [1 2]) #{03}]  e/id = 'invalid-data]
+		--assert error? try [make vector! [i16! #{03}]]
+		--assert error? try [make vector! [i32! #{0102}]]
+		--assert error? try [make vector! [f64! #{01020304}]]
+		--assert error? transcode/one/error {#(i16! #{03})}
+		;; but an empty binary stays legal
+		--assert #(uint8! [])  == make vector! [u8! #{}]
+		--assert #(uint16! []) == make vector! [u16! #{}]
+		--assert #(uint8! [])  == to vector! #{}
+
+	--test-- "partial trailing bytes are dropped, not rejected"
+		;; 3 bytes into a u16! vector -- one whole element, one stray byte
+		--assert 1 = length? v: make vector! [u16! #{010002}]
+		--assert v == #(u16! [1])
+
+	--test-- "shape and binary data together"
+		--assert (make vector! [u8! 2x2 #{01020304}]) == #(u8! 2x2 [1 2 3 4])
+		--assert all [
+			m: make vector! [u16! 2x2 #{0100020003000400}]
+			m/shape = 2x2
+			(pick m 2x2) == 4
+		]
+
+===end-group===
+
+
 ===start-group=== "VECTOR compact construction"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2396
 	--test-- "Compact construction syntax (empty)"

@@ -321,16 +321,12 @@ void Set_Vector_Row(REBSER *ser, REBVAL *blk, REBCNT type)
 		}
 	}
 	else {
-#ifdef old_code
-		REBYTE *data = VAL_BIN_DATA(blk);
-		for (; len > 0; len--, idx++) {
-			set_vect(type, ser->data, n++, (REBI64)(data[idx]), f);
-		}
-#else
-		REBCNT bytes = ser->tail * SERIES_WIDE(ser); //TODO: review! Wide is max 256 bytes!!!
+		// Binary data is copied verbatim -- the bytes are the vector's
+		// storage in native byte order, which is what TO BINARY! produces,
+		// so the two round-trip. Clamp to the allocation.
+		REBCNT bytes = max * VECT_WIDE(type);
 		if (len > bytes) len = bytes;
 		COPY_MEM(ser->data, VAL_BIN_DATA(blk), len);
-#endif
 	}
 }
 
@@ -1153,7 +1149,11 @@ REBCNT Get_Vector_Type_From_Symbol(REBCNT sym) {
 	// Initial data:
 	if (IS_BLOCK(bp) || IS_BINARY(bp)) {
 		REBCNT len = VAL_LEN(bp);
-		if (IS_BINARY(bp)) len /= VECT_WIDE(vtype);
+		if (IS_BINARY(bp)) {
+			len /= VECT_WIDE(vtype);
+			if (len == 0 && VAL_LEN(bp) > 0)
+				return 0;   // or Trap1(RE_INVALID_DATA, bp) in Make_Vector_Spec
+		}
 		if (len > cols && cols == 0) cols = len;
 		iblk = bp;
 		bp++;
@@ -1285,7 +1285,11 @@ size_spec:
 	// Initial data:
 	if (IS_BLOCK(val) || IS_BINARY(val)) {
 		REBCNT len = VAL_LEN(val);
-		if (IS_BINARY(val)) len /= (bits >> 3);
+		if (IS_BINARY(val)) {
+			len /= VECT_WIDE(vtype);
+			if (len == 0 && VAL_LEN(bp) > 0)
+				return 0;   // or Trap1(RE_INVALID_DATA, bp) in Make_Vector_Spec
+		}
 		if (len > cols && cols == 0) cols = len;
 		iblk = val;
 		val = ++bp;
