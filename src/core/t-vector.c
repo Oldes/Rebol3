@@ -1944,3 +1944,55 @@ bad_make:
 		Append_Byte(mold->series, ')');
 	}
 }
+
+/***********************************************************************
+**
+*/	REBNATIVE(transpose)
+/*
+//	transpose: native [
+//		{Returns a new vector with rows and columns swapped}
+//		value  [vector!]
+//	]
+***********************************************************************/
+{
+	REBVAL *arg = D_ARG(1);
+	REBCNT  vtype = VAL_VEC_TYPE(arg);
+	REBLEN  len   = VAL_LEN(arg);
+	REBCNT  rows, cols;
+
+	// A partial view has no coherent shape (same rule as COPY and the math
+	// ops), so treat it as a plain vector -- a single row of `len` columns.
+	rows = (VAL_INDEX(arg) == 0 && len == VAL_TAIL(arg)) ? VAL_VEC_ROWS(arg) : 1;
+	if (rows == 0) rows = 1;
+	cols = len / rows;
+
+	if (len == 0) {
+		// cols would be 0; rows must never be stored as 0 or every
+		// pair-index bounds check breaks.
+		if (!Make_Vector(D_RET, vtype, 0, 1)) Trap0(RE_NO_MEMORY);
+		return R_RET;
+	}
+
+	// Result is cols x rows: Make_Vector takes (cols, rows) and stores rows.
+	if (!Make_Vector(D_RET, vtype, rows, cols)) Trap0(RE_NO_MEMORY);
+
+#define TRANSPOSE_LOOP(type) { \
+		type *src = (type*)VAL_VEC_DATA(arg); \
+		type *dst = (type*)VAL_VEC_HEAD(D_RET); \
+		for (REBCNT r = 0; r < rows; r++) \
+			for (REBCNT c = 0; c < cols; c++) \
+				dst[c * rows + r] = src[r * cols + c]; \
+	}
+
+	switch (VAL_VEC_WIDE(arg)) {
+	case 1: TRANSPOSE_LOOP(u8);  break;
+	case 2: TRANSPOSE_LOOP(u16); break;
+	case 4: TRANSPOSE_LOOP(u32); break;
+	case 8: TRANSPOSE_LOOP(u64); break;
+	}
+
+#undef TRANSPOSE_LOOP
+
+	return R_RET;
+}
+

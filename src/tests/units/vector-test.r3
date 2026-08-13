@@ -1699,6 +1699,40 @@ Rebol [
 		;; ...and is not length-locked
 		--assert all [r: copy/part m 4     vector? append r 7]
 
+	--test-- "transpose swaps rows and columns"
+		m: make vector! [u8! 3x2 [1 2 3 4 5 6]]   ;; 3 cols, 2 rows
+		t: transpose m
+		--assert t/shape = 2x3
+		--assert t == #(u8! 2x3 [1 4 2 5 3 6])
+		--assert m == #(u8! 3x2 [1 2 3 4 5 6])    ;; source untouched
+
+	--test-- "transpose is index-swapped pick"
+		m: make vector! [u8! 3x2 [1 2 3 4 5 6]]
+		t: transpose m
+		repeat r 2 [repeat c 3 [
+			--assert (pick t as-pair r c) = (pick m as-pair c r)
+		]]
+
+	--test-- "transpose is its own inverse"
+		m: make vector! [u8! 3x2 [1 2 3 4 5 6]]
+		--assert m == transpose transpose m
+		s: make vector! [i32! 2x2 [1 2 3 4]]
+		--assert s == transpose transpose s
+
+	--test-- "transpose of a plain vector gives a column vector"
+		v: #(u8! [1 2 3])
+		t: transpose v
+		--assert t/shape = 1x3
+		--assert 3 = length? t
+		--assert (pick t 1x2) = 2
+
+	--test-- "transpose edge cases"
+		--assert none? query transpose #(u8! []) 'shape
+		--assert 0 = length? transpose #(u8! [])
+		--assert (transpose #(u8! [7])) == #(u8! [7])
+		;; result is length-locked like any shaped vector
+		--assert all [t: transpose #(u8! 3x2 [1 2 3 4 5 6])  error? try [append t 9]]
+
 ===end-group===
 
 ~~~end-file~~~
