@@ -1052,36 +1052,85 @@ static REBINT cmp_u64_dec(REBU64 u, REBDEC d) {
 
 /***********************************************************************
 **
-*/	void Sort_Vector(REBVAL *vec, REBLEN len, REBINT skip, REBFLG all, REBFLG rev)
+*/	static int Compare_Vector_Val(const void *v1, const void *v2)
+/*
+**	sort/compare with an integer offset (1-based field within a record).
+**
+***********************************************************************/
+{
+	REBCNT type  = VAL_UNT32(DS_GET(DSP - 2));
+	REBVAL *val  = DS_GET(DSP - 1);
+	REBU64 flags = VAL_UNT64(DS_TOP);
+	REBLEN offset = 0;
+
+	if (IS_INTEGER(val)) offset = AS_REBLEN(VAL_INT64(val) - 1) * VECT_WIDE(type);
+
+	return (GET_FLAG(flags, SORT_FLAG_REVERSE) ? compares_rev : compares)[type](
+		(const REBYTE*)v1 + offset, (const REBYTE*)v2 + offset);
+}
+
+/***********************************************************************
+**
+*/	static int Compare_Vector_Multi(const void *v1, const void *v2)
+/*
+**	sort/compare with a block of field offsets, tried in order.
+**
+***********************************************************************/
+{
+	REBCNT type  = VAL_UNT32(DS_GET(DSP - 2));
+	REBVAL *val  = DS_GET(DSP - 1);
+	REBU64 flags = VAL_UNT64(DS_TOP);
+	REBCNT wide  = VECT_WIDE(type);
+	CompareFunc cmp = compares[type];
+	REBVAL *ofs = VAL_BLK_DATA(val);
+	REBINT result = 0;
+
+	ASSERT1(IS_BLOCK(val), RP_BAD_EVALTYPE);
+	while (result == 0 && IS_INTEGER(ofs)) {
+		REBLEN offset = AS_REBLEN(VAL_INT64(ofs++) - 1) * wide;
+		result = cmp((const REBYTE*)v1 + offset, (const REBYTE*)v2 + offset);
+	}
+	if (GET_FLAG(flags, SORT_FLAG_REVERSE)) result = -result;
+	return result;
+}
+
+/***********************************************************************
+**
+*/	void Sort_Vector(REBVAL *vec, REBLEN len, REBINT skip, REBVAL *compv, REBFLG all, REBFLG rev)
 /*
 ***********************************************************************/
 {
-	REBCNT  type = VAL_VEC_TYPE(vec);
-	REBCNT  wide = VAL_VEC_WIDE(vec);
-	REBYTE* data = VAL_VEC_DATA(vec);
+	REBCNT  type  = VAL_VEC_TYPE(vec);
+	REBCNT  wide  = VAL_VEC_WIDE(vec);
+	REBYTE *data  = VAL_VEC_DATA(vec);
 	REBINT  stack = DSP;
+	REBU64  flags = 0;
 	CompareFunc cmp;
 	ASSERT1(type < VT_MAX, RP_ASSERTS);
 
 	if (skip > 1) { len /= skip; wide *= skip; }
 	if (len < 2) return;
 
-	if (all && skip > 1) {
-		REBU64 flags = 0;
-		if (rev) SET_FLAG(flags, SORT_FLAG_REVERSE);
-		DS_PUSH_INTEGER(type);
-		DS_PUSH_INTEGER(skip);
-		DS_PUSH_INTEGER(flags);
-		cmp = Compare_Vector_Record;
-	}
-	else {
-		// Without /all the element comparator doubles as a record
-		// comparator, reading only the leading field.
-		cmp = rev ? compares_rev[type] : compares[type];
+	// Fast path: no comparator, no /all -- the element comparator doubles
+	// as a record comparator, reading only the leading field.
+	if (!all && !IS_INTEGER(compv) && !IS_BLOCK(compv)) {
+		unstable_sort(data, len, wide, rev ? compares_rev[type] : compares[type]);
+		return;
 	}
 
+	if (rev) SET_FLAG(flags, SORT_FLAG_REVERSE);
+	DS_PUSH_INTEGER(type);                 // DSP-2
+	if (all && skip > 1) {
+		DS_PUSH_INTEGER(skip);             // DSP-1: field count
+		cmp = Compare_Vector_Record;
+	} else {
+		DS_PUSH(compv);                    // DSP-1: offset or block of offsets
+		cmp = IS_BLOCK(compv) ? Compare_Vector_Multi : Compare_Vector_Val;
+	}
+	DS_PUSH_INTEGER(flags);                // DSP
+
 	unstable_sort(data, len, wide, cmp);
-	DSP = stack;   // drop the comparator context
+	DSP = stack;
 }
 
 /***********************************************************************
@@ -1611,14 +1660,39 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 
 	case A_SORT:
 	{
-		REBINT skip = 1;
+		REBVAL *compv = D_ARG(6);
+		REBINT  skip  = 1;
+
 		len = Partial(value, 0, D_ARG(8), 0);
-		if (D_REF(5)) Trap0(RE_FEATURE_NA);        // /compare
-		if (len > 1 && D_REF(3)) {                 // /skip
-			skip = Int32(D_ARG(4));
-			if (skip <= 0 || len % skip != 0 || skip > len) Trap_Range(D_ARG(4));
+
+		// Validation mirrors Sort_Block, including its ordering: a series of
+		// 0 or 1 elements short-circuits before any argument is checked.
+		if (len > 1) {
+			if (D_REF(3)) {                       // /skip
+				skip = Int32(D_ARG(4));
+				if (skip <= 0 || len % skip != 0 || skip > len)
+					Trap_Range(D_ARG(4));
+			}
+			if (D_REF(5)) {                       // /compare
+				if (ANY_FUNC(compv))
+					Trap0(RE_FEATURE_NA);         // function comparators not supported yet
+				if (IS_INTEGER(compv)) {
+					if (D_REF(9)) Trap0(RE_BAD_REFINES);   // /all + offset is contradictory
+					if (!D_REF(3) || VAL_INT64(compv) < 1 || VAL_INT64(compv) > skip)
+						Trap1(RE_INVALID_ARG, compv);
+				}
+				else if (IS_BLOCK(compv)) {
+					REBVAL *tmp = VAL_BLK_DATA(compv);
+					while (NOT_END(tmp)) {
+						if (!IS_INTEGER(tmp) || VAL_INT64(tmp) < 1 || VAL_INT64(tmp) > skip)
+							Trap1(RE_INVALID_ARG, tmp);
+						tmp++;
+					}
+				}
+				else Trap1(RE_INVALID_ARG, compv);
+			}
 		}
-		Sort_Vector(value, len, skip, D_REF(9), D_REF(10));
+		Sort_Vector(value, len, skip, compv, D_REF(9), D_REF(10));
 	}	break;
 			
 	case A_RANDOM:

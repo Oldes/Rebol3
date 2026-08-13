@@ -1242,9 +1242,31 @@ Rebol [
 		--assert  #(f32! [2 4 1 3]) == head sort/part/reverse next #(f32! [2 4 1 3]) 2
 		--assert  #(f64! [2 4 1 3]) == head sort/part/reverse next #(f64! [2 4 1 3]) 2
 
-	--test-- "SORT/compare vector!"
-		--assert  all [
-			error? e: try [sort/compare #(i8!  [2 4 1 3]) func[a b][a < b]]
+	--test-- "SORT/compare with a field offset"
+		;; sort records of 2 by their second field
+		--assert (sort/skip/compare #(i32! [1 30  2 10  3 20]) 2 2)
+		      == #(i32! [2 10  3 20  1 30])
+		;; offset 1 is the default ordering
+		--assert (sort/skip/compare #(i32! [3 30  1 10  2 20]) 2 1)
+		      == #(i32! [1 10  2 20  3 30])
+		--assert (sort/skip/compare/reverse #(i32! [1 30  2 10  3 20]) 2 2)
+		      == #(i32! [1 30  3 20  2 10])
+
+	--test-- "SORT/compare with a block of offsets"
+		;; primary field 2, tie-broken by field 1
+		--assert (sort/skip/compare #(i32! [2 10  1 10  3 5]) 2 [2 1])
+		      == #(i32! [3 5  1 10  2 10])
+
+	--test-- "SORT/compare validation matches blocks"
+		--assert all [error? e: try [sort/compare #(i32! [1 2 3 4]) 1]        e/id = 'invalid-arg]
+		--assert all [error? e: try [sort/skip/compare #(i32! [1 2 3 4]) 2 0] e/id = 'invalid-arg]
+		--assert all [error? e: try [sort/skip/compare #(i32! [1 2 3 4]) 2 3] e/id = 'invalid-arg]
+		--assert all [error? e: try [sort/skip/compare/all #(i32! [1 2 3 4]) 2 1] e/id = 'bad-refines]
+		--assert all [error? e: try [sort/skip/compare #(i32! [1 2 3 4]) 2 [1 9]] e/id = 'invalid-arg]
+
+	--test-- "SORT/compare with a function is still unsupported"
+		--assert all [
+			error? e: try [sort/compare #(i8! [2 4 1 3]) func [a b][a < b]]
 			e/id = 'feature-na
 		]
 
