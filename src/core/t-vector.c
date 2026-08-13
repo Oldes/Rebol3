@@ -2116,3 +2116,38 @@ bad_make:
 	return R_RET;
 }
 
+/***********************************************************************
+**
+*/	REBNATIVE(identity)
+/*
+//	identity: native [
+//		{Turns a square matrix into an identity matrix (modifies)}
+//		matrix [vector!]
+//	]
+***********************************************************************/
+{
+	REBVAL *arg   = D_ARG(1);
+	REBCNT  vtype = VAL_VEC_TYPE(arg);
+	REBCNT  rows  = VAL_VEC_ROWS(arg);
+	REBYTE *data;
+	REBLEN  n;
+	REBVAL  one;
+
+	// Must be a whole, square matrix -- a partial view has no coherent shape.
+	if (VAL_INDEX(arg) != 0 || VAL_LEN(arg) != VAL_TAIL(arg)
+		|| rows < 1 || VAL_VEC_COLS(arg) != rows)
+		Trap1(RE_INVALID_ARG, arg);
+
+	TRAP_PROTECT(VAL_SERIES(arg));
+
+	// Length is unchanged, so the shape lock (SER_SIZEP) does not apply.
+	data = VAL_VEC_HEAD(arg);
+	CLEAR(data, VAL_TAIL(arg) * VAL_VEC_WIDE(arg));
+
+	SET_INTEGER(&one, 1);
+	for (n = 0; n < rows; n++)
+		Set_Vector_Value(vtype, data, n * rows + n, &one);
+
+	return R_ARG1;
+}
+

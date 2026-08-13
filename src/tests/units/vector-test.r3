@@ -1806,6 +1806,37 @@ Rebol [
 		;; result is length-locked like any shaped vector
 		--assert all [t: transpose #(u8! 3x2 [1 2 3 4 5 6])  error? try [append t 9]]
 
+	--test-- "IDENTITY modifies in place"
+		m: #(u8! 4x4)
+		--assert same? m identity m
+		--assert m == #(u8! 4x4 [1 0 0 0  0 1 0 0  0 0 1 0  0 0 0 1])
+		--assert m/shape = 4x4
+		;; existing contents are cleared, not merged
+		m: #(i16! 2x2 [9 9 9 9])
+		identity m
+		--assert m == #(i16! 2x2 [1 0 0 1])
+		;; float types get 1.0
+		--assert (identity #(f64! 2x2)) == #(f64! 2x2 [1 0 0 1])
+
+	--test-- "IDENTITY COPY leaves the original alone"
+		m: #(u8! 2x2 [9 9 9 9])
+		i: identity copy m
+		--assert m == #(u8! 2x2 [9 9 9 9])
+		--assert i == #(u8! 2x2 [1 0 0 1])
+		--assert not same? m i
+
+	--test-- "IDENTITY requires a whole square matrix"
+		--assert all [error? e: try [identity #(u8! 3x2)]                  e/id = 'invalid-arg]
+		--assert all [error? e: try [identity make vector! [u8! 3]]        e/id = 'invalid-arg]
+		--assert all [error? e: try [identity next make vector! [u8! 2x2]] e/id = 'invalid-arg]
+		--assert all [error? e: try [identity make vector! [u8! 0]]        e/id = 'invalid-arg]
+
+	--test-- "IDENTITY respects PROTECT"
+		--assert all [
+			error? e: try [identity protect make vector! [u8! 2x2]]
+			e/id = 'protected
+		]
+
 ===end-group===
 
 ~~~end-file~~~
