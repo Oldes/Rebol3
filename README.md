@@ -126,6 +126,7 @@ If you are looking for other _Rebol like languages_, you may want to check also:
 * [Rye](https://github.com/refaktor/rye) language written in Go
 * [Topaz](https://github.com/giesse/Project-SnowBall) experimental Rebol like language being compiled to JS
 * [World](https://github.com/Geomol/World) language written in C
+* [Recoil](https://recoil.rblk.eu/) Rebol-style syntax with a static borrow checker, forged into clean, readable C. No runtime. No garbage collector.
 
 
 There is also [Shinxin's fork](https://github.com/zsx/r3), which I was initially using for _chery-picking_,
