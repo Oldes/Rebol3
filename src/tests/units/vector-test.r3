@@ -687,6 +687,18 @@ Rebol [
 	--assert (#(uint64! [1 2 3 4]) % #(u64! [2 2 2 2])) == #(uint64! [1 0 1 0])
 	--assert (#(float32! [1 2 3 4]) % #(float32! [2 2 2 2])) == #(float32! [1 0 1 0])
 	--assert (#(float64! [1 2 3 4]) % #(float64! [2 2 2 2])) == #(float64! [1 0 1 0])
+
+--test-- "operations on empty vectors"
+	--assert (copy #(u32! [])) == #(u32! [])
+	--assert (copy #(f64! [])) == #(f64! [])
+	--assert 0 = length? copy #(u8! [])
+	--assert (copy/part #(u32! [1 2 3]) 0) == #(u32! [])
+	--assert (#(u32! []) + 1) == #(u32! [])
+	--assert (#(u32! []) * 2) == #(u32! [])
+	--assert (#(u32! []) + #(u32! [])) == #(u32! [])
+	--assert (transpose #(u32! [])) == #(u32! [])
+	--assert 0 = length? take/part #(u32! []) 5
+	
 ===end-group===
 
 

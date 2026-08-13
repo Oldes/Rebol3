@@ -553,7 +553,10 @@ return_number:
 
 	vtype = VAL_VEC_TYPE(left);
 	len = VAL_LEN(left);
-
+	if (len == 0) {
+		if (!Make_Vector(out, vtype, 0, 1)) Trap0(RE_NO_MEMORY);
+		return;
+	}
 
 	if (IS_INTEGER(right)) {
 		i = VAL_INT64(right);
@@ -1645,8 +1648,13 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 	case A_COPY:
 	{
 		vtype = VAL_VEC_TYPE(value);
-		REBCNT rows = VAL_VEC_ROWS(value);    // capture before SET_VECTOR overwrites link
+		REBCNT rows = VAL_VEC_ROWS(value);    // before SET_VECTOR overwrites link
 		len = Partial(value, 0, D_ARG(3), 0); // can modify value index
+		if (len <= 0) {
+			// Copy_Binary_Part is not safe with a zero length.
+			if (!Make_Vector(value, vtype, 0, 1)) Trap0(RE_NO_MEMORY);
+			break;
+		}
 		REBOOL whole = (VAL_INDEX(value) == 0 && (REBCNT)len == SERIES_TAIL(vect));
 		ser = Copy_Binary_Part(vect, VAL_INDEX(value), len);
 		SET_VECTOR(value, ser, vtype);
