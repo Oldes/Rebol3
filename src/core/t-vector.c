@@ -1027,15 +1027,61 @@ static REBINT cmp_u64_dec(REBU64 u, REBDEC d) {
 
 /***********************************************************************
 **
-*/	void Sort_Vector(REBVAL *vec, REBLEN len, REBFLG reversed)
+*/	static int Compare_Vector_Record(const void *v1, const void *v2)
+/*
+**	Compares whole records field by field (sort/skip/all). Context comes
+**	from the data stack, as with the block comparators.
+**
+***********************************************************************/
+{
+	REBCNT type   = VAL_UNT32(DS_GET(DSP - 2));
+	REBCNT fields = VAL_UNT32(DS_GET(DSP - 1));
+	REBU64 flags  = VAL_UNT64(DS_TOP);
+	REBCNT wide   = VECT_WIDE(type);
+	CompareFunc cmp = GET_FLAG(flags, SORT_FLAG_REVERSE)
+	                ? compares_rev[type] : compares[type];
+	const REBYTE *p = (const REBYTE*)v1;
+	const REBYTE *q = (const REBYTE*)v2;
+	REBINT result = 0;
+
+	for (REBCNT i = 0; i < fields && result == 0; i++, p += wide, q += wide)
+		result = cmp(p, q);
+
+	return result;
+}
+
+/***********************************************************************
+**
+*/	void Sort_Vector(REBVAL *vec, REBLEN len, REBINT skip, REBFLG all, REBFLG rev)
 /*
 ***********************************************************************/
 {
 	REBCNT  type = VAL_VEC_TYPE(vec);
-	REBCNT  skp  = VAL_VEC_WIDE(vec);
+	REBCNT  wide = VAL_VEC_WIDE(vec);
 	REBYTE* data = VAL_VEC_DATA(vec);
+	REBINT  stack = DSP;
+	CompareFunc cmp;
 	ASSERT1(type < VT_MAX, RP_ASSERTS);
-	unstable_sort(data, len, skp, reversed ? compares_rev[type] : compares[type]);
+
+	if (skip > 1) { len /= skip; wide *= skip; }
+	if (len < 2) return;
+
+	if (all && skip > 1) {
+		REBU64 flags = 0;
+		if (rev) SET_FLAG(flags, SORT_FLAG_REVERSE);
+		DS_PUSH_INTEGER(type);
+		DS_PUSH_INTEGER(skip);
+		DS_PUSH_INTEGER(flags);
+		cmp = Compare_Vector_Record;
+	}
+	else {
+		// Without /all the element comparator doubles as a record
+		// comparator, reading only the leading field.
+		cmp = rev ? compares_rev[type] : compares[type];
+	}
+
+	unstable_sort(data, len, wide, cmp);
+	DSP = stack;   // drop the comparator context
 }
 
 /***********************************************************************
@@ -1556,8 +1602,7 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 		ser = Copy_Binary_Part(vect, VAL_INDEX(value), len);
 		SET_VECTOR(value, ser, vtype);
 		Set_Vector_Shape(value, whole ? rows : 1);
-	}
-		break;
+	}	break;
 
 	case A_REVERSE:
 		len = Partial(value, 0, D_ARG(3), 0);
@@ -1565,15 +1610,16 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 		break;
 
 	case A_SORT:
+	{
+		REBINT skip = 1;
 		len = Partial(value, 0, D_ARG(8), 0);
-		if (
-		//	D_REF(2) ||	// case sensitive
-			D_REF(3) ||	// skip
-			D_REF(5) 	// comparator
-		//	D_REF(9) 	// all fields
-			) Trap0(RE_FEATURE_NA);
-		Sort_Vector(value, len, D_REF(10));
-		break;
+		if (D_REF(5)) Trap0(RE_FEATURE_NA);        // /compare
+		if (len > 1 && D_REF(3)) {                 // /skip
+			skip = Int32(D_ARG(4));
+			if (skip <= 0 || len % skip != 0 || skip > len) Trap_Range(D_ARG(4));
+		}
+		Sort_Vector(value, len, skip, D_REF(9), D_REF(10));
+	}	break;
 			
 	case A_RANDOM:
 		if (D_REF(2) || D_REF(4)) Trap0(RE_BAD_REFINES); // /seed /only

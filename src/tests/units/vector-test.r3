@@ -1241,16 +1241,67 @@ Rebol [
 		--assert  #(i64! [2 4 1 3]) == head sort/part/reverse next #(i64! [2 4 1 3]) 2
 		--assert  #(f32! [2 4 1 3]) == head sort/part/reverse next #(f32! [2 4 1 3]) 2
 		--assert  #(f64! [2 4 1 3]) == head sort/part/reverse next #(f64! [2 4 1 3]) 2
-	--test-- "SORT/skip vector!"
-		--assert  all [
-			error? e: try [sort/skip #(i8!  [2 4 1 3]) 2]
-			e/id = 'feature-na
-		]
+
 	--test-- "SORT/compare vector!"
 		--assert  all [
 			error? e: try [sort/compare #(i8!  [2 4 1 3]) func[a b][a < b]]
 			e/id = 'feature-na
 		]
+
+	--test-- "SORT/skip vector!"
+		--assert (sort/skip #(i32! [3 30 1 10 2 20]) 2) == #(i32! [1 10 2 20 3 30])
+		--assert (sort/skip #(u8!  [3 30 1 10 2 20]) 2) == #(u8!  [1 10 2 20 3 30])
+		--assert (sort/skip #(f64! [3 30 1 10 2 20]) 2) == #(f64! [1 10 2 20 3 30])
+		;; skip 1 is plain sort
+		--assert (sort/skip #(i32! [2 4 1 3]) 1) == #(i32! [1 2 3 4])
+
+	--test-- "SORT/skip/reverse vector!"
+		--assert (sort/skip/reverse #(i32! [3 30 1 10 2 20]) 2) == #(i32! [3 30 2 20 1 10])
+
+	--test-- "SORT/skip sorts whole rows of a shaped vector"
+		m: make vector! [u8! 3x2 [4 5 6 1 2 3]]
+		sort/skip m 3
+		--assert m == #(u8! 3x2 [1 2 3 4 5 6])
+		--assert m/shape = 3x2
+
+		m: make vector! [u8! 3x3 [7 8 9 1 2 3 4 5 6]]
+		sort/skip m to integer! first m/shape
+		--assert m == #(u8! 3x3 [1 2 3 4 5 6 7 8 9])
+
+	--test-- "SORT/skip on a vector not at head"
+		v: #(i32! [99 3 30 1 10])
+		sort/skip next v 2
+		--assert v == #(i32! [99 1 10 3 30])
+
+	--test-- "SORT/skip compares only the leading field"
+		--assert (sort/skip #(i32! [3 3 30  1 1 20  1 2 10]) 3)
+		      == #(i32! [1 2 10  1 1 20  3 3 30])
+
+	--test-- "SORT/skip/all compares whole records"
+		--assert (sort/skip/all #(i32! [3 3 30  1 1 20  1 2 10]) 3)
+		      == #(i32! [1 1 20  1 2 10  3 3 30])
+		;; ties on the first two fields fall through to the third
+		--assert (sort/skip/all #(i32! [1 1 30  1 1 10  1 1 20]) 3)
+		      == #(i32! [1 1 10  1 1 20  1 1 30])
+
+	--test-- "SORT/skip/all/reverse is the exact reverse ordering"
+		--assert (sort/skip/all/reverse #(i32! [1 1 20  3 3 30  1 2 10]) 3)
+		      == #(i32! [3 3 30  1 2 10  1 1 20])
+
+	--test-- "SORT/all without /skip is a no-op"
+		--assert (sort/all #(i32! [2 4 1 3])) == #(i32! [1 2 3 4])
+
+	--test-- "SORT/skip argument validation"
+		--assert all [error? e: try [sort/skip #(i8! [1 2 3 4]) 0]   e/id = 'out-of-range]
+		--assert all [error? e: try [sort/skip #(i8! [1 2 3 4]) -2]  e/id = 'out-of-range]
+		--assert all [error? e: try [sort/skip #(i8! [1 2]) 5]       e/id = 'out-of-range]
+		;; length must be a whole number of records -- matches block behaviour
+		--assert all [error? e: try [sort/skip #(i8! [1 2 3 4 5]) 2] e/id = 'out-of-range]
+		--assert           error? try [sort/skip [1 2 3 4 5] 2]
+		;; ...but a 1-element series short-circuits before validation
+		--assert (sort/skip #(i8! [1]) 5) == #(i8! [1])
+		--assert (sort/skip [1] 5) == [1]
+
 ===end-group===
 
 
