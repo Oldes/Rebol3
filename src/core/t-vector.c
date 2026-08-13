@@ -2151,3 +2151,74 @@ bad_make:
 	return R_ARG1;
 }
 
+/***********************************************************************
+**
+*/	REBNATIVE(matmul)
+/*
+//	matmul: native [
+//		{Matrix product of two vectors (columns of A must match rows of B)}
+//		a [vector!]
+//		b [vector!]
+//	]
+***********************************************************************/
+{
+	REBVAL *a = D_ARG(1);
+	REBVAL *b = D_ARG(2);
+	REBCNT  vtype = VAL_VEC_TYPE(a);
+	REBLEN  lenA  = VAL_LEN(a);
+	REBLEN  lenB  = VAL_LEN(b);
+	REBCNT  rowsA, colsA, rowsB, colsB;
+
+	if (vtype != VAL_VEC_TYPE(b)) Trap0(RE_VECTOR_NOT_COMPATIBLE);
+	if (lenA == 0 || lenB == 0)   Trap0(RE_VECTOR_NOT_COMPATIBLE);
+
+	// A partial view has no coherent shape -- treat it as a single row,
+	// the same rule COPY and the elementwise ops use.
+	rowsA = (VAL_INDEX(a) == 0 && lenA == VAL_TAIL(a)) ? VAL_VEC_ROWS(a) : 1;
+	rowsB = (VAL_INDEX(b) == 0 && lenB == VAL_TAIL(b)) ? VAL_VEC_ROWS(b) : 1;
+	if (rowsA == 0) rowsA = 1;
+	if (rowsB == 0) rowsB = 1;
+	colsA = lenA / rowsA;
+	colsB = lenB / rowsB;
+
+	// Inner dimensions must agree: (rowsA x colsA) * (rowsB x colsB)
+	if (colsA != rowsB) Trap0(RE_VECTOR_NOT_COMPATIBLE);
+
+	// Result is rowsA x colsB; Make_Vector takes (cols, rows).
+	if (!Make_Vector(D_RET, vtype, colsB, rowsA)) Trap0(RE_NO_MEMORY);
+
+	// Accumulate wide: exact for every type narrower than 64 bits, and
+	// avoids compounding rounding error across the inner loop for f32.
+	// Storing back into the element type truncates, matching `*`.
+#define DOT_LOOP(type, acc) { \
+		type *pa = (type*)VAL_VEC_DATA(a); \
+		type *pb = (type*)VAL_VEC_DATA(b); \
+		type *pc = (type*)VAL_VEC_HEAD(D_RET); \
+		for (REBCNT i = 0; i < rowsA; i++) \
+			for (REBCNT j = 0; j < colsB; j++) { \
+				acc sum = 0; \
+				for (REBCNT k = 0; k < colsA; k++) \
+					sum += (acc)pa[i * colsA + k] * (acc)pb[k * colsB + j]; \
+				pc[i * colsB + j] = (type)sum; \
+			} \
+	}
+
+	switch (vtype) {
+	case VTSI08: DOT_LOOP(i8,     REBI64); break;
+	case VTSI16: DOT_LOOP(i16,    REBI64); break;
+	case VTSI32: DOT_LOOP(i32,    REBI64); break;
+	case VTSI64: DOT_LOOP(i64,    REBI64); break;
+	case VTUI08: DOT_LOOP(u8,     REBU64); break;
+	case VTUI16: DOT_LOOP(u16,    REBU64); break;
+	case VTUI32: DOT_LOOP(u32,    REBU64); break;
+	case VTUI64: DOT_LOOP(u64,    REBU64); break;
+	case VTSF32: DOT_LOOP(float,  double); break;
+	case VTSF64: DOT_LOOP(double, double); break;
+	}
+
+#undef DOT_LOOP
+
+	return R_RET;
+}
+
+

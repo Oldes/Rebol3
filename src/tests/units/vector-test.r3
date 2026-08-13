@@ -1837,6 +1837,50 @@ Rebol [
 			e/id = 'protected
 		]
 
+	--test-- "DOT product of two matrices"
+		;; A is 2 rows x 3 cols, B is 3 rows x 2 cols -> 2x2
+		a: #(i32! 3x2 [1 2 3  4 5 6])
+		b: #(i32! 2x3 [7 8  9 10  11 12])
+		--assert (matmul a b) == #(i32! 2x2 [58 64  139 154])
+		--assert all [r: matmul a b  r/shape = 2x2]
+		;; operands untouched
+		--assert a == #(i32! 3x2 [1 2 3  4 5 6])
+
+	--test-- "DOT is not commutative"
+		a: #(i32! 3x2 [1 2 3  4 5 6])
+		b: #(i32! 2x3 [7 8  9 10  11 12])
+		--assert all [r: matmul b a  r/shape = 3x3]      ;; 3x3, not 2x2
+		--assert not equal? (matmul a b) (dot b a)
+
+	--test-- "DOT with the identity matrix"
+		m: #(f64! 3x3 [1 2 3  4 5 6  7 8 9])
+		i: identity copy m
+		--assert (matmul m i) == m
+		--assert (matmul i m) == m
+
+	--test-- "DOT with plain vectors"
+		;; a plain vector is a single row (1 x N)
+		--assert (matmul #(i32! [1 2 3]) #(i32! 2x3 [7 8  9 10  11 12])) == #(i32! [58 64])
+		;; matrix x column, via transpose
+		--assert all [
+			col: transpose #(i32! [7 9 11])
+			col/shape = 1x3
+			(matmul #(i32! 3x2 [1 2 3  4 5 6]) col) == #(i32! 1x2 [58 139])
+		]
+		;; row x row fails -- 3 cols against 1 row
+		--assert error? try [matmul #(i32! [1 2 3]) #(i32! [4 5 6])]
+
+	--test-- "DOT dimension and type checks"
+		--assert all [
+			error? e: try [matmul #(i32! 3x2 [1 2 3 4 5 6]) #(i32! 3x2 [1 2 3 4 5 6])]
+			e/id = 'vector-not-compatible
+		]
+		--assert error? try [matmul #(i32! 2x2 [1 2 3 4]) #(f64! 2x2 [1 2 3 4])]
+		--assert error? try [matmul #(i32! []) #(i32! [])]
+
+	--test-- "DOT truncates on store like *"
+		;; 100*100 + 100*100 = 20000, stored as u8 -> 32
+		--assert (matmul #(u8! 2x1 [100 100]) #(u8! 1x2 [100 100])) == #(u8! [32])
 ===end-group===
 
 ~~~end-file~~~
