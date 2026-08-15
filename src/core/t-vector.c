@@ -1714,10 +1714,8 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 	case A_REFLECT:
 		vtype = VAL_VEC_TYPE(value);
 		if (SYM_SPEC == VAL_WORD_SYM(D_ARG(2))) {
-			blk = Make_Block(4);
-			if (vtype >= VTUI08 && vtype <= VTUI64) Init_Word(Append_Value(blk), SYM_UNSIGNED);
-			Query_Vector_Field(value, SYM_TYPE, Append_Value(blk), NULL);
-			Query_Vector_Field(value, SYM_SIZE, Append_Value(blk), NULL);
+			blk = Make_Block(2);
+			Query_Vector_Field(value, SYM_ELEMENT_TYPE, Append_Value(blk), NULL);
 			// A shaped vector emits its pair! shape in the size slot, so the
 			// spec still round-trips through MAKE; otherwise the plain length.
 			Query_Vector_Field(value,
