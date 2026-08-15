@@ -346,8 +346,8 @@ int main(int argc, char **argv) {
 	//Init_Graphics();
 #endif
 
-#ifdef TEST_EXTENSIONS
-	OS_Init_Ext_Test();
+#ifdef INCLUDE_EXT_XTEST
+	OS_Init_Ext_XTest();
 #endif
 
 // Call sys/start function. If a compressed script is provided, it will be 

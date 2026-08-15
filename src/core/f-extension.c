@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,7 +23,7 @@
 **  Module:  f-extension.c
 **  Summary: support for extensions
 **  Section: functional
-**  Author:  Carl Sassenrath
+**  Author:  Carl Sassenrath, Oldes
 **  Notes:
 **
 ***********************************************************************/
@@ -37,17 +37,18 @@
 
 // Extension evaluation categories:
 enum {
-    RXE_NULL,	// unset
+	RXE_NULL,	// unset
 	RXE_HANDLE,	// handle
-    RXE_32,		// logic
-    RXE_64,		// integer, decimal, etc.
-    RXE_SYM,	// word
-    RXE_SER,	// string
+	RXE_32,		// logic
+	RXE_64,		// integer, decimal, etc.
+	RXE_SYM,	// word
+	RXE_SER,	// string
 	RXE_IMAGE,	// image
 	RXE_DATE,	// from upper section
 	RXE_OBJECT, // any object
 	RXE_TUPLE,  // 3-12 bytes tuple value
 	RXE_STRUCT,	// structure data and fields spec series
+	RXE_VECTOR,
 	RXE_MAX
 };
 
@@ -128,6 +129,11 @@ x*/	RXIARG Value_To_RXI(REBVAL *val)
 		arg.structure.id     = VAL_STRUCT_ID(val);
 		arg.structure.offset = VAL_STRUCT_OFFSET(val);
 		break;
+	case RXE_VECTOR:
+		arg.vector.series = VAL_SERIES(val);
+		arg.vector.index  = VAL_INDEX(val);
+		arg.vector.info   = VAL_VEC_INFO(val);
+		break;
 	case RXE_NULL:
 	default:
 		arg.int64 = 0;
@@ -199,6 +205,11 @@ x*/	void RXI_To_Value(REBVAL *val, RXIARG arg, REBCNT type)
 		}
 		break;
 	}
+	case RXE_VECTOR:
+		VAL_SERIES(val)   = arg.vector.series;
+		VAL_INDEX(val)    = arg.vector.index;
+		VAL_VEC_INFO(val) = arg.vector.info;
+		break;
 	case RXE_NULL:
 		VAL_INT64(val) = 0;
 		break;
@@ -387,6 +398,20 @@ x*/	int Do_Callback(REBSER *obj, u32 name, RXIARG *args, RXIARG *result)
 		if (!(dll = OS_Open_Library((REBCHR*)SERIES_DATA(path), &error))) {
 			DS_PUSH_INTEGER(error);
 			Trap2(RE_NO_EXTENSION, val, DS_TOP);
+		}
+
+		// Check ABI compatibility before touching anything else in the DLL:
+		{
+			REBCNT (*abi)(void);
+			REBCNT ext_abi = 0; // absent symbol == pre-marker (epoch 0)
+			if ((abi = OS_Find_Function(dll, cs_cast(BOOT_STR(RS_EXTENSION, 3)))))
+				ext_abi = abi();
+			if (ext_abi < RL_MIN_SUPPORTED_ABI || ext_abi > RL_ABI_VERSION) {
+				OS_Close_Library(dll);
+				DS_PUSH_INTEGER(ext_abi);
+				DS_PUSH_INTEGER(RL_MIN_SUPPORTED_ABI);
+				Trap3(RE_EXTENSION_ABI, val, DS_TOP - 1, DS_TOP);
+			}
 		}
 
 		// Call its info() function for header and code body:

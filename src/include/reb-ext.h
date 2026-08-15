@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,7 +22,7 @@
 **
 **  Summary: Extensions Include File
 **  Module:  reb-ext.h
-**  Author:  Carl Sassenrath
+**  Author:  Carl Sassenrath, Oldes
 **  Notes:
 **
 ***********************************************************************/
@@ -107,6 +107,11 @@ typedef union rxi_arg_val {
 		REBCNT offset;  // like series' index (used with nested structs)
 		REBCNT id;      // unique struct id counted as a hash of its specification
 	} structure;
+	struct {
+		REBSER *series;
+		REBCNT index;
+		REBCNT info;
+	} vector;
 
 } RXIARG;
 
@@ -160,11 +165,14 @@ typedef int (*RXICAL)(int cmd, RXIFRM *args, REBCEC *ctx);
 #define RXA_IMAGE_BITS(f,n)     ((REBYTE *)RL_SERIES((RXA_ARG(f,n).image), RXI_SER_DATA))
 #define RXA_IMAGE_WIDTH(f,n)    (RXA_ARG(f,n).width)
 #define RXA_IMAGE_HEIGHT(f,n)   (RXA_ARG(f,n).height)
-#define RXA_STRUCT_SER(f,n)		((RXA_ARG(f,n).structure.series))
+#define RXA_STRUCT_SER(f,n)		  (RXA_ARG(f,n).structure.series)
 #define RXA_STRUCT_BIN(f,n)     ((REBYTE *)(SERIES_DATA(RXA_STRUCT_SER(f,n))) + RXA_INDEX(f,n))
 #define RXA_STRUCT_LEN(f,n)     (SERIES_TAIL(RXA_STRUCT_SER(f,n)) - RXA_INDEX(f,n)) // length in bytes
 #define RXA_STRUCT_ID(f,n)      (RXA_ARG(f,n).structure.id)
 #define RXA_STRUCT_SPEC(f,n)	(RL_STRUCT_SPEC(RXA_STRUCT_ID(f,n)))
+#define RXA_VECTOR_SERIES(f,n)  (RXA_ARG(f,n).vector.series)
+#define RXA_VECTOR_INDEX(f,n)   (RXA_ARG(f,n).vector.index)
+#define RXA_VECTOR_INFO(f,n)    (RXA_ARG(f,n).vector.info)
 
 // Command function return values:
 enum rxi_return {
@@ -188,6 +196,19 @@ enum {
 	RXI_SER_WIDE,	// width of series (in bytes)
 	RXI_SER_LEFT,	// units free in series (past tail)
 };
+
+// Vector info
+#define RXI_VEC_TYPE_MASK   0x00000003
+#define RXI_VEC_SIGN_MASK   0x00000004
+#define RXI_VEC_FLOAT_MASK  0x00000008
+#define RXI_VEC_ROWS_SHIFT  8
+
+#define RXI_VECTOR_BITS(info)   (8 << ((info) & RXI_VEC_TYPE_MASK))
+#define RXI_VECTOR_SIGNED(info) (((info) & RXI_VEC_SIGN_MASK) == 0)
+#define RXI_VECTOR_FLOAT(info)  (((info) & RXI_VEC_FLOAT_MASK) != 0)
+#define RXI_VECTOR_ROWS(info)   ((REBCNT)(info) >> RXI_VEC_ROWS_SHIFT)
+#define RXI_VECTOR_COLS(tail, info) \
+	(RXI_VECTOR_ROWS(info) ? ((REBCNT)(tail) / RXI_VECTOR_ROWS(info)) : 0)
 
 // Error Codes (returned in result value from some API functions):
 enum {

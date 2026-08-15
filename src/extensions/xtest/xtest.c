@@ -21,7 +21,7 @@
 ************************************************************************
 **
 **  Title: Test for Embedded Extension Modules
-**  Author: Carl Sassenrath
+**  Author: Carl Sassenrath, Oldes
 **  Purpose:
 **      Provides test code for extensions that can be easily
 **		built and run in the host-kit. Not part of release,
@@ -40,7 +40,7 @@
 **
 ***********************************************************************/
 
-#ifdef TEST_EXTENSIONS
+#if defined(INCLUDE_EXT_XTEST) || defined(REB_EXT)
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -50,7 +50,11 @@
 #include "sys-value.h"
 #include "reb-struct.h"
 
-extern RL_LIB *RL; // Link back to reb-lib from embedded extensions
+#ifdef REB_EXT
+RL_LIB *RL;   // standalone DLL: own binary, must supply the storage itself
+#endif
+// embedded: storage already defined in host-lib.c; the `extern RL_LIB *RL;`
+// pulled in via reb-host.h/reb-lib.h is all this file needs
 
 static REBCNT Handle_XTest;
 typedef struct XTest_Context {
@@ -91,7 +95,6 @@ enum test_cmd_words {
 	CMD_echo,
 	CMD_path,
 	CMD_stru,
-
 };
 char *RX_Spec =
 	"REBOL [\n"
@@ -123,7 +126,7 @@ char *RX_Spec =
 	"hob2:   command [{prints XTEST handle's data} hndl [handle!]]\n"
 	"str0:   command [{return a constructed string}]\n"
 	"echo:   command [{return the input value} value]\n"
-	"path:   command [{converts Rebol file to OS file as string or binary} f [file!] /full {full path} /utf8]\n"
+	"path:   command [{converts Rebol file to OS file} f [file!] /full {full path}]\n"
 	"stru:   command [{test struct passing} val [struct!]]\n"
 
 	"init-words [id data length] protect/hide 'init-words\n"
@@ -180,7 +183,6 @@ char *RX_Spec =
 			"[same? s probe echo s]\n"
 
 			"[{foo} == path %foo]\n"
-			"[#{66C3AD6B} == path/utf8 to file! #{66C3AD6B}]\n"
 
 			"[probe s stru s]\n"
 		"][\n"
@@ -307,10 +309,10 @@ RXIEXT int RX_Call(int cmd, RXIFRM *frm, void *ctx) {
 			type = RL_GET_FIELD(obj, words[i], &val);
 			printf(" field %u\ttype: %u\tname: %s\n", index, type, name);
 			// Release the name when not needed anymore!
-			OS_Free(name);
+			free(name);
 		}
 		// Release the words array.
-		OS_Free(words);
+		free(words);
 		// Return unset value
 		RXA_TYPE(frm, 1) = RXT_UNSET;
 		break;
@@ -367,9 +369,12 @@ RXIEXT int RX_Call(int cmd, RXIFRM *frm, void *ctx) {
 
 	case CMD_vec0: //command [{return vector size in bytes} v [vector!]]
 		{
-			REBSER *vec = RXA_SERIES(frm, 1);
+			REBSER *vec = RXA_VECTOR_SERIES(frm, 1);
+			REBCNT info = RXA_VECTOR_INFO(frm, 1);
+			REBCNT bits = RXI_VECTOR_BITS(info);
+			REBCNT tail = SERIES_TAIL(vec);
 			RXA_TYPE(frm, 1) = RXT_INTEGER;
-			RXA_INT64(frm, 1) = (vec->sizes & 0xFF) * vec->tail; //TODO: review!
+			RXA_INT64(frm, 1) = (bits / 8) * tail;
 		}
 		break;
 	case CMD_vec1: //command [{return vector size in values (from object)} o [object!]]
@@ -377,11 +382,30 @@ RXIEXT int RX_Call(int cmd, RXIFRM *frm, void *ctx) {
 			RXIARG vec;
 			REBCNT type = RL_GET_FIELD(RXA_OBJECT(frm, 1), AS_WORD("v"), &vec);
 			if(type == RXT_VECTOR) {
-				REBSER *vecs = (REBSER*)vec.series;
-				u16* data = (u16*)vecs->data;
-				printf("data[0-2]: %i, %i, %i\n", data[0], data[1], data[2]);
-				//RXA_TYPE(frm, 1) = RXT_INTEGER;
-				//RXA_INT64(frm, 1) = vecs->tail;
+				REBSER *vecs = vec.vector.series;
+				REBCNT  info = vec.vector.info;
+				REBCNT rows      = RXI_VECTOR_ROWS(info);
+				REBCNT cols      = RXI_VECTOR_COLS(SERIES_TAIL(vecs), info);
+				REBCNT bits      = RXI_VECTOR_BITS(info);
+				REBOOL is_signed = RXI_VECTOR_SIGNED(info);
+				REBOOL is_float  = RXI_VECTOR_FLOAT(info);
+
+				// This test vector is `integer! 16 [1 2 3]` -- 16-bit signed ints,
+				// so reading through a u16* is only valid for that specific shape.
+				// Guard it explicitly rather than assuming, since the arg is a
+				// generic vector! and could carry any element width/signedness.
+				if (bits == 16 && is_signed && !is_float) {
+					u16 *data = (u16 *)RL_SERIES(vecs, RXI_SER_DATA);
+					printf("data[0-2]: %i, %i, %i\n", data[0], data[1], data[2]);
+				} else {
+					printf("unexpected vector shape: %u-bit %s%s\n",
+						bits, is_signed ? "signed" : "unsigned",
+						is_float ? " float" : "");
+					return RXR_FALSE;
+				}
+
+				RXA_TYPE(frm, 1) = RXT_INTEGER;
+				RXA_INT64(frm, 1) = rows * cols;
 			} else {
 				return RXR_FALSE;
 			}
@@ -473,13 +497,13 @@ RXIEXT int RX_Call(int cmd, RXIFRM *frm, void *ctx) {
 	case CMD_echo: //command [{return the input value} value]
 		return RXR_VALUE;
 
-	case CMD_path: //command [f [file!] /full /utf8]
+	case CMD_path: //command [f [file!] /full]
 		// to test file argument input used in native calls
-		// if used /utf8, the output path is utf8 encoded and is returned as a binary value
+		// The input series is now always encoded as UTF8
 	{
-		REBSER* ser = RL_TO_LOCAL_PATH(&RXA_ARG(frm, 1), RXA_REF(frm, 2), RXA_REF(frm, 3));
+		REBSER* ser = RL_TO_LOCAL_PATH(&RXA_ARG(frm, 1), RXA_REF(frm, 2), 1);
 		RXA_SERIES(frm, 1) = ser;
-		RXA_TYPE(frm, 1) = RXA_REF(frm, 3) ? RXT_BINARY : RXT_STRING;
+		RXA_TYPE(frm, 1) = RXT_STRING;
 		RXA_INDEX(frm, 1) = 0;
 		break;
 	}
@@ -502,7 +526,7 @@ RXIEXT int RX_Call(int cmd, RXIFRM *frm, void *ctx) {
 				word = RL_WORD_STRING(field->sym); // allocates a new string!
 				printf(" field name: %s\n", word);
 				printf("       type: %u size: %u\n", field->type, field->size);
-				OS_Free(word); // release the string
+				free(word); // release the string
 			}
 		}
 		return RXR_VALUE;
@@ -515,7 +539,6 @@ RXIEXT int RX_Call(int cmd, RXIFRM *frm, void *ctx) {
 	}
     return RXR_VALUE;
 }
-
 
 int XTestContext_release(void* ctx) {
 	XTEST* data = (XTEST*)ctx;
@@ -587,11 +610,32 @@ int XTestContext_mold(REBHOB *hob, REBSER *str) {
 	return len;
 }
 
+static void Register_XTest_Handle(void) {
+    REBHSP spec;
+    spec.size     = sizeof(XTEST);
+    spec.flags    = 0;
+    spec.free     = XTestContext_release;
+    spec.get_path = XTestContext_get_path;
+    spec.set_path = XTestContext_set_path;
+    spec.mold     = XTestContext_mold;
+    Handle_XTest  = RL_REGISTER_HANDLE_SPEC(cb_cast("XTEST"), &spec);
+}
 
-
+#ifdef REB_EXT
+// Standalone DLL build
+RXIEXT const char *RX_Init(int opts, RL_LIB *lib) {
+    RL = lib;
+    if (!CHECK_STRUCT_ALIGN) return 0;
+    Register_XTest_Handle();
+    return RX_Spec;
+}
+RXIEXT int RX_Quit(int opts) { return 0; }
+RXIEXT REBCNT RX_Abi(void) { return RL_ABI_VERSION; }
+#else
+// Embedded build — registers directly, same as OS_Init_Ext_Test did
 /***********************************************************************
 **
-*/	RL_API void OS_Init_Ext_Test(void)
+*/	RL_API void OS_Init_Ext_XTest(void)
 /*
 **	Initialize embedded extension test module
 **
@@ -599,12 +643,7 @@ int XTestContext_mold(REBHOB *hob, REBSER *str) {
 {
 	REBHSP spec;
 	RL = RL_Extend(b_cast(&RX_Spec[0]), (RXICAL)&RX_Call);
-	spec.size      = sizeof(XTEST);
-	spec.flags     = 0;
-	spec.free      = XTestContext_release;
-	spec.get_path  = XTestContext_get_path;
-	spec.set_path  = XTestContext_set_path;
-	spec.mold      = XTestContext_mold;
-	Handle_XTest = RL_REGISTER_HANDLE_SPEC((cb_cast("XTEST")), &spec);
+	Register_XTest_Handle();
 }
-#endif //TEST_EXTENSIONS
+#endif
+#endif //INCLUDE_EXT_XTEST

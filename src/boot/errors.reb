@@ -198,6 +198,7 @@ Access: [
 	no-extension:       [{cannot open extension:} :arg1 {reason:} :arg2]
 	bad-extension:      [{invalid extension format:} :arg1]
 	extension-init:     [{extension cannot be initialized (check version):} :arg1]
+	extension-abi:      [{extension} :arg1 {built for ABI} :arg2 {while this Rebol needs} :arg3]
 
 	call-fail:          [{external process failed:} :arg1]
 

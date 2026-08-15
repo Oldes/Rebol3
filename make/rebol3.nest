@@ -923,9 +923,9 @@ include-new-console: [
 ]
 
 ;- native tests:                                                                
-include-test-extension: [
-	host-files: %os/host-ext-test.c
-	define:     TEST_EXTENSIONS ;@@TODO: rename!
+include-ext-xtest: [
+	host-files: %extensions/xtest/xtest.c
+	define:     INCLUDE_EXT_XTEST
 ]
 
 ;- native experimantal code:                                                    
@@ -1087,7 +1087,7 @@ include-rebol-bulk: [
 	config: INCLUDE_PNG_FILTER ; includes `filter` and `unfilter` natives
 
 	;- for tests:
-	:include-test-extension
+	;:include-ext-xtest
 	;- not recommanded:
 	;:include-native-wav-codec
 
@@ -1300,6 +1300,18 @@ make-ext-test: [
 		flag: -fPIC
 		:target-turris
 	]
+]
+
+make-ext-xtest: [
+	include: %build/
+    files: only %extensions/xtest/xtest.c
+    flags: [-O2 shared]
+    define: REB_EXT
+    compiler: clang
+    #if Linux?   [ flag: -fPIC compiler: gcc ]
+    #if MacOS?   [ flag: fno-common :target-macos strip: off ]
+    #if OpenBSD? [ flag: -fPIC :target-openbsd ]
+    #if FreeBSD? [ flag: -fPIC :target-freebsd ]
 ]
 
 eggs: [
@@ -2060,6 +2072,11 @@ eggs: [
 		:arch-x64
 		:make-ext-test
 	]
+
+	"XTest extension 32bit" [ name: %xtest-x86.rebx :arch-x86 :make-ext-xtest ]
+	"XTest extension 64bit" [ name: %xtest-x64.rebx :arch-x64 :make-ext-xtest ]
+	"XTest extension ARM 64bit" [ name: %xtest-arm64.rebx :arch-arm64 :make-ext-xtest ]
+
 	"Amalgamate extension include file" [
 		do %make/tools/amalgamate-ext.r3
 	]
