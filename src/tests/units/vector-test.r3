@@ -216,7 +216,7 @@ Rebol [
 	--assert o/minimum = 0
 	--assert o/maximum = 0
 --test-- "QUERY on vector"
-	--assert [signed type size length shape minimum maximum range sum mean median variance sample-variance population-deviation sample-deviation] = query v none
+	--assert [element-type signed type size length shape minimum maximum range sum mean median variance sample-variance population-deviation sample-deviation] = query v none
 	--assert [16 integer!] = query v [:size :type]
 	--assert block? b: query v [signed length]
 	--assert all [not b/signed b/length = 2]
@@ -698,7 +698,7 @@ Rebol [
 	--assert (#(u32! []) + #(u32! [])) == #(u32! [])
 	--assert (transpose #(u32! [])) == #(u32! [])
 	--assert 0 = length? take/part #(u32! []) 5
-	
+
 ===end-group===
 
 
@@ -802,14 +802,15 @@ Rebol [
 	--test-- "Query modes"
 		all-modes: query #(u8![]) none
 		--assert all-modes
-		== [signed type size length shape minimum maximum range sum mean median variance sample-variance population-deviation sample-deviation]
+		== [element-type signed type size length shape minimum maximum range sum mean median variance sample-variance population-deviation sample-deviation]
 		all-get-modes: collect [foreach m all-modes [keep to get-word! m]]
 		--assert all-get-modes
-		== [:signed :type :size :length :shape :minimum :maximum :range :sum :mean :median :variance :sample-variance :population-deviation :sample-deviation]
+		== [:element-type :signed :type :size :length :shape :minimum :maximum :range :sum :mean :median :variance :sample-variance :population-deviation :sample-deviation]
 	
 	--test-- "int8! vector statictics"
 	v: #(int8! [-2 -1 1 2 4])
 	--assert (query v all-modes) == [
+		element-type: int8!
 	    signed: #(true)
 	    type: integer!
 	    size: 8
@@ -828,11 +829,12 @@ Rebol [
 	]
 
 	--assert (query v all-get-modes) 
-	== [#(true) integer! 8 5 _ -2 4 6 4 0.8 1.0 4.56 5.7 2.13541565040626 2.38746727726266]
+	== [int8! #(true) integer! 8 5 _ -2 4 6 4 0.8 1.0 4.56 5.7 2.13541565040626 2.38746727726266]
 
 	--test-- "uint64! vector statictics"
 	v: #(uint64! [4 9 11 12 17])
 	--assert (query v all-modes) == [
+		element-type: uint64!
 	    signed: #(false)
 	    type: integer!
 	    size: 64
@@ -851,11 +853,12 @@ Rebol [
 	]
 
 	--assert (query v all-get-modes) 
-	== [#(false) integer! 64 5 _ 4 17 13 53 10.6 11.0 17.84 22.3 4.22374241638857 4.72228758124704]
+	== [uint64! #(false) integer! 64 5 _ 4 17 13 53 10.6 11.0 17.84 22.3 4.22374241638857 4.72228758124704]
 
 	--test-- "float64! vector statictics"
 	v: #(float64! [1.62 1.72 1.64 1.7 1.78 1.64 1.65 1.64 1.66 1.74])
 	--assert (query v all-modes) == [
+		element-type: float64!
 	    signed: #(true)
 	    type: decimal!
 	    size: 64
@@ -874,13 +877,14 @@ Rebol [
 	]
 
 	--assert (query v all-get-modes)
-	== [#(true) decimal! 64 10 _ 1.62 1.78 0.16 16.79 1.679 1.655 0.002529 0.00281 0.0502891638427207 0.0530094331227943]
+	== [float64! #(true) decimal! 64 10 _ 1.62 1.78 0.16 16.79 1.679 1.655 0.002529 0.00281 0.0502891638427207 0.0530094331227943]
 
 	--test-- "QUERY on empty vector"
-	--assert (query #(u8! []) all-get-modes) == [#(false) integer! 8 0 _ _ _ _ _ _ _ _ _ _ _]
+	--assert (query #(u8! []) all-get-modes) == [uint8! #(false) integer! 8 0 _ _ _ _ _ _ _ _ _ _ _]
 
 	--test-- "QUERY on single value vector"
 	--assert (query #(u8! [1])  all-modes) == [
+		element-type: uint8!
 	    signed: #(false)
 	    type: integer!
 	    size: 8
@@ -898,7 +902,7 @@ Rebol [
 	    sample-deviation: _
 	]
 	--assert (query #(u8! [1]) all-get-modes)
-	== [#(false) integer! 8 1 _ 1 1 0 1 1.0 1.0 0.0 _ 0.0 _]
+	== [uint8! #(false) integer! 8 1 _ 1 1 0 1 1.0 1.0 0.0 _ 0.0 _]
 
 	--test-- "median covers the same range as the other statistics"
 		v: skip #(i8! [100 1 2 3]) 1     ;; visible = [1 2 3]
@@ -910,6 +914,7 @@ Rebol [
 	--test-- "QUERY on vector not at head"
 		v: next #(int8! [100 1 2 3])
 		--assert (query v all-modes) == [
+			element-type: int8!
 		    signed: #(true)
 		    type: integer!
 		    size: 8
@@ -928,6 +933,7 @@ Rebol [
 		]
 		v: tail v
 		--assert (query v all-modes) == [
+			element-type: int8!
 		    signed: #(true)
 		    type: integer!
 		    size: 8

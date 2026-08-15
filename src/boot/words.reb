@@ -394,3 +394,4 @@ port-state!
 population-deviation
 sample-deviation
 sample-variance
+element-type

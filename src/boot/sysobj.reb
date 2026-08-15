@@ -564,16 +564,17 @@ standard: object [
 	]
 
 	vector-info: construct [
-		signed:     ; false if unsigned (always true for decimals)
-		type:       ; integer! or decimal! so far
-		size:       ; size per value in bits
-		length:     ; number of values
-		shape:      ; cols and rows as a pair for shaped vectors (matrix)!
+		element-type: ; concrete vector element datatype (uint8!, int32!, float64!, ...)
+		signed:       ; false if unsigned (always true for decimals)
+		type:         ; integer! or decimal! so far
+		size:         ; size per value in bits
+		length:       ; number of values
+		shape:        ; cols and rows as a pair for shaped vectors (matrix)!
 		minimum:
 		maximum:
-		range:      ; maximum - minimum
+		range:        ; maximum - minimum
 		sum:
-		mean:       ; average
+		mean:         ; average
 		median:
 		variance:
 		sample-variance:

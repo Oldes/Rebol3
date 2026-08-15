@@ -422,6 +422,9 @@ void Find_Maximum_Of_Vector(REBVAL *vect, REBVAL *ret) {
 	REBCNT type = VAL_VEC_TYPE(vec);
 
 	switch (field) {
+	case SYM_ELEMENT_TYPE:
+		Init_Word(ret, SYM_INT8X + Normalize_Vector_Type_Symbol(type));
+		break;
 	case SYM_TYPE:
 		Init_Word(ret, (type >= VTSF08) ? SYM_DECIMAL_TYPE : SYM_INTEGER_TYPE);
 		break;
@@ -1766,6 +1769,7 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 		}
 		else {
 			REBSER *obj = CLONE_OBJECT(VAL_OBJ_FRAME(spec));
+			Query_Vector_Field(value, SYM_ELEMENT_TYPE, OFV(obj, STD_VECTOR_INFO_ELEMENT_TYPE), &results);
 			Query_Vector_Field(value, SYM_SIGNED, OFV(obj, STD_VECTOR_INFO_SIGNED), &results);
 			Query_Vector_Field(value, SYM_TYPE,   OFV(obj, STD_VECTOR_INFO_TYPE), &results);
 			Query_Vector_Field(value, SYM_SIZE,   OFV(obj, STD_VECTOR_INFO_SIZE), &results);
