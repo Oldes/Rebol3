@@ -644,28 +644,53 @@ RL_API void *RL_Make_Image(u32 width, u32 height)
 	return Make_Image(width, height, FALSE);
 }
 
-RL_API void *RL_Make_Vector(REBINT type, REBINT sign, REBINT dims, REBINT bits, REBINT size)
+RL_API int RL_Make_Vector(RXIARG *out, REBCNT type, REBINT cols, REBINT rows)
 /*
-**	Allocate a new vector of the given attributes.
+**	Allocate a new vector series with the given element type and shape.
 **
 **	Returns:
-**		A pointer to a vector series or zero.
+**		1 on success, 0 on failure. On failure `out` is left untouched.
+**		Fails if `type` is not a valid element type, if `cols` is
+**		negative, if `rows` is less than 1 or too large to encode, or
+**		if the total element count cannot be allocated.
 **	Arguments:
-**		type: the datatype
-**		sign: signed or unsigned
-**		dims: number of dimensions
-**		bits: number of bits per unit (8, 16, 32, 64)
-**		size: number of values
+**		out:  RXIARG to receive the vector (series, index and info)
+**		type: element type, one of the VT* values (VTSI08..VTSF64)
+**		cols: number of columns (0 makes an empty vector)
+**		rows: number of rows; 1 for an unshaped (plain) vector
 **	Notes:
-**		Allocated with REBOL's internal memory manager.
-**		Vectors are automatically garbage collected if there are
-**		no references to them from REBOL code (C code does nothing.)
+**		Contents are zero-filled. The element type and row count are
+**		encoded together in `out->vector.info`; use the VECT_* macros
+**		rather than unpacking it by hand. The VT* numbering is part of
+**		the extension ABI and must not be reordered.
+**
+**		A vector with more than one row is length-locked, matching
+**		vectors shaped from Rebol: rows travel with the value while the
+**		buffer length is shared, so APPEND/INSERT/CLEAR on it will error.
+**
+**		Allocated with REBOL's internal memory manager and garbage
+**		collected once no REBOL value references it. Until the returned
+**		RXIARG reaches REBOL, nothing references the series -- do not
+**		call other RL_ functions that may allocate in between.
 */
 {
-	// check if bits is valid 
-	if(!(bits == 8 || bits == 16 || bits == 32 || bits == 64)) return 0;
+	// Arguments come from third-party C -- validate before they reach the
+	// jump tables, where a bad type would be called as a function pointer.
+	if (type >= VT_MAX) return 0;
+	if (cols < 0 || rows < 1) return 0;
+	if ((REBCNT)rows > VECT_INFO_ROWS_MAX) return 0;   // must survive the shift
 
-	return Make_Vector_Series(size, bits/8, dims);
+	REBSER *ser = Make_Vector_Series(cols, VECT_WIDE(type), rows);
+	if (!ser) return 0;
+
+	// Match Set_Vector_Shape: a shaped vector's buffer is length-locked,
+	// because rows lives in the value while tail is shared.
+	if (rows > 1) SERIES_SET_FLAG(ser, SER_SIZEP);
+
+	out->vector.series = ser;
+	out->vector.index = 0;
+	out->vector.info = (type & VECT_INFO_TYPE_MASK) | (rows << VECT_INFO_ROWS_SHIFT);
+	return 1;
 }
 
 RL_API void RL_Protect_GC(REBSER *series, u32 flags)
