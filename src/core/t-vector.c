@@ -1504,6 +1504,10 @@ data_spec:
 		else if (VAL_WORD_CANON(sel) == SYM_SHAPE && IS_PAIR(set)) {
 			REBINT ncols = VAL_PAIR_X_INT(set);
 			REBINT nrows = VAL_PAIR_Y_INT(set);
+			// A partial view has no shape of its own -- Vector_Rows always
+			// reports 1 for it, so a stored row count there would be ignored.
+			if (VAL_INDEX(vec) != 0 || VAL_LEN(vec) != VAL_TAIL(vec))
+				return PE_BAD_ARGUMENT;
 			if (ncols <= 0 || nrows <= 0) return PE_BAD_ARGUMENT;
 			if ((REBU64)ncols * (REBU64)nrows != (REBU64)VAL_TAIL(vec)) return PE_BAD_ARGUMENT;
 			TRAP_PROTECT(vect);
@@ -1514,15 +1518,15 @@ data_spec:
 			return PE_BAD_SET;
 	}
 	else if (IS_PAIR(sel)) {
-		REBCNT rows = VAL_VEC_ROWS(vec);
-		REBCNT cols = VAL_VEC_COLS(vec);
+		REBCNT rows = Vector_Rows(vec);
+		REBCNT cols = VAL_LEN(vec) / rows;
 		REBINT col = VAL_PAIR_X_INT(sel);
 		REBINT row = VAL_PAIR_Y_INT(sel);
 
 		if (col < 1 || row < 1 || (REBCNT)col > cols || (REBCNT)row > rows)
 			return (pvs->setval) ? PE_BAD_RANGE : PE_NONE;
 
-		n = (row - 1) * cols + (col - 1);
+		n = (row - 1) * cols + (col - 1) + VAL_INDEX(val);
 		if (pvs->setval == 0) {
 			get_vect(vtype, vp, n, pvs->store);
 			SET_TYPE(pvs->store, (vtype >= VTSF08) ? REB_DECIMAL : REB_INTEGER);
@@ -1848,7 +1852,10 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 		}
 
 		if (len == 0) {
-			if (do_part) Make_Vector(D_RET, vtype, 0, 1);
+			if (do_part) {
+				if (!Make_Vector(D_RET, vtype, 0, 1))
+					Trap0(RE_NO_MEMORY);
+			}
 			else SET_NONE(D_RET);
 			return R_RET;
 		}

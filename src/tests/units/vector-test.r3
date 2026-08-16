@@ -1664,13 +1664,34 @@ Rebol [
 			(pick v 1x2) == none ;; only 1 row exists
 		]
 
-	--test-- "Pinning the asymmetry"
+	--test-- "pair indexing follows the view"
+		m: make vector! [u8! 3x2 [1 2 3 4 5 6]]
+		v: next m
+		--assert v/shape = 5x1
+		--assert not v/shaped
+		--assert (pick v 1x1) = 2        ;; first visible element
+		--assert none? pick v 1x2        ;; only one row now
+		--assert (pick m 1x2) = 4        ;; whole view still addresses the grid
+
+	--test-- "reshape requires a whole view"
+		m: make vector! [u8! 3x2 [1 2 3 4 5 6]]
+		v: next m
+		--assert error? try [v/shape: 5x1]
+		--assert error? try [v/shape: 1x5]
+		m/shape: 2x3
+		--assert m/shape = 2x3
+
+	--test-- "pair and scalar indexing both follow the cursor"
 		--assert all [
 			vector? try [m: make vector! [u8! 3x2 [1 2 3 10 20 30]]] ;; 3 cols, 2 rows
-			m2: skip m 3         ;; cursor moved to start of "row 2" in flat terms
-			(pick m2 1) == 10    ;; scalar pick IS relative to cursor
-			(pick m2 1x1) == 1   ;; pair pick is ALWAYS absolute, ignores the skip entirely
-			(pick m2 2x1) == 2   ;; still addresses the whole grid, same as pick m 2x1
+			m2: skip m 3          ;; cursor at the start of the second row
+			m2/shape = 3x1        ;; a partial view is one row of what it can see
+			not m2/shaped
+			(pick m2 1)   == 10   ;; scalar pick is cursor-relative
+			(pick m2 1x1) == 10   ;; ...and so is pair pick
+			(pick m2 2x1) == 20
+			none? pick m2 1x2     ;; only one row in this view
+			(pick m 1x2)  == 10   ;; the whole view still addresses the grid
 		]
 
 	--test-- "Math ops with shaped vectors"
