@@ -569,7 +569,8 @@ standard: object [
 		type:         ; integer! or decimal! so far
 		size:         ; size per value in bits
 		length:       ; number of values
-		shape:        ; cols and rows as a pair for shaped vectors (matrix)!
+		shape:        ; cols and rows as a pair
+		shaped:       ; returns TRUE whether the vector has more than one row
 		minimum:
 		maximum:
 		range:        ; maximum - minimum

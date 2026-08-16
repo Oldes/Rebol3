@@ -203,6 +203,7 @@ enum {
 #define RXI_VEC_FLOAT_MASK  0x00000008
 #define RXI_VEC_ROWS_SHIFT  8
 
+#define RXI_VECTOR_TYPE(info)   ((info) & 0x000000FF)
 #define RXI_VECTOR_BITS(info)   (8 << ((info) & RXI_VEC_TYPE_MASK))
 #define RXI_VECTOR_SIGNED(info) (((info) & RXI_VEC_SIGN_MASK) == 0)
 #define RXI_VECTOR_FLOAT(info)  (((info) & RXI_VEC_FLOAT_MASK) != 0)

@@ -216,7 +216,7 @@ Rebol [
 	--assert o/minimum = 0
 	--assert o/maximum = 0
 --test-- "QUERY on vector"
-	--assert [element-type signed type size length shape minimum maximum range sum mean median variance sample-variance population-deviation sample-deviation] = query v none
+	--assert [element-type signed type size length shape shaped minimum maximum range sum mean median variance sample-variance population-deviation sample-deviation] = query v none
 	--assert [16 integer!] = query v [:size :type]
 	--assert block? b: query v [signed length]
 	--assert all [not b/signed b/length = 2]
@@ -802,10 +802,10 @@ Rebol [
 	--test-- "Query modes"
 		all-modes: query #(u8![]) none
 		--assert all-modes
-		== [element-type signed type size length shape minimum maximum range sum mean median variance sample-variance population-deviation sample-deviation]
+		== [element-type signed type size length shape shaped minimum maximum range sum mean median variance sample-variance population-deviation sample-deviation]
 		all-get-modes: collect [foreach m all-modes [keep to get-word! m]]
 		--assert all-get-modes
-		== [:element-type :signed :type :size :length :shape :minimum :maximum :range :sum :mean :median :variance :sample-variance :population-deviation :sample-deviation]
+		== [:element-type :signed :type :size :length :shape :shaped :minimum :maximum :range :sum :mean :median :variance :sample-variance :population-deviation :sample-deviation]
 	
 	--test-- "int8! vector statictics"
 	v: #(int8! [-2 -1 1 2 4])
@@ -815,7 +815,8 @@ Rebol [
 	    type: integer!
 	    size: 8
 	    length: 5
-	    shape: _
+	    shape: 5x1
+	    shaped: #(false)
 	    minimum: -2
 	    maximum: 4
 	    range: 6
@@ -829,7 +830,7 @@ Rebol [
 	]
 
 	--assert (query v all-get-modes) 
-	== [int8! #(true) integer! 8 5 _ -2 4 6 4 0.8 1.0 4.56 5.7 2.13541565040626 2.38746727726266]
+	== [int8! #(true) integer! 8 5 5x1 #(false) -2 4 6 4 0.8 1.0 4.56 5.7 2.13541565040626 2.38746727726266]
 
 	--test-- "uint64! vector statictics"
 	v: #(uint64! [4 9 11 12 17])
@@ -839,7 +840,8 @@ Rebol [
 	    type: integer!
 	    size: 64
 	    length: 5
-	    shape: _
+	    shape: 5x1
+	    shaped: #(false)
 	    minimum: 4
 	    maximum: 17
 	    range: 13
@@ -853,7 +855,7 @@ Rebol [
 	]
 
 	--assert (query v all-get-modes) 
-	== [uint64! #(false) integer! 64 5 _ 4 17 13 53 10.6 11.0 17.84 22.3 4.22374241638857 4.72228758124704]
+	== [uint64! #(false) integer! 64 5 5x1 #(false) 4 17 13 53 10.6 11.0 17.84 22.3 4.22374241638857 4.72228758124704]
 
 	--test-- "float64! vector statictics"
 	v: #(float64! [1.62 1.72 1.64 1.7 1.78 1.64 1.65 1.64 1.66 1.74])
@@ -863,7 +865,8 @@ Rebol [
 	    type: decimal!
 	    size: 64
 	    length: 10
-	    shape: _
+	    shape: 10x1
+	    shaped: #(false)
 	    minimum: 1.62
 	    maximum: 1.78
 	    range: 0.16
@@ -877,10 +880,10 @@ Rebol [
 	]
 
 	--assert (query v all-get-modes)
-	== [float64! #(true) decimal! 64 10 _ 1.62 1.78 0.16 16.79 1.679 1.655 0.002529 0.00281 0.0502891638427207 0.0530094331227943]
+	== [float64! #(true) decimal! 64 10 10x1 #(false) 1.62 1.78 0.16 16.79 1.679 1.655 0.002529 0.00281 0.0502891638427207 0.0530094331227943]
 
 	--test-- "QUERY on empty vector"
-	--assert (query #(u8! []) all-get-modes) == [uint8! #(false) integer! 8 0 _ _ _ _ _ _ _ _ _ _ _]
+	--assert (query #(u8! []) all-get-modes) == [uint8! #(false) integer! 8 0 0x1 #(false) _ _ _ _ _ _ _ _ _ _]
 
 	--test-- "QUERY on single value vector"
 	--assert (query #(u8! [1])  all-modes) == [
@@ -889,7 +892,8 @@ Rebol [
 	    type: integer!
 	    size: 8
 	    length: 1
-	    shape: _
+	    shape: 1x1
+	    shaped: #(false)
 	    minimum: 1
 	    maximum: 1
 	    range: 0
@@ -902,7 +906,7 @@ Rebol [
 	    sample-deviation: _
 	]
 	--assert (query #(u8! [1]) all-get-modes)
-	== [uint8! #(false) integer! 8 1 _ 1 1 0 1 1.0 1.0 0.0 _ 0.0 _]
+	== [uint8! #(false) integer! 8 1 1x1 #(false) 1 1 0 1 1.0 1.0 0.0 _ 0.0 _]
 
 	--test-- "median covers the same range as the other statistics"
 		v: skip #(i8! [100 1 2 3]) 1     ;; visible = [1 2 3]
@@ -919,7 +923,8 @@ Rebol [
 		    type: integer!
 		    size: 8
 		    length: 3
-		    shape: _
+		    shape: 3x1
+		    shaped: #(false)
 		    minimum: 1
 		    maximum: 3
 		    range: 2
@@ -938,7 +943,8 @@ Rebol [
 		    type: integer!
 		    size: 8
 		    length: 0
-		    shape: _
+		    shape: 0x1
+		    shaped: #(false)
 		    minimum: _
 		    maximum: _
 		    range: _
@@ -1701,7 +1707,7 @@ Rebol [
 		--assert all [
 			r: (skip a 1) + e
 			r = #(uint16! [3 4 5 6 7])
-			none? r/shape
+			r/shape == 5x1
 		]
 	
 	--test-- "Shaped vectors compare"
@@ -1724,7 +1730,7 @@ Rebol [
 		--assert m/shape = 2x3
 		--assert error? try [m/shape: 3x20]
 		m/shape: 6x1
-		--assert none? m/shape
+		--assert m/shape == 6x1
 
 	--test-- "reshape is per-value"
 		m: make vector! [u8! 3x2 [1 2 3 4 5 6]]
@@ -1750,7 +1756,7 @@ Rebol [
 			v == #(u8! 2x2 [10 2 3 4])
 			2 = index? r
 			r == skip v 1          ;; same series, same index, same shape
-			r/shape = 2x2          ;; return keeps the shape, like skip/next
+			r/shape = 3x1          ;; value is treated as unshaped
 		]
 		--assert all [
 			r: change v: #(u8! 2x2 [1 2 3 4]) [10 20]
@@ -1759,7 +1765,7 @@ Rebol [
 		]
 		--assert all [
 			r: skip #(u8! 2x2 [1 2 3 4]) 1
-			r/shape = 2x2
+			r/shape = 3x1
 		]
 
 	--test-- "CHANGE that would alter the length still traps"
@@ -1785,8 +1791,8 @@ Rebol [
 
 	--test-- "partial COPY drops the shape"
 		m: make vector! [u8! 3x2 [1 2 3 4 5 6]]
-		--assert all [r: copy/part m 4     none? r/shape  r == #(u8! [1 2 3 4])]
-		--assert all [r: copy skip m 1     none? r/shape]
+		--assert all [r: copy/part m 4     r/shape == 4x1  r == #(u8! [1 2 3 4])]
+		--assert all [r: copy skip m 1     r/shape == 5x1]
 		;; ...and is not length-locked
 		--assert all [r: copy/part m 4     vector? append r 7]
 
@@ -1818,7 +1824,7 @@ Rebol [
 		--assert (pick t 1x2) = 2
 
 	--test-- "transpose edge cases"
-		--assert none? query transpose #(u8! []) 'shape
+		--assert 0x1 == query transpose #(u8! []) 'shape
 		--assert 0 = length? transpose #(u8! [])
 		--assert (transpose #(u8! [7])) == #(u8! [7])
 		;; result is length-locked like any shaped vector

@@ -657,12 +657,13 @@ enum {
 
 #define VECT_INFO_TYPE_MASK   0x000000FF
 #define VECT_INFO_ROWS_SHIFT  8
+#define VECT_INFO_ROWS_MAX   (0xFFFFFFFFu >> VECT_INFO_ROWS_SHIFT) // 0x00FFFFFF = 16777215
 
 #define VAL_VEC_INFO(v)   ((v)->data.series.link.vtype)           // raw packed field
 #define VAL_VEC_TYPE(v)   (VAL_VEC_INFO(v) & VECT_INFO_TYPE_MASK) // one of VTSI08..VTSF64
 #define VAL_VEC_ROWS(v)   ((REBCNT)VAL_VEC_INFO(v) >> VECT_INFO_ROWS_SHIFT)
 #define VAL_VEC_SET_ROWS(v,r) \
-	(VAL_VEC_INFO(v) = (VAL_VEC_INFO(v) & VECT_INFO_TYPE_MASK) | ((r) << VECT_INFO_ROWS_SHIFT))
+	(VAL_VEC_INFO(v) = (VAL_VEC_INFO(v) & VECT_INFO_TYPE_MASK) | ((REBCNT)(r) << VECT_INFO_ROWS_SHIFT))
 #define VAL_VEC_COLS(v) \
 	(VAL_VEC_ROWS(v) ? VAL_TAIL(v) / VAL_VEC_ROWS(v) : 0)
 

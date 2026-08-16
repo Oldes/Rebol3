@@ -222,6 +222,16 @@ static void Set_Vector_Shape(REBVAL *val, REBCNT rows) {
 	if (rows > 1) SERIES_SET_FLAG(VAL_SERIES(val), SER_SIZEP);
 }
 
+FORCE_INLINE
+static REBCNT Vector_Rows_For(REBVAL *vec, REBLEN len) {
+	// An empty view is one empty row -- never inherit a stored row count
+	// there, or SHAPE reports 0x5 and SHAPED claims true for no elements.
+	if (len == 0) return 1;
+	REBCNT rows = (VAL_INDEX(vec) == 0 && len == VAL_TAIL(vec)) ? VAL_VEC_ROWS(vec) : 1;
+	return rows < 1 ? 1 : rows;
+}
+#define Vector_Rows(v)  Vector_Rows_For((v), VAL_LEN(v))
+
 
 // Query functions
 typedef struct Vector_Query_Values {
@@ -436,12 +446,15 @@ void Find_Maximum_Of_Vector(REBVAL *vect, REBVAL *ret) {
 		break;
 	case SYM_SHAPE:
 	{
-		REBCNT rows = VAL_VEC_ROWS(vec);
-		if (rows <= 1) RETURN_NONE();
-		REBCNT cols = VAL_VEC_COLS(vec);
+		REBLEN len = VAL_LEN(vec);
+		REBCNT rows = Vector_Rows(vec);
+		REBCNT cols = len / rows;
 		SET_PAIR(ret, cols, rows);
 		break;
 	}
+	case SYM_SHAPED:
+		SET_LOGIC(ret, Vector_Rows(vec) > 1);
+		break;
 	case SYM_SIGNED:
 		SET_LOGIC(ret, VAL_VEC_SIGN(vec));
 		break;
@@ -569,8 +582,7 @@ return_number:
 		i = (REBI64)f;
 	}
 
-	REBCNT rows = (VAL_INDEX(left) == 0 && len == VAL_TAIL(left))
-	            ? VAL_VEC_ROWS(left) : 1;
+	REBCNT rows = Vector_Rows(left);
 	SET_VECTOR(out, Copy_Binary_Part(VAL_SERIES(left), VAL_INDEX(left), len), vtype);
 	Set_Vector_Shape(out, rows);
 
@@ -729,8 +741,8 @@ return_number:
 	REBYTE *data1 = VAL_VEC_HEAD(v1);
 	REBYTE *data2 = VAL_VEC_HEAD(v2);
 
-	REBCNT rows1 = (idx1 == 0 && len1 == VAL_TAIL(v1)) ? VAL_VEC_ROWS(v1) : 1;
-	REBCNT rows2 = (idx2 == 0 && len2 == VAL_TAIL(v2)) ? VAL_VEC_ROWS(v2) : 1;
+	REBCNT rows1 = Vector_Rows(v1);
+	REBCNT rows2 = Vector_Rows(v2);
 	REBOOL shaped1 = rows1 > 1;
 	REBOOL shaped2 = rows2 > 1;
 	REBSER *dest;
@@ -938,8 +950,8 @@ static REBINT cmp_u64_dec(REBU64 u, REBDEC d) {
 	// Only `rows` needs comparing: `cols` is derived from rows+tail, so a
 	// cols-only difference implies a tail difference, already caught by the
 	// length fallback at the end.
-	REBCNT rows1 = VAL_VEC_ROWS(a);
-	REBCNT rows2 = VAL_VEC_ROWS(b);
+	REBCNT rows1 = Vector_Rows(a);
+	REBCNT rows2 = Vector_Rows(b);
 	if (rows1 != rows2) return (rows1 > rows2) ? 1 : -1;
 
 	REBOOL float1 = (b1 >= VTSF08);
@@ -1154,7 +1166,7 @@ static REBINT cmp_u64_dec(REBU64 u, REBDEC d) {
 **
 */	REBSER* Make_Vector_Series(REBINT cols, REBCNT wide, REBINT rows)
 /*
-**		size: number of values
+**		cols: number of values per row
 **		wide: number of bytes per value
 **		rows: number of rows
 **
@@ -1650,18 +1662,25 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 
 	case A_COPY:
 	{
-		vtype = VAL_VEC_TYPE(value);
-		REBCNT rows = VAL_VEC_ROWS(value);    // before SET_VECTOR overwrites link
-		len = Partial(value, 0, D_ARG(3), 0); // can modify value index
+		REBCNT vtype = VAL_VEC_TYPE(value);
+		REBCNT rows;
+
+		len = Partial(value, 0, D_ARG(ARG_COPY_RANGE), 0); // can modify value index
+
 		if (len <= 0) {
 			// Copy_Binary_Part is not safe with a zero length.
 			if (!Make_Vector(value, vtype, 0, 1)) Trap0(RE_NO_MEMORY);
 			break;
 		}
-		REBOOL whole = (VAL_INDEX(value) == 0 && (REBCNT)len == SERIES_TAIL(vect));
+
+		// Shape survives only when the copy covers the whole series. Read it
+		// after Partial (which can move the index) and before SET_VECTOR
+		// (which overwrites the value's packed type/rows field).
+		rows = Vector_Rows_For(value, len);
+
 		ser = Copy_Binary_Part(vect, VAL_INDEX(value), len);
 		SET_VECTOR(value, ser, vtype);
-		Set_Vector_Shape(value, whole ? rows : 1);
+		Set_Vector_Shape(value, rows);
 	}	break;
 
 	case A_REVERSE:
@@ -1773,6 +1792,7 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 			Query_Vector_Field(value, SYM_SIZE,   OFV(obj, STD_VECTOR_INFO_SIZE), &results);
 			Query_Vector_Field(value, SYM_LENGTH, OFV(obj, STD_VECTOR_INFO_LENGTH), &results);
 			Query_Vector_Field(value, SYM_SHAPE,  OFV(obj, STD_VECTOR_INFO_SHAPE), &results);
+			Query_Vector_Field(value, SYM_SHAPED,  OFV(obj, STD_VECTOR_INFO_SHAPED), &results);
 			Query_Vector_Field(value, SYM_MINIMUM, OFV(obj, STD_VECTOR_INFO_MINIMUM), &results);
 			Query_Vector_Field(value, SYM_MAXIMUM, OFV(obj, STD_VECTOR_INFO_MAXIMUM), &results);
 			Query_Vector_Field(value, SYM_RANGE, OFV(obj, STD_VECTOR_INFO_RANGE), &results);
