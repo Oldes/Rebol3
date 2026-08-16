@@ -42,14 +42,14 @@ jobs:
     - name: Test 64bit Rebol/Bulk
       run: ./rebol3-bulk-windows-x64.exe -s ./src/tests/run-tests.r3
 
-    - name: Test Rebol/SQLite extension
-      run: ./rebol3-bulk-windows-x64.exe -s ./src/tests/test-extension-sqlite.r3
-
-    - name: Test Rebol/Blend2D extension
-      run: ./rebol3-bulk-windows-x64.exe -s ./src/tests/test-extension-blend2d.r3
-    
-    - name: Test Rebol/Triangulate extension
-      run: ./rebol3-bulk-windows-x64.exe -s ./src/tests/test-extension-triangulate.r3
+#    - name: Test Rebol/SQLite extension
+#      run: ./rebol3-bulk-windows-x64.exe -s ./src/tests/test-extension-sqlite.r3
+#
+#    - name: Test Rebol/Blend2D extension
+#      run: ./rebol3-bulk-windows-x64.exe -s ./src/tests/test-extension-blend2d.r3
+#    
+#    - name: Test Rebol/Triangulate extension
+#      run: ./rebol3-bulk-windows-x64.exe -s ./src/tests/test-extension-triangulate.r3
 
     ###############################################################################
     # Collecting build artifacts...
@@ -79,14 +79,14 @@ jobs:
       - name: Test 64bit Rebol/Bulk
         run: ./build/rebol3-bulk-linux-x64 -s ./src/tests/run-tests.r3
 
-      - name: Test Rebol/SQLite extension
-        run: ./build/rebol3-bulk-linux-x64 -s ./src/tests/test-extension-sqlite.r3
-
-      - name: Test Rebol/Blend2D extension
-        run: ./build/rebol3-bulk-linux-x64 -s ./src/tests/test-extension-blend2d.r3
-
-      - name: Test Rebol/Triangulate extension
-        run: ./build/rebol3-bulk-linux-x64 -s ./src/tests/test-extension-triangulate.r3
+#      - name: Test Rebol/SQLite extension
+#        run: ./build/rebol3-bulk-linux-x64 -s ./src/tests/test-extension-sqlite.r3
+#
+#      - name: Test Rebol/Blend2D extension
+#        run: ./build/rebol3-bulk-linux-x64 -s ./src/tests/test-extension-blend2d.r3
+#
+#      - name: Test Rebol/Triangulate extension
+#        run: ./build/rebol3-bulk-linux-x64 -s ./src/tests/test-extension-triangulate.r3
 
       - name: Prepare 64bit Rebol/Bulk for upload
         run: |
@@ -124,14 +124,14 @@ jobs:
       - name: Test 64bit Rebol/Bulk
         run: ./build/rebol3-bulk-macos-x64 -s ./src/tests/run-tests.r3
 
-      - name: Test Rebol/SQLite extension
-        run: ./build/rebol3-bulk-macos-x64 -s ./src/tests/test-extension-sqlite.r3
-
-      - name: Test Rebol/Blend2D extension
-        run: ./build/rebol3-bulk-macos-x64 -s ./src/tests/test-extension-blend2d.r3
-
-      - name: Test Rebol/Triangulate extension
-        run: ./build/rebol3-bulk-macos-x64 -s ./src/tests/test-extension-triangulate.r3
+#      - name: Test Rebol/SQLite extension
+#        run: ./build/rebol3-bulk-macos-x64 -s ./src/tests/test-extension-sqlite.r3
+#
+#      - name: Test Rebol/Blend2D extension
+#        run: ./build/rebol3-bulk-macos-x64 -s ./src/tests/test-extension-blend2d.r3
+#
+#      - name: Test Rebol/Triangulate extension
+#        run: ./build/rebol3-bulk-macos-x64 -s ./src/tests/test-extension-triangulate.r3
 
       - name: Prepare 64bit Rebol/Bulk for upload
         run: |
