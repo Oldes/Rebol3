@@ -922,12 +922,6 @@ include-new-console: [
 	define: HAS_NEW_CONSOLE
 ]
 
-;- native tests:                                                                
-include-ext-xtest: [
-	host-files: %extensions/xtest/xtest.c
-	define:     INCLUDE_EXT_XTEST
-]
-
 ;- native experimantal code:                                                    
 include-native-wav-codec: [
 	; native WAV codec was just a prove of concept, don't use it
@@ -1087,7 +1081,7 @@ include-rebol-bulk: [
 	config: INCLUDE_PNG_FILTER ; includes `filter` and `unfilter` natives
 
 	;- for tests:
-	;:include-ext-xtest
+	:include-ext-xtest
 	;- not recommanded:
 	;:include-native-wav-codec
 
@@ -1302,17 +1296,37 @@ make-ext-test: [
 	]
 ]
 
-make-ext-xtest: [
-	include: %build/
-    files: only %extensions/xtest/xtest.c
-    flags: [-O2 shared]
-    define: REB_EXT
-    compiler: clang
-    #if Linux?   [ flag: -fPIC compiler: gcc ]
-    #if MacOS?   [ flag: fno-common :target-macos strip: off ]
-    #if OpenBSD? [ flag: -fPIC :target-openbsd ]
-    #if FreeBSD? [ flag: -fPIC :target-freebsd ]
+;- native extensions -----------------------------------------------------------
+
+;; Everything shared by standalone extension libraries (.rebx)
+make-ext: [
+	include:  %build/          ;; for the amalgamated rebol-extension.h
+	define:   REB_EXT
+	flags:    [-O2 shared]
+	compiler: clang
+	#if Linux?   [ flag: -fPIC compiler: gcc ]
+	#if MacOS?   [ flag: fno-common :target-macos strip: off ]
+	#if OpenBSD? [ flag: -fPIC :target-openbsd ]
+	#if FreeBSD? [ flag: -fPIC :target-freebsd ]
+	#if ('NetBSD = system/platform) [ flag: -fPIC :target-netbsd ]
+	#if ('Turris = system/platform) [ flag: -fPIC :target-turris ]
 ]
+
+;; Per-extension sources and generator invocation, referenced by both modes
+ext-xtest-files: [
+	%extensions/xtest/xtest.c
+	%extensions/xtest/xtest-commands.c
+	%extensions/xtest/gen-xtest.c
+]
+gen-ext-xtest: [
+	do %make/tools/make-extension.r3 "${NEST_ROOT}/src/extensions/xtest/xtest.reb"
+]
+
+;; embedded into the host
+include-ext-xtest:  [ host-files: :ext-xtest-files  define: INCLUDE_EXT_XTEST  :gen-ext-xtest  ]
+
+;; standalone libraries
+make-ext-xtest:  [ files: only :ext-xtest-files  :make-ext :gen-ext-xtest  ]
 
 eggs: [
 	#if Windows? [
@@ -1391,7 +1405,6 @@ eggs: [
 			:target-windows
 			:make-x86-host
 			define: REB_VIEW
-			define: TEST_EXTENSIONS
 		]
 
 		"Rebol/Core windows-x64 shared library" [
@@ -1419,7 +1432,6 @@ eggs: [
 			:target-windows
 			:make-x64-host
 			define: REB_VIEW
-			define: TEST_EXTENSIONS
 		]
 	]
 	#if Linux? [
@@ -1826,7 +1838,6 @@ eggs: [
 			:target-macos
 			:include-rebol-bulk
 			:make-arm64-host
-			define: TEST_EXTENSIONS
 		]
 	]
 	#if OpenBSD? [
