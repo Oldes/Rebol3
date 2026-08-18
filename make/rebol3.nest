@@ -1080,6 +1080,8 @@ include-rebol-bulk: [
 
 	config: INCLUDE_PNG_FILTER ; includes `filter` and `unfilter` natives
 
+	;- native extensions
+	:include-ext-matrix
 	;- for tests:
 	:include-ext-xtest
 	;- not recommanded:
@@ -1322,11 +1324,24 @@ gen-ext-xtest: [
 	do %make/tools/make-extension.r3 "${NEST_ROOT}/src/extensions/xtest/xtest.reb"
 ]
 
+ext-matrix-files: [
+	%extensions/matrix/matrix.c
+	%extensions/matrix/matrix-commands.c
+	%extensions/matrix/gen-matrix.c
+]
+gen-ext-matrix: [
+	do %make/tools/make-extension.r3 "${NEST_ROOT}/src/extensions/matrix/matrix.reb"
+]
+
 ;; embedded into the host
 include-ext-xtest:  [ host-files: :ext-xtest-files  define: INCLUDE_EXT_XTEST  :gen-ext-xtest  ]
+include-ext-matrix: [ host-files: :ext-matrix-files define: INCLUDE_EXT_MATRIX :gen-ext-matrix ]
 
 ;; standalone libraries
 make-ext-xtest:  [ files: only :ext-xtest-files  :make-ext :gen-ext-xtest  ]
+make-ext-matrix: [ files: only :ext-matrix-files :make-ext :gen-ext-matrix ]
+
+
 
 eggs: [
 	#if Windows? [
@@ -2087,6 +2102,10 @@ eggs: [
 	"XTest extension 32bit" [ name: %xtest-x86.rebx :arch-x86 :make-ext-xtest ]
 	"XTest extension 64bit" [ name: %xtest-x64.rebx :arch-x64 :make-ext-xtest ]
 	"XTest extension ARM 64bit" [ name: %xtest-arm64.rebx :arch-arm64 :make-ext-xtest ]
+
+	"Matrix extension 32bit"     [ name: %matrix-x86.rebx   :arch-x86   :make-ext-matrix ]
+	"Matrix extension 64bit"     [ name: %matrix-x64.rebx   :arch-x64   :make-ext-matrix ]
+	"Matrix extension ARM 64bit" [ name: %matrix-arm64.rebx :arch-arm64 :make-ext-matrix ]
 
 	"Amalgamate extension include file" [
 		do %make/tools/amalgamate-ext.r3

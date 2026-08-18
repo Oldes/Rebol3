@@ -346,6 +346,9 @@ int main(int argc, char **argv) {
 	//Init_Graphics();
 #endif
 
+#ifdef INCLUDE_EXT_MATRIX
+	OS_Init_Ext_Matrix();
+#endif
 #ifdef INCLUDE_EXT_XTEST
 	OS_Init_Ext_XTest();
 #endif

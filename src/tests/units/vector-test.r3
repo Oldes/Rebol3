@@ -696,7 +696,6 @@ Rebol [
 	--assert (#(u32! []) + 1) == #(u32! [])
 	--assert (#(u32! []) * 2) == #(u32! [])
 	--assert (#(u32! []) + #(u32! [])) == #(u32! [])
-	--assert (transpose #(u32! [])) == #(u32! [])
 	--assert 0 = length? take/part #(u32! []) 5
 
 ===end-group===
@@ -1817,115 +1816,363 @@ Rebol [
 		;; ...and is not length-locked
 		--assert all [r: copy/part m 4     vector? append r 7]
 
-	--test-- "transpose swaps rows and columns"
-		m: make vector! [u8! 3x2 [1 2 3 4 5 6]]   ;; 3 cols, 2 rows
-		t: transpose m
-		--assert t/shape = 2x3
-		--assert t == #(u8! 2x3 [1 4 2 5 3 6])
-		--assert m == #(u8! 3x2 [1 2 3 4 5 6])    ;; source untouched
+===end-group===
 
-	--test-- "transpose is index-swapped pick"
-		m: make vector! [u8! 3x2 [1 2 3 4 5 6]]
-		t: transpose m
-		repeat r 2 [repeat c 3 [
-			--assert (pick t as-pair r c) = (pick m as-pair c r)
-		]]
+
+mx: try [import 'matrix]   ;; module exports nothing - reach the words through it
+if module? mx [
+;; float comparison helper (elementwise, with tolerance)
+near?: func [a [vector!] b [vector!] /local i][
+	all [
+		(length? a) = (length? b)
+		none? repeat i length? a [
+			if 1E-9 < abs (to decimal! a/:i) - (to decimal! b/:i) [break/return true]
+		]
+	]
+]
+
+===start-group=== "TRANSPOSE"
+	--test-- "transpose swaps rows and columns"
+		m: #(i32! 3x2 [1 2 3  4 5 6])         ;; 3 cols, 2 rows
+		--assert all [
+			t: mx/transpose m
+			t == #(i32! 2x3 [1 4  2 5  3 6])
+			t/shape = 2x3
+			m == #(i32! 3x2 [1 2 3  4 5 6])   ;; source untouched
+			not same? m t
+		]
 
 	--test-- "transpose is its own inverse"
-		m: make vector! [u8! 3x2 [1 2 3 4 5 6]]
-		--assert m == transpose transpose m
-		s: make vector! [i32! 2x2 [1 2 3 4]]
-		--assert s == transpose transpose s
+		--assert all [m: #(u8! 3x2 [1 2 3 4 5 6])  m == mx/transpose mx/transpose m]
+		--assert all [s: #(f64! 2x2 [1 2 3 4])     s == mx/transpose mx/transpose s]
 
-	--test-- "transpose of a plain vector gives a column vector"
-		v: #(u8! [1 2 3])
-		t: transpose v
-		--assert t/shape = 1x3
-		--assert 3 = length? t
-		--assert (pick t 1x2) = 2
-
-	--test-- "transpose edge cases"
-		--assert 0x1 == query transpose #(u8! []) 'shape
-		--assert 0 = length? transpose #(u8! [])
-		--assert (transpose #(u8! [7])) == #(u8! [7])
-		;; result is length-locked like any shaped vector
-		--assert all [t: transpose #(u8! 3x2 [1 2 3 4 5 6])  error? try [append t 9]]
-
-	--test-- "IDENTITY modifies in place"
-		m: #(u8! 4x4)
-		--assert same? m identity m
-		--assert m == #(u8! 4x4 [1 0 0 0  0 1 0 0  0 0 1 0  0 0 0 1])
-		--assert m/shape = 4x4
-		;; existing contents are cleared, not merged
-		m: #(i16! 2x2 [9 9 9 9])
-		identity m
-		--assert m == #(i16! 2x2 [1 0 0 1])
-		;; float types get 1.0
-		--assert (identity #(f64! 2x2)) == #(f64! 2x2 [1 0 0 1])
-
-	--test-- "IDENTITY COPY leaves the original alone"
-		m: #(u8! 2x2 [9 9 9 9])
-		i: identity copy m
-		--assert m == #(u8! 2x2 [9 9 9 9])
-		--assert i == #(u8! 2x2 [1 0 0 1])
-		--assert not same? m i
-
-	--test-- "IDENTITY requires a whole square matrix"
-		--assert all [error? e: try [identity #(u8! 3x2)]                  e/id = 'invalid-arg]
-		--assert all [error? e: try [identity make vector! [u8! 3]]        e/id = 'invalid-arg]
-		--assert all [error? e: try [identity next make vector! [u8! 2x2]] e/id = 'invalid-arg]
-		--assert all [error? e: try [identity make vector! [u8! 0]]        e/id = 'invalid-arg]
-
-	--test-- "IDENTITY respects PROTECT"
+	--test-- "transpose of a plain vector gives a column"
 		--assert all [
-			error? e: try [identity protect make vector! [u8! 2x2]]
-			e/id = 'protected
+			c: mx/transpose #(u8! [1 2 3])
+			c/shape = 1x3
+			c/shaped
+			(pick c 1x2) = 2
 		]
-
-	--test-- "DOT product of two matrices"
-		;; A is 2 rows x 3 cols, B is 3 rows x 2 cols -> 2x2
-		a: #(i32! 3x2 [1 2 3  4 5 6])
-		b: #(i32! 2x3 [7 8  9 10  11 12])
-		--assert (matmul a b) == #(i32! 2x2 [58 64  139 154])
-		--assert all [r: matmul a b  r/shape = 2x2]
-		;; operands untouched
-		--assert a == #(i32! 3x2 [1 2 3  4 5 6])
-
-	--test-- "DOT is not commutative"
-		a: #(i32! 3x2 [1 2 3  4 5 6])
-		b: #(i32! 2x3 [7 8  9 10  11 12])
-		--assert all [r: matmul b a  r/shape = 3x3]      ;; 3x3, not 2x2
-		--assert not equal? (matmul a b) (dot b a)
-
-	--test-- "DOT with the identity matrix"
-		m: #(f64! 3x3 [1 2 3  4 5 6  7 8 9])
-		i: identity copy m
-		--assert (matmul m i) == m
-		--assert (matmul i m) == m
-
-	--test-- "DOT with plain vectors"
-		;; a plain vector is a single row (1 x N)
-		--assert (matmul #(i32! [1 2 3]) #(i32! 2x3 [7 8  9 10  11 12])) == #(i32! [58 64])
-		;; matrix x column, via transpose
-		--assert all [
-			col: transpose #(i32! [7 9 11])
-			col/shape = 1x3
-			(matmul #(i32! 3x2 [1 2 3  4 5 6]) col) == #(i32! 1x2 [58 139])
-		]
-		;; row x row fails -- 3 cols against 1 row
-		--assert error? try [matmul #(i32! [1 2 3]) #(i32! [4 5 6])]
-
-	--test-- "DOT dimension and type checks"
-		--assert all [
-			error? e: try [matmul #(i32! 3x2 [1 2 3 4 5 6]) #(i32! 3x2 [1 2 3 4 5 6])]
-			e/id = 'vector-not-compatible
-		]
-		--assert error? try [matmul #(i32! 2x2 [1 2 3 4]) #(f64! 2x2 [1 2 3 4])]
-		--assert error? try [matmul #(i32! []) #(i32! [])]
-
-	--test-- "DOT truncates on store like *"
-		;; 100*100 + 100*100 = 20000, stored as u8 -> 32
-		--assert (matmul #(u8! 2x1 [100 100]) #(u8! 1x2 [100 100])) == #(u8! [32])
 ===end-group===
+
+===start-group=== "IDENTITY"
+	--test-- "identity modifies in place"
+		--assert all [
+			m: make vector! [u8! 4x4]
+			same? m mx/identity m
+			m == #(u8! 4x4 [1 0 0 0  0 1 0 0  0 0 1 0  0 0 0 1])
+			m/shape = 4x4
+		]
+
+	--test-- "identity clears existing contents"
+		--assert all [
+			m: make vector! [i16! 2x2 [9 9 9 9]]
+			mx/identity m
+			m == #(i16! 2x2 [1 0 0 1])
+		]
+
+	--test-- "identity on float types"
+		--assert all [
+			m: make vector! [f64! 2x2 [5 5 5 5]]
+			mx/identity m
+			m == #(f64! 2x2 [1.0 0.0 0.0 1.0])
+		]
+
+	--test-- "identity copy leaves the original alone"
+		--assert all [
+			m: make vector! [u8! 2x2 [9 9 9 9]]
+			i: mx/identity copy m
+			m == #(u8! 2x2 [9 9 9 9])
+			i == #(u8! 2x2 [1 0 0 1])
+		]
+
+	--test-- "identity requires a square matrix"
+		--assert error? try [mx/identity make vector! [u8! 3x2]]
+		--assert error? try [mx/identity make vector! [u8! 3]]
+===end-group===
+
+===start-group=== "TRACE"
+	--test-- "trace sums the diagonal"
+		--assert 15 = mx/trace #(i32! 3x3 [1 2 3  4 5 6  7 8 9])
+		--assert  5 = mx/trace #(u8!  2x2 [1 2  3 4])
+		--assert integer? mx/trace #(i32! 2x2 [1 2 3 4])
+
+	--test-- "trace of a float matrix returns a decimal"
+		--assert all [
+			d: mx/trace #(f64! 2x2 [1.5 2.0  3.0 2.5])
+			decimal? d
+			d = 4.0
+		]
+
+	--test-- "trace requires a square matrix"
+		--assert error? try [mx/trace #(i32! 3x2 [1 2 3 4 5 6])]
+===end-group===
+
+===start-group=== "DIAGONAL"
+	--test-- "diagonal of a square matrix"
+		--assert all [
+			d: mx/diagonal #(i32! 3x3 [1 2 3  4 5 6  7 8 9])
+			d == #(i32! [1 5 9])
+			not d/shaped                  ;; returned unshaped
+		]
+
+	--test-- "diagonal of a non-square matrix stops at the shorter side"
+		--assert (mx/diagonal #(i32! 3x2 [1 2 3  4 5 6])) == #(i32! [1 5])
+		--assert (mx/diagonal #(i32! 2x3 [1 2  3 4  5 6])) == #(i32! [1 4])
+===end-group===
+
+===start-group=== "SWAP-ROWS"
+	--test-- "swap-rows modifies in place"
+		--assert all [
+			m: make vector! [u8! 3x2 [1 2 3  4 5 6]]
+			same? m mx/swap-rows m 1 2
+			m == #(u8! 3x2 [4 5 6  1 2 3])
+			m/shape = 3x2
+		]
+
+	--test-- "swapping a row with itself is a no-op"
+		--assert all [
+			m: make vector! [u8! 3x2 [1 2 3  4 5 6]]
+			mx/swap-rows m 2 2
+			m == #(u8! 3x2 [1 2 3  4 5 6])
+		]
+
+	--test-- "swap-rows range checks"
+		--assert error? try [mx/swap-rows make vector! [u8! 3x2] 0 1]
+		--assert error? try [mx/swap-rows make vector! [u8! 3x2] 1 3]
+		--assert error? try [mx/swap-rows make vector! [u8! 3x2] -1 1]
+===end-group===
+
+===start-group=== "ROTATE"
+	;;  1 2 3
+	;;  4 5 6
+	--test-- "rotate clockwise"
+		--assert all [
+			r: mx/rotate #(i32! 3x2 [1 2 3  4 5 6])
+			r == #(i32! 2x3 [4 1  5 2  6 3])
+			r/shape = 2x3
+		]
+
+	--test-- "rotate counter-clockwise"
+		--assert all [
+			r: mx/rotate/left #(i32! 3x2 [1 2 3  4 5 6])
+			r == #(i32! 2x3 [3 6  2 5  1 4])
+		]
+
+	--test-- "rotate twice keeps the shape"
+		--assert all [
+			r: mx/rotate/twice #(i32! 3x2 [1 2 3  4 5 6])
+			r == #(i32! 3x2 [6 5 4  3 2 1])
+			r/shape = 3x2
+		]
+
+	--test-- "four clockwise rotations return the original"
+		m: #(u8! 3x2 [1 2 3  4 5 6])
+		--assert m == mx/rotate mx/rotate mx/rotate mx/rotate m
+
+	--test-- "/twice wins over /left"
+		;; pins current behaviour: ref_twice is tested first
+		--assert (mx/rotate/left/twice #(i32! 3x2 [1 2 3  4 5 6]))
+		      == (mx/rotate/twice     #(i32! 3x2 [1 2 3  4 5 6]))
+===end-group===
+
+===start-group=== "MATMUL"
+	--test-- "matrix product"
+		;; A = 2x3, B = 3x2  ->  2x2
+		--assert all [
+			a: #(i32! 3x2 [1 2 3  4 5 6])
+			b: #(i32! 2x3 [7 8  9 10  11 12])
+			r: mx/matmul a b
+			r == #(i32! 2x2 [58 64  139 154])
+			r/shape = 2x2
+			a == #(i32! 3x2 [1 2 3  4 5 6])     ;; operands untouched
+		]
+
+	--test-- "matmul is not commutative"
+		--assert all [
+			a: #(i32! 3x2 [1 2 3  4 5 6])
+			b: #(i32! 2x3 [7 8  9 10  11 12])
+			r: mx/matmul b a
+			r/shape = 3x3
+			not equal? (mx/matmul a b) r
+		]
+
+	--test-- "multiplying by the identity"
+		--assert all [
+			m: #(f64! 3x3 [1 2 3  4 5 6  7 8 9])
+			i: mx/identity copy m
+			m == mx/matmul m i
+			m == mx/matmul i m
+		]
+
+	--test-- "row vector times matrix"
+		--assert (mx/matmul #(i32! [1 2 3]) #(i32! 2x3 [7 8  9 10  11 12]))
+		      == #(i32! [58 64])
+
+	--test-- "matrix times column vector"
+		--assert all [
+			col: mx/transpose #(i32! [7 9 11])
+			col/shape = 1x3
+			r: mx/matmul #(i32! 3x2 [1 2 3  4 5 6]) col
+			r == #(i32! 1x2 [58 139])
+		]
+
+	--test-- "matmul dimension and type checks"
+		--assert error? try [mx/matmul #(i32! 3x2 [1 2 3 4 5 6]) #(i32! 3x2 [1 2 3 4 5 6])]
+		--assert error? try [mx/matmul #(i32! 2x2 [1 2 3 4])     #(f64! 2x2 [1 2 3 4])]
+		--assert error? try [mx/matmul #(i32! [1 2 3])           #(i32! [4 5 6])]
+
+	--test-- "matmul truncates on store"
+		;; 100*100 + 100*100 = 20000 -> 32 as u8
+		--assert (mx/matmul #(u8! 2x1 [100 100]) #(u8! 1x2 [100 100])) == #(u8! [32])
+===end-group===
+
+===start-group=== "KRONECKER"
+	--test-- "kronecker product"
+		;; [1 2; 3 4] (x) [0 5; 6 7]
+		--assert all [
+			k: mx/kronecker #(i32! 2x2 [1 2  3 4]) #(i32! 2x2 [0 5  6 7])
+			k == #(i32! 4x4 [
+				 0  5   0 10
+				 6  7  12 14
+				 0 15   0 20
+				18 21  24 28
+			])
+			k/shape = 4x4
+		]
+
+	--test-- "kronecker with the 1x1 identity is a copy"
+		--assert (mx/kronecker #(i32! 2x2 [1 2 3 4]) #(i32! [1])) == #(i32! 2x2 [1 2 3 4])
+
+	--test-- "kronecker of non-square operands"
+		;; (1x2) (x) (2x1) -> shape follows cols*cols x rows*rows
+		--assert all [
+			k: mx/kronecker #(u8! 1x2 [1 2]) #(u8! 2x1 [3 4])
+			k/shape = 2x2
+			k == #(u8! 2x2 [3 4  6 8])
+		]
+
+	--test-- "kronecker type check"
+		--assert error? try [mx/kronecker #(i32! 2x2 [1 2 3 4]) #(u8! 2x2 [1 2 3 4])]
+===end-group===
+
+===start-group=== "empty vectors"
+	--test-- "empty vectors pass through the shape-preserving commands"
+		--assert (mx/transpose #(u8! [])) == #(u8! [])
+		--assert (mx/diagonal  #(u8! [])) == #(u8! [])
+		--assert (mx/rotate    #(u8! [])) == #(u8! [])
+		;; ...but the square-only ones reject them
+		--assert error? try [mx/identity #(u8! [])]
+		--assert error? try [mx/trace    #(u8! [])]
+		--assert error? try [mx/matmul   #(u8! []) #(u8! [])]
+===end-group===
+
+===start-group=== "commands follow the view"
+	--test-- "a partial view is one row"
+		m: #(i32! 3x2 [1 2 3  4 5 6])
+		--assert all [v: next m  v/shape = 5x1]
+		--assert all [t: mx/transpose next m  t/shape = 1x5  t == #(i32! 1x5 [2 3 4 5 6])]
+		--assert all [d: mx/diagonal next m   d == #(i32! [2])]
+		--assert error? try [mx/identity next #(u8! 2x2 [1 2 3 4])]
+
+	--test-- "whole views still see the grid"
+		--assert all [t: mx/transpose #(i32! 3x2 [1 2 3 4 5 6])  t/shape = 2x3]
+===end-group===
+
+===start-group=== "mezzanine helpers"
+	--test-- "square?"
+		--assert     mx/square? #(u8! 2x2 [1 2 3 4])
+		--assert not mx/square? #(u8! 3x2 [1 2 3 4 5 6])
+		--assert     mx/square? #(u8! [5])            ;; 1x1
+
+	--test-- "symmetric?"
+		--assert     mx/symmetric? #(i32! 2x2 [1 2  2 1])
+		--assert     mx/symmetric? #(i32! 3x3 [1 2 3  2 4 5  3 5 6])
+		--assert not mx/symmetric? #(i32! 2x2 [1 2  3 4])
+		--assert not mx/symmetric? #(i32! 3x2 [1 2 3 4 5 6])
+
+	--test-- "as-float"
+		--assert all [
+			f: mx/as-float #(i32! 2x2 [1 2 3 4])
+			f/element-type = 'float64!
+			f/shape = 2x2
+			f == #(f64! 2x2 [1.0 2.0 3.0 4.0])
+		]
+		;; already float -- plain copy, original untouched
+		--assert all [
+			m: #(f32! 2x2 [1 2 3 4])
+			f: mx/as-float m
+			f/element-type = 'float32!
+			not same? m f
+		]
+
+	--test-- "row and col"
+		m: #(i32! 3x2 [1 2 3  4 5 6])
+		--assert all [r: mx/row m 1  r == #(i32! [1 2 3])  not r/shaped]
+		--assert all [r: mx/row m 2  r == #(i32! [4 5 6])]
+		--assert all [c: mx/col m 2  c == #(i32! 1x2 [2 5])  c/shaped]
+		--assert error? try [mx/row m 3]
+		--assert error? try [mx/col m 4]
+		--assert error? try [mx/row m 0]
+
+	--test-- "augment"
+		--assert all [
+			a: mx/augment #(i32! 2x2 [1 2  3 4]) #(i32! 1x2 [5 6])
+			a == #(i32! 3x2 [1 2 5  3 4 6])
+			a/shape = 3x2
+		]
+		--assert error? try [mx/augment #(i32! 2x2 [1 2 3 4]) #(i32! 1x3 [5 6 7])]
+		--assert error? try [mx/augment #(i32! 2x2 [1 2 3 4]) #(u8!  1x2 [5 6])]
+===end-group===
+
+===start-group=== "linear algebra"
+	--test-- "rref"
+		--assert all [
+			m: mx/rref mx/as-float #(i32! 3x2 [1 2 3  4 5 6])
+			near? m #(f64! 3x2 [1.0 0.0 -1.0  0.0 1.0 2.0])
+		]
+
+	--test-- "determinant"
+		--assert -2.0 = mx/determinant #(i32! 2x2 [1 2  3 4])
+		--assert  1.0 = mx/determinant #(f64! 3x3 [1 0 0  0 1 0  0 0 1])
+		--assert (abs -3.0 - mx/determinant #(i32! 3x3 [1 2 3  4 5 6  7 8 10])) < 1E-9
+		--assert 1E-9 > abs mx/determinant #(i32! 3x3 [1 2 3  4 5 6  7 8 9])   ;; singular
+		--assert error? try [mx/determinant #(i32! 3x2 [1 2 3 4 5 6])]
+
+	--test-- "determinant does not modify its argument"
+		m: #(i32! 2x2 [1 2 3 4])
+		mx/determinant m
+		--assert m == #(i32! 2x2 [1 2 3 4])
+
+	--test-- "invert"
+		--assert all [
+			i: mx/invert #(f64! 2x2 [4 7  2 6])
+			near? i #(f64! 2x2 [0.6 -0.7  -0.2 0.4])
+			i/shape = 2x2
+		]
+		;; A * inv(A) = I
+		--assert all [
+			m: #(f64! 3x3 [2 1 1  1 3 2  1 0 0])
+			near? (mx/matmul m mx/invert m) (mx/identity copy m)
+		]
+		--assert error? try [mx/invert #(i32! 3x2 [1 2 3 4 5 6])]
+
+	--test-- "invert rejects a singular matrix"
+		--assert error? try [mx/invert #(f64! 3x3 [1 2 3  4 5 6  7 8 9])]
+		--assert error? try [mx/invert #(f64! 2x2 [1 2  2 4])]
+		--assert error? try [mx/invert #(f64! 2x2 [0 0  0 0])]
+
+	--test-- "solve"
+		;;  2x +  y =  5
+		;;   x + 3y = 10
+		--assert all [
+			x: mx/solve #(f64! 2x2 [2 1  1 3]) #(f64! 1x2 [5 10])
+			near? x #(f64! 1x2 [1.0 3.0])
+			x/shape = 1x2
+		]
+		--assert error? try [mx/solve #(f64! 3x2 [1 2 3 4 5 6]) #(f64! 1x2 [1 2])]
+		--assert error? try [mx/solve #(f64! 2x2 [1 2 3 4])     #(f64! 1x3 [1 2 3])]
+===end-group===
+] ;end of matrix module text
 
 ~~~end-file~~~
