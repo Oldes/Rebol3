@@ -23,15 +23,18 @@
 #ifndef MATRIX_EXT_H
 #define MATRIX_EXT_H
 
-#define ERR_NO_VECTOR     ((const REBYTE*)"Invalid vector argument!")
-#define ERR_NOT_SQUARE    ((const REBYTE*)"Matrix must be square!")
-#define ERR_NO_RESULT     ((const REBYTE*)"Cannot allocate the result matrix!")
-#define ERR_ROW_RANGE     ((const REBYTE*)"Row index out of range!")
-#define ERR_BAD_DIMS      ((const REBYTE*)"Columns of the first matrix must match rows of the second!")
-#define ERR_BAD_RHS       ((const REBYTE*)"Right-hand side must be a column matrix with one row per equation!")
-#define ERR_TYPE_MISMATCH ((const REBYTE*)"Both matrices must have the same element type!")
-#define ERR_PARTIAL_VIEW  ((const REBYTE*)"Matrix must be at its head!")
-#define ERR_SINGULAR      ((const REBYTE*)"Matrix is singular!")
+#define ERR_NO_VECTOR      ((const REBYTE*)"Invalid vector argument!")
+#define ERR_NOT_SQUARE     ((const REBYTE*)"Matrix must be square!")
+#define ERR_NO_RESULT      ((const REBYTE*)"Cannot allocate the result matrix!")
+#define ERR_ROW_RANGE      ((const REBYTE*)"Row index out of range!")
+#define ERR_BAD_DIMS       ((const REBYTE*)"Columns of the first matrix must match rows of the second!")
+#define ERR_BAD_RHS        ((const REBYTE*)"Right-hand side must be a column matrix with one row per equation!")
+#define ERR_TYPE_MISMATCH  ((const REBYTE*)"Both matrices must have the same element type!")
+#define ERR_PARTIAL_VIEW   ((const REBYTE*)"Matrix must be at its head!")
+#define ERR_SINGULAR       ((const REBYTE*)"Matrix is singular!")
+#define ERR_COL_RANGE      ((const REBYTE*)"Column index out of range!")
+#define ERR_BAD_REGION     ((const REBYTE*)"Region lies outside the matrix!")
+#define ERR_SHORT_DIAGONAL ((const REBYTE*)"Source is shorter than the diagonal!")
 
 // A vector argument resolved into its parts.
 typedef struct {

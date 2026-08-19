@@ -11,6 +11,7 @@
 #include "matrix.h"
 #include <string.h>
 #include <stdlib.h>
+#include <math.h>
 
 //== helpers ==================================================================
 
@@ -60,7 +61,7 @@ COMMAND cmd_matrix_transpose(RXIFRM *frm, void *ctx) {
 	REBYTE *dst;
 	REBLEN i, j, w;
 
-	if (!Matrix_Arg(&m, frm, 1)) RETURN_ERROR(ERR_NO_SHAPE);
+	if (!Matrix_Arg(&m, frm, 1)) RETURN_ERROR(ERR_NO_VECTOR);
 	if (!m.len) { if (!Matrix_Empty(frm, &m)) RETURN_ERROR(ERR_NO_RESULT); return RXR_VALUE; }
 
 	// result is the same data with the dimensions exchanged
@@ -82,7 +83,7 @@ COMMAND cmd_matrix_diagonal(RXIFRM *frm, void *ctx) {
 	REBYTE *dst;
 	REBLEN i, n, w;
 
-	if (!Matrix_Arg(&m, frm, 1)) RETURN_ERROR(ERR_NO_SHAPE);
+	if (!Matrix_Arg(&m, frm, 1)) RETURN_ERROR(ERR_NO_VECTOR);
 	if (!m.len) { if (!Matrix_Empty(frm, &m)) RETURN_ERROR(ERR_NO_RESULT); return RXR_VALUE; }
 
 	n = m.rows < m.cols ? m.rows : m.cols;
@@ -102,7 +103,7 @@ COMMAND cmd_matrix_swap_rows(RXIFRM *frm, void *ctx) {
 	REBLEN a, b, row_bytes, k;
 	REBYTE *pa, *pb, tmp;
 
-	if (!Matrix_Arg(&m, frm, 1)) RETURN_ERROR(ERR_NO_SHAPE);
+	if (!Matrix_Arg(&m, frm, 1)) RETURN_ERROR(ERR_NO_VECTOR);
 
 	a = (REBLEN)ARG_Int64(2);
 	b = (REBLEN)ARG_Int64(3);
@@ -129,7 +130,7 @@ COMMAND cmd_matrix_rotate(RXIFRM *frm, void *ctx) {
 	REBFLG ref_left  = RXA_REF(frm, 2);
 	REBFLG ref_twice = RXA_REF(frm, 3);
 
-	if (!Matrix_Arg(&m, frm, 1)) RETURN_ERROR(ERR_NO_SHAPE);
+	if (!Matrix_Arg(&m, frm, 1)) RETURN_ERROR(ERR_NO_VECTOR);
 	if (!m.len) { if (!Matrix_Empty(frm, &m)) RETURN_ERROR(ERR_NO_RESULT); return RXR_VALUE; }
 
 	if (ref_twice) {                // 180 degrees - shape is unchanged
@@ -167,7 +168,7 @@ COMMAND cmd_matrix_identity(RXIFRM *frm, void *ctx) {
 	Matrix m;
 	REBLEN i;
 
-	if (!Matrix_Arg(&m, frm, 1)) RETURN_ERROR(ERR_NO_SHAPE);
+	if (!Matrix_Arg(&m, frm, 1)) RETURN_ERROR(ERR_NO_VECTOR);
 	if (!IS_WHOLE(m)) RETURN_ERROR(ERR_PARTIAL_VIEW);
 	if (!IS_SQUARE(m)) RETURN_ERROR(ERR_NOT_SQUARE);
 
@@ -190,7 +191,7 @@ COMMAND cmd_matrix_trace(RXIFRM *frm, void *ctx) {
 	double fsum = 0.0;
 	i64    isum = 0;
 
-	if (!Matrix_Arg(&m, frm, 1)) RETURN_ERROR(ERR_NO_SHAPE);
+	if (!Matrix_Arg(&m, frm, 1)) RETURN_ERROR(ERR_NO_VECTOR);
 	if (!IS_SQUARE(m))           RETURN_ERROR(ERR_NOT_SQUARE);
 
 	if (RXI_VECTOR_FLOAT(m.info)) {
@@ -221,7 +222,7 @@ COMMAND cmd_matrix_matmul(RXIFRM *frm, void *ctx) {
 	REBLEN i, j, k;
 
 	if (!Matrix_Arg(&a, frm, 1) || !Matrix_Arg(&b, frm, 2))
-		RETURN_ERROR(ERR_NO_SHAPE);
+		RETURN_ERROR(ERR_NO_VECTOR);
 	if (a.cols != b.rows)
 		RETURN_ERROR(ERR_BAD_DIMS);
 	if (RXI_VECTOR_TYPE(a.info) != RXI_VECTOR_TYPE(b.info))
@@ -253,7 +254,7 @@ COMMAND cmd_matrix_kronecker(RXIFRM *frm, void *ctx) {
 	REBLEN i, j, k, l, dcols;
 
 	if (!Matrix_Arg(&a, frm, 1) || !Matrix_Arg(&b, frm, 2))
-		RETURN_ERROR(ERR_NO_SHAPE);
+		RETURN_ERROR(ERR_NO_VECTOR);
 	if (RXI_VECTOR_TYPE(a.info) != RXI_VECTOR_TYPE(b.info))
 		RETURN_ERROR(ERR_TYPE_MISMATCH);
 
@@ -384,7 +385,7 @@ COMMAND cmd_matrix_determinant(RXIFRM *frm, void *ctx) {
 	double det;
 	REBLEN k;
  
-	if (!Matrix_Arg(&m, frm, 1)) RETURN_ERROR(ERR_NO_SHAPE);
+	if (!Matrix_Arg(&m, frm, 1)) RETURN_ERROR(ERR_NO_VECTOR);
 	if (!IS_SQUARE(m))           RETURN_ERROR(ERR_NOT_SQUARE);
 	if (!LU_Decompose(&lu, &m))  RETURN_ERROR(ERR_NO_RESULT);
  
@@ -408,7 +409,7 @@ COMMAND cmd_matrix_invert(RXIFRM *frm, void *ctx) {
 	REBYTE *dst;
 	REBLEN  n, i, j;
  
-	if (!Matrix_Arg(&m, frm, 1)) RETURN_ERROR(ERR_NO_SHAPE);
+	if (!Matrix_Arg(&m, frm, 1)) RETURN_ERROR(ERR_NO_VECTOR);
 	if (!IS_SQUARE(m))           RETURN_ERROR(ERR_NOT_SQUARE);
 	if (!LU_Decompose(&lu, &m))  RETURN_ERROR(ERR_NO_RESULT);
 	if (lu.sign == 0) { LU_Free(&lu); RETURN_ERROR(ERR_SINGULAR); }
@@ -445,7 +446,7 @@ COMMAND cmd_matrix_solve(RXIFRM *frm, void *ctx) {
 	REBLEN  n, i;
  
 	if (!Matrix_Arg(&a, frm, 1) || !Matrix_Arg(&b, frm, 2))
-		RETURN_ERROR(ERR_NO_SHAPE);
+		RETURN_ERROR(ERR_NO_VECTOR);
 	if (!IS_SQUARE(a))                    RETURN_ERROR(ERR_NOT_SQUARE);
 	if (b.cols != 1 || b.rows != a.rows)  RETURN_ERROR(ERR_BAD_RHS);
 	if (!LU_Decompose(&lu, &a))           RETURN_ERROR(ERR_NO_RESULT);
@@ -474,3 +475,223 @@ COMMAND cmd_matrix_solve(RXIFRM *frm, void *ctx) {
 	LU_Free(&lu);
 	return RXR_VALUE;
 }
+
+//== column access ============================================================
+// A row is contiguous in row-major storage, so ROW is a plain COPY/PART on
+// the Rebol side. A column is strided, and COPY has no stride, so it needs
+// to be done here.
+ 
+COMMAND cmd_matrix_col(RXIFRM *frm, void *ctx) {
+	Matrix m;
+	REBYTE *dst;
+	REBLEN n, i, w;
+ 
+	if (!Matrix_Arg(&m, frm, 1)) RETURN_ERROR(ERR_NO_VECTOR);
+ 
+	n = (REBLEN)ARG_Int64(2);
+	if (n < 1 || n > m.cols) RETURN_ERROR(ERR_COL_RANGE);
+ 
+	// a single column: 1 wide, as many rows as the source
+	if (!(dst = Matrix_Result(frm, &m, 1, m.rows)))
+		RETURN_ERROR(ERR_NO_RESULT);
+ 
+	w = m.wide;
+	for (i = 0; i < m.rows; i++)
+		memcpy(dst + i * w, m.data + (i * m.cols + (n - 1)) * w, w);
+ 
+	return RXR_VALUE;
+}
+ 
+COMMAND cmd_matrix_swap_cols(RXIFRM *frm, void *ctx) {
+	Matrix m;
+	REBLEN a, b, i, k, w;
+	REBYTE *pa, *pb, tmp;
+ 
+	if (!Matrix_Arg(&m, frm, 1)) RETURN_ERROR(ERR_NO_VECTOR);
+ 
+	a = (REBLEN)ARG_Int64(2);
+	b = (REBLEN)ARG_Int64(3);
+	if (a < 1 || b < 1 || a > m.cols || b > m.cols)
+		RETURN_ERROR(ERR_COL_RANGE);
+ 
+	if (a != b) {
+		w = m.wide;
+		for (i = 0; i < m.rows; i++) {
+			pa = m.data + (i * m.cols + (a - 1)) * w;
+			pb = m.data + (i * m.cols + (b - 1)) * w;
+			for (k = 0; k < w; k++) { tmp = pa[k]; pa[k] = pb[k]; pb[k] = tmp; }
+		}
+	}
+	// modifies in place and returns the same value
+	return RXR_VALUE;
+}
+ 
+ 
+//== region extraction ========================================================
+ 
+COMMAND cmd_matrix_submatrix(RXIFRM *frm, void *ctx) {
+	Matrix m;
+	REBYTE *dst;
+	REBLEN c0, r0, nc, nr, i, w;
+ 
+	if (!Matrix_Arg(&m, frm, 1)) RETURN_ERROR(ERR_NO_VECTOR);
+ 
+	// both pairs are cols x rows, and the origin is 1-based, matching
+	// pick/poke and the shape reflector
+	c0 = (REBLEN)RXA_PAIR(frm, 2).x;
+	r0 = (REBLEN)RXA_PAIR(frm, 2).y;
+	nc = (REBLEN)RXA_PAIR(frm, 3).x;
+	nr = (REBLEN)RXA_PAIR(frm, 3).y;
+ 
+	if (c0 < 1 || r0 < 1 || nc < 1 || nr < 1
+		|| c0 + nc - 1 > m.cols || r0 + nr - 1 > m.rows)
+		RETURN_ERROR(ERR_BAD_REGION);
+ 
+	if (!(dst = Matrix_Result(frm, &m, nc, nr)))
+		RETURN_ERROR(ERR_NO_RESULT);
+ 
+	// each output row is contiguous in the source, so one memcpy per row
+	w = m.wide;
+	for (i = 0; i < nr; i++)
+		memcpy(dst + i * nc * w,
+		       m.data + ((r0 - 1 + i) * m.cols + (c0 - 1)) * w,
+		       nc * w);
+ 
+	return RXR_VALUE;
+}
+ 
+ 
+//== diagonal assignment ======================================================
+ 
+COMMAND cmd_matrix_set_diagonal(RXIFRM *frm, void *ctx) {
+	Matrix m, src;
+	REBLEN n, i, w;
+	double dv = 0.0;
+	int    from_vector;
+ 
+	if (!Matrix_Arg(&m, frm, 1)) RETURN_ERROR(ERR_NO_VECTOR);
+ 
+	n = m.rows < m.cols ? m.rows : m.cols;   // as DIAGONAL: the shorter side
+	w = m.wide;
+ 
+	from_vector = (RXA_TYPE(frm, 2) == RXT_VECTOR);
+	if (from_vector) {
+		if (!Matrix_Arg(&src, frm, 2)) RETURN_ERROR(ERR_NO_VECTOR);
+		// copying raw elements avoids a second type dispatch, so the source
+		// must already have the target's element type
+		if (RXI_VECTOR_TYPE(src.info) != RXI_VECTOR_TYPE(m.info))
+			RETURN_ERROR(ERR_TYPE_MISMATCH);
+		if (src.len < n) RETURN_ERROR(ERR_SHORT_DIAGONAL);
+ 
+		for (i = 0; i < n; i++)
+			memcpy(m.data + (i * m.cols + i) * w, src.data + i * w, w);
+	}
+	else {
+		dv = (RXA_TYPE(frm, 2) == RXT_DECIMAL)
+		   ? RXA_DEC64(frm, 2)
+		   : (double)RXA_INT64(frm, 2);
+ 
+		#define SETDIAG_BODY(T) do {                           \
+			T *p = (T*)m.data;                                 \
+			for (i = 0; i < n; i++) p[i * m.cols + i] = (T)dv; \
+		} while(0)
+		VEC_DISPATCH(m.info, SETDIAG_BODY);
+		#undef SETDIAG_BODY
+	}
+ 
+	// modifies in place and returns the same value
+	return RXR_VALUE;
+}
+ 
+ 
+//== measures =================================================================
+ 
+COMMAND cmd_matrix_norm(RXIFRM *frm, void *ctx) {
+	Matrix m;
+	REBLEN i;
+	double sum = 0.0, best = 0.0, v;
+	REBFLG ref_max = RXA_REF(frm, 2);
+ 
+	if (!Matrix_Arg(&m, frm, 1)) RETURN_ERROR(ERR_NO_VECTOR);
+ 
+	#define NORM_BODY(T) do {                    \
+		T *p = (T*)m.data;                       \
+		for (i = 0; i < m.len; i++) {            \
+			v = (double)p[i];                    \
+			if (v < 0.0) v = -v;                 \
+			if (v > best) best = v;              \
+			sum += v * v;                        \
+		}                                        \
+	} while(0)
+	VEC_DISPATCH(m.info, NORM_BODY);
+	#undef NORM_BODY
+ 
+	// /max is the largest absolute element; the default is Frobenius
+	RXA_DEC64(frm, 1) = ref_max ? best : sqrt(sum);
+	RXA_TYPE(frm, 1)  = RXT_DECIMAL;
+	return RXR_VALUE;
+}
+ 
+COMMAND cmd_matrix_rank(RXIFRM *frm, void *ctx) {
+	Matrix  m;
+	double *a, mag = 0.0, eps, v, f, t;
+	REBLEN  rows, cols, r, c, i, j, p, rank = 0;
+ 
+	if (!Matrix_Arg(&m, frm, 1)) RETURN_ERROR(ERR_NO_VECTOR);
+ 
+	rows = m.rows;
+	cols = m.cols;
+	if (!m.len) {
+		RXA_INT64(frm, 1) = 0;
+		RXA_TYPE(frm, 1)  = RXT_INTEGER;
+		return RXR_VALUE;
+	}
+ 
+	// Row echelon on a double copy. This is the same elimination as
+	// LU_Decompose but without the square requirement, and it counts pivots
+	// instead of multiplying them.
+	a = (double*)malloc(sizeof(double) * rows * cols);
+	if (!a) RETURN_ERROR(ERR_NO_RESULT);
+ 
+	#define RANK_LOAD(T) do {                                     \
+		T *q = (T*)m.data;                                        \
+		for (i = 0; i < rows * cols; i++) a[i] = (double)q[i];    \
+	} while(0)
+	VEC_DISPATCH(m.info, RANK_LOAD);
+	#undef RANK_LOAD
+ 
+	for (i = 0; i < rows * cols; i++) {
+		v = DABS(a[i]);
+		if (v > mag) mag = v;
+	}
+	// same relative threshold as LU_Decompose: elimination leaves rounding
+	// noise where an exact zero was expected
+	eps = mag * 1E-12;
+ 
+	r = 0;
+	for (c = 0; c < cols && r < rows; c++) {
+		p = r;
+		for (i = r + 1; i < rows; i++)
+			if (DABS(a[i*cols+c]) > DABS(a[p*cols+c])) p = i;
+ 
+		if (DABS(a[p*cols+c]) <= eps) continue;   // no pivot in this column
+ 
+		if (p != r) {
+			for (j = 0; j < cols; j++) {
+				t = a[r*cols+j]; a[r*cols+j] = a[p*cols+j]; a[p*cols+j] = t;
+			}
+		}
+		for (i = r + 1; i < rows; i++) {
+			f = a[i*cols+c] / a[r*cols+c];
+			for (j = c; j < cols; j++) a[i*cols+j] -= f * a[r*cols+j];
+		}
+		r++;
+		rank++;
+	}
+ 
+	free(a);
+	RXA_INT64(frm, 1) = (i64)rank;
+	RXA_TYPE(frm, 1)  = RXT_INTEGER;
+	return RXR_VALUE;
+}
+

@@ -69,6 +69,37 @@ commands: [
 		a [vector!] "Square coefficient matrix"
 		b [vector!] "Right-hand side, as a single-column matrix"
 	]
+	col: [
+		"Returns column N as a new single-column matrix"
+		m [vector!]
+		n [integer!] "1-based column index"
+	]
+	swap-cols: [
+		"Swaps two columns in place, returns the same value"
+		m [vector!]
+		a [integer!] "1-based column index"
+		b [integer!] "1-based column index"
+	]
+	submatrix: [
+		"Returns a copy of a rectangular region"
+		m [vector!]
+		origin [pair!] "1-based cols x rows of the top-left corner"
+		size   [pair!] "cols x rows to take"
+	]
+	set-diagonal: [
+		"Sets the diagonal from a vector or a number (modifies)"
+		m [vector!]
+		value [vector! number!] "Vector must have the matrix's element type"
+	]
+	norm: [
+		"Frobenius norm of a matrix"
+		m [vector!]
+		/max "Largest absolute element instead"
+	]
+	rank: [
+		"Number of linearly independent rows"
+		m [vector!]
+	]
 ]
 
 ;; ---------------------------------------------------------------------------
@@ -137,18 +168,6 @@ mezzanine: [
 		s: m/shape
 		if any [n < 1  n > s/2] [cause-error 'script 'out-of-range n]
 		copy/part skip m (n - 1) * s/1  s/1
-	]
-
-	col: func [
-		"Returns column N as a new single-column matrix"
-		m [vector!] n [integer!]
-		/local s out
-	][
-		s: m/shape
-		if any [n < 1  n > s/1] [cause-error 'script 'out-of-range n]
-		out: make vector! reduce [m/element-type as-pair 1 s/2]
-		repeat r s/2 [out/:r: m/(as-pair n r)]
-		out
 	]
 
 	;; ---- elimination ---------------------------------------------------

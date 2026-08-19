@@ -2173,6 +2173,217 @@ near?: func [a [vector!] b [vector!] /local i][
 		--assert error? try [mx/solve #(f64! 3x2 [1 2 3 4 5 6]) #(f64! 1x2 [1 2])]
 		--assert error? try [mx/solve #(f64! 2x2 [1 2 3 4])     #(f64! 1x3 [1 2 3])]
 ===end-group===
+
+===start-group=== "COL"
+	--test-- "col extracts a strided column"
+		m: #(i32! 3x2 [1 2 3  4 5 6])
+		--assert all [c: mx/col m 1  c == #(i32! 1x2 [1 4])  c/shape = 1x2]
+		--assert all [c: mx/col m 2  c == #(i32! 1x2 [2 5])]
+		--assert all [c: mx/col m 3  c == #(i32! 1x2 [3 6])]
+		--assert m == #(i32! 3x2 [1 2 3  4 5 6])      ;; source untouched
+
+	--test-- "col keeps the element type"
+		--assert all [c: mx/col #(f64! 2x2 [1 2  3 4]) 2  c == #(f64! 1x2 [2.0 4.0])]
+		--assert all [c: mx/col #(u8!  2x2 [1 2  3 4]) 1  c/element-type = 'uint8!]
+
+	--test-- "col of a plain vector"
+		;; a plain vector is one row, so every column is a single element
+		--assert all [c: mx/col #(u8! [7 8 9]) 2  c == #(u8! [8])]
+
+	--test-- "col and row agree on the transpose"
+		m: #(i32! 3x2 [1 2 3  4 5 6])
+		--assert all [
+			a: mx/col m 2
+			b: mx/transpose mx/row mx/transpose m 2
+			a == b
+		]
+
+	--test-- "col range checks"
+		--assert error? try [mx/col #(u8! 3x2 [1 2 3 4 5 6]) 0]
+		--assert error? try [mx/col #(u8! 3x2 [1 2 3 4 5 6]) 4]
+		--assert error? try [mx/col #(u8! 3x2 [1 2 3 4 5 6]) -1]
+		--assert error? try [mx/col #(u8! []) 1]
+===end-group===
+
+===start-group=== "SWAP-COLS"
+	--test-- "swap-cols modifies in place"
+		--assert all [
+			m: make vector! [u8! 3x2 [1 2 3  4 5 6]]
+			same? m mx/swap-cols m 1 3
+			m == #(u8! 3x2 [3 2 1  6 5 4])
+			m/shape = 3x2
+		]
+
+	--test-- "swapping a column with itself is a no-op"
+		--assert all [
+			m: make vector! [u8! 3x2 [1 2 3  4 5 6]]
+			mx/swap-cols m 2 2
+			m == #(u8! 3x2 [1 2 3  4 5 6])
+		]
+
+	--test-- "two swaps restore the original"
+		--assert all [
+			m: make vector! [i32! 3x2 [1 2 3  4 5 6]]
+			mx/swap-cols m 1 2
+			mx/swap-cols m 1 2
+			m == #(i32! 3x2 [1 2 3  4 5 6])
+		]
+
+	--test-- "swap-cols is the transpose of swap-rows"
+		--assert all [
+			a: make vector! [i32! 3x2 [1 2 3  4 5 6]]
+			b: mx/transpose a
+			mx/swap-cols a 1 3
+			mx/swap-rows b 1 3
+			a == mx/transpose b
+		]
+
+	--test-- "swap-cols range checks"
+		--assert error? try [mx/swap-cols make vector! [u8! 3x2] 0 1]
+		--assert error? try [mx/swap-cols make vector! [u8! 3x2] 1 4]
+		--assert error? try [mx/swap-cols make vector! [u8! 3x2] -1 1]
+===end-group===
+
+===start-group=== "SUBMATRIX"
+	--test-- "submatrix extracts a region"
+		m: #(i32! 4x3 [1 2 3 4  5 6 7 8  9 10 11 12])
+		--assert all [
+			s: mx/submatrix m 2x2 2x2
+			s == #(i32! 2x2 [6 7  10 11])
+			s/shape = 2x2
+		]
+		--assert all [s: mx/submatrix m 1x1 4x3  s == m]
+		--assert all [s: mx/submatrix m 1x1 1x1  s == #(i32! [1])]
+		--assert m == #(i32! 4x3 [1 2 3 4  5 6 7 8  9 10 11 12])
+
+	--test-- "submatrix degenerate regions match row and col"
+		m: #(i32! 4x3 [1 2 3 4  5 6 7 8  9 10 11 12])
+		--assert all [s: mx/submatrix m 1x2 4x1  s == mx/row m 2]
+		--assert all [s: mx/submatrix m 3x1 1x3  s == mx/col m 3]
+
+	--test-- "submatrix keeps the element type"
+		--assert all [
+			s: mx/submatrix #(f32! 2x2 [1 2  3 4]) 1x1 2x1
+			s/element-type = 'float32!
+		]
+
+	--test-- "submatrix bounds checks"
+		m: #(i32! 4x3 [1 2 3 4  5 6 7 8  9 10 11 12])
+		--assert error? try [mx/submatrix m 0x1 2x2]      ;; origin below 1
+		--assert error? try [mx/submatrix m 1x0 2x2]
+		--assert error? try [mx/submatrix m 1x1 0x2]      ;; empty size
+		--assert error? try [mx/submatrix m 1x1 2x0]
+		--assert error? try [mx/submatrix m 4x1 2x1]      ;; runs off the right
+		--assert error? try [mx/submatrix m 1x3 1x2]      ;; runs off the bottom
+		--assert error? try [mx/submatrix m 1x1 5x3]
+===end-group===
+
+===start-group=== "SET-DIAGONAL"
+	--test-- "set-diagonal from a number"
+		--assert all [
+			m: make vector! [i32! 3x3 [1 2 3  4 5 6  7 8 9]]
+			same? m mx/set-diagonal m 0
+			m == #(i32! 3x3 [0 2 3  4 0 6  7 8 0])
+		]
+		--assert all [
+			m: make vector! [f64! 2x2 [9 9  9 9]]
+			mx/set-diagonal m 1.5
+			m == #(f64! 2x2 [1.5 9.0  9.0 1.5])
+		]
+
+	--test-- "set-diagonal with 1 is identity on a cleared matrix"
+		--assert all [
+			m: make vector! [u8! 3x3]
+			mx/set-diagonal m 1
+			m == mx/identity make vector! [u8! 3x3]
+		]
+
+	--test-- "set-diagonal from a vector"
+		--assert all [
+			m: make vector! [i32! 3x3 [1 1 1  1 1 1  1 1 1]]
+			mx/set-diagonal m #(i32! [7 8 9])
+			m == #(i32! 3x3 [7 1 1  1 8 1  1 1 9])
+			(mx/diagonal m) == #(i32! [7 8 9])
+		]
+
+	--test-- "set-diagonal on a non-square matrix uses the shorter side"
+		--assert all [
+			m: make vector! [i32! 3x2 [1 1 1  1 1 1]]
+			mx/set-diagonal m 0
+			m == #(i32! 3x2 [0 1 1  1 0 1])
+		]
+
+	--test-- "set-diagonal argument checks"
+		;; a vector source must match the element type
+		--assert error? try [mx/set-diagonal make vector! [i32! 2x2] #(u8! [1 2])]
+		;; ...and must be at least as long as the diagonal
+		--assert error? try [mx/set-diagonal make vector! [i32! 3x3] #(i32! [1 2])]
+		;; a longer source is fine -- the extra elements are ignored
+		--assert all [
+			m: make vector! [i32! 2x2]
+			mx/set-diagonal m #(i32! [5 6 7 8])
+			m == #(i32! 2x2 [5 0  0 6])
+		]
+===end-group===
+
+===start-group=== "NORM"
+	--test-- "Frobenius norm"
+		--assert 5.0 = mx/norm #(i32! 2x1 [3 4])
+		--assert 5.0 = mx/norm #(f64! 2x2 [3 0  0 4])
+		--assert 0.0 = mx/norm #(u8! 2x2 [0 0  0 0])
+		--assert 0.0 = mx/norm #(u8! [])
+		--assert decimal? mx/norm #(i32! 2x2 [1 2 3 4])
+
+	--test-- "max norm"
+		--assert 4.0 = mx/norm/max #(i32! 2x1 [3 4])
+		--assert 7.0 = mx/norm/max #(i32! 2x2 [1 -7  3 4])     ;; absolute value
+		--assert 0.0 = mx/norm/max #(u8! [])
+
+	--test-- "norm ignores the shape"
+		--assert (mx/norm #(i32! 4x1 [1 2 3 4])) = (mx/norm #(i32! 2x2 [1 2  3 4]))
+
+	--test-- "norm of the identity"
+		;; sqrt of the order
+		--assert 1E-9 > abs (mx/norm mx/identity make vector! [f64! 4x4]) - 2.0
+===end-group===
+
+===start-group=== "RANK"
+	--test-- "rank of a full-rank matrix"
+		--assert 3 = mx/rank #(f64! 3x3 [1 0 0  0 1 0  0 0 1])
+		--assert 2 = mx/rank #(i32! 2x2 [1 2  3 4])
+		--assert 3 = mx/rank #(i32! 3x3 [1 2 3  4 5 6  7 8 10])
+
+	--test-- "rank of a singular matrix"
+		;; third row is the first two combined
+		--assert 2 = mx/rank #(i32! 3x3 [1 2 3  4 5 6  7 8 9])
+		--assert 1 = mx/rank #(i32! 2x2 [1 2  2 4])
+		--assert 0 = mx/rank #(i32! 2x2 [0 0  0 0])
+
+	--test-- "rank of non-square matrices"
+		--assert 2 = mx/rank #(i32! 3x2 [1 2 3  4 5 6])
+		--assert 2 = mx/rank #(i32! 2x3 [1 2  3 4  5 6])
+		--assert 1 = mx/rank #(i32! 3x2 [1 2 3  2 4 6])   ;; second row is a multiple
+
+	--test-- "rank of degenerate inputs"
+		--assert 0 = mx/rank #(u8! [])
+		--assert 1 = mx/rank #(u8! [5])
+		--assert 0 = mx/rank #(u8! [0])
+		--assert 1 = mx/rank #(i32! [1 2 3])              ;; a plain vector is one row
+
+	--test-- "rank agrees with determinant on singularity"
+		--assert all [
+			m: #(f64! 3x3 [1 2 3  4 5 6  7 8 9])
+			3 > mx/rank m
+			0.0 = mx/determinant m
+			error? try [mx/invert m]
+		]
+		--assert all [
+			m: #(f64! 3x3 [1 2 3  4 5 6  7 8 10])
+			3 = mx/rank m
+			0.0 <> mx/determinant m
+		]
+===end-group===
+
 ] ;end of matrix module text
 
 ~~~end-file~~~
