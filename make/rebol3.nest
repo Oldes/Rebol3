@@ -19,6 +19,7 @@ stack-size: 4194304 ;= 4MB (4 * 1024 * 1024)
 optimize:   2
 
 version: 3.22.5
+extension-abi: 1
 remove-docstrings: off
 
 ;flags: "-ggdb3"
