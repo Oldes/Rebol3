@@ -66,6 +66,10 @@
 #include "host-init.h"
 #endif
 
+#ifdef INCLUDE_EXT_SQLITE
+void OS_Init_Ext_SQLite(void);
+#endif
+
 /**********************************************************************/
 
 #ifdef COLOR_CONSOLE
@@ -348,6 +352,9 @@ int main(int argc, char **argv) {
 
 #ifdef INCLUDE_EXT_MATRIX
 	OS_Init_Ext_Matrix();
+#endif
+#ifdef INCLUDE_EXT_SQLITE
+	OS_Init_Ext_SQLite();
 #endif
 #ifdef INCLUDE_EXT_XTEST
 	OS_Init_Ext_XTest();

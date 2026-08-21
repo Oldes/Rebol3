@@ -1083,6 +1083,7 @@ include-rebol-bulk: [
 
 	;- native extensions
 	:include-ext-matrix
+	:include-ext-sqlite
 	;- for tests:
 	:include-ext-xtest
 	;- not recommanded:
@@ -1334,14 +1335,30 @@ gen-ext-matrix: [
 	do %make/tools/make-extension.r3 "${NEST_ROOT}/src/extensions/matrix/matrix.reb"
 ]
 
+ext-sqlite: [
+	clean: [
+		%extensions/sqlite/gen-sqlite.c
+	]
+	files: [
+		%extensions/sqlite/sqlite3.c
+		%extensions/sqlite/sqlite-vec.c
+		%extensions/sqlite/sqlite.c
+		%extensions/sqlite/sqlite-commands.c
+		%extensions/sqlite/gen-sqlite.c
+	]
+	define: SQLITE_CORE
+	do %make/tools/make-extension.r3 "${NEST_ROOT}/src/extensions/sqlite/sqlite.reb"
+]
+
 ;; embedded into the host
 include-ext-xtest:  [ host-files: :ext-xtest-files  define: INCLUDE_EXT_XTEST  :gen-ext-xtest  ]
 include-ext-matrix: [ host-files: :ext-matrix-files define: INCLUDE_EXT_MATRIX :gen-ext-matrix ]
+include-ext-sqlite: [ mezz-prot-files: %mezz/prot-sqlite.reb :ext-sqlite define: INCLUDE_EXT_SQLITE ]
 
 ;; standalone libraries
 make-ext-xtest:  [ files: only :ext-xtest-files  :make-ext :gen-ext-xtest  ]
 make-ext-matrix: [ files: only :ext-matrix-files :make-ext :gen-ext-matrix ]
-
+make-ext-sqlite: [ files: none :ext-sqlite :make-ext ]
 
 
 eggs: [
@@ -2107,6 +2124,10 @@ eggs: [
 	"Matrix extension 32bit"     [ name: %matrix-x86.rebx   :arch-x86   :make-ext-matrix ]
 	"Matrix extension 64bit"     [ name: %matrix-x64.rebx   :arch-x64   :make-ext-matrix ]
 	"Matrix extension ARM 64bit" [ name: %matrix-arm64.rebx :arch-arm64 :make-ext-matrix ]
+
+	"SQLite extension 32bit"     [ name: %sqlite-x86.rebx   :arch-x86   :make-ext-sqlite ]
+	"SQLite extension 64bit"     [ name: %sqlite-x64.rebx   :arch-x64   :make-ext-sqlite ]
+	"SQLite extension ARM 64bit" [ name: %sqlite-arm64.rebx :arch-arm64 :make-ext-sqlite ]
 
 	"Amalgamate extension include file" [
 		do %make/tools/amalgamate-ext.r3
