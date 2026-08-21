@@ -1,7 +1,7 @@
 REBOL [
 	Title:   "Universal Rebol extension code generator"
 	Name:    make-extension
-	Version: 0.1.0
+	Version: 0.2.1
 	Author:  @Oldes
 	Purpose: {
 		Generates the C header and command-table sources of a Rebol
@@ -94,7 +94,7 @@ build-extension: function [
 	header-file:  ajoin [%gen- ext-name %.h]
 	table-file:   ajoin [%gen- ext-name %.c]
 
-	needs: any [field hdr 'needs  0.0.0]
+	needs: any [field spec 'needs  field hdr 'needs  0.0.0]
 
 	;-- module header of the generated extension --------------------------------
 	;; `Type:` and `Date:` are injected here, not carried by the spec.
@@ -103,7 +103,7 @@ build-extension: function [
 		{ Name: }         ext-name
 		{ Type: module}
 		{ Version: }      any [field hdr 'version 0.0.1]
-		{ Needs: }        needs
+		reduce if/only needs > 0.0.0 [{ Needs:} needs]
 		reduce if/only v: field hdr 'author  [{ Author:} mold v]
 		{ Date: }         now/utc
 		reduce if/only v: field hdr 'license [{ License:} mold v]
@@ -224,8 +224,8 @@ $includes
 #include "host-lib.h"
 #include "sys-value.h"
 #include "reb-struct.h"
-#endif
 #include "reb-ext-common.h"
+#endif
 
 $c-header
 enum ext_commands {$enu-commands

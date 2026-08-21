@@ -103,5 +103,6 @@ context [
 		%reb-event.h
 		%reb-evtypes.h
 		%reb-lib.h
+		%reb-ext-common.h
 	]
 ]
