@@ -1084,6 +1084,7 @@ include-rebol-bulk: [
 	;- native extensions
 	:include-ext-matrix
 	:include-ext-sqlite
+	:include-ext-miniaudio
 	;- for tests:
 	:include-ext-xtest
 	;- not recommanded:
@@ -1350,10 +1351,33 @@ ext-sqlite: [
 	do %make/tools/make-extension.r3 "${NEST_ROOT}/src/extensions/sqlite/sqlite.reb"
 ]
 
+ext-miniaudio: [
+	files: [
+		%extensions/miniaudio/miniaudio.c
+		%extensions/miniaudio/miniaudio-commands.c
+		%extensions/miniaudio/gen-miniaudio.c
+		%extensions/miniaudio/miniaudio-extension.c
+	]
+	#if Posix? [
+		cflag: -msse2
+		cflag: -mavx2
+	]
+
+	#if macOS? [
+		define: DISABLE_MANUAL_TARGET_ORDER_BUILD_WARNING
+		define: MA_NO_RUNTIME_LINKING
+		define: MA_ENABLE_ONLY_SPECIFIC_BACKENDS
+		define: MA_ENABLE_COREAUDIO
+		frameworks: [CoreFoundation CoreAudio AudioToolbox]
+	]
+	do %make/tools/make-extension.r3 "${NEST_ROOT}/src/extensions/miniaudio/miniaudio.reb"
+]
+
 ;; embedded into the host
 include-ext-xtest:  [ host-files: :ext-xtest-files  define: INCLUDE_EXT_XTEST  :gen-ext-xtest  ]
 include-ext-matrix: [ host-files: :ext-matrix-files define: INCLUDE_EXT_MATRIX :gen-ext-matrix ]
 include-ext-sqlite: [ mezz-prot-files: %mezz/prot-sqlite.reb :ext-sqlite define: INCLUDE_EXT_SQLITE ]
+include-ext-miniaudio: [ :ext-miniaudio define: INCLUDE_EXT_MINIAUDIO ]
 
 ;; standalone libraries
 make-ext-xtest:  [ files: only :ext-xtest-files  :make-ext :gen-ext-xtest  ]

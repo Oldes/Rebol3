@@ -69,6 +69,9 @@
 #ifdef INCLUDE_EXT_SQLITE
 void OS_Init_Ext_SQLite(void);
 #endif
+#ifdef INCLUDE_EXT_MINIAUDIO
+void OS_Init_Ext_MiniAudio(void);
+#endif
 
 /**********************************************************************/
 
@@ -358,6 +361,9 @@ int main(int argc, char **argv) {
 #endif
 #ifdef INCLUDE_EXT_XTEST
 	OS_Init_Ext_XTest();
+#endif
+#ifdef INCLUDE_EXT_MINIAUDIO
+	OS_Init_Ext_MiniAudio();
 #endif
 
 // Call sys/start function. If a compressed script is provided, it will be 
