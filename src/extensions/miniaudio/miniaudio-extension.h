@@ -56,6 +56,10 @@ int MAGroup_free(void* hndl);
 int MAGroup_get_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg);
 int MAGroup_set_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg);
 
+int MAListener_free(void* hndl);
+int MAListener_get_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg);
+int MAListener_set_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg);
+
 #ifndef REB_EXT
 // Embedded build only - called from host-main.c under INCLUDE_EXT_MINIAUDIO.
 void OS_Init_Ext_MiniAudio(void);

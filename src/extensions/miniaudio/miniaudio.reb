@@ -1,7 +1,7 @@
 REBOL [
 	Title:   "Rebol MiniAudio Extension"
 	Name:    miniaudio
-	Version: 0.11.23
+	Version: 0.11.25
 	Needs:   3.22.5
 	Author:  @Oldes
 	License: MIT
@@ -41,6 +41,14 @@ c-header: {
 #define SERIES_TEXT(s)   ((char*)SERIES_DATA(s))
 #endif
 
+// A listener is not a standalone miniaudio object - it lives inside the
+// engine. The handle therefore keeps the OWNING ENGINE'S HOB (so a released
+// engine can be detected) together with the listener's index.
+typedef struct MAListener {
+	REBHOB*   engine;
+	ma_uint32 index;
+} MAListener;
+
 typedef struct MAContext {
 	ma_engine* engine;
 	ma_device* device;
@@ -53,6 +61,7 @@ extern REBCNT Handle_MANoise;
 extern REBCNT Handle_MAWaveform;
 extern REBCNT Handle_MADelay;
 extern REBCNT Handle_MAGroup;
+extern REBCNT Handle_MAListener;
 }
 
 ;; ---------------------------------------------------------------------------
@@ -63,10 +72,12 @@ extern REBCNT Handle_MAGroup;
 words: [
 	;; path accessors of all handle types below
 	arg: [
-		volume pan pitch position cursor time duration frames sample-rate
+		volume fade-volume pan pitch position cursor time duration frames sample-rate
 		spatialize is-looping is-playing at-end source start stop
 		x y z outputs output resources channels gain-db
-		amplitude frequency format type delay decay dry wet
+		rolloff min-distance max-distance min-gain max-gain
+		doppler-factor attenuation positioning listener listeners enabled index
+		pan-mode amplitude frequency format type delay decay dry wet
 	]
 	;; @@ Order is important - the C side indexes this list by the
 	;; matching miniaudio enum value (ma_noise_type, ma_waveform_type,
@@ -81,6 +92,16 @@ words: [
 		square
 		triangle
 		sawtooth
+		;- attenuation models (ma_attenuation_model order)
+		inverse
+		linear
+		exponential
+		;- positioning modes (ma_positioning order)
+		absolute
+		relative
+		;- pan modes (ma_pan_mode order)
+		balance
+		pan
 		;- format types
 		;; @@ must follow the ma_format enum, `unknown` included, because
 		;; the C side indexes this from W_MINIAUDIO_TYPE_UNKNOWN
@@ -100,10 +121,14 @@ handles: [
 		"MiniAudio sound object"
 		;NAME          GET       SET                 DESCRIPTION
 		volume         decimal!  [integer! decimal! percent!] "Sound volume"
+		gain-db        decimal!  [integer! decimal!] "Sound volume in decibels (the same value as volume, logarithmic)"
+		fade-volume    decimal!   none               "Volume of a running fade, 1.0 when no fade is active"
 		pan            decimal!   decimal!           "Stereo panning (from -1.0 to 1.0)"
+		pan-mode       word!      word!              "balance (default, attenuates one side) or pan (moves the sound across)"
 		pitch          decimal!   decimal!           "Sound pitch"
 		position       pair!      pair!              "Sound position (x and y for now) relative to the listener"
 		cursor         integer!  [integer! time!]    "Sound playback position in PCM frames"
+		time           time!      time!              "Sound playback position as time"
 		duration       time!      none               "Sound duration in time"
 		frames         integer!   none               "Sound length in PCM frames"
 		sample-rate    integer!   none               "Number of samples per second"
@@ -116,7 +141,15 @@ handles: [
 		x              decimal!  [integer! decimal!] "Sound X position"
 		y              decimal!  [integer! decimal!] "Sound Y position"
 		z              decimal!  [integer! decimal!] "Sound Z position"
-		source        [file! handle!] none           "Sound source as a loaded file or data source node"
+		source        [file! binary! handle!] none   "Sound source as a loaded file, encoded data or a data source node"
+		rolloff        decimal!  [integer! decimal!] "How quickly the sound gets quieter with distance"
+		min-distance   decimal!  [integer! decimal!] "Distance below which no attenuation is applied"
+		max-distance   decimal!  [integer! decimal!] "Distance above which no further attenuation is applied"
+		min-gain       decimal!  [integer! decimal!] "Lower bound of the attenuated gain"
+		max-gain       decimal!  [integer! decimal!] "Upper bound of the attenuated gain"
+		doppler-factor decimal!  [integer! decimal!] "Strength of the doppler effect, 0 disables it"
+		attenuation   [word! none!] [word! none!]    "inverse, linear, exponential or none to disable it"
+		positioning    word!      word!              "absolute or relative (to the listener)"
 		outputs        integer!   none               "Number of output buses"
 		output         none      [handle! none!]     "Output bus node (write only)"
 	]
@@ -124,9 +157,13 @@ handles: [
 		"MiniAudio sound group"
 		;NAME          GET       SET                 DESCRIPTION
 		volume         decimal!  [integer! decimal! percent!] "Sound volume"
+		gain-db        decimal!  [integer! decimal!] "Sound volume in decibels (the same value as volume, logarithmic)"
+		fade-volume    decimal!   none               "Volume of a running fade, 1.0 when no fade is active"
 		pan            decimal!   decimal!           "Stereo panning (from -1.0 to 1.0)"
+		pan-mode       word!      word!              "balance (default, attenuates one side) or pan (moves the sound across)"
 		pitch          decimal!   decimal!           "Sound group pitch"
 		position       pair!      pair!              "Sound group position (x and y for now) relative to the listener"
+		time           time!      none               "Time the group has been playing"
 		sample-rate    integer!   none               "Number of samples per second"
 		spatialize     logic!     logic!             "3D spatialization state"
 		is-playing     logic!     logic!             "Whether sound is playing"
@@ -148,6 +185,18 @@ handles: [
 		channels       integer!   none               "Number of output channels"
 		sample-rate    integer!   none               "Ouput device sample rate per second"
 		gain-db        decimal!  [integer! decimal!] "The amplification factor in decibels"
+		listener       handle!    none               "The first listener as a ma-listener handle"
+		listeners      block!     none               "All listeners of the engine as ma-listener handles"
+	]
+	ma-listener: [
+		"MiniAudio spatialization listener"
+		;NAME          GET       SET                 DESCRIPTION
+		index          integer!   none               "Index of the listener in its engine"
+		enabled        logic!     logic!             "Whether the listener is enabled"
+		position       pair!      pair!              "Listener position (x and y)"
+		x              decimal!  [integer! decimal!] "Listener X position"
+		y              decimal!  [integer! decimal!] "Listener Y position"
+		z              decimal!  [integer! decimal!] "Listener Z position"
 	]
 	ma-noise: [
 		"MiniAudio noise generator"
@@ -192,8 +241,8 @@ commands: [
 	]
 
 	load:  [
-		"Loads a file and returns sound's handle"
-		sound [file!]
+		{Loads a file or encoded audio data and returns sound's handle. A binary is used in place and so is locked against resizing for good - use `copy` if a mutable version is needed.}
+		sound [file! binary!]
 		/group "Group of sounds which have their own effect processing and volume control"
 		 node [handle!] "ma-group handle"
 	]
@@ -214,10 +263,10 @@ commands: [
 	]
 
 	start: [
-		{Start sound or device playback. A sound is restarted from its beginning (use /seek to start elsewhere) and its looping state is taken from /loop, so a plain start turns looping off.}
-		handle  [handle!] "ma-sound or ma-engine handle"
+		{Start sound, group or device playback. A sound is restarted from its beginning (use /seek to start elsewhere) and its looping state is taken from /loop, so a plain start turns looping off.}
+		handle  [handle!] "ma-sound, ma-group or ma-engine handle"
 		/loop   "Turn looping on (only for sounds)"
-		/seek   "Starting position"
+		/seek   "Starting position (only for sounds)"
 		 frames [integer! time!] "PCM frames or time"
 		/fade   "Fade in the sound"
 		 in     [integer! time!] "PCM frames or time"
@@ -225,9 +274,9 @@ commands: [
 		 time   [integer! time!] "PCM frames or time"
 	]
 	stop:  [
-		"Stop sound or device playback"
-		handle [handle!] "ma-sound or ma-engine handle"
-		/fade out [integer! time!] "PCM frames or time (only for sounds)"
+		"Stop sound, group or device playback"
+		handle [handle!] "ma-sound, ma-group or ma-engine handle"
+		/fade out [integer! time!] "PCM frames or time (not for the device)"
 	]
 	fade:  [
 		"Fade sound volume"

@@ -103,6 +103,46 @@ static ma_result sound_init_from_arg(RXIARG *file, REBSER **out_ser, ma_uint32 f
 	return ma_sound_init_from_file(pEngine->engine, (const char*)SERIES_DATA(ser), 0, pGroup, NULL, pSound);
 }
 
+// Builds the resource manager name under which a binary is registered.
+// Derived from the series pointer and index, so loading the same binary
+// twice resolves to the same name and the manager just bumps its refcount.
+static void memory_source_name(RXIARG *bin, char *out, size_t size) {
+	snprintf(out, size, "mem://%p+%u",
+		(void*)bin->series, (unsigned int)bin->index);
+}
+
+// Initializes a sound from encoded audio held in a Rebol binary.
+//
+// Neither the resource manager nor the decoder copies the data, so the
+// series must outlive the sound: the caller keeps the binary in the sound
+// handle's block (GC) and the series is locked here so that append, insert
+// and clear raise an error instead of reallocating under the audio thread.
+// The lock is never removed - `copy` gives back a mutable binary.
+static ma_result sound_init_from_binary(RXIARG *bin, ma_uint32 flags, ma_sound_group* pGroup, ma_sound* pSound) {
+	char name[64];
+	REBSER *ser = (REBSER*)bin->series;
+	REBCNT  len;
+	ma_result result;
+
+	if (!ser) return MA_INVALID_ARGS;
+	len = SERIES_TAIL(ser);
+	if (bin->index >= len) return MA_INVALID_ARGS; // nothing to decode
+	len -= bin->index;
+
+	memory_source_name(bin, name, sizeof(name));
+	result = ma_resource_manager_register_encoded_data(
+		&gResourceManager, name, SERIES_DATA(ser) + bin->index, (size_t)len);
+	if (result != MA_SUCCESS) return result;
+
+	LOCK_SERIES(ser);
+
+	result = ma_sound_init_from_file(pEngine->engine, name, flags, pGroup, NULL, pSound);
+	if (result != MA_SUCCESS) {
+		ma_resource_manager_unregister_data(&gResourceManager, name);
+	}
+	return result;
+}
+
 
 static void onSoundEnd(void* hob, ma_sound* pSound) {
 	trace("sound end ");
@@ -180,6 +220,111 @@ int MAEngine_free(void* hndl) {
 	context->device = NULL;
 	return 0;
 }
+
+//== ma-listener =============================================================//
+// A listener belongs to an engine and has no lifetime of its own, so the
+// handle only refers to it - releasing a listener handle frees nothing.
+
+int MAListener_free(void* hndl) {
+	return 0;
+}
+
+// Resolves the engine behind a listener handle, or NULL if the engine has
+// already been released.
+static ma_engine* listener_engine(REBHOB *hob) {
+	MAListener *listener = (MAListener*)hob->data;
+	MAContext  *context;
+	if (!listener->engine || !IS_USED_HOB(listener->engine)) return NULL;
+	context = (MAContext*)listener->engine->data;
+	return context ? context->engine : NULL;
+}
+
+// Makes a handle for one listener of the given engine handle.
+REBHOB* MAListener_make(REBHOB *engine_hob, ma_uint32 index) {
+	REBHOB *hob = RL_MAKE_HANDLE_CONTEXT(Handle_MAListener);
+	MAListener *listener;
+	if (!hob) return NULL;
+	listener = (MAListener*)hob->data;
+	listener->engine = engine_hob;
+	listener->index  = index;
+	return hob;
+}
+
+int MAListener_get_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg) {
+	MAListener *listener = (MAListener*)hob->data;
+	ma_engine  *engine = listener_engine(hob);
+	ma_vec3f    pos;
+	if (!engine) return PE_BAD_SELECT; // the engine is gone
+	word = RL_FIND_WORD(Miniaudio_arg_words, word);
+
+	switch (word) {
+	case W_MINIAUDIO_ARG_INDEX:
+		*type = RXT_INTEGER;
+		arg->int64 = listener->index;
+		break;
+	case W_MINIAUDIO_ARG_ENABLED:
+		*type = RXT_LOGIC;
+		arg->int32a = ma_engine_listener_is_enabled(engine, listener->index);
+		break;
+	case W_MINIAUDIO_ARG_POSITION:
+		*type = RXT_PAIR;
+		pos = ma_engine_listener_get_position(engine, listener->index);
+		arg->dec32a = pos.x;
+		arg->dec32b = pos.y;
+		break;
+	case W_MINIAUDIO_ARG_X:
+	case W_MINIAUDIO_ARG_Y:
+	case W_MINIAUDIO_ARG_Z:
+		*type = RXT_DECIMAL;
+		pos = ma_engine_listener_get_position(engine, listener->index);
+		arg->dec64 =
+			word == W_MINIAUDIO_ARG_X ? pos.x :
+			word == W_MINIAUDIO_ARG_Y ? pos.y : pos.z;
+		break;
+	default:
+		return PE_BAD_SELECT;
+	}
+	return PE_USE;
+}
+
+int MAListener_set_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg) {
+	MAListener *listener = (MAListener*)hob->data;
+	ma_engine  *engine = listener_engine(hob);
+	ma_vec3f    pos;
+	if (!engine) return PE_BAD_SET;
+	word = RL_FIND_WORD(Miniaudio_arg_words, word);
+
+	switch (word) {
+	case W_MINIAUDIO_ARG_ENABLED:
+		if (*type != RXT_LOGIC) return PE_BAD_SET_TYPE;
+		ma_engine_listener_set_enabled(engine, listener->index, arg->int32a);
+		break;
+	case W_MINIAUDIO_ARG_POSITION:
+		if (*type != RXT_PAIR) return PE_BAD_SET_TYPE;
+		// a pair carries only two components - keep the current z
+		pos = ma_engine_listener_get_position(engine, listener->index);
+		ma_engine_listener_set_position(engine, listener->index, arg->dec32a, arg->dec32b, pos.z);
+		break;
+	case W_MINIAUDIO_ARG_X:
+	case W_MINIAUDIO_ARG_Y:
+	case W_MINIAUDIO_ARG_Z:
+		if (*type == RXT_INTEGER) arg->dec64 = (double)arg->int64;
+		else if (*type != RXT_DECIMAL) return PE_BAD_SET_TYPE;
+		// miniaudio only sets the whole vector, so read-modify-write
+		pos = ma_engine_listener_get_position(engine, listener->index);
+		switch (word) {
+		case W_MINIAUDIO_ARG_X: pos.x = (float)arg->dec64; break;
+		case W_MINIAUDIO_ARG_Y: pos.y = (float)arg->dec64; break;
+		case W_MINIAUDIO_ARG_Z: pos.z = (float)arg->dec64; break;
+		}
+		ma_engine_listener_set_position(engine, listener->index, pos.x, pos.y, pos.z);
+		break;
+	default:
+		return PE_BAD_SET;
+	}
+	return PE_OK;
+}
+
 int MAEngine_get_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg) {
 	MAContext* context = (MAContext*)hob->data;
 	ma_engine* engine = context->engine;
@@ -202,6 +347,34 @@ int MAEngine_get_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg) {
 		*type = RXT_TIME;
 		arg->int64 = ma_engine_get_time_in_milliseconds(engine) * 1000000;
 		break;
+	case W_MINIAUDIO_ARG_LISTENER: {
+		REBHOB *lhob = MAListener_make(hob, 0);
+		if (!lhob) return PE_BAD_SELECT;
+		*type = RXT_HANDLE;
+		arg->handle.hob   = lhob;
+		arg->handle.type  = lhob->sym;
+		arg->handle.flags = lhob->flags;
+		break;
+	}
+	case W_MINIAUDIO_ARG_LISTENERS: {
+		REBSER *blk;
+		RXIARG  val;
+		ma_uint32 i, count = ma_engine_get_listener_count(engine);
+		blk = RL_MAKE_BLOCK(count);
+		if (!blk) return PE_BAD_SELECT;
+		for (i = 0; i < count; i++) {
+			REBHOB *lhob = MAListener_make(hob, i);
+			if (!lhob) return PE_BAD_SELECT;
+			val.handle.hob   = lhob;
+			val.handle.type  = lhob->sym;
+			val.handle.flags = lhob->flags;
+			RL_SET_VALUE(blk, i, val, RXT_HANDLE);
+		}
+		*type = RXT_BLOCK;
+		arg->series = blk;
+		arg->index  = 0;
+		break;
+	}
 	case W_MINIAUDIO_ARG_CHANNELS:
 		*type = RXT_INTEGER;
 		arg->uint64 = ma_engine_get_channels(engine);
@@ -276,6 +449,15 @@ int MASound_free(void* hndl) {
 	UNMARK_HOB(hob);
 	ma_sound_uninit(sound);
 	if (hob->series) {
+		RXIARG arg;
+		// A sound loaded from a binary keeps it as its source - drop the
+		// resource manager's reference to it. The manager counts them, so
+		// the data stays registered while other sounds still use it.
+		if (RXT_BINARY == RL_GET_VALUE(hob->series, 0, &arg)) {
+			char name[64];
+			memory_source_name(&arg, name, sizeof(name));
+			ma_resource_manager_unregister_data(&gResourceManager, name);
+		}
 		RESET_SERIES(hob->series);
 		hob->series = NULL;
 	}
@@ -293,6 +475,14 @@ int MASound_get_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg) {
 		*type = RXT_DECIMAL;
 		arg->dec64 = ma_sound_get_volume(sound);
 		break;
+	case W_MINIAUDIO_ARG_FADE_VOLUME:
+		*type = RXT_DECIMAL;
+		arg->dec64 = ma_sound_get_current_fade_volume(sound);
+		break;
+	case W_MINIAUDIO_ARG_GAIN_DB:
+		*type = RXT_DECIMAL;
+		arg->dec64 = ma_volume_linear_to_db(ma_sound_get_volume(sound));
+		break;
 	case W_MINIAUDIO_ARG_POSITION:
 		*type = RXT_PAIR;
 		pos = ma_sound_get_position(sound);
@@ -303,6 +493,10 @@ int MASound_get_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg) {
 		*type = RXT_DECIMAL;
 		arg->dec64 = ma_sound_get_pan(sound);
 		break;
+	case W_MINIAUDIO_ARG_PAN_MODE:
+		*type = RXT_WORD;
+		arg->int64 = Miniaudio_type_words[W_MINIAUDIO_TYPE_BALANCE + ma_sound_get_pan_mode(sound)];
+		break;
 	case W_MINIAUDIO_ARG_PITCH:
 		*type = RXT_DECIMAL;
 		arg->dec64 = ma_sound_get_pitch(sound);
@@ -311,6 +505,15 @@ int MASound_get_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg) {
 		*type = RXT_INTEGER;
 		ma_sound_get_cursor_in_pcm_frames(sound, &frames);
 		arg->int64 = frames;
+		break;
+	case W_MINIAUDIO_ARG_TIME:
+		// NOTE: not ma_sound_get_time_in_pcm_frames - that one returns the
+		// node's local time, which is only advanced while the graph is
+		// processing the sound and is not affected by seeking.
+		*type = RXT_TIME;
+		ma_sound_get_cursor_in_pcm_frames(sound, &frames);
+		sampleRate = ma_engine_get_sample_rate(ma_sound_get_engine(sound));
+		arg->uint64 = (frames * 1000000000) / sampleRate;
 		break;
 	case W_MINIAUDIO_ARG_DURATION:
 		*type = RXT_TIME;
@@ -374,6 +577,48 @@ int MASound_get_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg) {
 		pos = ma_sound_get_position(sound);
 		arg->dec64 = pos.z;
 		break;
+
+	//-- spatialization ------------------------------------------------
+	case W_MINIAUDIO_ARG_ROLLOFF:
+		*type = RXT_DECIMAL;
+		arg->dec64 = ma_sound_get_rolloff(sound);
+		break;
+	case W_MINIAUDIO_ARG_MIN_DISTANCE:
+		*type = RXT_DECIMAL;
+		arg->dec64 = ma_sound_get_min_distance(sound);
+		break;
+	case W_MINIAUDIO_ARG_MAX_DISTANCE:
+		*type = RXT_DECIMAL;
+		arg->dec64 = ma_sound_get_max_distance(sound);
+		break;
+	case W_MINIAUDIO_ARG_MIN_GAIN:
+		*type = RXT_DECIMAL;
+		arg->dec64 = ma_sound_get_min_gain(sound);
+		break;
+	case W_MINIAUDIO_ARG_MAX_GAIN:
+		*type = RXT_DECIMAL;
+		arg->dec64 = ma_sound_get_max_gain(sound);
+		break;
+	case W_MINIAUDIO_ARG_DOPPLER_FACTOR:
+		*type = RXT_DECIMAL;
+		arg->dec64 = ma_sound_get_doppler_factor(sound);
+		break;
+	case W_MINIAUDIO_ARG_ATTENUATION: {
+		ma_attenuation_model model = ma_sound_get_attenuation_model(sound);
+		if (model == ma_attenuation_model_none) {
+			// there is no `none` word - the real none value is used instead
+			*type = RXT_NONE;
+			break;
+		}
+		*type = RXT_WORD;
+		arg->int64 = Miniaudio_type_words[W_MINIAUDIO_TYPE_INVERSE + model - 1];
+		break;
+	}
+	case W_MINIAUDIO_ARG_POSITIONING:
+		*type = RXT_WORD;
+		arg->int64 = Miniaudio_type_words[W_MINIAUDIO_TYPE_ABSOLUTE + ma_sound_get_positioning(sound)];
+		break;
+		
 	case W_MINIAUDIO_ARG_OUTPUTS:
 		*type = RXT_INTEGER;
 		arg->uint64 = ma_node_get_output_bus_count((ma_node*)sound);
@@ -407,10 +652,22 @@ int MASound_set_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg) {
 			return PE_BAD_SET_TYPE;
 		}
 		break;
+	case W_MINIAUDIO_ARG_GAIN_DB:
+		if (*type == RXT_INTEGER) arg->dec64 = (double)arg->int64;
+		else if (*type != RXT_DECIMAL) return PE_BAD_SET_TYPE;
+		ma_sound_set_volume(sound, ma_volume_db_to_linear((float)arg->dec64));
+		break;
 	case W_MINIAUDIO_ARG_CURSOR:
 		if (*type != RXT_INTEGER) return PE_BAD_SET_TYPE;
 		if (arg->int64 < 0) arg->int64 = 0;
 		ma_sound_seek_to_pcm_frame(sound, arg->uint64);
+		break;
+	case W_MINIAUDIO_ARG_TIME:
+		if (*type != RXT_TIME) return PE_BAD_SET_TYPE;
+		if (arg->int64 < 0) return PE_BAD_SET;
+		engine = ma_sound_get_engine(sound);
+		frames = (arg->uint64 * ma_engine_get_sample_rate(engine)) / 1000000000;
+		ma_sound_seek_to_pcm_frame(sound, frames);
 		break;
 	case W_MINIAUDIO_ARG_POSITION:
 		if (*type != RXT_PAIR) return PE_BAD_SET_TYPE;
@@ -421,6 +678,14 @@ int MASound_set_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg) {
 		if (*type != RXT_DECIMAL) return PE_BAD_SET_TYPE;
 		ma_sound_set_pan(sound, (float)arg->dec64);
 		break;
+	case W_MINIAUDIO_ARG_PAN_MODE: {
+		u32 w;
+		if (*type != RXT_WORD) return PE_BAD_SET_TYPE;
+		w = RL_FIND_WORD(Miniaudio_type_words, (REBCNT)arg->int64);
+		if (w < W_MINIAUDIO_TYPE_BALANCE || w > W_MINIAUDIO_TYPE_PAN) return PE_BAD_SET;
+		ma_sound_set_pan_mode(sound, (ma_pan_mode)(w - W_MINIAUDIO_TYPE_BALANCE));
+		break;
+	}
 	case W_MINIAUDIO_ARG_PITCH:
 		if (*type != RXT_DECIMAL) return PE_BAD_SET_TYPE;
 		ma_sound_set_pitch(sound, (float)arg->dec64);
@@ -459,6 +724,52 @@ int MASound_set_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg) {
 		ma_sound_set_position(sound, pos.x, pos.y, pos.z);
 
 		break;
+
+	//-- spatialization ------------------------------------------------
+	case W_MINIAUDIO_ARG_ROLLOFF:
+	case W_MINIAUDIO_ARG_MIN_DISTANCE:
+	case W_MINIAUDIO_ARG_MAX_DISTANCE:
+	case W_MINIAUDIO_ARG_MIN_GAIN:
+	case W_MINIAUDIO_ARG_MAX_GAIN:
+	case W_MINIAUDIO_ARG_DOPPLER_FACTOR: {
+		float value;
+		switch (*type) {
+		case RXT_DECIMAL:
+		case RXT_PERCENT:  value = (float)arg->dec64; break;
+		case RXT_INTEGER:  value = (float)arg->int64; break;
+		default: return PE_BAD_SET_TYPE;
+		}
+		if (value < 0) return PE_BAD_SET;
+		switch (word) {
+		case W_MINIAUDIO_ARG_ROLLOFF:        ma_sound_set_rolloff(sound, value);        break;
+		case W_MINIAUDIO_ARG_MIN_DISTANCE:   ma_sound_set_min_distance(sound, value);   break;
+		case W_MINIAUDIO_ARG_MAX_DISTANCE:   ma_sound_set_max_distance(sound, value);   break;
+		case W_MINIAUDIO_ARG_MIN_GAIN:       ma_sound_set_min_gain(sound, value);       break;
+		case W_MINIAUDIO_ARG_MAX_GAIN:       ma_sound_set_max_gain(sound, value);       break;
+		case W_MINIAUDIO_ARG_DOPPLER_FACTOR: ma_sound_set_doppler_factor(sound, value); break;
+		}
+		break;
+	}
+	case W_MINIAUDIO_ARG_ATTENUATION: {
+		u32 w;
+		if (*type == RXT_NONE) {
+			ma_sound_set_attenuation_model(sound, ma_attenuation_model_none);
+			break;
+		}
+		if (*type != RXT_WORD) return PE_BAD_SET_TYPE;
+		w = RL_FIND_WORD(Miniaudio_type_words, (REBCNT)arg->int64);
+		if (w < W_MINIAUDIO_TYPE_INVERSE || w > W_MINIAUDIO_TYPE_EXPONENTIAL) return PE_BAD_SET;
+		ma_sound_set_attenuation_model(sound, (ma_attenuation_model)(w - W_MINIAUDIO_TYPE_INVERSE + 1));
+		break;
+	}
+	case W_MINIAUDIO_ARG_POSITIONING: {
+		u32 w;
+		if (*type != RXT_WORD) return PE_BAD_SET_TYPE;
+		w = RL_FIND_WORD(Miniaudio_type_words, (REBCNT)arg->int64);
+		if (w < W_MINIAUDIO_TYPE_ABSOLUTE || w > W_MINIAUDIO_TYPE_RELATIVE) return PE_BAD_SET;
+		ma_sound_set_positioning(sound, (ma_positioning)(w - W_MINIAUDIO_TYPE_ABSOLUTE));
+		break;
+	}
 
 	case W_MINIAUDIO_ARG_OUTPUT:
 		if (*type == RXT_NONE) {
@@ -514,8 +825,8 @@ int MAGroup_free(void* hndl) {
 int MAGroup_get_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg) {
 	ma_sound_group* group = (ma_sound_group*)hob->data;
 	word = RL_FIND_WORD(Miniaudio_arg_words, word);
-	//ma_uint64 frames;
-	//ma_uint32 sampleRate;
+	ma_uint64 frames;
+	ma_uint32 sampleRate;
 	ma_vec3f pos;
 
 	switch (word) {
@@ -523,15 +834,33 @@ int MAGroup_get_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg) {
 		*type = RXT_DECIMAL;
 		arg->dec64 = ma_sound_group_get_volume(group);
 		break;
+	case W_MINIAUDIO_ARG_FADE_VOLUME:
+		*type = RXT_DECIMAL;
+		arg->dec64 = ma_sound_group_get_current_fade_volume(group);
+		break;
+	case W_MINIAUDIO_ARG_GAIN_DB:
+		*type = RXT_DECIMAL;
+		arg->dec64 = ma_volume_linear_to_db(ma_sound_group_get_volume(group));
+		break;
 	case W_MINIAUDIO_ARG_POSITION:
 		*type = RXT_PAIR;
 		pos = ma_sound_group_get_position(group);
 		arg->dec32a = pos.x;
 		arg->dec32b = pos.y;
 		break;
+	case W_MINIAUDIO_ARG_TIME:
+		*type = RXT_TIME;
+		frames = ma_sound_group_get_time_in_pcm_frames(group);
+		sampleRate = ma_engine_get_sample_rate(ma_sound_group_get_engine(group));
+		arg->uint64 = (frames * 1000000000) / sampleRate;
+		break;
 	case W_MINIAUDIO_ARG_PAN:
 		*type = RXT_DECIMAL;
 		arg->dec64 = ma_sound_group_get_pan(group);
+		break;
+	case W_MINIAUDIO_ARG_PAN_MODE:
+		*type = RXT_WORD;
+		arg->int64 = Miniaudio_type_words[W_MINIAUDIO_TYPE_BALANCE + ma_sound_group_get_pan_mode(group)];
 		break;
 	case W_MINIAUDIO_ARG_PITCH:
 		*type = RXT_DECIMAL;
@@ -582,6 +911,7 @@ int MAGroup_get_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg) {
 		arg->series = hob->series;
 		arg->index = 0;
 		break;
+
 	default:
 		return PE_BAD_SELECT;	
 	}
@@ -611,6 +941,11 @@ int MAGroup_set_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg) {
 			return PE_BAD_SET_TYPE;
 		}
 		break;
+	case W_MINIAUDIO_ARG_GAIN_DB:
+		if (*type == RXT_INTEGER) arg->dec64 = (double)arg->int64;
+		else if (*type != RXT_DECIMAL) return PE_BAD_SET_TYPE;
+		ma_sound_group_set_volume(group, ma_volume_db_to_linear((float)arg->dec64));
+		break;
 	case W_MINIAUDIO_ARG_POSITION:
 		if (*type != RXT_PAIR) return PE_BAD_SET_TYPE;
 		pos = ma_sound_group_get_position(group);
@@ -620,6 +955,14 @@ int MAGroup_set_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg) {
 		if (*type != RXT_DECIMAL) return PE_BAD_SET_TYPE;
 		ma_sound_group_set_pan(group, (float)arg->dec64);
 		break;
+	case W_MINIAUDIO_ARG_PAN_MODE: {
+		u32 w;
+		if (*type != RXT_WORD) return PE_BAD_SET_TYPE;
+		w = RL_FIND_WORD(Miniaudio_type_words, (REBCNT)arg->int64);
+		if (w < W_MINIAUDIO_TYPE_BALANCE || w > W_MINIAUDIO_TYPE_PAN) return PE_BAD_SET;
+		ma_sound_group_set_pan_mode(group, (ma_pan_mode)(w - W_MINIAUDIO_TYPE_BALANCE));
+		break;
+	}
 	case W_MINIAUDIO_ARG_PITCH:
 		if (*type != RXT_DECIMAL) return PE_BAD_SET_TYPE;
 		ma_sound_group_set_pitch(group, (float)arg->dec64);
@@ -1129,6 +1472,41 @@ COMMAND cmd_miniaudio_start(RXIFRM *frm, void *ctx) {
 		ma_device_start(context->device);
 		return RXR_VALUE;
 	}
+	else if (RXA_HANDLE_TYPE(frm, 1) == Handle_MAGroup) {
+		ma_sound_group *group = (ma_sound_group*)hob->handle;
+		// Groups have no cursor, so /seek and /loop are not applicable.
+		if (RXA_REF(frm, 2) || RXA_REF(frm, 3))
+			RETURN_ERROR("Groups do not support /loop or /seek.");
+
+		if (RXA_REF(frm, 7)) { // /at
+			if (RXA_INT64(frm, 8) < 0) RXA_INT64(frm, 8) = 0;
+			sampleRate = ma_engine_get_sample_rate(ma_sound_group_get_engine(group));
+			if (RXA_TYPE(frm, 8) == RXT_INTEGER) {
+				frame = RXA_INT64(frm, 8);
+			} else {
+				frame = (RXA_TIME(frm, 8) * sampleRate) / 1000000000;
+			}
+			frame += ma_engine_get_time_in_pcm_frames(ma_sound_group_get_engine(group));
+			ma_sound_group_set_start_time_in_pcm_frames(group, frame);
+		}
+
+		ma_sound_group_start(group);
+
+		if (RXA_REF(frm, 5)) { // /fade
+			ma_uint64 fade;
+			switch(RXA_TYPE(frm, 6)) {
+			case RXT_INTEGER:
+				fade = (ma_uint64)RXA_INT64(frm, 6);
+				if (fade > 0) ma_sound_group_set_fade_in_pcm_frames(group, 0, 1, fade);
+				break;
+			case RXT_TIME:
+				fade = RXA_TIME(frm, 6) / 1000000; // time in ms
+				if (fade > 0) ma_sound_group_set_fade_in_milliseconds(group, 0, 1, fade);
+				break;
+			}
+		}
+		return RXR_VALUE;
+	}
 	return RXR_FALSE;
 }
 
@@ -1155,6 +1533,21 @@ COMMAND cmd_miniaudio_stop(RXIFRM *frm, void *ctx) {
 	else if (RXA_HANDLE_TYPE(frm, 1) == Handle_MAEngine) {
 		context = (MAContext*)hob->handle;
 		ma_device_stop(context->device);
+		return RXR_VALUE;
+	}
+	else if (RXA_HANDLE_TYPE(frm, 1) == Handle_MAGroup) {
+		ma_sound_group *group = (ma_sound_group*)hob->handle;
+		switch(RXA_TYPE(frm, 3)) {
+		case RXT_NONE: ma_sound_group_stop(group); break;
+		// ma_sound_group is a typedef of ma_sound and miniaudio does not
+		// alias the faded stop for groups, so the sound version is used.
+		case RXT_INTEGER: ma_sound_stop_with_fade_in_pcm_frames(group, (ma_uint64)RXA_INT64(frm, 3)); break;
+		case RXT_TIME:
+			fade = RXA_TIME(frm, 3) / 1000000; // time in ms
+			if (fade <= 0) ma_sound_group_stop(group);
+			else ma_sound_stop_with_fade_in_milliseconds(group, (ma_uint64)fade);
+			break;
+		}
 		return RXR_VALUE;
 	}
 	return RXR_FALSE;
@@ -1231,15 +1624,22 @@ COMMAND cmd_miniaudio_load(RXIFRM *frm, void *ctx) {
 	if (hob == NULL) return RXR_NONE;
 	sound = (ma_sound*)hob->data;
 
-	result = sound_init_from_arg(&RXA_ARG(frm, 1), &ser, 0, group, NULL, sound);	
-	if (result != MA_SUCCESS) RETURN_ERROR("Failed to initialize the sound from a file.");
+	if (RXA_TYPE(frm, 1) == RXT_BINARY) {
+		result = sound_init_from_binary(&RXA_ARG(frm, 1), 0, group, sound);
+		if (result != MA_SUCCESS) RETURN_ERROR("Failed to initialize the sound from a binary.");
 
-
-	// store the full path of the source file in the handle
-	hob->series = RL_MAKE_BLOCK(1);
-	RXA_SERIES(frm, 1) = ser;
-	RXA_INDEX(frm, 1) = 0;
-	RL_SET_VALUE(hob->series, 0, RXA_ARG(frm, 1), RXT_STRING);
+		// keep the binary itself as the source - it must outlive the sound
+		hob->series = RL_MAKE_BLOCK(1);
+		RL_SET_VALUE(hob->series, 0, RXA_ARG(frm, 1), RXT_BINARY);
+	} else {
+		result = sound_init_from_arg(&RXA_ARG(frm, 1), &ser, 0, group, NULL, sound);	
+		if (result != MA_SUCCESS) RETURN_ERROR("Failed to initialize the sound from a file.");
+		// store the full path of the source file in the handle
+		hob->series = RL_MAKE_BLOCK(1);
+		RXA_SERIES(frm, 1) = ser;
+		RXA_INDEX(frm, 1) = 0;
+		RL_SET_VALUE(hob->series, 0, RXA_ARG(frm, 1), RXT_STRING);
+	}
 
 	RXA_HANDLE(frm, 1)       = hob;
 	RXA_HANDLE_TYPE(frm, 1)  = hob->sym;

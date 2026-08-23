@@ -32,6 +32,7 @@ REBCNT Handle_MANoise    = 0;
 REBCNT Handle_MAWaveform = 0;
 REBCNT Handle_MADelay    = 0;
 REBCNT Handle_MAGroup    = 0;
+REBCNT Handle_MAListener = 0;
 
 
 // Registers all handle types. Must run in BOTH build modes - the path
@@ -53,6 +54,13 @@ static void Register_MiniAudio_Handles(void) {
 	spec.get_path  = MASound_get_path;
 	spec.set_path  = MASound_set_path;
 	Handle_MASound = RL_REGISTER_HANDLE_SPEC(cb_cast("ma-sound"), &spec);
+
+	spec.size      = sizeof(MAListener);
+	spec.flags     = HANDLE_REQUIRES_HOB_ON_FREE;
+	spec.free      = MAListener_free;
+	spec.get_path  = MAListener_get_path;
+	spec.set_path  = MAListener_set_path;
+	Handle_MAListener = RL_REGISTER_HANDLE_SPEC(cb_cast("ma-listener"), &spec);
 
 	spec.size      = sizeof(ma_noise);
 	spec.flags     = 0;
