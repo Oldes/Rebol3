@@ -76,7 +76,7 @@ int bind_parameters(sqlite3_stmt *stmt, REBSER *params, REBCNT *index) {
 					ser = RL_ENCODE_UTF8_STRING(SERIES_DATA(ser), SERIES_TAIL(ser), TRUE, FALSE);
 					arg.index = 0;
 				}
-				rc = sqlite3_bind_text(stmt, col, SERIES_SKIP(ser, arg.index),  SERIES_TAIL(ser)-arg.index, SQLITE_TRANSIENT);
+				rc = sqlite3_bind_text(stmt, col, cs_cast(SERIES_SKIP(ser, arg.index)),  SERIES_TAIL(ser)-arg.index, SQLITE_TRANSIENT);
 				break;
 			case RXT_NONE:
 				rc = sqlite3_bind_null(stmt, col);
@@ -271,7 +271,7 @@ static int trace_callback(unsigned type, void* ctx, void* pStmt, void* pValue) {
 			break;
 		case SQLITE_TRACE_PROFILE:
 			duration = pValue;
-			printf("PROFILE: %lluns\n", *duration);
+			printf("PROFILE: %" PRIu64 "ns\n", *duration);
 			break;
 		case SQLITE_TRACE_ROW:
 			puts("ROW");
@@ -296,9 +296,169 @@ COMMAND cmd_sqlite_trace(RXIFRM* frm, void* reb_ctx) {
 	if(ctx && ctx->db) {
 		mask = RXA_INT64(frm, 2) & 0x0F;
 		//printf("mask: %u\n", mask);
+		ctx->trace_mask = mask;
 		sqlite3_trace_v2(ctx->db, mask, trace_callback, ctx);
 	}
 	return RXR_UNSET;
+}
+
+
+//== handle path accessors =====================================================
+// The words come from the `handles:` block of the specification, which the
+// generator turns into the W_SQLITE_ARG_* enum and `Sqlite_arg_words`.
+
+// Decodes a C string into a Rebol series of the given type.
+static void set_string_arg(REBCNT *type, RXIARG *arg, const char *str, REBCNT rxt) {
+	if (!str) {
+		*type = RXT_NONE;
+		return;
+	}
+	*type = rxt;
+	arg->series = RL_DECODE_UTF_STRING((REBYTE*)str, strlen(str), 8, 0, 0);
+	arg->index  = 0;
+}
+
+int SQLiteDB_get_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg) {
+	SQLITE_CONTEXT *ctx = (SQLITE_CONTEXT*)hob->data;
+	const char *str;
+
+	if (!ctx || !ctx->db) return PE_BAD_SELECT; // closed connection
+	word = RL_FIND_WORD(Sqlite_arg_words, word);
+
+	switch (word) {
+	case W_SQLITE_ARG_FILENAME:
+		str = sqlite3_db_filename(ctx->db, "main");
+		// an empty name means a temporary or in-memory database
+		set_string_arg(type, arg, (str && str[0]) ? str : NULL, RXT_FILE);
+		break;
+	case W_SQLITE_ARG_READONLY:
+		*type = RXT_LOGIC;
+		arg->int32a = sqlite3_db_readonly(ctx->db, "main") == 1;
+		break;
+	case W_SQLITE_ARG_AUTOCOMMIT:
+		*type = RXT_LOGIC;
+		arg->int32a = sqlite3_get_autocommit(ctx->db) != 0;
+		break;
+	case W_SQLITE_ARG_LAST_INSERT_ID:
+		*type = RXT_INTEGER;
+		arg->int64 = sqlite3_last_insert_rowid(ctx->db);
+		break;
+	case W_SQLITE_ARG_CHANGES:
+		*type = RXT_INTEGER;
+		arg->int64 = sqlite3_changes(ctx->db);
+		break;
+	case W_SQLITE_ARG_TOTAL_CHANGES:
+		*type = RXT_INTEGER;
+		arg->int64 = sqlite3_total_changes(ctx->db);
+		break;
+	case W_SQLITE_ARG_ERROR_CODE:
+		*type = RXT_INTEGER;
+		arg->int64 = sqlite3_errcode(ctx->db);
+		break;
+	case W_SQLITE_ARG_ERROR:
+		set_string_arg(type, arg, sqlite3_errmsg(ctx->db), RXT_STRING);
+		break;
+	case W_SQLITE_ARG_TRACE:
+		*type = RXT_INTEGER;
+		arg->int64 = ctx->trace_mask;
+		break;
+	default:
+		// busy-timeout has no getter in the SQLite API, so it is write only
+		return PE_BAD_SELECT;
+	}
+	return PE_USE;
+}
+
+int SQLiteDB_set_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg) {
+	SQLITE_CONTEXT *ctx = (SQLITE_CONTEXT*)hob->data;
+
+	if (!ctx || !ctx->db) return PE_BAD_SET; // closed connection
+	word = RL_FIND_WORD(Sqlite_arg_words, word);
+
+	switch (word) {
+	case W_SQLITE_ARG_TRACE:
+		if (*type != RXT_INTEGER) return PE_BAD_SET_TYPE;
+		ctx->trace_mask = (unsigned)(arg->int64 & 0x0F);
+		sqlite3_trace_v2(ctx->db, ctx->trace_mask, trace_callback, ctx);
+		break;
+	case W_SQLITE_ARG_BUSY_TIMEOUT:
+		if (*type != RXT_INTEGER) return PE_BAD_SET_TYPE;
+		sqlite3_busy_timeout(ctx->db, (int)arg->int64);
+		break;
+	default:
+		return PE_BAD_SET;
+	}
+	return PE_USE;
+}
+
+int SQLiteSTMT_get_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg) {
+	SQLITE_STMT *ctx = (SQLITE_STMT*)hob->data;
+	REBSER  *blk;
+	RXIARG   val;
+	char    *expanded;
+	const char *name;
+	int      count, i;
+
+	if (!ctx || !ctx->stmt) return PE_BAD_SELECT; // finalized statement
+	word = RL_FIND_WORD(Sqlite_arg_words, word);
+
+	switch (word) {
+	case W_SQLITE_ARG_SQL:
+		set_string_arg(type, arg, sqlite3_sql(ctx->stmt), RXT_STRING);
+		break;
+	case W_SQLITE_ARG_EXPANDED_SQL:
+		// the result is owned by SQLite and must be released again
+		expanded = sqlite3_expanded_sql(ctx->stmt);
+		set_string_arg(type, arg, expanded, RXT_STRING);
+		if (expanded) sqlite3_free(expanded);
+		break;
+	case W_SQLITE_ARG_COLUMNS:
+		count = sqlite3_column_count(ctx->stmt);
+		if (count == 0) {
+			*type = RXT_NONE;
+			break;
+		}
+		blk = RL_MAKE_BLOCK(count);
+		CLEARS(&val);
+		for (i = 0; i < count; i++) {
+			name = sqlite3_column_name(ctx->stmt, i);
+			if (!name) continue;
+			val.series = RL_DECODE_UTF_STRING((REBYTE*)name, strlen(name), 8, 0, 0);
+			val.index  = 0;
+			RL_SET_VALUE(blk, SERIES_TAIL(blk), val, RXT_STRING);
+		}
+		*type = RXT_BLOCK;
+		arg->series = blk;
+		arg->index  = 0;
+		break;
+	case W_SQLITE_ARG_COLUMN_COUNT:
+		*type = RXT_INTEGER;
+		arg->int64 = sqlite3_column_count(ctx->stmt);
+		break;
+	case W_SQLITE_ARG_DATA_COUNT:
+		*type = RXT_INTEGER;
+		arg->int64 = sqlite3_data_count(ctx->stmt);
+		break;
+	case W_SQLITE_ARG_PARAMETERS:
+		*type = RXT_INTEGER;
+		arg->int64 = sqlite3_bind_parameter_count(ctx->stmt);
+		break;
+	case W_SQLITE_ARG_READONLY:
+		*type = RXT_LOGIC;
+		arg->int32a = sqlite3_stmt_readonly(ctx->stmt) != 0;
+		break;
+	case W_SQLITE_ARG_BUSY:
+		*type = RXT_LOGIC;
+		arg->int32a = sqlite3_stmt_busy(ctx->stmt) != 0;
+		break;
+	case W_SQLITE_ARG_RESULT_CODE:
+		*type = RXT_INTEGER;
+		arg->int64 = ctx->last_result_code;
+		break;
+	default:
+		return PE_BAD_SELECT;
+	}
+	return PE_USE;
 }
 
 
@@ -579,6 +739,13 @@ COMMAND cmd_sqlite_columns(RXIFRM* frm, void* reb_ctx) {
 	debug_print("column_count: %i\n", count);
 	if (count == 0) return RXR_NONE;
 	blk = RL_MAKE_BLOCK(count);
+
+	// `RXIARG arg = {0}` initializes only the first member of the union, so
+	// `index` (which sits past it) still holds whatever was on the stack.
+	// Every value below is stored at its head. Same reason `cmd_sqlite_eval`
+	// and `cmd_sqlite_step` call CLEARS(&arg) before their column loops.
+	arg.index = 0;
+
 	for (i = 0; i < count; i++) {
 		name = sqlite3_column_name(ctxStmt->stmt, i);
 		// It is not possible to return names as words, because RL_MAP_WORD
@@ -651,7 +818,7 @@ COMMAND cmd_sqlite_step(RXIFRM* frm, void* reb_ctx) {
 						str = RL_ENCODE_UTF8_STRING(SERIES_DATA(str), SERIES_TAIL(str), TRUE, FALSE);
 						arg.index = 0;
 					}
-					rc = sqlite3_bind_text(stmt, col+1, SERIES_SKIP(str, arg.index), SERIES_TAIL(str)-arg.index, SQLITE_TRANSIENT);
+					rc = sqlite3_bind_text(stmt, col+1, cs_cast(SERIES_SKIP(str, arg.index)), SERIES_TAIL(str)-arg.index, SQLITE_TRANSIENT);
 					break;
 				case RXT_NONE:
 					rc = sqlite3_bind_null(stmt, col+1);

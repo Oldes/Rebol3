@@ -25,12 +25,16 @@
 #include <math.h>
 #include <stdio.h>
 
-#define SERIES_TEXT(s)   ((char*)SERIES_DATA(s))
-
 // Handle release callbacks - registered by Register_SQLite_Handles() in
 // sqlite.c, implemented in sqlite-commands.c.
 int SQLiteDBHandle_release(void *ctx);
 int SQLiteSTMTHandle_release(void *ctx);
+
+// Handle path accessors. The words they switch on are generated from the
+// `handles:` block of the specification.
+int SQLiteDB_get_path  (REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg);
+int SQLiteDB_set_path  (REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg);
+int SQLiteSTMT_get_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg);
 
 REBSER* utf8_string(RXIARG arg);
 

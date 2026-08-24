@@ -1,8 +1,8 @@
 REBOL [
 	Title:   "Rebol SQLite Extension"
 	Name:    sqlite
-	Version: 3.53.4.1
-	Needs:   3.13.2
+	Version: 3.53.4.2
+	Needs:   3.22.5
 	Author:  @Oldes
 	License: MIT
 	Url:     https://github.com/Siskin-framework/Rebol-SQLite
@@ -15,8 +15,6 @@ REBOL [
 		sqlite-x64.rebx library.
 	}
 ]
-
-needs: 3.22.5  ;; generated module's Needs: + MIN_REBOL_VER/REV/UPD
 
 ;; ---------------------------------------------------------------------------
 ;; C-side configuration
@@ -42,6 +40,7 @@ typedef struct reb_sqlite_context {
 	REBSER*  buf;
 	int      id;
 	int      last_insert_count;
+	unsigned trace_mask;   // SQLite has no getter for it, so it is kept here
 } SQLITE_CONTEXT;
 
 typedef struct reb_sqlite_stmt {
@@ -51,13 +50,50 @@ typedef struct reb_sqlite_stmt {
 }
 
 ;; ---------------------------------------------------------------------------
-;; Handle types registered by this extension (used for the README).
+;; Rebol sources merged into the module's mezzanine section at generation time.
+;reb-include: [%sqlite-scheme.reb]
+
+;; ---------------------------------------------------------------------------
+;; Handle types registered by this extension.
+;;
+;; The keys are the names the handles are registered under on the C side
+;; (RL_REGISTER_HANDLE), and each field is:
+;;
+;;     NAME  GET-types  SET-types  "description"
+;;
+;; where `none` in the SET column marks a read-only field.
+;;
+;; The generator collects these field names into `words/arg`, so the
+;; W_SQLITE_ARG_* enum and `Sqlite_arg_words` are generated from this block.
+;; The accessors themselves are SQLiteDB_get_path / SQLiteDB_set_path and
+;; SQLiteSTMT_get_path in %sqlite-commands.c.
 handles: [
-	SQLiteDB: [
-		db: "internal sqlite3* connection pointer"
+	sqlite-db: [
+		"SQLite database connection"
+		;NAME            GET       SET       DESCRIPTION
+		filename         file!     none      "Name of the file the database was opened from"
+		readonly         logic!    none      "Whether the main database is read-only"
+		autocommit       logic!    none      "Whether the connection is in the autocommit mode"
+		last-insert-id   integer!  none      "Rowid of the most recent successful insert"
+		changes          integer!  none      "Number of rows modified by the most recent statement"
+		total-changes    integer!  none      "Number of rows modified since the connection was opened"
+		error-code       integer!  none      "Result code of the most recent failed API call"
+		error            string!   none      "Message of the most recent failed API call"
+		trace            integer!  integer!  "Trace mask (1 = statements, 2 = profiles, 3 = both)"
+		busy-timeout     none      integer!  "Milliseconds to wait for a locked table (write only)"
 	]
-	SQLiteSTMT: [
-		stmt: "internal sqlite3_stmt* prepared statement pointer"
+	sqlite-stmt: [
+		"SQLite prepared statement"
+		;NAME            GET       SET       DESCRIPTION
+		sql              string!   none      "The SQL text the statement was prepared from"
+		expanded-sql     string!   none      "The SQL text with the bound parameters expanded"
+		columns          block!    none      "Column names of the result set"
+		column-count     integer!  none      "Number of columns in the result set"
+		data-count       integer!  none      "Number of columns in the current result row"
+		parameters       integer!  none      "Number of bindable parameters"
+		readonly         logic!    none      "Whether the statement only reads from the database"
+		busy             logic!    none      "Whether the statement is in the middle of its execution"
+		result-code      integer!  none      "Result code of the last step"
 	]
 ]
 

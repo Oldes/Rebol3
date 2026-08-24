@@ -34,10 +34,25 @@ char error_buffer[255];
 
 
 // Registers the SQLiteDB and SQLiteSTMT handle types. Must run in BOTH
-// build modes.
+// build modes. The get_path/set_path accessors are what make `db/filename`
+// and `stmt/sql` work; the fields they accept come from the `handles:` block
+// of the specification.
 static void Register_SQLite_Handles(void) {
-	Handle_SQLiteDB   = RL_REGISTER_HANDLE((REBYTE*)"sqlite-db",   sizeof(SQLITE_CONTEXT), SQLiteDBHandle_release);
-	Handle_SQLiteSTMT = RL_REGISTER_HANDLE((REBYTE*)"sqlite-stmt", sizeof(SQLITE_STMT),     SQLiteSTMTHandle_release);
+	REBHSP spec;
+
+	CLEARS(&spec);
+	spec.size     = sizeof(SQLITE_CONTEXT);
+	spec.free     = SQLiteDBHandle_release;
+	spec.get_path = SQLiteDB_get_path;
+	spec.set_path = SQLiteDB_set_path;
+	Handle_SQLiteDB = RL_REGISTER_HANDLE_SPEC((REBYTE*)"sqlite-db", &spec);
+
+	CLEARS(&spec);
+	spec.size     = sizeof(SQLITE_STMT);
+	spec.free     = SQLiteSTMTHandle_release;
+	spec.get_path = SQLiteSTMT_get_path;
+	// no settable fields on a statement
+	Handle_SQLiteSTMT = RL_REGISTER_HANDLE_SPEC((REBYTE*)"sqlite-stmt", &spec);
 }
 
 
