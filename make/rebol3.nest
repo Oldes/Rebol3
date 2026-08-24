@@ -1082,6 +1082,7 @@ include-rebol-bulk: [
 	config: INCLUDE_PNG_FILTER ; includes `filter` and `unfilter` natives
 
 	;- native extensions
+	:include-ext-easing
 	:include-ext-matrix
 	:include-ext-sqlite
 	:include-ext-miniaudio
@@ -1096,7 +1097,7 @@ include-rebol-bulk: [
 common: [
 	files: :core-files
 	clean: %core/b-init.c ;make-boot.reb modifies embedded native code, so b-init.c must be always recompiled
-
+	clean: %os/host-main.c
 	;define: :config
 	define: {REBOL_OPTIONS_FILE=\"gen-config.h\"} ;@@ TODO: should be auto-escaped!
 	define: UNICODE
@@ -1336,6 +1337,19 @@ gen-ext-matrix: [
 	do %make/tools/make-extension.r3 "${NEST_ROOT}/src/extensions/matrix/matrix.reb"
 ]
 
+ext-easing: [
+	clean: [
+		%extensions/sqlite/easing-extension.c
+	]
+	files: [
+		%extensions/easing/easing.c            ;; the AHEasing library itself
+		%extensions/easing/easing-extension.c  ;; RX_Init / RX_Call entry points
+		%extensions/easing/easing-commands.c   ;; one function per command
+		%extensions/easing/gen-easing.c        ;; generated dispatch table
+	]
+	define: AH_EASING_USE_DBL_PRECIS
+	do %make/tools/make-extension.r3 "${NEST_ROOT}/src/extensions/easing/easing.reb"
+]
 ext-sqlite: [
 	clean: [
 		%extensions/sqlite/gen-sqlite.c
@@ -1378,6 +1392,7 @@ include-ext-xtest:  [ host-files: :ext-xtest-files  define: INCLUDE_EXT_XTEST  :
 include-ext-matrix: [ host-files: :ext-matrix-files define: INCLUDE_EXT_MATRIX :gen-ext-matrix ]
 include-ext-sqlite: [ mezz-prot-files: %mezz/prot-sqlite.reb :ext-sqlite define: INCLUDE_EXT_SQLITE ]
 include-ext-miniaudio: [ :ext-miniaudio define: INCLUDE_EXT_MINIAUDIO ]
+include-ext-easing: [ :ext-easing define: INCLUDE_EXT_EASING ]
 
 ;; standalone libraries
 make-ext-xtest:  [ files: only :ext-xtest-files  :make-ext :gen-ext-xtest  ]
