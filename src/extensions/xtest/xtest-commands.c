@@ -14,6 +14,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define ARG_Is_XTest(n)  FRM_IS_HANDLE(n, Handle_XTest)
+
+static const REBYTE* ERR_INVALID_HANDLE = (const REBYTE*)"Invalid XTest handle!";
+
 
 //== callbacks ================================================================
 
@@ -288,10 +292,7 @@ COMMAND cmd_xtest_hob1(RXIFRM *frm, void *ctx) {
 COMMAND cmd_xtest_hob2(RXIFRM *frm, void *ctx) {
 	REBHOB *hob = RXA_HANDLE(frm, 1);
 
-	if (hob->sym != Handle_XTest) {
-		puts("Wrong handle used!");
-		return RXR_UNSET;
-	}
+	if (!ARG_Is_XTest(1)) RETURN_ERROR(ERR_INVALID_HANDLE);
 	{
 		XTEST *data = (XTEST*)hob->data;
 		REBSER *bin;
@@ -371,17 +372,22 @@ COMMAND cmd_xtest_stru(RXIFRM *frm, void *ctx) {
 
 //== handle callbacks =========================================================
 
-int XTestContext_release(void *ctx) {
-	XTEST *data = (XTEST*)ctx;
-	printf("Relasing XTest context handle: %p\n", data);
-	// do some final cleaning of the context's content
-	printf("data=> id: %u num: %i\n", data->id, data->flags);
+int XTest_free(void *hndl) {
+	REBHOB *hob;
+	XTEST  *data;
+
+	if (!hndl) return 0;
+	hob  = (REBHOB*)hndl;
+	data = (XTEST*)hob->data;
+	if (!data) return 0;
+
+	debug_print("releasing XTest handle: %p id: %u flags: %i\n", (void*)data, data->id, data->flags);
 	CLEARS(data);
-	printf("data=> id: %u num: %i\n", data->id, data->flags);
+	UNMARK_HOB(hob);
 	return 0;
 }
 
-int XTestContext_get_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg) {
+int XTest_get_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg) {
 	XTEST *xtest = (XTEST*)hob->data;
 	word = RL_FIND_WORD(Xtest_arg_words, word);
 	switch (word) {
@@ -404,7 +410,7 @@ int XTestContext_get_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg) {
 	return PE_USE;
 }
 
-int XTestContext_set_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg) {
+int XTest_set_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg) {
 	XTEST *xtest = (XTEST*)hob->data;
 	word = RL_FIND_WORD(Xtest_arg_words, word);
 	switch (word) {
@@ -422,17 +428,13 @@ int XTestContext_set_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg) {
 	return PE_OK;
 }
 
-int XTestContext_mold(REBHOB *hob, REBSER *str) {
+int XTest_mold(REBHOB *hob, REBSER *str) {
 	int len;
-	XTEST *xtest = (XTEST*)hob->data;
+	XTEST *xtest;
 
-	if (!str || !xtest) return 0;
+	if (!str || !hob || !(xtest = (XTEST*)hob->data)) return 0;
 
-	len = snprintf(
-		s_cast(SERIES_DATA(str)),
-		SERIES_REST(str),
-		"0#%lx id: %u", (unsigned long)(uintptr_t)hob->data, xtest->id
-	);
-	if (len > 0) SERIES_TAIL(str) += len;
+	SERIES_TAIL(str) = 0;
+	APPEND_STRING(str, "0#%lx id: %u", (unsigned long)(uintptr_t)hob->data, xtest->id);
 	return len;
 }

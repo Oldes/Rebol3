@@ -30,11 +30,12 @@ REBCNT Handle_XTest = 0;
 static void Register_XTest_Handle(void) {
 	REBHSP spec;
 	spec.size     = sizeof(XTEST);
-	spec.flags    = 0;
-	spec.free     = XTestContext_release;
-	spec.get_path = XTestContext_get_path;
-	spec.set_path = XTestContext_set_path;
-	spec.mold     = XTestContext_mold;
+	// XTest_free takes the HOB, not the raw data pointer.
+	spec.flags    = HANDLE_REQUIRES_HOB_ON_FREE;
+	spec.free     = XTest_free;
+	spec.get_path = XTest_get_path;
+	spec.set_path = XTest_set_path;
+	spec.mold     = XTest_mold;
 	Handle_XTest  = RL_REGISTER_HANDLE_SPEC(cb_cast("XTEST"), &spec);
 }
 

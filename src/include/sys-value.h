@@ -376,6 +376,7 @@ typedef struct rebol_xy_int {
 #define	SERIES_FLAGS(s)	 ((s)->flags)
 #define	SERIES_WIDE(s)	 (((s)->sizes) & 0xff)
 #define SERIES_DATA(s)   ((s)->data)
+#define SERIES_TEXT(s)   ((char*)SERIES_DATA(s))
 #define	SERIES_SKIP(s,i) (SERIES_DATA(s) + (SERIES_WIDE(s) * (i)))
 
 #define END_FLAG 0x80000000  // Indicates end of block as an index (from DO_NEXT)

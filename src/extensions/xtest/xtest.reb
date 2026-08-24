@@ -32,19 +32,30 @@ typedef struct XTest_Context {
 }
 
 ;; ---------------------------------------------------------------------------
-;; Words resolved at init time. The `init-words` command, its enum entry
-;; (W_XTEST_ARG_0 sentinel included) and its handler are all generated.
+;; Words resolved at init time through RL_MAP_WORDS.
+;;
+;; The path-accessor words are collected from `handles:` below, so `arg` is
+;; left empty here - list a word only if something needs it which no handle
+;; field declares. The `init-words` command, the W_XTEST_ARG_* enum (with its
+;; _0 sentinel) and the handler filling `Xtest_arg_words` are all generated.
 words: [
-	arg: [id data length]
+	arg: []
 ]
 
 ;; ---------------------------------------------------------------------------
-;; Handle types registered by this extension (used for the README).
+;; Handle types and their path accessors.
+;;
+;; Each row is: NAME, the type read from the field, the type accepted when
+;; writing it (`none` for read-only), and a description. The names become the
+;; `arg` word list above and the W_XTEST_ARG_* enum used by XTest_get_path
+;; and XTest_set_path.
 handles: [
-	XTEST: [
-		id:     "integer! - read and write"
-		data:   "binary! or block! - the payload; a block when built /with"
-		length: "integer! - read only"
+	xtest: [
+		"XTest context handle"
+		;NAME   GET                SET       DESCRIPTION
+		id      integer!           integer!  "User defined identifier"
+		data   [binary! block!]    binary!   "The payload; a block when the handle was made /with another one"
+		length  integer!           none      "Number of bytes in the payload"
 	]
 ]
 
