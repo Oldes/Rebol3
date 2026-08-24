@@ -1202,3 +1202,19 @@ static REBDEC lerp_decimal(REBDEC s, REBDEC e, REBDEC t) {
 	}
 	return R_RET;
 }
+
+/***********************************************************************
+**
+*/	REBNATIVE(cube_root)
+/*
+//	cube-root: native [
+//		{Returns the real cube root of a number}
+//		value  [decimal! integer!]
+//		return: [decimal!] "The cube root of the value"
+//	]
+***********************************************************************/
+{
+	REBDEC v = IS_INTEGER(D_ARG(1)) ? (REBDEC)VAL_INT64(D_ARG(1)) : VAL_DECIMAL(D_ARG(1));
+	SET_DECIMAL(D_RET, cbrt(v));
+	return R_RET;
+}
