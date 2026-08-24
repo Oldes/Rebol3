@@ -1,7 +1,7 @@
 REBOL [
 	Title:   "Universal Rebol extension code generator"
 	Name:    make-extension
-	Version: 0.2.1
+	Version: 0.4.0
 	Author:  @Oldes
 	Purpose: {
 		Generates the C header and command-table sources of a Rebol
@@ -9,6 +9,10 @@ REBOL [
 
 		The specification is data only (never evaluated) - see
 		`src/extensions/<name>/<name>.reb`.
+
+		Mezzanine code may be written inline in the spec's `mezzanine:`
+		field, or kept in separate Rebol files listed in `reb-include:`
+		and merged into the module at generation time.
 	}
 ]
 
@@ -60,6 +64,30 @@ to-c-string: func [
 
 ;-- main -----------------------------------------------------------------------
 
+handle-words: function [
+	"Collects path-accessor words from handle specifications"
+	handles [block!]
+][
+	out: copy []
+	foreach [name spec] handles [
+		unless block? spec [continue]
+		unless parse spec [
+			opt string!                       ;; handle's own description
+			any [
+				set w word!                   ;; field name
+				skip skip                     ;; GET and SET types
+				opt string!                   ;; field description
+				(unless find out w [append out w])
+			]
+		][
+			cause-error 'user 'message reduce [
+				ajoin ["Invalid handle specification: " name]
+			]
+		]
+	]
+	out
+]
+
 build-extension: function [
 	"Generates extension C sources from a specification file"
 	file [file!] "Extension specification"
@@ -94,7 +122,7 @@ build-extension: function [
 	header-file:  ajoin [%gen- ext-name %.h]
 	table-file:   ajoin [%gen- ext-name %.c]
 
-	needs: any [field spec 'needs  field hdr 'needs  0.0.0]
+	needs: any [field hdr 'needs  0.0.0]
 
 	;-- module header of the generated extension --------------------------------
 	;; `Type:` and `Date:` are injected here, not carried by the spec.
@@ -117,6 +145,18 @@ build-extension: function [
 	;; The leading _0 sentinel is required: RL_Find_Word returns 0 for
 	;; not-found and 1-based indices otherwise.
 	words:         field spec 'words
+
+	;; Path-accessor words are collected from `handles:` automatically -
+	;; every field of every handle needs one. Anything listed manually in
+	;; `words/arg` is kept and comes first, so a spec can still add words
+	;; which no handle field declares.
+	if handles: field spec 'handles [
+		unless words [words: copy []]
+		unless find words 'arg [
+			repend words ['arg copy []]
+		]
+		words/arg: unique append words/arg handle-words handles
+	]
 	word-enums:    copy ""
 	word-globals:  copy ""
 	word-externs:  copy ""
@@ -185,6 +225,36 @@ build-extension: function [
 		]
 		append reb-code "^/protect/hide 'init-words"
 	]
+	;; External Rebol sources merged into the module's mezzanine section.
+	;; Each file is loaded rather than pasted, so a syntax error breaks the
+	;; build instead of the extension at runtime, and its own header - if it
+	;; has one - is dropped, because the module already has one of its own.
+	;; Note that loading does not preserve comments or the original layout.
+	if incl: field spec 'reb-include [
+		spec-dir: first split-path clean-path file
+		;; accepts a single file as well as a block of them
+		foreach inc compose [(incl)] [
+			unless file? inc [
+				cause-error 'user 'message ajoin [
+					"reb-include expects a file, not: " mold inc
+				]
+			]
+			;; relative to the spec, unless it resolves on its own
+			inc-file: either exists? inc [inc][join spec-dir inc]
+			unless exists? inc-file [
+				cause-error 'user 'message ajoin [
+					"Missing reb-include file: " mold inc
+				]
+			]
+			inc-code: load/header inc-file
+			if object? first inc-code [take inc-code]
+			append reb-code ajoin [
+				lf ";-- merged from " second split-path inc-file lf
+				mold/only inc-code
+			]
+		]
+	]
+	;; the inline field is emitted last, so it can build on the files above
 	if mezz: field spec 'mezzanine [
 		append reb-code ajoin [lf mold/only mezz]
 	]
@@ -292,4 +362,3 @@ if all [
 ][
 	build-extension src
 ]
-

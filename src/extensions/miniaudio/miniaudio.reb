@@ -70,15 +70,6 @@ extern REBCNT Handle_MAListener;
 ;; and the handler filling `Miniaudio_arg_words` / `Miniaudio_type_words`
 ;; are all generated.
 words: [
-	;; path accessors of all handle types below
-	arg: [
-		volume fade-volume pan pitch position cursor time duration frames sample-rate
-		spatialize is-looping is-playing at-end source start stop
-		x y z outputs output resources channels gain-db
-		rolloff min-distance max-distance min-gain max-gain
-		doppler-factor attenuation positioning listener listeners enabled index
-		pan-mode amplitude frequency format type delay decay dry wet
-	]
 	;; @@ Order is important - the C side indexes this list by the
 	;; matching miniaudio enum value (ma_noise_type, ma_waveform_type,
 	;; ma_format), see W_MINIAUDIO_TYPE_WHITE / _SINE / _F32.
