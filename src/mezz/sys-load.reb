@@ -1488,10 +1488,13 @@ load-module: function [
 				all [
 					module? module
 					not mixin? module-header
-					block? select module-header 'exports
+					block? words: select module-header 'exports
 				][
-					resolve/extend/only lib module module-header/exports
-					; no-op if empty
+					resolve/extend/only lib module words ; no-op if empty
+					;; extend also the REPL context, if exists
+					try [
+						resolve/extend/only/all system/console/current/console-ctx module words
+					]
 				]
 			]
 		]
