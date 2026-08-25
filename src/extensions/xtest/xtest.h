@@ -11,16 +11,20 @@
 #ifndef XTEST_EXT_H
 #define XTEST_EXT_H
 
-// Handle callbacks, named <Type>_<op> to match the other extensions.
-// Registered when the module initializes; implemented in xtest-commands.c.
-int XTest_free(void *hndl);
-int XTest_get_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg);
-int XTest_set_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg);
-int XTest_mold(REBHOB *hob, REBSER *str);
+// Callbacks of the XTEST context handle, named after the handle type - not
+// after the extension, which owns Xtest_Init() and the generated symbols.
+// Registered by Xtest_Init(); implemented in xtest-commands.c.
+int XTestContext_free(void *hndl);
+int XTestContext_get_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg);
+int XTestContext_set_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg);
+int XTestContext_mold(REBHOB *hob, REBSER *str);
+
+// Xtest_Init() is declared in gen-xtest.h - the generated `_init` handler
+// calls it, and every extension is required to define one.
 
 #ifndef REB_EXT
 // Embedded build only - called from host-main.c under INCLUDE_EXT_XTEST.
-void Init_Ext_XTest(void);
+RL_API void OS_Init_Ext_XTest(void);
 #endif
 
 #endif // XTEST_EXT_H

@@ -5,7 +5,7 @@
 // Command implementations for the extension interface test module.
 //
 // One function per command; the enum, the declarations, the dispatch table
-// and the init-words handler are all generated from xtest.reb.
+// and the `_init` handler are all generated from xtest.reb.
 //
 
 #include "gen-xtest.h"
@@ -17,6 +17,7 @@
 #define ARG_Is_XTest(n)  FRM_IS_HANDLE(n, Handle_XTest)
 
 static const REBYTE* ERR_INVALID_HANDLE = (const REBYTE*)"Invalid XTest handle!";
+static const REBYTE* ERR_NO_HANDLE      = (const REBYTE*)"Failed to create the XTest handle!";
 
 
 //== callbacks ================================================================
@@ -262,7 +263,10 @@ COMMAND cmd_xtest_blk1(RXIFRM *frm, void *ctx) {
 COMMAND cmd_xtest_hob1(RXIFRM *frm, void *ctx) {
 	REBHOB *hob = RL_MAKE_HANDLE_CONTEXT(Handle_XTest);
 	REBSER *bin = RXA_SERIES(frm, 1);
-	XTEST  *data = (XTEST*)hob->data;
+	XTEST  *data;
+
+	if (hob == NULL) RETURN_ERROR(ERR_NO_HANDLE);
+	data = (XTEST*)hob->data;
 
 	if (SERIES_REST(bin) < 1) {
 		RL_EXPAND_SERIES(bin, SERIES_TAIL(bin), 1);
@@ -372,7 +376,7 @@ COMMAND cmd_xtest_stru(RXIFRM *frm, void *ctx) {
 
 //== handle callbacks =========================================================
 
-int XTest_free(void *hndl) {
+int XTestContext_free(void *hndl) {
 	REBHOB *hob;
 	XTEST  *data;
 
@@ -387,7 +391,7 @@ int XTest_free(void *hndl) {
 	return 0;
 }
 
-int XTest_get_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg) {
+int XTestContext_get_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg) {
 	XTEST *xtest = (XTEST*)hob->data;
 	word = RL_FIND_WORD(Xtest_arg_words, word);
 	switch (word) {
@@ -410,7 +414,7 @@ int XTest_get_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg) {
 	return PE_USE;
 }
 
-int XTest_set_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg) {
+int XTestContext_set_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg) {
 	XTEST *xtest = (XTEST*)hob->data;
 	word = RL_FIND_WORD(Xtest_arg_words, word);
 	switch (word) {
@@ -428,7 +432,7 @@ int XTest_set_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg) {
 	return PE_OK;
 }
 
-int XTest_mold(REBHOB *hob, REBSER *str) {
+int XTestContext_mold(REBHOB *hob, REBSER *str) {
 	int len;
 	XTEST *xtest;
 

@@ -30,6 +30,11 @@ RL_LIB *RL;
 // matrix.reb. Not const: RL_Extend() takes a REBYTE*.
 static char *init_block = MATRIX_EXT_INIT_CODE;
 
+int Matrix_Init(void) {
+	// No special initialisation in this extension.
+	return TRUE;
+}
+
 
 #ifdef REB_EXT
 

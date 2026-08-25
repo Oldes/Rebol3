@@ -10,7 +10,11 @@
 // Entry points for the Rebol/SQLite extension module.
 //
 //   REB_EXT defined ... standalone sqlite-x64.rebx
-//   REB_EXT absent .... compiled into the host, registered at startup
+//   REB_EXT absent .... compiled into the host
+//
+// One-time setup lives in Sqlite_Init(), called from the generated `_init`
+// command when the module body evaluates - not from the entry points, so
+// that `Options: [delay]` can postpone it until the module is imported.
 //
 
 #include "gen-sqlite.h"
@@ -33,26 +37,34 @@ REBCNT Handle_SQLiteSTMT = 0;
 char error_buffer[255];
 
 
-// Registers the SQLiteDB and SQLiteSTMT handle types. Must run in BOTH
-// build modes. The get_path/set_path accessors are what make `db/filename`
-// and `stmt/sql` work; the fields they accept come from the `handles:` block
-// of the specification.
-static void Register_SQLite_Handles(void) {
+// Registers the SQLiteDB and SQLiteSTMT handle types and starts SQLite up.
+// Runs when the module body evaluates, so it happens at the same point in
+// both build modes - and only on first import under `delay`.
+//
+// The get_path/set_path accessors are what make `db/filename` and `stmt/sql`
+// work; the fields they accept come from the `handles:` block of the
+// specification.
+//
+// Returns plain TRUE/FALSE, NOT an RXR_* code: RXR_FALSE is 3, which is
+// truthy in C. The generated handler maps the result onto RXR_TRUE/RXR_FALSE.
+int Sqlite_Init(void) {
 	REBHSP spec;
 
 	CLEARS(&spec);
 	spec.size     = sizeof(SQLITE_CONTEXT);
-	spec.free     = SQLiteDBHandle_release;
+	spec.free     = SQLiteDBHandle_free;
 	spec.get_path = SQLiteDB_get_path;
 	spec.set_path = SQLiteDB_set_path;
 	Handle_SQLiteDB = RL_REGISTER_HANDLE_SPEC((REBYTE*)"sqlite-db", &spec);
 
 	CLEARS(&spec);
 	spec.size     = sizeof(SQLITE_STMT);
-	spec.free     = SQLiteSTMTHandle_release;
+	spec.free     = SQLiteSTMTHandle_free;
 	spec.get_path = SQLiteSTMT_get_path;
 	// no settable fields on a statement
 	Handle_SQLiteSTMT = RL_REGISTER_HANDLE_SPEC((REBYTE*)"sqlite-stmt", &spec);
+	sqlite3_initialize();
+	return TRUE;
 }
 
 
@@ -72,9 +84,6 @@ RXIEXT const char *RX_Init(int opts, RL_LIB *lib) {
 		trace("CHECK_STRUCT_ALIGN failed!");
 		return 0;
 	}
-
-	Register_SQLite_Handles();
-	sqlite3_initialize();
 	return init_block;
 }
 
@@ -103,7 +112,10 @@ RXIEXT int RX_Call(int cmd, RXIFRM *frm, void *ctx) {
 ***********************************************************************/
 
 // Called from host-main.c under #ifdef INCLUDE_EXT_SQLITE.
-// No version or alignment check: same binary, true by construction.
+//
+// Only registers the module with the boot-exts list - no version or
+// alignment check (same binary, true by construction) and no handle
+// registration, which Sqlite_Init() does when the module initializes.
 /***********************************************************************
 **
 */	RL_API void OS_Init_Ext_SQLite(void)
@@ -113,8 +125,6 @@ RXIEXT int RX_Call(int cmd, RXIFRM *frm, void *ctx) {
 ***********************************************************************/
 {
 	RL = RL_Extend(b_cast(init_block), (RXICAL)&Sqlite_RX_Call);
-	Register_SQLite_Handles();
-	sqlite3_initialize();
 }
 
 #endif

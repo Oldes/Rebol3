@@ -1087,8 +1087,8 @@ include-rebol-bulk: [
 	;- native extensions
 	:include-ext-easing
 	:include-ext-matrix
-	:include-ext-sqlite
-	:include-ext-miniaudio
+;	:include-ext-sqlite
+;	:include-ext-miniaudio
 	;- for tests:
 	:include-ext-xtest
 	;- not recommanded:

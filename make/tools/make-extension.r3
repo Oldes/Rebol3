@@ -1,7 +1,7 @@
 REBOL [
 	Title:   "Universal Rebol extension code generator"
 	Name:    make-extension
-	Version: 0.4.0
+	Version: 0.4.1
 	Author:  @Oldes
 	Purpose: {
 		Generates the C header and command-table sources of a Rebol
@@ -118,6 +118,11 @@ build-extension: function [
 	table-name:   ajoin [ext-cap1 "_Command"]
 	call-name:    ajoin [ext-cap1 "_RX_Call"]
 	init-macro:   ajoin [ext-caps "_EXT_INIT_CODE"]
+	;; Every extension must define this - it is where handle types are
+	;; registered and any other one-time setup happens. Called from the
+	;; generated `_init` command, so it runs when the module body evaluates
+	;; (deferred under `Options: [delay]`), not from the entry points.
+	init-def:     ajoin ["int " ext-cap1 "_Init(void); // returns TRUE / FALSE"]
 	cmd-max:      ajoin ["CMD_" ext-caps "_MAX"]
 	header-file:  ajoin [%gen- ext-name %.h]
 	table-file:   ajoin [%gen- ext-name %.c]
@@ -136,6 +141,7 @@ build-extension: function [
 		{ Date: }         now/utc
 		reduce if/only v: field hdr 'license [{ License:} mold v]
 		reduce if/only v: field hdr 'url     [{ Url:}     v]
+		reduce if/only v: field hdr 'options [{ Options:} mold v]
 		{ Exports: }      mold any [field hdr 'exports []]
 		#"]"
 	]
@@ -160,20 +166,28 @@ build-extension: function [
 	word-enums:    copy ""
 	word-globals:  copy ""
 	word-externs:  copy ""
-	init-words-fn: copy ""
+	init-fn:       copy ""
 	commands:      copy spec/commands
 
+	;; The `_init` command is injected, never hand-written, and always first
+	;; so command indices stay stable. It is emitted even when there are no
+	;; word lists, because every extension must supply <Prefix>_Init().
+	if find commands to set-word! '_init [
+		cause-error 'user 'message [
+			"`_init` is reserved by the extension generator"
+		]
+	]
+	args: copy []
 	if words [
-		;; the init-words command is injected, never hand-written,
-		;; and always first so command indices stay stable
-		args: copy []
 		foreach [wname wlist] words [
 			repend args [to word! wname copy [block!]]
 		]
-		insert commands reduce [to set-word! 'init-words args]
+	]
+	insert commands reduce [to set-word! '_init args]
 
-		n: 0
-		body: copy ""
+	n: 0
+	body: copy ""
+	if words [
 		foreach [wname wlist] words [
 			n: n + 1
 			w-id:   to-c-name wname                          ;; arg
@@ -190,12 +204,14 @@ build-extension: function [
 			append word-externs ajoin ["extern u32* " w-var ";^/"]
 			append body ajoin ["^-" w-var " = RL_MAP_WORDS(RXA_SERIES(frm, " n "));^/"]
 		]
+	]
 
-		init-words-fn: ajoin [
-			"^/int " fn-prefix "init_words(RXIFRM *frm, void *ctx) {^/"
-			body
-			"^-return RXR_TRUE;^/}^/"
-		]
+	;; <Prefix>_Init() returns plain TRUE/FALSE - NOT an RXR_* code, since
+	;; RXR_FALSE is 3 and would read as true in C.
+	init-fn: ajoin [
+		"^/int " fn-prefix "_init(RXIFRM *frm, void *ctx) {^/"
+		body
+		"^-return " ext-cap1 "_Init() ? RXR_TRUE : RXR_FALSE;^/}^/"
 	]
 
 	;-- commands ---------------------------------------------------------------
@@ -218,13 +234,13 @@ build-extension: function [
 	append enu-commands ajoin ["^/^-" cmd-max]
 
 	;-- mezzanine --------------------------------------------------------------
+	append reb-code ajoin [lf "_init"]
 	if words [
-		append reb-code ajoin [lf "init-words"]
 		foreach [wname wlist] words [
 			append reb-code ajoin [sp mold/flat wlist]
 		]
-		append reb-code "^/protect/hide 'init-words"
 	]
+	append reb-code "^/protect/hide '_init"
 	;; External Rebol sources merged into the module's mezzanine section.
 	;; Each file is loaded rather than pasted, so a syntax error breaks the
 	;; build instead of the extension at runtime, and its own header - if it
@@ -297,6 +313,7 @@ $includes
 #include "reb-ext-common.h"
 #endif
 
+$init-def
 $c-header
 enum ext_commands {$enu-commands
 };
@@ -315,7 +332,7 @@ int $call-name(int cmd, RXIFRM *frm, void *ctx);
 $word-globals
 $typedef-name $table-name[] = {
 $cmd-dispatch};
-$init-words-fn
+$init-fn
 int $call-name(int cmd, RXIFRM *frm, void *ctx) {
 	if (cmd < 0 || cmd >= $cmd-max) return RXR_NO_COMMAND;
 	return $table-name[cmd](frm, ctx);
@@ -337,7 +354,8 @@ int $call-name(int cmd, RXIFRM *frm, void *ctx) {
 		cmd-max:       (cmd-max)
 		word-enums:    (word-enums)
 		word-globals:  (word-globals)
-		init-words-fn: (init-words-fn)
+		init-fn:       (init-fn)
+		init-def:      (init-def)
 		typedef-name:  (typedef-name)
 		table-name:    (table-name)
 		call-name:     (call-name)

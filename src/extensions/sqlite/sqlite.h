@@ -27,8 +27,8 @@
 
 // Handle release callbacks - registered by Register_SQLite_Handles() in
 // sqlite.c, implemented in sqlite-commands.c.
-int SQLiteDBHandle_release(void *ctx);
-int SQLiteSTMTHandle_release(void *ctx);
+int SQLiteDBHandle_free(void *ctx);
+int SQLiteSTMTHandle_free(void *ctx);
 
 // Handle path accessors. The words they switch on are generated from the
 // `handles:` block of the specification.

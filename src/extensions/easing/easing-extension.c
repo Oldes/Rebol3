@@ -21,6 +21,10 @@ RL_LIB *RL;
 
 static const char *init_block = EASING_EXT_INIT_CODE;
 
+int Easing_Init(void) {
+	// No special initialisation in this extension.
+	return TRUE;
+}
 
 #ifdef REB_EXT
 

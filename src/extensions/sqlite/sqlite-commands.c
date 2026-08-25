@@ -926,14 +926,14 @@ COMMAND cmd_sqlite_step(RXIFRM* frm, void* reb_ctx) {
 
 //== handle release callbacks ==================================================
 
-int SQLiteDBHandle_release(void *ctx) {
+int SQLiteDBHandle_free(void *ctx) {
 	SQLITE_CONTEXT *c = (SQLITE_CONTEXT*)ctx;
 	debug_print("releasing sqlite db: %p\n", c->db);
 	if (c->db) sqlite3_close((sqlite3*)c->db);
 	return 0;
 }
 
-int SQLiteSTMTHandle_release(void *ctx) {
+int SQLiteSTMTHandle_free(void *ctx) {
 	SQLITE_STMT *c = (SQLITE_STMT*)ctx;
 	debug_print("releasing sqlite stmt: %p\n", c->stmt);
 	if (c->stmt) sqlite3_finalize((sqlite3_stmt*)c->stmt);

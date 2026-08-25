@@ -5,6 +5,7 @@ REBOL [
 	Needs:   3.22.5
 	Author:  @Oldes
 	License: Apache-2.0
+	Options: [delay]
 	Exports: [xtest]
 	Purpose: {
 		Exercises the extension interface - argument passing of every

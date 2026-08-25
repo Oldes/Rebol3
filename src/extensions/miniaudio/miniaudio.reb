@@ -5,6 +5,7 @@ REBOL [
 	Needs:   3.22.5
 	Author:  @Oldes
 	License: MIT
+	Options: [delay]
 	Url:     https://github.com/Oldes/Rebol-MiniAudio
 	Purpose: {
 		Audio playback using the MiniAudio library.

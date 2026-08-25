@@ -5,7 +5,11 @@
 // Entry points for the extension interface test module.
 //
 //   REB_EXT defined ... standalone xtest-x64.rebx
-//   REB_EXT absent .... compiled into the host, registered at startup
+//   REB_EXT absent .... compiled into the host
+//
+// One-time setup lives in Xtest_Init(), called from the generated `_init`
+// command when the module body evaluates - not from the entry points, so
+// that `Options: [delay]` can postpone it until the module is imported.
 //
 
 #include "gen-xtest.h"
@@ -24,19 +28,23 @@ static char *init_block = XTEST_EXT_INIT_CODE;
 REBCNT Handle_XTest = 0;
 
 
-// Registers the XTEST handle type. Must run in BOTH build modes - the
-// handle's path accessors are what hob1/hob2 exercise, and without this
-// they have no registered type to attach to.
-static void Register_XTest_Handle(void) {
+// Registers the XTEST handle type, whose path accessors are what hob1/hob2
+// exercise. Runs when the module body evaluates, so it happens at the same
+// point in both build modes - and only on first import under `delay`.
+//
+// Returns plain TRUE/FALSE, NOT an RXR_* code: RXR_FALSE is 3, which is
+// truthy in C. The generated handler maps the result onto RXR_TRUE/RXR_FALSE.
+int Xtest_Init(void) {
 	REBHSP spec;
 	spec.size     = sizeof(XTEST);
-	// XTest_free takes the HOB, not the raw data pointer.
+	// XTestContext_free takes the HOB, not the raw data pointer.
 	spec.flags    = HANDLE_REQUIRES_HOB_ON_FREE;
-	spec.free     = XTest_free;
-	spec.get_path = XTest_get_path;
-	spec.set_path = XTest_set_path;
-	spec.mold     = XTest_mold;
+	spec.free     = XTestContext_free;
+	spec.get_path = XTestContext_get_path;
+	spec.set_path = XTestContext_set_path;
+	spec.mold     = XTestContext_mold;
 	Handle_XTest  = RL_REGISTER_HANDLE_SPEC(cb_cast("XTEST"), &spec);
+	return TRUE;
 }
 
 
@@ -56,8 +64,6 @@ RXIEXT const char *RX_Init(int opts, RL_LIB *lib) {
 		trace("CHECK_STRUCT_ALIGN failed!");
 		return 0;
 	}
-
-	Register_XTest_Handle();
 	return init_block;
 }
 
@@ -72,7 +78,7 @@ RXIEXT int RX_Abi(void) {
 }
 
 // Resolved by name, so the spelling is fixed. The bounds-checked
-// dispatcher is generated into xtest-commands-table.c.
+// dispatcher is generated into gen-xtest.c.
 RXIEXT int RX_Call(int cmd, RXIFRM *frm, void *ctx) {
 	return Xtest_RX_Call(cmd, frm, ctx);
 }
@@ -84,7 +90,10 @@ RXIEXT int RX_Call(int cmd, RXIFRM *frm, void *ctx) {
 ***********************************************************************/
 
 // Called from host-main.c under #ifdef INCLUDE_EXT_XTEST.
-// No version or alignment check: same binary, true by construction.
+//
+// Only registers the module with the boot-exts list - no version or
+// alignment check (same binary, true by construction) and no handle
+// registration, which Xtest_Init() does when the module initializes.
 /***********************************************************************
 **
 */	RL_API void OS_Init_Ext_XTest(void)
@@ -94,7 +103,6 @@ RXIEXT int RX_Call(int cmd, RXIFRM *frm, void *ctx) {
 ***********************************************************************/
 {
 	RL = RL_Extend(b_cast(init_block), (RXICAL)&Xtest_RX_Call);
-	Register_XTest_Handle();
 }
 
 #endif

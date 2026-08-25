@@ -7,6 +7,7 @@ REBOL [
 	License: MIT
 	Url:     https://github.com/Siskin-framework/Rebol-SQLite
 	Exports: []
+	Options: [delay]
 	Purpose: {
 		Bindings to the SQLite C library (with the sqlite-vec extension
 		auto-loaded on every opened connection).
