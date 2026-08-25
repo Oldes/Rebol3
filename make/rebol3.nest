@@ -1087,8 +1087,8 @@ include-rebol-bulk: [
 	;- native extensions
 	:include-ext-easing
 	:include-ext-matrix
-;	:include-ext-sqlite
-;	:include-ext-miniaudio
+	:include-ext-sqlite
+	:include-ext-miniaudio
 	;- for tests:
 	:include-ext-xtest
 	;- not recommanded:
@@ -1351,6 +1351,9 @@ ext-easing: [
 		%extensions/easing/gen-easing.c        ;; generated dispatch table
 	]
 	define: AH_EASING_USE_DBL_PRECIS
+	#if Windows? [
+		define: _USE_MATH_DEFINES
+	]
 	do %make/tools/make-extension.r3 "${NEST_ROOT}/src/extensions/easing/easing.reb"
 ]
 ext-sqlite: [
