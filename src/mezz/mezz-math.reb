@@ -113,3 +113,15 @@ average: func [
 	divide sum block length? block
 ]
 
+nth-root: function [
+	"Returns the nth root of a number."
+	x [integer! decimal!] "integer or decimal value"
+	n [integer!] "positive integer"
+][
+	assert [positive? n]
+	if negative? x [
+		if even? n [fail "Even root of a negative number is not a real number."]
+		return negate ((absolute x) ** (1 / n))
+	]
+	x ** (1 / n)
+]

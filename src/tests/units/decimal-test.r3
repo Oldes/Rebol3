@@ -158,6 +158,74 @@ Rebol [
 		--assert 2.0 = sqrt 4.0
 ===end-group===
 
+===start-group=== "cube-root number"
+	--test-- "cube-root positive integers"
+		--assert  0.0 == cube-root 0
+		--assert  1.0 == cube-root 1
+		--assert  2.0 == cube-root 8
+		--assert  3.0 == cube-root 27
+		--assert 10.0 == cube-root 1000
+
+	--test-- "cube-root negative integers"
+		--assert  -1.0 == cube-root -1
+		--assert  -2.0 == cube-root -8
+		--assert  -3.0 == cube-root -27
+		--assert -10.0 == cube-root -1000
+
+	--test-- "cube-root decimals"
+		--assert  0.5 == cube-root 0.125
+		--assert  1.5 == cube-root 3.375
+		--assert -0.5 == cube-root -0.125
+		--assert -1.5 == cube-root -3.375
+
+	--test-- "cube-root with not compatible types"
+		--assert all [error? e: try [cube-root "27"] e/id = 'expect-arg]
+		--assert all [error? e: try [cube-root 10x10] e/id = 'expect-arg]
+===end-group===
+
+===start-group=== "nth-root"
+	--test-- "nth-root positive integers"
+		--assert  1.0 = nth-root 1 2
+		--assert  2.0 = nth-root 4 2
+		--assert  3.0 = nth-root 27 3
+		--assert  4.0 = nth-root 256 4
+		--assert  5.0 = nth-root 3125 5
+
+	--test-- "nth-root negative integers with odd degree"
+		--assert -1.0 = nth-root -1 3
+		--assert -2.0 = nth-root -8 3
+		--assert -3.0 = nth-root -27 3
+		--assert -4.0 = nth-root -64 3
+		--assert -2.0 = nth-root -32 5
+
+	--test-- "nth-root decimals"
+		--assert  0.5 = nth-root 0.25 2
+		--assert  0.5 = nth-root 0.125 3
+		--assert  1.5 = nth-root 3.375 3
+		--assert -0.5 = nth-root -0.125 3
+		--assert -1.5 = nth-root -3.375 3
+
+	--test-- "nth-root with degree one"
+		--assert  27.0 == nth-root 27 1
+		--assert -27.0 == nth-root -27 1
+
+	--test-- "nth-root zero"
+		--assert 0.0 == nth-root 0 2
+		--assert 0.0 == nth-root 0 3
+
+	--test-- "nth-root negative number with even degree"
+		--assert error? e: try [nth-root -16 2]
+
+	--test-- "nth-root with non-positive degree"
+		--assert error? e: try [nth-root 16 0]
+		--assert error? e: try [nth-root 16 -2]
+
+	--test-- "nth-root with not compatible types"
+		--assert error? e: try [nth-root "27" 3]
+		--assert error? e: try [nth-root 27 3.0]
+
+===end-group===
+
 
 ===start-group=== "fraction"
 	--test-- "fraction 1.25"

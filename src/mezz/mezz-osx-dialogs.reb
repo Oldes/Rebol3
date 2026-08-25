@@ -242,10 +242,6 @@ request-color: function/with [
     ]
     to-rebol-color: func[c [block!]][
         ;; Scale down channels 0–65535 to 0–255
-        to tuple! reduce [
-            c/1 / 257
-            c/2 / 257
-            c/3 / 257
-        ]
+        as-color c/1 / 257 c/2 / 257 c/3 / 257
     ]
 ]

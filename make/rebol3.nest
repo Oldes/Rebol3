@@ -899,7 +899,10 @@ include-png-filter-native: [
 include-view: [
 	; currently only on Windows!
 	host-files: :host-files-view
-	core-files: %core/n-request-color.c
+	#if (not macos?) [
+		;; on macos it is implemented as a mezzanine function
+		core-files: %core/n-request-color.c
+	]
 	#if Windows? [
 		define: REB_VIEW
 		:include-image-os-codec

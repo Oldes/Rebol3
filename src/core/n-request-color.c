@@ -25,7 +25,7 @@
 **  Section: natives
 **  Author:  Oldes
 **	Notes:
-**		So fat it is used only on Windows. On macOS it's implementented
+**		So far it is used only on Windows. On macOS it's implementented
 **		as Rebol mezzanine function in file mezz-osx-dialogs.reb
 ***********************************************************************/
 

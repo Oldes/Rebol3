@@ -104,6 +104,13 @@ cause-error: func [
 	]
 ]
 
+fail: func [
+	"Raises the given error or an error with the given message."
+	value [string! error!] "error message or error value"
+][
+	do make error! value
+]
+
 default: func [
 	"Set a word to a default value if it hasn't been set yet."
 	'word [word! set-word! lit-word!] "The word (use :var for word! values)"

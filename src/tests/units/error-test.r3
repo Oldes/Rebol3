@@ -161,6 +161,37 @@ Rebol [
 
 ===end-group===
 
+===start-group=== "fail"
+	--test-- "fail with message"
+		--assert all [
+			error? e: try [fail "Something went wrong."]
+			e/type = 'User
+			e/id   = 'message
+			e/arg1 = "Something went wrong."
+		]
+
+	--test-- "fail with error"
+		--assert all [
+			error? e: try [fail make error! "Something went wrong."]
+			e/type = 'User
+			e/id   = 'message
+			e/arg1 = "Something went wrong."
+		]
+
+	--test-- "fail propagates error"
+		--assert all [
+			error? e: try [fail try [1 / 0]]
+			e/type = 'Math
+			e/id   = 'zero-divide
+		]
+
+	--test-- "fail requires string or error"
+		--assert all [
+			error? e: try [fail 123]
+			e/id = 'expect-arg
+		]
+===end-group===
+
 ===start-group=== "Error issues"
 	--test-- "issue-553"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/553
