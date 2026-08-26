@@ -66,15 +66,7 @@
 #include "host-init.h"
 #endif
 
-#ifdef INCLUDE_EXT_SQLITE
-void OS_Init_Ext_Sqlite(void);
-#endif
-#ifdef INCLUDE_EXT_MINIAUDIO
-void OS_Init_Ext_Miniaudio(void);
-#endif
-#ifdef INCLUDE_EXT_EASING
-void OS_Init_Ext_Easing(void);
-#endif
+#include "gen-ext-init.h"	// entry points of the embedded extensions
 
 /**********************************************************************/
 
@@ -356,21 +348,7 @@ int main(int argc, char **argv) {
 	//Init_Graphics();
 #endif
 
-#ifdef INCLUDE_EXT_MATRIX
-	OS_Init_Ext_Matrix();
-#endif
-#ifdef INCLUDE_EXT_SQLITE
-	OS_Init_Ext_Sqlite();
-#endif
-#ifdef INCLUDE_EXT_XTEST
-	OS_Init_Ext_Xtest();
-#endif
-#ifdef INCLUDE_EXT_MINIAUDIO
-	OS_Init_Ext_Miniaudio();
-#endif
-#ifdef INCLUDE_EXT_EASING
-	OS_Init_Ext_Easing();
-#endif
+	INIT_EMBEDDED_EXTENSIONS();
 
 // Call sys/start function. If a compressed script is provided, it will be 
 // decompressed, stored in system/options/boot-host, loaded, and evaluated.
@@ -405,4 +383,3 @@ int main(int argc, char **argv) {
 	OS_Exit(0, 0);
 	return 0;
 }
-

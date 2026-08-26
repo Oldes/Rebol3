@@ -47,8 +47,6 @@ RXIEXT const char *RX_Init(int opts, RL_LIB *lib) {
 	RL = lib;
 	RL_VERSION(ver);
 
-	puts("init");
-
 	// Feature-level requirement: the commands below need a host at least
 	// this new. Distinct from the ABI check in RX_Abi() - a host can be
 	// new enough to be ABI-compatible while still lacking what we need.

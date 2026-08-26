@@ -1321,30 +1321,44 @@ make-ext: [
 	#if ('Turris = system/platform) [ flag: -fPIC :target-turris ]
 ]
 
-;; Per-extension sources and generator invocation, referenced by both modes
-ext-xtest-files: [
-	%extensions/xtest/xtest.c
-	%extensions/xtest/xtest-commands.c
-	%extensions/xtest/gen-xtest.c
-]
-gen-ext-xtest: [
+;; Per-extension sources and generator invocation, referenced by both modes.
+;;
+;; NOTE: extension sources belong in `host-files`, not in `files`.
+;;
+;; make-os-ext.reb scans `host-files` for the OS_Init_Ext_* entry point which
+;; make-extension.r3 emits into gen-<name>.c, and collects them into
+;; %gen-ext-init.h - the header host-main.c uses to initialize every embedded
+;; extension. A source listed in `files` instead still compiles and links, but
+;; its entry point is never collected, so the extension is silently missing at
+;; run time.
+;;
+;; The generated gen-<name>.c is rewritten on every build, so it needs no
+;; `clean:` entry - only host-main.c does, because it includes the generated
+;; %gen-ext-init.h (see `common`).
+;;
+;; The standalone (.rebx) targets below clear `host-files`, splice the block
+;; back in, and hand the collected list to `files` - a standalone library is
+;; not part of the host, so nothing there needs collecting.
+include-ext-xtest: [
+	host-files: [
+		%extensions/xtest/xtest.c
+		%extensions/xtest/xtest-commands.c
+		%extensions/xtest/gen-xtest.c
+	]
 	do %make/tools/make-extension.r3 "${NEST_ROOT}/src/extensions/xtest/xtest.reb"
 ]
 
-ext-matrix-files: [
-	%extensions/matrix/matrix.c
-	%extensions/matrix/matrix-commands.c
-	%extensions/matrix/gen-matrix.c
-]
-gen-ext-matrix: [
+include-ext-matrix: [
+	host-files: [
+		%extensions/matrix/matrix.c
+		%extensions/matrix/matrix-commands.c
+		%extensions/matrix/gen-matrix.c
+	]
 	do %make/tools/make-extension.r3 "${NEST_ROOT}/src/extensions/matrix/matrix.reb"
 ]
 
-ext-easing: [
-	clean: [
-		%extensions/sqlite/easing-extension.c
-	]
-	files: [
+include-ext-easing: [
+	host-files: [
 		%extensions/easing/easing.c            ;; the AHEasing library itself
 		%extensions/easing/easing-extension.c  ;; RX_Init / RX_Call entry points
 		%extensions/easing/easing-commands.c   ;; one function per command
@@ -1356,27 +1370,25 @@ ext-easing: [
 	]
 	do %make/tools/make-extension.r3 "${NEST_ROOT}/src/extensions/easing/easing.reb"
 ]
-ext-sqlite: [
-	clean: [
-		%extensions/sqlite/gen-sqlite.c
-	]
-	files: [
+include-ext-sqlite: [
+	host-files: [
 		%extensions/sqlite/sqlite3.c
 		%extensions/sqlite/sqlite-vec.c
 		%extensions/sqlite/sqlite.c
 		%extensions/sqlite/sqlite-commands.c
 		%extensions/sqlite/gen-sqlite.c
 	]
+	mezz-prot-files: %mezz/prot-sqlite.reb
 	define: SQLITE_CORE
 	do %make/tools/make-extension.r3 "${NEST_ROOT}/src/extensions/sqlite/sqlite.reb"
 ]
 
-ext-miniaudio: [
-	files: [
+include-ext-miniaudio: [
+	host-files: [
 		%extensions/miniaudio/miniaudio.c
 		%extensions/miniaudio/miniaudio-commands.c
-		%extensions/miniaudio/gen-miniaudio.c
 		%extensions/miniaudio/miniaudio-extension.c
+		%extensions/miniaudio/gen-miniaudio.c
 	]
 	#if Posix? [
 		cflag: -msse2
@@ -1393,18 +1405,12 @@ ext-miniaudio: [
 	do %make/tools/make-extension.r3 "${NEST_ROOT}/src/extensions/miniaudio/miniaudio.reb"
 ]
 
-;; embedded into the host
-include-ext-xtest:  [ host-files: :ext-xtest-files  define: INCLUDE_EXT_XTEST  :gen-ext-xtest  ]
-include-ext-matrix: [ host-files: :ext-matrix-files define: INCLUDE_EXT_MATRIX :gen-ext-matrix ]
-include-ext-sqlite: [ mezz-prot-files: %mezz/prot-sqlite.reb :ext-sqlite define: INCLUDE_EXT_SQLITE ]
-include-ext-miniaudio: [ :ext-miniaudio define: INCLUDE_EXT_MINIAUDIO ]
-include-ext-easing: [ :ext-easing define: INCLUDE_EXT_EASING ]
-
 ;; standalone libraries
-make-ext-xtest:  [ files: only :ext-xtest-files  :make-ext :gen-ext-xtest  ]
-make-ext-matrix: [ files: only :ext-matrix-files :make-ext :gen-ext-matrix ]
-make-ext-sqlite: [ files: none :ext-sqlite :make-ext ]
-
+make-ext-easing:    [ host-files: _ :include-ext-easing    files: only :host-files :make-ext ]
+make-ext-xtest:     [ host-files: _ :include-ext-xtest     files: only :host-files :make-ext ]
+make-ext-matrix:    [ host-files: _ :include-ext-matrix    files: only :host-files :make-ext ]
+make-ext-miniaudio: [ host-files: _ :include-ext-miniaudio files: only :host-files :make-ext ]
+make-ext-sqlite:    [ host-files: _ :include-ext-sqlite    files: only :host-files :make-ext ]
 
 eggs: [
 	#if Windows? [
@@ -2162,9 +2168,13 @@ eggs: [
 		:make-ext-test
 	]
 
-	"XTest extension 32bit" [ name: %xtest-x86.rebx :arch-x86 :make-ext-xtest ]
-	"XTest extension 64bit" [ name: %xtest-x64.rebx :arch-x64 :make-ext-xtest ]
-	"XTest extension ARM 64bit" [ name: %xtest-arm64.rebx :arch-arm64 :make-ext-xtest ]
+	"XTest extension 32bit"      [ name: %xtest-x86.rebx    :arch-x86   :make-ext-xtest ]
+	"XTest extension 64bit"      [ name: %xtest-x64.rebx    :arch-x64   :make-ext-xtest ]
+	"XTest extension ARM 64bit"  [ name: %xtest-arm64.rebx  :arch-arm64 :make-ext-xtest ]
+
+	"Easing extension 32bit"     [ name: %easing-x86.rebx   :arch-x86   :make-ext-easing ]
+	"Easing extension 64bit"     [ name: %easing-x64.rebx   :arch-x64   :make-ext-easing ]
+	"Easing extension ARM 64bit" [ name: %easing-arm64.rebx :arch-arm64 :make-ext-easing ]
 
 	"Matrix extension 32bit"     [ name: %matrix-x86.rebx   :arch-x86   :make-ext-matrix ]
 	"Matrix extension 64bit"     [ name: %matrix-x64.rebx   :arch-x64   :make-ext-matrix ]
@@ -2173,6 +2183,10 @@ eggs: [
 	"SQLite extension 32bit"     [ name: %sqlite-x86.rebx   :arch-x86   :make-ext-sqlite ]
 	"SQLite extension 64bit"     [ name: %sqlite-x64.rebx   :arch-x64   :make-ext-sqlite ]
 	"SQLite extension ARM 64bit" [ name: %sqlite-arm64.rebx :arch-arm64 :make-ext-sqlite ]
+
+	"MiniAudio extension 32bit"     [ name: %miniaudio-x86.rebx   :arch-x86   :make-ext-miniaudio ]
+	"MiniAudio extension 64bit"     [ name: %miniaudio-x64.rebx   :arch-x64   :make-ext-miniaudio ]
+	"MiniAudio extension ARM 64bit" [ name: %miniaudio-arm64.rebx :arch-arm64 :make-ext-miniaudio ]
 
 	"Amalgamate extension include file" [
 		do %make/tools/amalgamate-ext.r3
