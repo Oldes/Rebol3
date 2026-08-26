@@ -1340,6 +1340,7 @@ make-ext: [
 ;; back in, and hand the collected list to `files` - a standalone library is
 ;; not part of the host, so nothing there needs collecting.
 include-ext-xtest: [
+	clean: %extensions/xtest/xtest.c
 	host-files: [
 		%extensions/xtest/xtest.c
 		%extensions/xtest/xtest-commands.c
@@ -1349,6 +1350,7 @@ include-ext-xtest: [
 ]
 
 include-ext-matrix: [
+	clean: %extensions/matrix/matrix.c
 	host-files: [
 		%extensions/matrix/matrix.c
 		%extensions/matrix/matrix-commands.c
@@ -1358,6 +1360,7 @@ include-ext-matrix: [
 ]
 
 include-ext-easing: [
+	clean: %extensions/easing/easing-extension.c  ;; always recompile (contains Rebol code)
 	host-files: [
 		%extensions/easing/easing.c            ;; the AHEasing library itself
 		%extensions/easing/easing-extension.c  ;; RX_Init / RX_Call entry points
@@ -1371,7 +1374,7 @@ include-ext-easing: [
 	do %make/tools/make-extension.r3 "${NEST_ROOT}/src/extensions/easing/easing.reb"
 ]
 include-ext-sqlite: [
-	clean: %extensions/sqlite/sqlite.c
+	clean: %extensions/sqlite/sqlite.c ;; always recompile (contains Rebol code)
 	host-files: [
 		%extensions/sqlite/sqlite3.c
 		%extensions/sqlite/sqlite-vec.c
@@ -1384,6 +1387,7 @@ include-ext-sqlite: [
 ]
 
 include-ext-miniaudio: [
+	clean: %extensions/miniaudio/miniaudio-extension.c ;; always recompile (contains Rebol code)
 	host-files: [
 		%extensions/miniaudio/miniaudio.c
 		%extensions/miniaudio/miniaudio-commands.c
