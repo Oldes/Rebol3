@@ -1,7 +1,7 @@
 REBOL [
 	Title:   "Rebol SQLite Extension"
 	Name:    sqlite
-	Version: 3.53.4.2
+	Version: 3.53.4.3
 	Needs:   3.22.5
 	Author:  @Oldes
 	License: MIT
@@ -52,7 +52,7 @@ typedef struct reb_sqlite_stmt {
 
 ;; ---------------------------------------------------------------------------
 ;; Rebol sources merged into the module's mezzanine section at generation time.
-;reb-include: [%sqlite-scheme.reb]
+reb-include: [%sqlite-scheme.reb]
 
 ;; ---------------------------------------------------------------------------
 ;; Handle types registered by this extension.

@@ -6,6 +6,7 @@ Rebol [
 	author: "Oldes"
 	needs:   [
 		3.13.1 ;; using system/options/modules as extension location
+		sqlite
 	]
 ]
 
@@ -13,15 +14,15 @@ sys/make-scheme [
 	title: "SQLite database scheme"
 	name:  'sqlite
 	spec:   make system/standard/port-spec-file []
-	sqlite: system/modules/sqlite
+	sqlite: _ ;; will be set when opening a port
 
 	actor: [
 		open: func [
-			port[port! url!]
+			port [port!]
 			/new
 			/local path
 		][	
-			;? port/spec
+			if open? port [ return port ]
 			path: rejoin [
 				any [select port/spec 'path   %./]
 				any [select port/spec 'target %.db]
@@ -48,6 +49,10 @@ sys/make-scheme [
 		]
 		
 		open?: func [port [port!]][
+			;; Init sqlite extension if needed.
+			unless module? sqlite [
+				sqlite: import 'sqlite
+			]
 			;; port/state is none until the port is opened, so it must be
 			;; checked first - `port/state/db` alone throws on a fresh port.
 			all [

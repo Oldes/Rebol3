@@ -1371,6 +1371,7 @@ include-ext-easing: [
 	do %make/tools/make-extension.r3 "${NEST_ROOT}/src/extensions/easing/easing.reb"
 ]
 include-ext-sqlite: [
+	clean: %extensions/sqlite/sqlite.c
 	host-files: [
 		%extensions/sqlite/sqlite3.c
 		%extensions/sqlite/sqlite-vec.c
@@ -1378,7 +1379,6 @@ include-ext-sqlite: [
 		%extensions/sqlite/sqlite-commands.c
 		%extensions/sqlite/gen-sqlite.c
 	]
-	mezz-prot-files: %mezz/prot-sqlite.reb
 	define: SQLITE_CORE
 	do %make/tools/make-extension.r3 "${NEST_ROOT}/src/extensions/sqlite/sqlite.reb"
 ]
