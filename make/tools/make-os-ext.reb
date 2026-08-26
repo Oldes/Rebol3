@@ -74,7 +74,7 @@ func-header: [
 			| 
 			none
 		]
-	] | to "/***"
+	] | thru "/*"
 ]
 
 process: func [file] [
