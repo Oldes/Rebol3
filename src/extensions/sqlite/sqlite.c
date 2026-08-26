@@ -105,26 +105,4 @@ RXIEXT int RX_Call(int cmd, RXIFRM *frm, void *ctx) {
 	return Sqlite_RX_Call(cmd, frm, ctx);
 }
 
-#else
-
-/***********************************************************************
-**  Embedded into the host
-***********************************************************************/
-
-// Called from host-main.c under #ifdef INCLUDE_EXT_SQLITE.
-//
-// Only registers the module with the boot-exts list - no version or
-// alignment check (same binary, true by construction) and no handle
-// registration, which Sqlite_Init() does when the module initializes.
-/***********************************************************************
-**
-*/	RL_API void OS_Init_Ext_SQLite(void)
-/*
-**	Initialize embedded SQLite extension module
-**
-***********************************************************************/
-{
-	RL = RL_Extend(b_cast(init_block), (RXICAL)&Sqlite_RX_Call);
-}
-
 #endif

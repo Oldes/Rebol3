@@ -68,23 +68,4 @@ RXIEXT int RX_Call(int cmd, RXIFRM *frm, void *ctx) {
 	return Easing_RX_Call(cmd, frm, ctx);
 }
 
-#else
-
-/***********************************************************************
-**  Embedded into the host
-***********************************************************************/
-
-// Called from host-main.c under #ifdef INCLUDE_EXT_EASING.
-// No version or alignment check: same binary, true by construction.
-/***********************************************************************
-**
-*/	RL_API void OS_Init_Ext_Easing(void)
-/*
-**	Initialize embedded easing module
-**
-***********************************************************************/
-{
-	RL = RL_Extend(b_cast(init_block), (RXICAL)&Easing_RX_Call);
-}
-
 #endif

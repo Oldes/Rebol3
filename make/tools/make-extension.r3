@@ -1,7 +1,7 @@
 REBOL [
 	Title:   "Universal Rebol extension code generator"
 	Name:    make-extension
-	Version: 0.4.1
+	Version: 0.5.0
 	Author:  @Oldes
 	Purpose: {
 		Generates the C header and command-table sources of a Rebol
@@ -123,6 +123,12 @@ build-extension: function [
 	;; generated `_init` command, so it runs when the module body evaluates
 	;; (deferred under `Options: [delay]`), not from the entry points.
 	init-def:     ajoin ["int " ext-cap1 "_Init(void); // returns TRUE / FALSE"]
+
+	;; Entry point of the embedded build. Generated, not hand-written: the
+	;; body is the same for every extension, and deriving the name here is
+	;; what lets the build collect it without a per-extension declaration.
+	os-init-name: ajoin ["OS_Init_Ext_" ext-cap1]
+	init-block-name: ajoin [ext-id "_init_block"]
 	cmd-max:      ajoin ["CMD_" ext-caps "_MAX"]
 	header-file:  ajoin [%gen- ext-name %.h]
 	table-file:   ajoin [%gen- ext-name %.c]
@@ -314,6 +320,9 @@ $includes
 #endif
 
 $init-def
+#ifndef REB_EXT
+RL_API void $os-init-name(void);
+#endif
 $c-header
 enum ext_commands {$enu-commands
 };
@@ -329,6 +338,10 @@ int $call-name(int cmd, RXIFRM *frm, void *ctx);
 	table-template: {$logo
 #include "$header-file"
 
+// Module header, command specs and mezzanine code. Not const: RL_Extend()
+// takes a REBYTE*.
+static char *$init-block-name = $init-macro;
+
 $word-globals
 $typedef-name $table-name[] = {
 $cmd-dispatch};
@@ -337,6 +350,23 @@ int $call-name(int cmd, RXIFRM *frm, void *ctx) {
 	if (cmd < 0 || cmd >= $cmd-max) return RXR_NO_COMMAND;
 	return $table-name[cmd](frm, ctx);
 }
+
+#ifndef REB_EXT
+/***********************************************************************
+**
+*/	RL_API void $os-init-name(void)
+/*
+**	Registers the embedded extension with the boot-exts list.
+**
+**	Nothing else happens here - $ext-cap1_Init() does the real setup when
+**	the module body evaluates, so that `Options: [delay]` can postpone it
+**	until the module is first imported.
+**
+***********************************************************************/
+{
+	RL = RL_Extend(b_cast($init-block-name), (RXICAL)&$call-name);
+}
+#endif
 }
 
 
@@ -356,6 +386,9 @@ int $call-name(int cmd, RXIFRM *frm, void *ctx) {
 		word-globals:  (word-globals)
 		init-fn:       (init-fn)
 		init-def:      (init-def)
+		os-init-name:  (os-init-name)
+		init-block-name: (init-block-name)
+		ext-cap1:      (ext-cap1)
 		typedef-name:  (typedef-name)
 		table-name:    (table-name)
 		call-name:     (call-name)

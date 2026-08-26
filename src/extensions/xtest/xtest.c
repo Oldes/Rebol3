@@ -83,26 +83,4 @@ RXIEXT int RX_Call(int cmd, RXIFRM *frm, void *ctx) {
 	return Xtest_RX_Call(cmd, frm, ctx);
 }
 
-#else
-
-/***********************************************************************
-**  Embedded into the host
-***********************************************************************/
-
-// Called from host-main.c under #ifdef INCLUDE_EXT_XTEST.
-//
-// Only registers the module with the boot-exts list - no version or
-// alignment check (same binary, true by construction) and no handle
-// registration, which Xtest_Init() does when the module initializes.
-/***********************************************************************
-**
-*/	RL_API void OS_Init_Ext_XTest(void)
-/*
-**	Initialize embedded extension test module
-**
-***********************************************************************/
-{
-	RL = RL_Extend(b_cast(init_block), (RXICAL)&Xtest_RX_Call);
-}
-
 #endif

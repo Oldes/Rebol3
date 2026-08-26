@@ -78,29 +78,4 @@ RXIEXT int RX_Call(int cmd, RXIFRM *frm, void *ctx) {
 	return Matrix_RX_Call(cmd, frm, ctx);
 }
 
-#else
-
-/***********************************************************************
-**  Embedded into the host
-***********************************************************************/
-
-// Called from host-main.c under #ifdef INCLUDE_EXT_MATRIX.
-//
-// No version or struct-alignment check here: the extension and the host
-// are the same binary, so both are true by construction.
-//
-// Nothing here uses the exported RX_* names - RL_Extend() takes the
-// dispatcher as a pointer, so the prefixed name is passed directly and
-// cannot collide with any other embedded extension.
-/***********************************************************************
-**
-*/	RL_API void OS_Init_Ext_Matrix(void)
-/*
-**	Initialize embedded extension test module
-**
-***********************************************************************/
-{
-	RL = RL_Extend(b_cast(init_block), (RXICAL)&Matrix_RX_Call);
-}
-
 #endif

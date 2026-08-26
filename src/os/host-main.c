@@ -67,10 +67,10 @@
 #endif
 
 #ifdef INCLUDE_EXT_SQLITE
-void OS_Init_Ext_SQLite(void);
+void OS_Init_Ext_Sqlite(void);
 #endif
 #ifdef INCLUDE_EXT_MINIAUDIO
-void OS_Init_Ext_MiniAudio(void);
+void OS_Init_Ext_Miniaudio(void);
 #endif
 #ifdef INCLUDE_EXT_EASING
 void OS_Init_Ext_Easing(void);
@@ -360,13 +360,13 @@ int main(int argc, char **argv) {
 	OS_Init_Ext_Matrix();
 #endif
 #ifdef INCLUDE_EXT_SQLITE
-	OS_Init_Ext_SQLite();
+	OS_Init_Ext_Sqlite();
 #endif
 #ifdef INCLUDE_EXT_XTEST
-	OS_Init_Ext_XTest();
+	OS_Init_Ext_Xtest();
 #endif
 #ifdef INCLUDE_EXT_MINIAUDIO
-	OS_Init_Ext_MiniAudio();
+	OS_Init_Ext_Miniaudio();
 #endif
 #ifdef INCLUDE_EXT_EASING
 	OS_Init_Ext_Easing();

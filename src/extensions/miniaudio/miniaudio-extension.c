@@ -160,27 +160,4 @@ RXIEXT int RX_Call(int cmd, RXIFRM *frm, void *ctx) {
 	return Miniaudio_RX_Call(cmd, frm, ctx);
 }
 
-#else
-
-/***********************************************************************
-**  Embedded into the host
-***********************************************************************/
-
-// Called from host-main.c under #ifdef INCLUDE_EXT_MINIAUDIO.
-//
-// Only registers the module with the boot-exts list - no version or
-// alignment check (same binary, true by construction) and no handle
-// registration or audio startup, which Miniaudio_Init() does when the
-// module initializes.
-/***********************************************************************
-**
-*/	RL_API void OS_Init_Ext_MiniAudio(void)
-/*
-**	Initialize embedded MiniAudio extension
-**
-***********************************************************************/
-{
-	RL = RL_Extend(b_cast(init_block), (RXICAL)&Miniaudio_RX_Call);
-}
-
 #endif
