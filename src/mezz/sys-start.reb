@@ -56,6 +56,7 @@ start: func [
 	system/build/git:      ver/13
 	system/build/libc:     ver/14
 	system/build/os-version: ver/15
+	system/build/extension-abi: ver/16
 
 	if flags/verbose [system/options/log/rebol: 3] ;maximum log output for system messages
 

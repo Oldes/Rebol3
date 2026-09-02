@@ -19,6 +19,7 @@ stack-size: 4194304 ;= 4MB (4 * 1024 * 1024)
 optimize:   2
 
 version: 3.22.5
+extension-abi: 1
 remove-docstrings: off
 
 ;flags: "-ggdb3"
@@ -925,12 +926,6 @@ include-new-console: [
 	define: HAS_NEW_CONSOLE
 ]
 
-;- native tests:                                                                
-include-test-extension: [
-	host-files: %os/host-ext-test.c
-	define:     TEST_EXTENSIONS ;@@TODO: rename!
-]
-
 ;- native experimantal code:                                                    
 include-native-wav-codec: [
 	; native WAV codec was just a prove of concept, don't use it
@@ -1089,8 +1084,15 @@ include-rebol-bulk: [
 
 	config: INCLUDE_PNG_FILTER ; includes `filter` and `unfilter` natives
 
+	;- native extensions
+	:include-ext-easing
+	:include-ext-matrix
+	:include-ext-speak
+	:include-ext-sqlite
+	:include-ext-miniaudio
+	:include-ext-triangulate
 	;- for tests:
-	:include-test-extension
+	:include-ext-xtest
 	;- not recommanded:
 	;:include-native-wav-codec
 
@@ -1100,7 +1102,7 @@ include-rebol-bulk: [
 common: [
 	files: :core-files
 	clean: %core/b-init.c ;make-boot.reb modifies embedded native code, so b-init.c must be always recompiled
-
+	clean: %os/host-main.c
 	;define: :config
 	define: {REBOL_OPTIONS_FILE=\"gen-config.h\"} ;@@ TODO: should be auto-escaped!
 	define: UNICODE
@@ -1305,6 +1307,166 @@ make-ext-test: [
 	]
 ]
 
+;- native extensions -----------------------------------------------------------
+
+;; Everything shared by standalone extension libraries (.rebx)
+make-ext: [
+	include:  %build/          ;; for the amalgamated rebol-extension.h
+	define:   REB_EXT
+	flags:    [-O2 shared]
+	compiler: clang
+	#if Linux?   [ flag: -fPIC compiler: gcc ]
+	#if MacOS?   [ flag: fno-common :target-macos strip: off ]
+	#if OpenBSD? [ flag: -fPIC :target-openbsd ]
+	#if FreeBSD? [ flag: -fPIC :target-freebsd ]
+	#if ('NetBSD = system/platform) [ flag: -fPIC :target-netbsd ]
+	#if ('Turris = system/platform) [ flag: -fPIC :target-turris ]
+]
+
+;; Per-extension sources and generator invocation, referenced by both modes.
+;;
+;; NOTE: extension sources belong in `host-files`, not in `files`.
+;;
+;; make-os-ext.reb scans `host-files` for the OS_Init_Ext_* entry point which
+;; make-extension.r3 emits into gen-<name>.c, and collects them into
+;; %gen-ext-init.h - the header host-main.c uses to initialize every embedded
+;; extension. A source listed in `files` instead still compiles and links, but
+;; its entry point is never collected, so the extension is silently missing at
+;; run time.
+;;
+;; The generated gen-<name>.c is rewritten on every build, so it needs no
+;; `clean:` entry - only host-main.c does, because it includes the generated
+;; %gen-ext-init.h (see `common`).
+;;
+;; The standalone (.rebx) targets below clear `host-files`, splice the block
+;; back in, and hand the collected list to `files` - a standalone library is
+;; not part of the host, so nothing there needs collecting.
+include-ext-xtest: [
+	clean: %extensions/xtest/xtest.c
+	host-files: [
+		%extensions/xtest/xtest.c
+		%extensions/xtest/xtest-commands.c
+		%extensions/xtest/gen-xtest.c
+	]
+	do %make/tools/make-extension.r3 "${NEST_ROOT}/src/extensions/xtest/xtest.reb"
+]
+
+include-ext-matrix: [
+	clean: %extensions/matrix/matrix.c
+	host-files: [
+		%extensions/matrix/matrix.c
+		%extensions/matrix/matrix-commands.c
+		%extensions/matrix/gen-matrix.c
+	]
+	do %make/tools/make-extension.r3 "${NEST_ROOT}/src/extensions/matrix/matrix.reb"
+]
+
+include-ext-easing: [
+	clean: %extensions/easing/easing-extension.c  ;; always recompile (contains Rebol code)
+	host-files: [
+		%extensions/easing/easing.c            ;; the AHEasing library itself
+		%extensions/easing/easing-extension.c  ;; RX_Init / RX_Call entry points
+		%extensions/easing/easing-commands.c   ;; one function per command
+		%extensions/easing/gen-easing.c        ;; generated dispatch table
+	]
+	define: AH_EASING_USE_DBL_PRECIS
+	#if Windows? [
+		define: _USE_MATH_DEFINES
+	]
+	do %make/tools/make-extension.r3 "${NEST_ROOT}/src/extensions/easing/easing.reb"
+]
+include-ext-sqlite: [
+	clean: %extensions/sqlite/sqlite.c ;; always recompile (contains Rebol code)
+	host-files: [
+		%extensions/sqlite/sqlite3.c
+		%extensions/sqlite/sqlite-vec.c
+		%extensions/sqlite/sqlite.c
+		%extensions/sqlite/sqlite-commands.c
+		%extensions/sqlite/gen-sqlite.c
+	]
+	define: SQLITE_CORE
+	do %make/tools/make-extension.r3 "${NEST_ROOT}/src/extensions/sqlite/sqlite.reb"
+]
+
+include-ext-miniaudio: [
+	clean: %extensions/miniaudio/miniaudio-extension.c ;; always recompile (contains Rebol code)
+	host-files: [
+		%extensions/miniaudio/miniaudio.c
+		%extensions/miniaudio/miniaudio-commands.c
+		%extensions/miniaudio/miniaudio-extension.c
+		%extensions/miniaudio/gen-miniaudio.c
+	]
+	#if Posix? [
+		cflag: -msse2
+		cflag: -mavx2
+	]
+
+	#if macOS? [
+		define: DISABLE_MANUAL_TARGET_ORDER_BUILD_WARNING
+		define: MA_NO_RUNTIME_LINKING
+		define: MA_ENABLE_ONLY_SPECIFIC_BACKENDS
+		define: MA_ENABLE_COREAUDIO
+		frameworks: [CoreFoundation CoreAudio AudioToolbox]
+	]
+	do %make/tools/make-extension.r3 "${NEST_ROOT}/src/extensions/miniaudio/miniaudio.reb"
+]
+
+include-ext-speak: [
+	#if (any [Windows? MacOS?]) [
+		clean: %extensions/speak/speak.c ;; always recompile (contains Rebol code)
+		host-files: [
+			%extensions/speak/speak.c
+			%extensions/speak/speak-commands.c
+			%extensions/speak/gen-speak.c
+			#if Windows? [
+				%extensions/speak/speak-win.cpp
+			]
+			#if macOS? [
+				%extensions/speak/speak-mac.m
+			]
+		]
+		#if Windows? [
+			library: %sapi
+		]
+		#if macOS? [
+			cflags: -Wno-deprecated-declarations
+			frameworks: [AppKit]
+		]
+		do %make/tools/make-extension.r3 "${NEST_ROOT}/src/extensions/speak/speak.reb"
+	]
+]
+
+include-ext-triangulate: [
+	clean: %extensions/triangulate/triangulate.c ;; always recompile (contains Rebol code)
+	host-files: [
+		%extensions/triangulate/triangle.c
+		%extensions/triangulate/triangulate.c
+		%extensions/triangulate/triangulate-commands.c
+		%extensions/triangulate/gen-triangulate.c
+	]
+	defines: [
+		TRILIBRARY
+		NO_TIMER
+		REDUCED 	;; to eliminate all features that are primarily of research interest
+		;CPU86
+		;CDT_ONLY   ;; includes only constrained Delaunay triangulation algorithm
+	]
+	#if Posix? [
+		define: ANSI_DECLARATORS
+	]
+	do %make/tools/make-extension.r3 "${NEST_ROOT}/src/extensions/triangulate/triangulate.reb"
+]
+
+
+;; standalone libraries
+make-ext-easing:      [ host-files: _ :include-ext-easing      files: only :host-files :make-ext ]
+make-ext-xtest:       [ host-files: _ :include-ext-xtest       files: only :host-files :make-ext ]
+make-ext-matrix:      [ host-files: _ :include-ext-matrix      files: only :host-files :make-ext ]
+make-ext-miniaudio:   [ host-files: _ :include-ext-miniaudio   files: only :host-files :make-ext ]
+make-ext-speak:       [ host-files: _ :include-ext-speak       files: only :host-files :make-ext ]
+make-ext-sqlite:      [ host-files: _ :include-ext-sqlite      files: only :host-files :make-ext ]
+make-ext-triangulate: [ host-files: _ :include-ext-triangulate files: only :host-files :make-ext ]
+
 eggs: [
 	#if Windows? [
 ;		"Pre-make (minimum included)" [
@@ -1382,7 +1544,6 @@ eggs: [
 			:target-windows
 			:make-x86-host
 			define: REB_VIEW
-			define: TEST_EXTENSIONS
 		]
 
 		"Rebol/Core windows-x64 shared library" [
@@ -1410,7 +1571,6 @@ eggs: [
 			:target-windows
 			:make-x64-host
 			define: REB_VIEW
-			define: TEST_EXTENSIONS
 		]
 	]
 	#if Linux? [
@@ -1817,7 +1977,6 @@ eggs: [
 			:target-macos
 			:include-rebol-bulk
 			:make-arm64-host
-			define: TEST_EXTENSIONS
 		]
 	]
 	#if OpenBSD? [
@@ -2063,7 +2222,39 @@ eggs: [
 		:arch-x64
 		:make-ext-test
 	]
+
+	"XTest extension 32bit"      [ name: %xtest-x86.rebx    :arch-x86   :make-ext-xtest ]
+	"XTest extension 64bit"      [ name: %xtest-x64.rebx    :arch-x64   :make-ext-xtest ]
+	"XTest extension ARM 64bit"  [ name: %xtest-arm64.rebx  :arch-arm64 :make-ext-xtest ]
+
+	"Easing extension 32bit"     [ name: %easing-x86.rebx   :arch-x86   :make-ext-easing ]
+	"Easing extension 64bit"     [ name: %easing-x64.rebx   :arch-x64   :make-ext-easing ]
+	"Easing extension ARM 64bit" [ name: %easing-arm64.rebx :arch-arm64 :make-ext-easing ]
+
+	"Matrix extension 32bit"     [ name: %matrix-x86.rebx   :arch-x86   :make-ext-matrix ]
+	"Matrix extension 64bit"     [ name: %matrix-x64.rebx   :arch-x64   :make-ext-matrix ]
+	"Matrix extension ARM 64bit" [ name: %matrix-arm64.rebx :arch-arm64 :make-ext-matrix ]
+
+	"SQLite extension 32bit"     [ name: %sqlite-x86.rebx   :arch-x86   :make-ext-sqlite ]
+	"SQLite extension 64bit"     [ name: %sqlite-x64.rebx   :arch-x64   :make-ext-sqlite ]
+	"SQLite extension ARM 64bit" [ name: %sqlite-arm64.rebx :arch-arm64 :make-ext-sqlite ]
+
+	"MiniAudio extension 32bit"     [ name: %miniaudio-x86.rebx   :arch-x86   :make-ext-miniaudio ]
+	"MiniAudio extension 64bit"     [ name: %miniaudio-x64.rebx   :arch-x64   :make-ext-miniaudio ]
+	"MiniAudio extension ARM 64bit" [ name: %miniaudio-arm64.rebx :arch-arm64 :make-ext-miniaudio ]
+
+#if (any [Windows? MacOS?]) [
+	"Speak extension 32bit"     [ name: %speak-x86.rebx   :arch-x86   :make-ext-speak ]
+	"Speak extension 64bit"     [ name: %speak-x64.rebx   :arch-x64   :make-ext-speak ]
+	"Speak extension ARM 64bit" [ name: %speak-arm64.rebx :arch-arm64 :make-ext-speak ]
+]
+
+	"Triangulate extension 32bit"     [ name: %triangulate-x86.rebx   :arch-x86   :make-ext-triangulate ]
+	"Triangulate extension 64bit"     [ name: %triangulate-x64.rebx   :arch-x64   :make-ext-triangulate ]
+	"Triangulate extension ARM 64bit" [ name: %triangulate-arm64.rebx :arch-arm64 :make-ext-triangulate ]
+
 	"Amalgamate extension include file" [
+		name: %rebol-extension.h
 		do %make/tools/amalgamate-ext.r3
 	]
 	

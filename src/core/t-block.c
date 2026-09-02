@@ -857,6 +857,7 @@ pick_it:
 */
 
 	case A_TAKE:
+		if (IS_FIXED_SIZE_VALUE(value)) Trap0(RE_FIXED_SIZED_SERIES);
 		if (D_REF(ARG_TAKE_ALL)) {
 			if (tail <= index) goto zero_blk;
 			len = tail - index;
@@ -955,6 +956,7 @@ zero_blk:
 	case A_APPEND:
 	case A_INSERT:
 	case A_CHANGE:
+		// Length modification is protected later, change is allowed when length is not modified.
 		// Length of target (may modify index): (arg can be anything)
 		len = Partial1((action == A_CHANGE) ? value : arg, DS_ARG(AN_LENGTH));
 		index = VAL_INDEX(value);
@@ -966,6 +968,7 @@ zero_blk:
 		break;
 
 	case A_CLEAR:
+		if (IS_FIXED_SIZE_VALUE(value)) Trap0(RE_FIXED_SIZED_SERIES);
 		if (index < tail) {
 			if (index == 0) Reset_Series(ser);
 			else {
@@ -1005,6 +1008,7 @@ zero_blk:
 	//-- Special actions:
 
 	case A_TRIM:
+		if (IS_FIXED_SIZE_VALUE(value)) Trap0(RE_FIXED_SIZED_SERIES);
 		args = Find_Refines(ds, ALL_TRIM_REFS);
 		Trim_Block(ser, index, args);
 		break;

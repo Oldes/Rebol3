@@ -172,6 +172,7 @@ limit
 case
 no-case
 accept
+capture
 break
 ; match words:
 skip
@@ -393,3 +394,4 @@ port-state!
 population-deviation
 sample-deviation
 sample-variance
+element-type

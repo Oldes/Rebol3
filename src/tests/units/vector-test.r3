@@ -37,12 +37,17 @@ Rebol [
 	data: [1 2 3 4]
 	size: 2
 	--assert {#(uint8! [1 2 3 4])}   == mold make vector! [uint8! :data]
-	--assert {#(uint8! [1 2])}       == mold make vector! [uint8! :size :data]
+	--assert {#(uint8! [1 2])}       == mold make vector! [uint8! :size :data] ;; truncates
 	index: 3
 	--assert {#(uint8! [3 4])}       == mold make vector! [uint8! :data :index]
 	size: 4
 	--assert {#(uint8! [3 4])}       == mold make vector! [uint8! :size [1 2 3 4 5] :index]
 	--assert {#(uint8! [1 2 3 4] 3)} == mold/all make vector! [uint8! :size [1 2 3 4 5] :index]
+
+	;; Using large data
+	data: append/dup copy [] 1 10000
+	--assert {#(uint8! [1 1])}   == mold make vector! [uint8! 2 :data]
+	--assert {#(uint8! 2x2 [1 1 1 1])}   == mold/flat make vector! [uint8! 2x2 :data]
 
 --test-- "Make vector using direct values"
 	--assert (make vector! [1 2 3 4]) == #(int64! [1 2 3 4])
@@ -52,6 +57,12 @@ Rebol [
 	--assert #(uint8! []) == transcode/one "#(uint8!)"
 	--assert #(uint32! []) == transcode/one "#(uint32!)"
 	--assert #(float32! []) == transcode/one "#(float32!)"
+
+--test-- "Make vector with negative size is a range error"
+	--assert all [error? e: try [make vector! [u8! -5]]   e/id = 'out-of-range]
+	--assert all [error? e: try [make vector! -5]         e/id = 'out-of-range]
+	--assert all [error? e: try [make vector! [u8! -2x3]] e/id = 'out-of-range]
+	--assert all [error? e: try [make vector! [u8! 2x-3]] e/id = 'out-of-range]
 
 --test-- "Make vector from binary"
 	--assert #(uint8! []) == attempt [to vector! #{}]
@@ -186,6 +197,13 @@ Rebol [
     3 4
 ]}
 
+--test-- "MOLD/flat on shaped vector"
+	v: #(u8! 3x2 [1 2 3 4 5 6])
+	--assert (mold/flat v) == "#(uint8! 3x2 [1 2 3 4 5 6])"
+	--assert (mold/all/flat v) == "#(uint8! 3x2 [1 2 3 4 5 6])"
+	--assert not find mold/flat v "^/"
+
+
 --test-- "QUERY on vector as object"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2352
 	v: make vector! [unsigned integer! 16 2]
@@ -198,7 +216,7 @@ Rebol [
 	--assert o/minimum = 0
 	--assert o/maximum = 0
 --test-- "QUERY on vector"
-	--assert [signed type size length minimum maximum range sum mean median variance sample-variance population-deviation sample-deviation] = query v none
+	--assert [element-type signed type size length shape shaped minimum maximum range sum mean median variance sample-variance population-deviation sample-deviation] = query v none
 	--assert [16 integer!] = query v [:size :type]
 	--assert block? b: query v [signed length]
 	--assert all [not b/signed b/length = 2]
@@ -209,8 +227,12 @@ Rebol [
 	--assert  2 = reflect v 'length
 	--assert 'integer! = reflect v 'type
 	--assert false = reflect v 'signed
-	--assert [unsigned integer! 16 2] = reflect v 'spec
-	--assert [unsigned integer! 16 2] = spec-of v
+	--assert [uint16! 2] = reflect v 'spec
+	--assert [uint16! 2] = spec-of v
+	--assert [uint8! 2x2] = spec-of #(u8! 2x2)
+	;; signed and float spellings round-trip too
+	--assert (spec-of #(i16! 2x2 [1 2 3 4])) = [int16! 2x2]
+	--assert (spec-of #(f32! 2x2 [1 2 3 4])) = [float32! 2x2]
 --test-- "ACCESSORS on vector"
 	--assert 16 = v/size
 	--assert  2 = v/length
@@ -252,6 +274,54 @@ Rebol [
 	--assert #(f32! [1.0 3.0 2.0]) = head reverse next #(f32! [1 2 3])
 	--assert #(f64! [1.0 3.0 2.0]) = head reverse next #(f64! [1 2 3])
 ===end-group===
+
+
+===start-group=== "VECTOR from binary data"
+
+	--test-- "binary is copied verbatim in native byte order"
+		;; the raw COPY_MEM means TO BINARY! round-trips exactly
+		v: #(u16! [1 2 3])
+		--assert v == make vector! compose [u16! (to binary! v)]
+		v: #(i32! [-1 2 3])
+		--assert v == make vector! compose [i32! (to binary! v)]
+		v: #(f64! [1.5 -2.5])
+		--assert v == make vector! compose [f64! (to binary! v)]
+		;; ...and via the compact syntax
+		--assert (transcode/one {#(u16! #{010002000300})}) == make vector! [u16! #{010002000300}]
+
+	--test-- "binary length is clamped to the allocation"
+		--assert 2 = length? v: make vector! [u16! 2 #{010002000300}]
+		--assert v == #(u16! [1 2])
+		--assert 4 = length? v: make vector! [u8! 2x2 #{0102030405}]
+		--assert v == #(u8! 2x2 [1 2 3 4])
+
+	--test-- "binary shorter than one element is rejected"
+		;; APPEND already traps on this -- the constructors must agree
+		--assert all [error? e: try [append #(i16! [1 2]) #{03}]  e/id = 'invalid-data]
+		--assert error? try [make vector! [i16! #{03}]]
+		--assert error? try [make vector! [i32! #{0102}]]
+		--assert error? try [make vector! [f64! #{01020304}]]
+		--assert error? transcode/one/error {#(i16! #{03})}
+		;; but an empty binary stays legal
+		--assert #(uint8! [])  == make vector! [u8! #{}]
+		--assert #(uint16! []) == make vector! [u16! #{}]
+		--assert #(uint8! [])  == to vector! #{}
+
+	--test-- "partial trailing bytes are dropped, not rejected"
+		;; 3 bytes into a u16! vector -- one whole element, one stray byte
+		--assert 1 = length? v: make vector! [u16! #{010002}]
+		--assert v == #(u16! [1])
+
+	--test-- "shape and binary data together"
+		--assert (make vector! [u8! 2x2 #{01020304}]) == #(u8! 2x2 [1 2 3 4])
+		--assert all [
+			m: make vector! [u16! 2x2 #{0100020003000400}]
+			m/shape = 2x2
+			(pick m 2x2) == 4
+		]
+
+===end-group===
+
 
 ===start-group=== "VECTOR compact construction"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2396
@@ -617,6 +687,17 @@ Rebol [
 	--assert (#(uint64! [1 2 3 4]) % #(u64! [2 2 2 2])) == #(uint64! [1 0 1 0])
 	--assert (#(float32! [1 2 3 4]) % #(float32! [2 2 2 2])) == #(float32! [1 0 1 0])
 	--assert (#(float64! [1 2 3 4]) % #(float64! [2 2 2 2])) == #(float64! [1 0 1 0])
+
+--test-- "operations on empty vectors"
+	--assert (copy #(u32! [])) == #(u32! [])
+	--assert (copy #(f64! [])) == #(f64! [])
+	--assert 0 = length? copy #(u8! [])
+	--assert (copy/part #(u32! [1 2 3]) 0) == #(u32! [])
+	--assert (#(u32! []) + 1) == #(u32! [])
+	--assert (#(u32! []) * 2) == #(u32! [])
+	--assert (#(u32! []) + #(u32! [])) == #(u32! [])
+	--assert 0 = length? take/part #(u32! []) 5
+
 ===end-group===
 
 
@@ -717,11 +798,24 @@ Rebol [
 
 ===start-group=== "VECTOR statictics"
 ;@@ https://github.com/Oldes/Rebol-issues/issues/2648
-	all-modes: [minimum maximum range sum mean median variance sample-variance population-deviation sample-deviation]
-	all-get-modes: [:minimum :maximum :range :sum :mean :median :variance :sample-variance :population-deviation :sample-deviation]
+	--test-- "Query modes"
+		all-modes: query #(u8![]) none
+		--assert all-modes
+		== [element-type signed type size length shape shaped minimum maximum range sum mean median variance sample-variance population-deviation sample-deviation]
+		all-get-modes: collect [foreach m all-modes [keep to get-word! m]]
+		--assert all-get-modes
+		== [:element-type :signed :type :size :length :shape :shaped :minimum :maximum :range :sum :mean :median :variance :sample-variance :population-deviation :sample-deviation]
+	
 	--test-- "int8! vector statictics"
 	v: #(int8! [-2 -1 1 2 4])
 	--assert (query v all-modes) == [
+		element-type: int8!
+	    signed: #(true)
+	    type: integer!
+	    size: 8
+	    length: 5
+	    shape: 5x1
+	    shaped: #(false)
 	    minimum: -2
 	    maximum: 4
 	    range: 6
@@ -734,22 +828,19 @@ Rebol [
 	    sample-deviation: 2.38746727726266
 	]
 
-	--assert (query v all-get-modes) == [
-	    -2
-	    4
-	    6
-	    4
-	    0.8
-	    1.0
-	    4.56
-	    5.7
-	    2.13541565040626
-	    2.38746727726266
-	]
+	--assert (query v all-get-modes) 
+	== [int8! #(true) integer! 8 5 5x1 #(false) -2 4 6 4 0.8 1.0 4.56 5.7 2.13541565040626 2.38746727726266]
 
 	--test-- "uint64! vector statictics"
 	v: #(uint64! [4 9 11 12 17])
 	--assert (query v all-modes) == [
+		element-type: uint64!
+	    signed: #(false)
+	    type: integer!
+	    size: 64
+	    length: 5
+	    shape: 5x1
+	    shaped: #(false)
 	    minimum: 4
 	    maximum: 17
 	    range: 13
@@ -762,22 +853,19 @@ Rebol [
 	    sample-deviation: 4.72228758124704
 	]
 
-	--assert (query v all-get-modes) == [
-	    4
-	    17
-	    13
-	    53
-	    10.6
-	    11.0
-	    17.84
-	    22.3
-	    4.22374241638857
-	    4.72228758124704
-	]
+	--assert (query v all-get-modes) 
+	== [uint64! #(false) integer! 64 5 5x1 #(false) 4 17 13 53 10.6 11.0 17.84 22.3 4.22374241638857 4.72228758124704]
 
 	--test-- "float64! vector statictics"
 	v: #(float64! [1.62 1.72 1.64 1.7 1.78 1.64 1.65 1.64 1.66 1.74])
 	--assert (query v all-modes) == [
+		element-type: float64!
+	    signed: #(true)
+	    type: decimal!
+	    size: 64
+	    length: 10
+	    shape: 10x1
+	    shaped: #(false)
 	    minimum: 1.62
 	    maximum: 1.78
 	    range: 0.16
@@ -790,24 +878,21 @@ Rebol [
 	    sample-deviation: 0.0530094331227943
 	]
 
-	--assert (query v all-get-modes) == [
-	    1.62
-	    1.78
-	    0.16
-	    16.79
-	    1.679
-	    1.655
-	    0.002529
-	    0.00281
-	    0.0502891638427207
-	    0.0530094331227943
-	]
+	--assert (query v all-get-modes)
+	== [float64! #(true) decimal! 64 10 10x1 #(false) 1.62 1.78 0.16 16.79 1.679 1.655 0.002529 0.00281 0.0502891638427207 0.0530094331227943]
 
 	--test-- "QUERY on empty vector"
-	--assert (query #(u8! []) all-get-modes) == [_ _ _ _ _ _ _ _ _ _]
+	--assert (query #(u8! []) all-get-modes) == [uint8! #(false) integer! 8 0 0x1 #(false) _ _ _ _ _ _ _ _ _ _]
 
 	--test-- "QUERY on single value vector"
 	--assert (query #(u8! [1])  all-modes) == [
+		element-type: uint8!
+	    signed: #(false)
+	    type: integer!
+	    size: 8
+	    length: 1
+	    shape: 1x1
+	    shaped: #(false)
 	    minimum: 1
 	    maximum: 1
 	    range: 0
@@ -819,7 +904,57 @@ Rebol [
 	    population-deviation: 0.0
 	    sample-deviation: _
 	]
-	--assert (query #(u8! [1]) all-get-modes) == [1 1 0 1 1.0 1.0 0.0 _ 0.0 _]
+	--assert (query #(u8! [1]) all-get-modes)
+	== [uint8! #(false) integer! 8 1 1x1 #(false) 1 1 0 1 1.0 1.0 0.0 _ 0.0 _]
+
+	--test-- "median covers the same range as the other statistics"
+		v: skip #(i8! [100 1 2 3]) 1     ;; visible = [1 2 3]
+		--assert 2.0 = v/mean
+		--assert 2.0 = v/median          ;; over the whole series it'd be 2.5
+		--assert 1   = v/minimum
+		--assert 3   = v/maximum
+
+	--test-- "QUERY on vector not at head"
+		v: next #(int8! [100 1 2 3])
+		--assert (query v all-modes) == [
+			element-type: int8!
+		    signed: #(true)
+		    type: integer!
+		    size: 8
+		    length: 3
+		    shape: 3x1
+		    shaped: #(false)
+		    minimum: 1
+		    maximum: 3
+		    range: 2
+		    sum: 6
+		    mean: 2.0
+		    median: 2.0
+		    variance: 0.666666666666667
+		    sample-variance: 1.0
+		    population-deviation: 0.816496580927726
+		    sample-deviation: 1.0
+		]
+		v: tail v
+		--assert (query v all-modes) == [
+			element-type: int8!
+		    signed: #(true)
+		    type: integer!
+		    size: 8
+		    length: 0
+		    shape: 0x1
+		    shaped: #(false)
+		    minimum: _
+		    maximum: _
+		    range: _
+		    sum: _
+		    mean: _
+		    median: _
+		    variance: _
+		    sample-variance: _
+		    population-deviation: _
+		    sample-deviation: _
+		]
 
 ===end-group===
 
@@ -874,8 +1009,30 @@ Rebol [
 		--assert #(i64! [-1])   < #(i32! [0])
 		--assert #(i64! [-1])  != #(u32! [-1])
 
-	--test-- "compare vectors - incompatible categories should error"
-		--assert error? try [#(i64! [1 2]) = #(f64! [1.0 2.0])]
+	--test-- "cross-category loose equality now works, no trap"
+		--assert #(i32! [1 2]) = #(f32! [1.0 2.0])
+		--assert #(f64! [1.0 2.0]) = #(i64! [1 2])
+		--assert #(u16! [1 2]) = #(f64! [1.0 2.0])
+
+	--test-- "...but strict equality still separates them"
+		--assert      #(i32! [1 2]) !== #(f32! [1.0 2.0])
+		--assert not (#(i32! [1 2])  == #(f32! [1.0 2.0]))
+
+	--test-- "ordering across categories"
+		--assert #(i32! [1]) < #(f32! [1.5])
+		--assert #(f32! [0.5]) < #(i32! [1])
+		--assert #(i32! [2]) > #(f64! [1.999])
+
+	--test-- "PRECISION: must not collapse via double-widening"
+		--assert not (#(i64! [9007199254740993]) = #(f64! [9007199254740992.0]))
+		--assert #(i64! [9007199254740993]) > #(f64! [9007199254740992.0])
+
+	--test-- "out-of-range floats resolve by magnitude, not by overflowing the cast"
+		--assert #(i64! [ 9223372036854775807]) < #(f64! [ 1e30])
+		--assert #(i64! [-9223372036854775808]) > #(f64! [-1e30])
+
+	--test-- "-0.0 against integer zero"
+		--assert #(i32! [0]) = #(f64! [-0.0])
 
 
 ===end-group===
@@ -949,11 +1106,38 @@ Rebol [
 		--assert v2 == #(i32! [40 50])
 		--assert v == #(i32! [10 40 50])
 
+	--test-- "take/part with negative length"
+		;; negative /part takes backwards from the current position
+		v: #(u8! [1 2 3 4 5 6])
+		--assert (take/part tail v -2) == #(u8! [5 6])
+		--assert v == #(u8! [1 2 3 4])
+
+		v: #(u8! [1 2 3 4 5 6])
+		--assert (take/part skip v 3 -2) == #(u8! [2 3])
+		--assert v == #(u8! [1 4 5 6])
+
+		;; clamped at the head, like blocks
+		v: #(u8! [1 2 3])
+		--assert (take/part skip v 1 -5) == #(u8! [1])
+		--assert v == #(u8! [2 3])
+
+		;; zero and head-position cases
+		v: #(u8! [1 2 3])
+		--assert (take/part v -2) == #(u8! [])
+		--assert v == #(u8! [1 2 3])
+
 	--test-- "take/part/last of vector! not at head"
 		v: skip #(i32! [10 20 30 40 50]) 2
 		--assert (take/part/last v 4) == #(i32! [30 40 50])
 		--assert empty? v
 		--assert (head v) == #(i32! [10 20])
+
+	--test-- "take/part/last with negative length"
+		;; matches block behaviour -- /last already counts back from the tail
+		v: #(u8! [1 2 3 4 5 6])
+		--assert (take/part/last v -2) == #(u8! [])
+		--assert v == #(u8! [1 2 3 4 5 6])
+		--assert (take/part/last [1 2 3 4 5 6] -2) == []
 
 	--test-- "take/part/last must not reach before the current index"
 		v: #(i32! [10 20 30 40 50])
@@ -968,6 +1152,7 @@ Rebol [
 		--assert (take/part/last v2 3) == #(i32! [30 40 50])   ; exactly all visible elements
 		--assert empty? v2
 		--assert v == #(i32! [10 20])
+
 ===end-group===
 
 
@@ -1079,16 +1264,131 @@ Rebol [
 		--assert  #(i64! [2 4 1 3]) == head sort/part/reverse next #(i64! [2 4 1 3]) 2
 		--assert  #(f32! [2 4 1 3]) == head sort/part/reverse next #(f32! [2 4 1 3]) 2
 		--assert  #(f64! [2 4 1 3]) == head sort/part/reverse next #(f64! [2 4 1 3]) 2
+
+	--test-- "SORT/compare with a field offset"
+		;; sort records of 2 by their second field
+		--assert (sort/skip/compare #(i32! [1 30  2 10  3 20]) 2 2)
+		      == #(i32! [2 10  3 20  1 30])
+		;; offset 1 is the default ordering
+		--assert (sort/skip/compare #(i32! [3 30  1 10  2 20]) 2 1)
+		      == #(i32! [1 10  2 20  3 30])
+		--assert (sort/skip/compare/reverse #(i32! [1 30  2 10  3 20]) 2 2)
+		      == #(i32! [1 30  3 20  2 10])
+
+	--test-- "SORT/compare with a block of offsets"
+		;; primary field 2, tie-broken by field 1
+		--assert (sort/skip/compare #(i32! [2 10  1 10  3 5]) 2 [2 1])
+		      == #(i32! [3 5  1 10  2 10])
+
+	--test-- "SORT/compare validation matches blocks"
+		--assert all [error? e: try [sort/compare #(i32! [1 2 3 4]) 1]        e/id = 'invalid-arg]
+		--assert all [error? e: try [sort/skip/compare #(i32! [1 2 3 4]) 2 0] e/id = 'invalid-arg]
+		--assert all [error? e: try [sort/skip/compare #(i32! [1 2 3 4]) 2 3] e/id = 'invalid-arg]
+		--assert all [error? e: try [sort/skip/compare/all #(i32! [1 2 3 4]) 2 1] e/id = 'bad-refines]
+		--assert all [error? e: try [sort/skip/compare #(i32! [1 2 3 4]) 2 [1 9]] e/id = 'invalid-arg]
+
+	--test-- "SORT/compare with a function is still unsupported"
+		--assert all [
+			error? e: try [sort/compare #(i8! [2 4 1 3]) func [a b][a < b]]
+			e/id = 'feature-na
+		]
+
 	--test-- "SORT/skip vector!"
-		--assert  all [
-			error? e: try [sort/skip #(i8!  [2 4 1 3]) 2]
-			e/id = 'feature-na
-		]
-	--test-- "SORT/compare vector!"
-		--assert  all [
-			error? e: try [sort/compare #(i8!  [2 4 1 3]) func[a b][a < b]]
-			e/id = 'feature-na
-		]
+		--assert (sort/skip #(i32! [3 30 1 10 2 20]) 2) == #(i32! [1 10 2 20 3 30])
+		--assert (sort/skip #(u8!  [3 30 1 10 2 20]) 2) == #(u8!  [1 10 2 20 3 30])
+		--assert (sort/skip #(f64! [3 30 1 10 2 20]) 2) == #(f64! [1 10 2 20 3 30])
+		;; skip 1 is plain sort
+		--assert (sort/skip #(i32! [2 4 1 3]) 1) == #(i32! [1 2 3 4])
+
+	--test-- "SORT/skip/reverse vector!"
+		--assert (sort/skip/reverse #(i32! [3 30 1 10 2 20]) 2) == #(i32! [3 30 2 20 1 10])
+
+	--test-- "SORT/skip sorts whole rows of a shaped vector"
+		m: make vector! [u8! 3x2 [4 5 6 1 2 3]]
+		sort/skip m 3
+		--assert m == #(u8! 3x2 [1 2 3 4 5 6])
+		--assert m/shape = 3x2
+
+		m: make vector! [u8! 3x3 [7 8 9 1 2 3 4 5 6]]
+		sort/skip m to integer! first m/shape
+		--assert m == #(u8! 3x3 [1 2 3 4 5 6 7 8 9])
+
+	--test-- "SORT/skip on a vector not at head"
+		v: #(i32! [99 3 30 1 10])
+		sort/skip next v 2
+		--assert v == #(i32! [99 1 10 3 30])
+
+	--test-- "SORT/skip compares only the leading field"
+		--assert (sort/skip #(i32! [3 3 30  1 1 20  1 2 10]) 3)
+		      == #(i32! [1 2 10  1 1 20  3 3 30])
+
+	--test-- "SORT/skip/all compares whole records"
+		--assert (sort/skip/all #(i32! [3 3 30  1 1 20  1 2 10]) 3)
+		      == #(i32! [1 1 20  1 2 10  3 3 30])
+		;; ties on the first two fields fall through to the third
+		--assert (sort/skip/all #(i32! [1 1 30  1 1 10  1 1 20]) 3)
+		      == #(i32! [1 1 10  1 1 20  1 1 30])
+
+	--test-- "SORT/skip/all/reverse is the exact reverse ordering"
+		--assert (sort/skip/all/reverse #(i32! [1 1 20  3 3 30  1 2 10]) 3)
+		      == #(i32! [3 3 30  1 2 10  1 1 20])
+
+	--test-- "SORT/all without /skip is a no-op"
+		--assert (sort/all #(i32! [2 4 1 3])) == #(i32! [1 2 3 4])
+
+	--test-- "SORT/skip argument validation"
+		--assert all [error? e: try [sort/skip #(i8! [1 2 3 4]) 0]   e/id = 'out-of-range]
+		--assert all [error? e: try [sort/skip #(i8! [1 2 3 4]) -2]  e/id = 'out-of-range]
+		--assert all [error? e: try [sort/skip #(i8! [1 2]) 5]       e/id = 'out-of-range]
+		;; length must be a whole number of records -- matches block behaviour
+		--assert all [error? e: try [sort/skip #(i8! [1 2 3 4 5]) 2] e/id = 'out-of-range]
+		--assert           error? try [sort/skip [1 2 3 4 5] 2]
+		;; ...but a 1-element series short-circuits before validation
+		--assert (sort/skip #(i8! [1]) 5) == #(i8! [1])
+		--assert (sort/skip [1] 5) == [1]
+
+===end-group===
+
+
+===start-group=== "sort/case with vectors"
+
+	--test-- "element type as primary /case key, deterministic across permutations"
+		--assert (sort/case [#(f32! [1.0]) #(i32! [1])]) == [#(i32! [1]) #(f32! [1.0])]
+		--assert (sort/case [#(i32! [1]) #(f32! [1.0])]) == [#(i32! [1]) #(f32! [1.0])]
+
+	--test-- "VECT_TYPE enum order: signed ints, then unsigned, then floats"
+		--assert (sort/case [#(f64! [0]) #(u8! [0]) #(i64! [0]) #(i8! [0]) #(f32! [0]) #(u64! [0])])
+		                 == [#(i8! [0]) #(i64! [0]) #(u8! [0]) #(u64! [0]) #(f32! [0]) #(f64! [0])]
+
+	--test-- "type outranks value under /case"
+		--assert (sort/case [#(i32! [99]) #(f32! [-99.0])]) == [#(i32! [99]) #(f32! [-99.0])]
+
+	--test-- "plain sort ignores element type, orders purely by value"
+		--assert (sort [#(i32! [99]) #(f32! [-99.0])]) == [#(f32! [-99.0]) #(i32! [99])]
+		--assert (sort [#(f32! [1.0]) #(i32! [0]) #(i64! [2])])
+		            == [#(i32! [0]) #(f32! [1.0]) #(i64! [2])]
+
+	--test-- "same element type: /case and plain sort agree"
+		--assert (sort/case [#(i32! [3]) #(i32! [1]) #(i32! [2])]) == [#(i32! [1]) #(i32! [2]) #(i32! [3])]
+		--assert (sort      [#(i32! [3]) #(i32! [1]) #(i32! [2])]) == [#(i32! [1]) #(i32! [2]) #(i32! [3])]
+
+	--test-- "type vs shape precedence under /case"
+		--assert (sort/case [#(f32! 6x1 [0 0 0 0 0 0]) #(i32! 3x2 [0 0 0 0 0 0])])
+		                 == [#(i32! 3x2 [0 0 0 0 0 0]) #(f32! 6x1 [0 0 0 0 0 0])]
+
+	--test-- "element type outranks shape under /case"
+		;; i32! has rows=3, f32! has rows=1 -- type wins, so i32! sorts first
+		--assert (sort/case [#(f32! 6x1 [0 0 0 0 0 0]) #(i32! 2x3 [0 0 0 0 0 0])])
+		                 == [#(i32! 2x3 [0 0 0 0 0 0]) #(f32! 6x1 [0 0 0 0 0 0])]
+
+	--test-- "shape still decides within a same-element-type group"
+		--assert (sort/case [#(i32! 2x3 [0 0 0 0 0 0]) #(i32! 6x1 [0 0 0 0 0 0])])
+		                 == [#(i32! 6x1 [0 0 0 0 0 0]) #(i32! 2x3 [0 0 0 0 0 0])]
+
+	--test-- "plain sort ignores element type, shape still primary"
+		--assert (sort [#(f32! 6x1 [0 0 0 0 0 0]) #(i32! 2x3 [0 0 0 0 0 0])])
+		            == [#(f32! 6x1 [0 0 0 0 0 0]) #(i32! 2x3 [0 0 0 0 0 0])]
+
 ===end-group===
 
 
@@ -1136,6 +1436,16 @@ Rebol [
 			e/id = 'invalid-data
 			e/arg1 = #{0304}
 		]
+
+	--test-- "INSERT/APPEND from a same-type vector not at head"
+		--assert (append #(i32! [1 2]) next #(i32! [3 4])) == #(i32! [1 2 4])
+		--assert (append #(i64! [1 2]) skip #(i64! [3 4 5]) 2) == #(i64! [1 2 5])
+		--assert all [
+			(insert v: #(i32! [1 2]) next #(i32! [3 4])) == #(i32! [1 2])
+			v == #(i32! [4 1 2])
+		]
+		;; width 1 was already correct -- regression guard
+		--assert (append #(i8! [1 2]) next #(i8! [3 4])) == #(i8! [1 2 4])
 
 	--test-- "INSERT vector number"
 		--assert all [
@@ -1307,6 +1617,773 @@ Rebol [
 			(clear v) == #(i8! [])
 			empty? v
 		]
+		--assert all [
+			v: #(u32! [4294967295 1])
+			(clear next v) == #(u32! [])
+			v == #(u32! [4294967295])
+		]
 ===end-group===
+
+===start-group=== "MATRIX (shaped vectors)"
+	--test-- "Compact construction: shape without full data zero-fills"
+		--assert (transcode/one {#(u8! 2x2))}      ) == #(uint8! 2x2 [0 0 0 0])
+		--assert (transcode/one {#(u8! 2x2 []))}   ) == #(uint8! 2x2 [0 0 0 0])
+		--assert (transcode/one {#(u8! 2x2 [1 2]))}) == #(uint8! 2x2 [1 2 0 0])
+		;; matches the make spelling
+		--assert #(u8! 2x2) == make vector! [u8! 2x2]
+		;; rows 1 -- no annotation, but still allocated
+		--assert (mold #(i32! 3x1)) == "#(int32! [0 0 0])"
+		;; the plain-size form stays rejected (integer slot is the index)
+		--assert error? transcode/one/error {#(u8! 2)}
+	--test-- "Make shaped vector"
+		--assert all [
+			vector? try [m: make vector! [u8! 3x2 [1 2 3 4 5 6]]]
+			m/shape = 3x2
+			m/3 == 3
+			m/(3x1) == 3
+			(pick m 2x2) == 5
+			m/(3x1): 33
+			poke m 2x2 55
+			m/(3x1) == 33
+			(pick m 2x2) == 55
+		]
+		--assert all [
+			vector? try [m: make vector! [u8! 2x3 [1 2 3 4 5 6]]]   ; 2 cols, 3 rows (X=cols, Y=rows)
+			(pick m 1x1) == 1    
+			(pick m 2x1) == 2    ;; second column, first row
+			(pick m 1x2) == 3    ;; first column, second row
+			(pick m 2x3) == 6    ;; last col, last row
+			(pick m 3x1) == none ;; col 3 doesn't exist (only 2 cols)
+			(pick m 1x4) == none ;; row 4 doesn't exist (only 3 rows)
+		]
+		;; degenerate case for a plain vector
+		--assert all [
+			v: #(f64! [10 20 30])
+			(pick v 3x1) == 30.0 ;; matches pick v 3
+			(pick v 1x2) == none ;; only 1 row exists
+		]
+
+	--test-- "pair indexing follows the view"
+		m: make vector! [u8! 3x2 [1 2 3 4 5 6]]
+		v: next m
+		--assert v/shape = 5x1
+		--assert not v/shaped
+		--assert (pick v 1x1) = 2        ;; first visible element
+		--assert none? pick v 1x2        ;; only one row now
+		--assert (pick m 1x2) = 4        ;; whole view still addresses the grid
+
+	--test-- "reshape requires a whole view"
+		m: make vector! [u8! 3x2 [1 2 3 4 5 6]]
+		v: next m
+		--assert error? try [v/shape: 5x1]
+		--assert error? try [v/shape: 1x5]
+		m/shape: 2x3
+		--assert m/shape = 2x3
+
+	--test-- "pair and scalar indexing both follow the cursor"
+		--assert all [
+			vector? try [m: make vector! [u8! 3x2 [1 2 3 10 20 30]]] ;; 3 cols, 2 rows
+			m2: skip m 3          ;; cursor at the start of the second row
+			m2/shape = 3x1        ;; a partial view is one row of what it can see
+			not m2/shaped
+			(pick m2 1)   == 10   ;; scalar pick is cursor-relative
+			(pick m2 1x1) == 10   ;; ...and so is pair pick
+			(pick m2 2x1) == 20
+			none? pick m2 1x2     ;; only one row in this view
+			(pick m 1x2)  == 10   ;; the whole view still addresses the grid
+		]
+
+	--test-- "Math ops with shaped vectors"
+		;; both shaped, matching shape -- elementwise, result inherits shape
+		a: #(u16! 2x3 [1 2 3 4 5 6])
+		b: #(u16! 2x3 [10 20 30 40 50 60])
+		--assert (a + b) == #(u16! 2x3 [11 22 33 44 55 66])
+		--assert (b + a) == #(u16! 2x3 [11 22 33 44 55 66])
+		;; both shaped, same total length but different shape -- must trap, not silently truncate
+		c: #(u16! 3x2 [1 2 3 4 5 6])
+		--assert error? try [a + c]  ; 2x3 vs 3x2 -- same 6 elements, incompatible shape
+		--assert error? try [c + a]
+		;; both shaped, genuinely different length -- must trap
+		d: #(u16! 2x2 [1 2 3 4])
+		--assert error? try [a + d]
+		--assert error? try [d + a]
+		;; one shaped, one plain, matching total length -- allowed, inherits shaped side's shape
+		e: #(u16! [1 1 1 1 1 1])
+		--assert (a + e) == #(u16! 2x3 [2 3 4 5 6 7])
+		--assert (e + a) == #(u16! 2x3 [2 3 4 5 6 7])
+		;; mismatched-length plain-vs-shaped
+		f: #(u16! [1 1 1 1])   ; 4 elements, vs a's 6
+		--assert error? try [a + f]
+		--assert error? try [f + a]
+		;; Scalar broadcast still carries shape through
+		--assert (a + 1) == #(u16! 2x3 [2 3 4 5 6 7])
+		--assert (1 + a) == #(u16! 2x3 [2 3 4 5 6 7])
+		;; * elementwise multiplication
+		--assert (a * b) == #(u16! 2x3 [10 40 90 160 250 360])
+
+	--test-- "Math with a skipped shaped operand must not inherit the shape"
+		a: #(u16! 2x3 [1 2 3 4 5 6])
+		e: #(u16! [1 1 1 1 1])
+		--assert all [
+			r: (skip a 1) + e
+			r = #(uint16! [3 4 5 6 7])
+			r/shape == 5x1
+		]
+	
+	--test-- "Shaped vectors compare"
+		g: #(u16! 3x2 [1 2 3 4 5 6])
+		h: #(u16! 2x3 [1 2 3 4 5 6])
+		--assert not (g = h)
+		--assert not (g == h)
+		--assert     (g != h)
+		;; same shape, same content -- still equal, no regression
+		i: #(u16! 2x3 [1 2 3 4 5 6])
+		--assert (h = i)
+		--assert (h == i)
+		;; plain vs. shaped, same flat content
+		p: #(u16! [1 2 3 4 5 6])
+		--assert not (p = h)
+
+	--test-- "reshape"
+		m: make vector! [u8! 3x2 [1 2 3 4 5 6]]
+		--assert (m/shape: 2x3) = 2x3
+		--assert m/shape = 2x3
+		--assert error? try [m/shape: 3x20]
+		m/shape: 6x1
+		--assert m/shape == 6x1
+
+	--test-- "reshape is per-value"
+		m: make vector! [u8! 3x2 [1 2 3 4 5 6]]
+		a: m
+		a/shape: 2x3
+		--assert m/shape = 3x2
+
+	--test-- "mold of shaped vector"
+		--assert (mold #(u8! 3x2 [1 2 3 4 5 6])) == {#(uint8! 3x2 [
+    1 2 3
+    4 5 6
+])}
+	--test-- "mold round-trip of shaped vector"
+		m: make vector! [u8! 3x2 [1 2 3 4 5 6]]
+		--assert equal? m load mold m
+		--assert not find mold next m "3x2"
+		--assert equal? (next m) (load mold/all next m)
+		--assert not find mold/flat m "^/"
+
+	--test-- "CHANGE is allowed when the length is unchanged"
+		--assert all [
+			r: change v: #(u8! 2x2 [1 2 3 4]) 10
+			v == #(u8! 2x2 [10 2 3 4])
+			2 = index? r
+			r == skip v 1          ;; same series, same index, same shape
+			r/shape = 3x1          ;; value is treated as unshaped
+		]
+		--assert all [
+			r: change v: #(u8! 2x2 [1 2 3 4]) [10 20]
+			v == #(u8! 2x2 [10 20 3 4])
+			3 = index? r
+		]
+		--assert all [
+			r: skip #(u8! 2x2 [1 2 3 4]) 1
+			r/shape = 3x1
+		]
+
+	--test-- "CHANGE that would alter the length still traps"
+		v: #(u8! 2x2 [1 2 3 4])
+		--assert all [error? e: try [change/part v 9 2]     e/id = 'fixed-sized-series]
+		--assert all [error? e: try [change/dup  v 9 8]     e/id = 'fixed-sized-series]
+		--assert all [error? e: try [change skip v 3 [1 2]] e/id = 'fixed-sized-series]
+		;; and the vector is untouched after the trap
+		--assert v == #(u8! 2x2 [1 2 3 4])
+
+	--test-- "Shaped vectors are zeroed with change/dup, not clear"
+		m: make vector! [u8! 3x2 [1 2 3 4 5 6]]
+		--assert all [error? e: try [clear m]  e/id = 'fixed-sized-series]
+		change/dup m 0 length? m
+		--assert m == #(u8! 3x2 [0 0 0 0 0 0])
+		--assert m/shape = 3x2
+
+	--test-- "COPY of a shaped vector"
+		m: make vector! [u8! 3x2 [1 2 3 4 5 6]]
+		--assert all [r: copy m  r/shape = 3x2  r == m  not same? r m]
+		;; the copy is length-locked too
+		--assert all [r: copy m  error? try [append r 7]]
+
+	--test-- "partial COPY drops the shape"
+		m: make vector! [u8! 3x2 [1 2 3 4 5 6]]
+		--assert all [r: copy/part m 4     r/shape == 4x1  r == #(u8! [1 2 3 4])]
+		--assert all [r: copy skip m 1     r/shape == 5x1]
+		;; ...and is not length-locked
+		--assert all [r: copy/part m 4     vector? append r 7]
+
+===end-group===
+
+
+mx: try [import 'matrix]   ;; module exports nothing - reach the words through it
+if module? mx [
+;; float comparison helper (elementwise, with tolerance)
+near?: func [a [vector!] b [vector!] /local i][
+	all [
+		(length? a) = (length? b)
+		none? repeat i length? a [
+			if 1E-9 < abs (to decimal! a/:i) - (to decimal! b/:i) [break/return true]
+		]
+	]
+]
+
+===start-group=== "TRANSPOSE"
+	--test-- "transpose swaps rows and columns"
+		m: #(i32! 3x2 [1 2 3  4 5 6])         ;; 3 cols, 2 rows
+		--assert all [
+			t: mx/transpose m
+			t == #(i32! 2x3 [1 4  2 5  3 6])
+			t/shape = 2x3
+			m == #(i32! 3x2 [1 2 3  4 5 6])   ;; source untouched
+			not same? m t
+		]
+
+	--test-- "transpose is its own inverse"
+		--assert all [m: #(u8! 3x2 [1 2 3 4 5 6])  m == mx/transpose mx/transpose m]
+		--assert all [s: #(f64! 2x2 [1 2 3 4])     s == mx/transpose mx/transpose s]
+
+	--test-- "transpose of a plain vector gives a column"
+		--assert all [
+			c: mx/transpose #(u8! [1 2 3])
+			c/shape = 1x3
+			c/shaped
+			(pick c 1x2) = 2
+		]
+===end-group===
+
+===start-group=== "IDENTITY"
+	--test-- "identity modifies in place"
+		--assert all [
+			m: make vector! [u8! 4x4]
+			same? m mx/identity m
+			m == #(u8! 4x4 [1 0 0 0  0 1 0 0  0 0 1 0  0 0 0 1])
+			m/shape = 4x4
+		]
+
+	--test-- "identity clears existing contents"
+		--assert all [
+			m: make vector! [i16! 2x2 [9 9 9 9]]
+			mx/identity m
+			m == #(i16! 2x2 [1 0 0 1])
+		]
+
+	--test-- "identity on float types"
+		--assert all [
+			m: make vector! [f64! 2x2 [5 5 5 5]]
+			mx/identity m
+			m == #(f64! 2x2 [1.0 0.0 0.0 1.0])
+		]
+
+	--test-- "identity copy leaves the original alone"
+		--assert all [
+			m: make vector! [u8! 2x2 [9 9 9 9]]
+			i: mx/identity copy m
+			m == #(u8! 2x2 [9 9 9 9])
+			i == #(u8! 2x2 [1 0 0 1])
+		]
+
+	--test-- "identity requires a square matrix"
+		--assert error? try [mx/identity make vector! [u8! 3x2]]
+		--assert error? try [mx/identity make vector! [u8! 3]]
+===end-group===
+
+===start-group=== "TRACE"
+	--test-- "trace sums the diagonal"
+		--assert 15 = mx/trace #(i32! 3x3 [1 2 3  4 5 6  7 8 9])
+		--assert  5 = mx/trace #(u8!  2x2 [1 2  3 4])
+		--assert integer? mx/trace #(i32! 2x2 [1 2 3 4])
+
+	--test-- "trace of a float matrix returns a decimal"
+		--assert all [
+			d: mx/trace #(f64! 2x2 [1.5 2.0  3.0 2.5])
+			decimal? d
+			d = 4.0
+		]
+
+	--test-- "trace requires a square matrix"
+		--assert error? try [mx/trace #(i32! 3x2 [1 2 3 4 5 6])]
+===end-group===
+
+===start-group=== "DIAGONAL"
+	--test-- "diagonal of a square matrix"
+		--assert all [
+			d: mx/diagonal #(i32! 3x3 [1 2 3  4 5 6  7 8 9])
+			d == #(i32! [1 5 9])
+			not d/shaped                  ;; returned unshaped
+		]
+
+	--test-- "diagonal of a non-square matrix stops at the shorter side"
+		--assert (mx/diagonal #(i32! 3x2 [1 2 3  4 5 6])) == #(i32! [1 5])
+		--assert (mx/diagonal #(i32! 2x3 [1 2  3 4  5 6])) == #(i32! [1 4])
+===end-group===
+
+===start-group=== "SWAP-ROWS"
+	--test-- "swap-rows modifies in place"
+		--assert all [
+			m: make vector! [u8! 3x2 [1 2 3  4 5 6]]
+			same? m mx/swap-rows m 1 2
+			m == #(u8! 3x2 [4 5 6  1 2 3])
+			m/shape = 3x2
+		]
+
+	--test-- "swapping a row with itself is a no-op"
+		--assert all [
+			m: make vector! [u8! 3x2 [1 2 3  4 5 6]]
+			mx/swap-rows m 2 2
+			m == #(u8! 3x2 [1 2 3  4 5 6])
+		]
+
+	--test-- "swap-rows range checks"
+		--assert error? try [mx/swap-rows make vector! [u8! 3x2] 0 1]
+		--assert error? try [mx/swap-rows make vector! [u8! 3x2] 1 3]
+		--assert error? try [mx/swap-rows make vector! [u8! 3x2] -1 1]
+===end-group===
+
+===start-group=== "ROTATE"
+	;;  1 2 3
+	;;  4 5 6
+	--test-- "rotate clockwise"
+		--assert all [
+			r: mx/rotate #(i32! 3x2 [1 2 3  4 5 6])
+			r == #(i32! 2x3 [4 1  5 2  6 3])
+			r/shape = 2x3
+		]
+
+	--test-- "rotate counter-clockwise"
+		--assert all [
+			r: mx/rotate/left #(i32! 3x2 [1 2 3  4 5 6])
+			r == #(i32! 2x3 [3 6  2 5  1 4])
+		]
+
+	--test-- "rotate twice keeps the shape"
+		--assert all [
+			r: mx/rotate/twice #(i32! 3x2 [1 2 3  4 5 6])
+			r == #(i32! 3x2 [6 5 4  3 2 1])
+			r/shape = 3x2
+		]
+
+	--test-- "four clockwise rotations return the original"
+		m: #(u8! 3x2 [1 2 3  4 5 6])
+		--assert m == mx/rotate mx/rotate mx/rotate mx/rotate m
+
+	--test-- "/twice wins over /left"
+		;; pins current behaviour: ref_twice is tested first
+		--assert (mx/rotate/left/twice #(i32! 3x2 [1 2 3  4 5 6]))
+		      == (mx/rotate/twice     #(i32! 3x2 [1 2 3  4 5 6]))
+===end-group===
+
+===start-group=== "MATMUL"
+	--test-- "matrix product"
+		;; A = 2x3, B = 3x2  ->  2x2
+		--assert all [
+			a: #(i32! 3x2 [1 2 3  4 5 6])
+			b: #(i32! 2x3 [7 8  9 10  11 12])
+			r: mx/matmul a b
+			r == #(i32! 2x2 [58 64  139 154])
+			r/shape = 2x2
+			a == #(i32! 3x2 [1 2 3  4 5 6])     ;; operands untouched
+		]
+
+	--test-- "matmul is not commutative"
+		--assert all [
+			a: #(i32! 3x2 [1 2 3  4 5 6])
+			b: #(i32! 2x3 [7 8  9 10  11 12])
+			r: mx/matmul b a
+			r/shape = 3x3
+			not equal? (mx/matmul a b) r
+		]
+
+	--test-- "multiplying by the identity"
+		--assert all [
+			m: #(f64! 3x3 [1 2 3  4 5 6  7 8 9])
+			i: mx/identity copy m
+			m == mx/matmul m i
+			m == mx/matmul i m
+		]
+
+	--test-- "row vector times matrix"
+		--assert (mx/matmul #(i32! [1 2 3]) #(i32! 2x3 [7 8  9 10  11 12]))
+		      == #(i32! [58 64])
+
+	--test-- "matrix times column vector"
+		--assert all [
+			col: mx/transpose #(i32! [7 9 11])
+			col/shape = 1x3
+			r: mx/matmul #(i32! 3x2 [1 2 3  4 5 6]) col
+			r == #(i32! 1x2 [58 139])
+		]
+
+	--test-- "matmul dimension and type checks"
+		--assert error? try [mx/matmul #(i32! 3x2 [1 2 3 4 5 6]) #(i32! 3x2 [1 2 3 4 5 6])]
+		--assert error? try [mx/matmul #(i32! 2x2 [1 2 3 4])     #(f64! 2x2 [1 2 3 4])]
+		--assert error? try [mx/matmul #(i32! [1 2 3])           #(i32! [4 5 6])]
+
+	--test-- "matmul truncates on store"
+		;; 100*100 + 100*100 = 20000 -> 32 as u8
+		--assert (mx/matmul #(u8! 2x1 [100 100]) #(u8! 1x2 [100 100])) == #(u8! [32])
+===end-group===
+
+===start-group=== "KRONECKER"
+	--test-- "kronecker product"
+		;; [1 2; 3 4] (x) [0 5; 6 7]
+		--assert all [
+			k: mx/kronecker #(i32! 2x2 [1 2  3 4]) #(i32! 2x2 [0 5  6 7])
+			k == #(i32! 4x4 [
+				 0  5   0 10
+				 6  7  12 14
+				 0 15   0 20
+				18 21  24 28
+			])
+			k/shape = 4x4
+		]
+
+	--test-- "kronecker with the 1x1 identity is a copy"
+		--assert (mx/kronecker #(i32! 2x2 [1 2 3 4]) #(i32! [1])) == #(i32! 2x2 [1 2 3 4])
+
+	--test-- "kronecker of non-square operands"
+		;; (1x2) (x) (2x1) -> shape follows cols*cols x rows*rows
+		--assert all [
+			k: mx/kronecker #(u8! 1x2 [1 2]) #(u8! 2x1 [3 4])
+			k/shape = 2x2
+			k == #(u8! 2x2 [3 4  6 8])
+		]
+
+	--test-- "kronecker type check"
+		--assert error? try [mx/kronecker #(i32! 2x2 [1 2 3 4]) #(u8! 2x2 [1 2 3 4])]
+===end-group===
+
+===start-group=== "empty vectors"
+	--test-- "empty vectors pass through the shape-preserving commands"
+		--assert (mx/transpose #(u8! [])) == #(u8! [])
+		--assert (mx/diagonal  #(u8! [])) == #(u8! [])
+		--assert (mx/rotate    #(u8! [])) == #(u8! [])
+		;; ...but the square-only ones reject them
+		--assert error? try [mx/identity #(u8! [])]
+		--assert error? try [mx/trace    #(u8! [])]
+		--assert error? try [mx/matmul   #(u8! []) #(u8! [])]
+===end-group===
+
+===start-group=== "commands follow the view"
+	--test-- "a partial view is one row"
+		m: #(i32! 3x2 [1 2 3  4 5 6])
+		--assert all [v: next m  v/shape = 5x1]
+		--assert all [t: mx/transpose next m  t/shape = 1x5  t == #(i32! 1x5 [2 3 4 5 6])]
+		--assert all [d: mx/diagonal next m   d == #(i32! [2])]
+		--assert error? try [mx/identity next #(u8! 2x2 [1 2 3 4])]
+
+	--test-- "whole views still see the grid"
+		--assert all [t: mx/transpose #(i32! 3x2 [1 2 3 4 5 6])  t/shape = 2x3]
+===end-group===
+
+===start-group=== "mezzanine helpers"
+	--test-- "square?"
+		--assert     mx/square? #(u8! 2x2 [1 2 3 4])
+		--assert not mx/square? #(u8! 3x2 [1 2 3 4 5 6])
+		--assert     mx/square? #(u8! [5])            ;; 1x1
+
+	--test-- "symmetric?"
+		--assert     mx/symmetric? #(i32! 2x2 [1 2  2 1])
+		--assert     mx/symmetric? #(i32! 3x3 [1 2 3  2 4 5  3 5 6])
+		--assert not mx/symmetric? #(i32! 2x2 [1 2  3 4])
+		--assert not mx/symmetric? #(i32! 3x2 [1 2 3 4 5 6])
+
+	--test-- "as-float"
+		--assert all [
+			f: mx/as-float #(i32! 2x2 [1 2 3 4])
+			f/element-type = 'float64!
+			f/shape = 2x2
+			f == #(f64! 2x2 [1.0 2.0 3.0 4.0])
+		]
+		;; already float -- plain copy, original untouched
+		--assert all [
+			m: #(f32! 2x2 [1 2 3 4])
+			f: mx/as-float m
+			f/element-type = 'float32!
+			not same? m f
+		]
+
+	--test-- "row and col"
+		m: #(i32! 3x2 [1 2 3  4 5 6])
+		--assert all [r: mx/row m 1  r == #(i32! [1 2 3])  not r/shaped]
+		--assert all [r: mx/row m 2  r == #(i32! [4 5 6])]
+		--assert all [c: mx/col m 2  c == #(i32! 1x2 [2 5])  c/shaped]
+		--assert error? try [mx/row m 3]
+		--assert error? try [mx/col m 4]
+		--assert error? try [mx/row m 0]
+
+	--test-- "augment"
+		--assert all [
+			a: mx/augment #(i32! 2x2 [1 2  3 4]) #(i32! 1x2 [5 6])
+			a == #(i32! 3x2 [1 2 5  3 4 6])
+			a/shape = 3x2
+		]
+		--assert error? try [mx/augment #(i32! 2x2 [1 2 3 4]) #(i32! 1x3 [5 6 7])]
+		--assert error? try [mx/augment #(i32! 2x2 [1 2 3 4]) #(u8!  1x2 [5 6])]
+===end-group===
+
+===start-group=== "linear algebra"
+	--test-- "rref"
+		--assert all [
+			m: mx/rref mx/as-float #(i32! 3x2 [1 2 3  4 5 6])
+			near? m #(f64! 3x2 [1.0 0.0 -1.0  0.0 1.0 2.0])
+		]
+
+	--test-- "determinant"
+		--assert -2.0 = mx/determinant #(i32! 2x2 [1 2  3 4])
+		--assert  1.0 = mx/determinant #(f64! 3x3 [1 0 0  0 1 0  0 0 1])
+		--assert (abs -3.0 - mx/determinant #(i32! 3x3 [1 2 3  4 5 6  7 8 10])) < 1E-9
+		--assert 1E-9 > abs mx/determinant #(i32! 3x3 [1 2 3  4 5 6  7 8 9])   ;; singular
+		--assert error? try [mx/determinant #(i32! 3x2 [1 2 3 4 5 6])]
+
+	--test-- "determinant does not modify its argument"
+		m: #(i32! 2x2 [1 2 3 4])
+		mx/determinant m
+		--assert m == #(i32! 2x2 [1 2 3 4])
+
+	--test-- "invert"
+		--assert all [
+			i: mx/invert #(f64! 2x2 [4 7  2 6])
+			near? i #(f64! 2x2 [0.6 -0.7  -0.2 0.4])
+			i/shape = 2x2
+		]
+		;; A * inv(A) = I
+		--assert all [
+			m: #(f64! 3x3 [2 1 1  1 3 2  1 0 0])
+			near? (mx/matmul m mx/invert m) (mx/identity copy m)
+		]
+		--assert error? try [mx/invert #(i32! 3x2 [1 2 3 4 5 6])]
+
+	--test-- "invert rejects a singular matrix"
+		--assert error? try [mx/invert #(f64! 3x3 [1 2 3  4 5 6  7 8 9])]
+		--assert error? try [mx/invert #(f64! 2x2 [1 2  2 4])]
+		--assert error? try [mx/invert #(f64! 2x2 [0 0  0 0])]
+
+	--test-- "solve"
+		;;  2x +  y =  5
+		;;   x + 3y = 10
+		--assert all [
+			x: mx/solve #(f64! 2x2 [2 1  1 3]) #(f64! 1x2 [5 10])
+			near? x #(f64! 1x2 [1.0 3.0])
+			x/shape = 1x2
+		]
+		--assert error? try [mx/solve #(f64! 3x2 [1 2 3 4 5 6]) #(f64! 1x2 [1 2])]
+		--assert error? try [mx/solve #(f64! 2x2 [1 2 3 4])     #(f64! 1x3 [1 2 3])]
+===end-group===
+
+===start-group=== "COL"
+	--test-- "col extracts a strided column"
+		m: #(i32! 3x2 [1 2 3  4 5 6])
+		--assert all [c: mx/col m 1  c == #(i32! 1x2 [1 4])  c/shape = 1x2]
+		--assert all [c: mx/col m 2  c == #(i32! 1x2 [2 5])]
+		--assert all [c: mx/col m 3  c == #(i32! 1x2 [3 6])]
+		--assert m == #(i32! 3x2 [1 2 3  4 5 6])      ;; source untouched
+
+	--test-- "col keeps the element type"
+		--assert all [c: mx/col #(f64! 2x2 [1 2  3 4]) 2  c == #(f64! 1x2 [2.0 4.0])]
+		--assert all [c: mx/col #(u8!  2x2 [1 2  3 4]) 1  c/element-type = 'uint8!]
+
+	--test-- "col of a plain vector"
+		;; a plain vector is one row, so every column is a single element
+		--assert all [c: mx/col #(u8! [7 8 9]) 2  c == #(u8! [8])]
+
+	--test-- "col and row agree on the transpose"
+		m: #(i32! 3x2 [1 2 3  4 5 6])
+		--assert all [
+			a: mx/col m 2
+			b: mx/transpose mx/row mx/transpose m 2
+			a == b
+		]
+
+	--test-- "col range checks"
+		--assert error? try [mx/col #(u8! 3x2 [1 2 3 4 5 6]) 0]
+		--assert error? try [mx/col #(u8! 3x2 [1 2 3 4 5 6]) 4]
+		--assert error? try [mx/col #(u8! 3x2 [1 2 3 4 5 6]) -1]
+		--assert error? try [mx/col #(u8! []) 1]
+===end-group===
+
+===start-group=== "SWAP-COLS"
+	--test-- "swap-cols modifies in place"
+		--assert all [
+			m: make vector! [u8! 3x2 [1 2 3  4 5 6]]
+			same? m mx/swap-cols m 1 3
+			m == #(u8! 3x2 [3 2 1  6 5 4])
+			m/shape = 3x2
+		]
+
+	--test-- "swapping a column with itself is a no-op"
+		--assert all [
+			m: make vector! [u8! 3x2 [1 2 3  4 5 6]]
+			mx/swap-cols m 2 2
+			m == #(u8! 3x2 [1 2 3  4 5 6])
+		]
+
+	--test-- "two swaps restore the original"
+		--assert all [
+			m: make vector! [i32! 3x2 [1 2 3  4 5 6]]
+			mx/swap-cols m 1 2
+			mx/swap-cols m 1 2
+			m == #(i32! 3x2 [1 2 3  4 5 6])
+		]
+
+	--test-- "swap-cols is the transpose of swap-rows"
+		--assert all [
+			a: make vector! [i32! 3x2 [1 2 3  4 5 6]]
+			b: mx/transpose a
+			mx/swap-cols a 1 3
+			mx/swap-rows b 1 3
+			a == mx/transpose b
+		]
+
+	--test-- "swap-cols range checks"
+		--assert error? try [mx/swap-cols make vector! [u8! 3x2] 0 1]
+		--assert error? try [mx/swap-cols make vector! [u8! 3x2] 1 4]
+		--assert error? try [mx/swap-cols make vector! [u8! 3x2] -1 1]
+===end-group===
+
+===start-group=== "SUBMATRIX"
+	--test-- "submatrix extracts a region"
+		m: #(i32! 4x3 [1 2 3 4  5 6 7 8  9 10 11 12])
+		--assert all [
+			s: mx/submatrix m 2x2 2x2
+			s == #(i32! 2x2 [6 7  10 11])
+			s/shape = 2x2
+		]
+		--assert all [s: mx/submatrix m 1x1 4x3  s == m]
+		--assert all [s: mx/submatrix m 1x1 1x1  s == #(i32! [1])]
+		--assert m == #(i32! 4x3 [1 2 3 4  5 6 7 8  9 10 11 12])
+
+	--test-- "submatrix degenerate regions match row and col"
+		m: #(i32! 4x3 [1 2 3 4  5 6 7 8  9 10 11 12])
+		--assert all [s: mx/submatrix m 1x2 4x1  s == mx/row m 2]
+		--assert all [s: mx/submatrix m 3x1 1x3  s == mx/col m 3]
+
+	--test-- "submatrix keeps the element type"
+		--assert all [
+			s: mx/submatrix #(f32! 2x2 [1 2  3 4]) 1x1 2x1
+			s/element-type = 'float32!
+		]
+
+	--test-- "submatrix bounds checks"
+		m: #(i32! 4x3 [1 2 3 4  5 6 7 8  9 10 11 12])
+		--assert error? try [mx/submatrix m 0x1 2x2]      ;; origin below 1
+		--assert error? try [mx/submatrix m 1x0 2x2]
+		--assert error? try [mx/submatrix m 1x1 0x2]      ;; empty size
+		--assert error? try [mx/submatrix m 1x1 2x0]
+		--assert error? try [mx/submatrix m 4x1 2x1]      ;; runs off the right
+		--assert error? try [mx/submatrix m 1x3 1x2]      ;; runs off the bottom
+		--assert error? try [mx/submatrix m 1x1 5x3]
+===end-group===
+
+===start-group=== "SET-DIAGONAL"
+	--test-- "set-diagonal from a number"
+		--assert all [
+			m: make vector! [i32! 3x3 [1 2 3  4 5 6  7 8 9]]
+			same? m mx/set-diagonal m 0
+			m == #(i32! 3x3 [0 2 3  4 0 6  7 8 0])
+		]
+		--assert all [
+			m: make vector! [f64! 2x2 [9 9  9 9]]
+			mx/set-diagonal m 1.5
+			m == #(f64! 2x2 [1.5 9.0  9.0 1.5])
+		]
+
+	--test-- "set-diagonal with 1 is identity on a cleared matrix"
+		--assert all [
+			m: make vector! [u8! 3x3]
+			mx/set-diagonal m 1
+			m == mx/identity make vector! [u8! 3x3]
+		]
+
+	--test-- "set-diagonal from a vector"
+		--assert all [
+			m: make vector! [i32! 3x3 [1 1 1  1 1 1  1 1 1]]
+			mx/set-diagonal m #(i32! [7 8 9])
+			m == #(i32! 3x3 [7 1 1  1 8 1  1 1 9])
+			(mx/diagonal m) == #(i32! [7 8 9])
+		]
+
+	--test-- "set-diagonal on a non-square matrix uses the shorter side"
+		--assert all [
+			m: make vector! [i32! 3x2 [1 1 1  1 1 1]]
+			mx/set-diagonal m 0
+			m == #(i32! 3x2 [0 1 1  1 0 1])
+		]
+
+	--test-- "set-diagonal argument checks"
+		;; a vector source must match the element type
+		--assert error? try [mx/set-diagonal make vector! [i32! 2x2] #(u8! [1 2])]
+		;; ...and must be at least as long as the diagonal
+		--assert error? try [mx/set-diagonal make vector! [i32! 3x3] #(i32! [1 2])]
+		;; a longer source is fine -- the extra elements are ignored
+		--assert all [
+			m: make vector! [i32! 2x2]
+			mx/set-diagonal m #(i32! [5 6 7 8])
+			m == #(i32! 2x2 [5 0  0 6])
+		]
+===end-group===
+
+===start-group=== "NORM"
+	--test-- "Frobenius norm"
+		--assert 5.0 = mx/norm #(i32! 2x1 [3 4])
+		--assert 5.0 = mx/norm #(f64! 2x2 [3 0  0 4])
+		--assert 0.0 = mx/norm #(u8! 2x2 [0 0  0 0])
+		--assert 0.0 = mx/norm #(u8! [])
+		--assert decimal? mx/norm #(i32! 2x2 [1 2 3 4])
+
+	--test-- "max norm"
+		--assert 4.0 = mx/norm/max #(i32! 2x1 [3 4])
+		--assert 7.0 = mx/norm/max #(i32! 2x2 [1 -7  3 4])     ;; absolute value
+		--assert 0.0 = mx/norm/max #(u8! [])
+
+	--test-- "norm ignores the shape"
+		--assert (mx/norm #(i32! 4x1 [1 2 3 4])) = (mx/norm #(i32! 2x2 [1 2  3 4]))
+
+	--test-- "norm of the identity"
+		;; sqrt of the order
+		--assert 1E-9 > abs (mx/norm mx/identity make vector! [f64! 4x4]) - 2.0
+===end-group===
+
+===start-group=== "RANK"
+	--test-- "rank of a full-rank matrix"
+		--assert 3 = mx/rank #(f64! 3x3 [1 0 0  0 1 0  0 0 1])
+		--assert 2 = mx/rank #(i32! 2x2 [1 2  3 4])
+		--assert 3 = mx/rank #(i32! 3x3 [1 2 3  4 5 6  7 8 10])
+
+	--test-- "rank of a singular matrix"
+		;; third row is the first two combined
+		--assert 2 = mx/rank #(i32! 3x3 [1 2 3  4 5 6  7 8 9])
+		--assert 1 = mx/rank #(i32! 2x2 [1 2  2 4])
+		--assert 0 = mx/rank #(i32! 2x2 [0 0  0 0])
+
+	--test-- "rank of non-square matrices"
+		--assert 2 = mx/rank #(i32! 3x2 [1 2 3  4 5 6])
+		--assert 2 = mx/rank #(i32! 2x3 [1 2  3 4  5 6])
+		--assert 1 = mx/rank #(i32! 3x2 [1 2 3  2 4 6])   ;; second row is a multiple
+
+	--test-- "rank of degenerate inputs"
+		--assert 0 = mx/rank #(u8! [])
+		--assert 1 = mx/rank #(u8! [5])
+		--assert 0 = mx/rank #(u8! [0])
+		--assert 1 = mx/rank #(i32! [1 2 3])              ;; a plain vector is one row
+
+	--test-- "rank agrees with determinant on singularity"
+		--assert all [
+			m: #(f64! 3x3 [1 2 3  4 5 6  7 8 9])
+			3 > mx/rank m
+			0.0 = mx/determinant m
+			error? try [mx/invert m]
+		]
+		--assert all [
+			m: #(f64! 3x3 [1 2 3  4 5 6  7 8 10])
+			3 = mx/rank m
+			0.0 <> mx/determinant m
+		]
+===end-group===
+
+] ;end of matrix module text
 
 ~~~end-file~~~

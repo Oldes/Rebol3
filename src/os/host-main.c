@@ -66,6 +66,8 @@
 #include "host-init.h"
 #endif
 
+#include "gen-ext-init.h"	// entry points of the embedded extensions
+
 /**********************************************************************/
 
 #ifdef COLOR_CONSOLE
@@ -346,9 +348,7 @@ int main(int argc, char **argv) {
 	//Init_Graphics();
 #endif
 
-#ifdef TEST_EXTENSIONS
-	OS_Init_Ext_Test();
-#endif
+	INIT_EMBEDDED_EXTENSIONS();
 
 // Call sys/start function. If a compressed script is provided, it will be 
 // decompressed, stored in system/options/boot-host, loaded, and evaluated.
@@ -383,4 +383,3 @@ int main(int argc, char **argv) {
 	OS_Exit(0, 0);
 	return 0;
 }
-

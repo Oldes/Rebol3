@@ -73,8 +73,10 @@
 
 	if (action != A_CHANGE) {
 		// Always expand dst_ser for INSERT and APPEND actions:
+		if (IS_FIXED_SIZE(dst_ser)) Trap0(RE_FIXED_SIZED_SERIES);
 		Expand_Series(dst_ser, dst_idx, size);
 	} else {
+		if (IS_FIXED_SIZE(dst_ser) && (size + dst_idx > tail || (GET_FLAG(flags, AN_PART) && size < dst_len))) Trap0(RE_FIXED_SIZED_SERIES);
 		if (size > dst_len) 
 			Expand_Series(dst_ser, dst_idx, size-dst_len);
 		else if (size < dst_len && GET_FLAG(flags, AN_PART))
@@ -94,7 +96,7 @@
 		memcpy(dst_ser->data + dst_idx, (REBYTE *)src_val, ilen);
 		dst_idx += ilen;
 	}
-	BLK_TERM(dst_ser);
+	if (!IS_FIXED_SIZE(dst_ser)) BLK_TERM(dst_ser);
 
 	return tail;
 }
@@ -202,6 +204,7 @@
 
 	if (action != A_CHANGE) {
 		// Always expand dst_ser for INSERT and APPEND actions:
+		TRAP_FIXED_SIZE(dst_ser);
 		Expand_Series(dst_ser, dst_idx, size);
 	} else {
 		// CHANGE action...
@@ -216,13 +219,13 @@
 			dst_len = idx - dst_idx;
 			SET_FLAG(flags, AN_PART);
 		}
-		if (size > dst_len)
-			Expand_Series(dst_ser, dst_idx, size - dst_len);
-		else if (size < dst_len && GET_FLAG(flags, AN_PART))
-			Remove_Series(dst_ser, dst_idx, dst_len - size);
-		//else if (size + dst_idx > tail) {
-		//	EXPAND_SERIES_TAIL(dst_ser, size - (tail - dst_idx));
-		//}
+		if (size != dst_len && (size > dst_len || GET_FLAG(flags, AN_PART))) {
+			TRAP_FIXED_SIZE(dst_ser);
+			if (size > dst_len)
+				Expand_Series(dst_ser, dst_idx, size - dst_len);
+			else
+				Remove_Series(dst_ser, dst_idx, dst_len - size);
+		}
 	}
 
 	// For dup count:
@@ -237,7 +240,7 @@
 	if (!GET_FLAG(flags, AN_SERIES) && !IS_UTF8_SERIES(dst_ser) && !Is_ASCII(STR_SKIP(src_ser, src_idx), src_len))
 		UTF8_SERIES(dst_ser);
 
-	TERM_SERIES(dst_ser);
+	if (!IS_FIXED_SIZE(dst_ser)) TERM_SERIES(dst_ser);
 
 	return (action == A_APPEND) ? 0 : dst_idx;
 }
