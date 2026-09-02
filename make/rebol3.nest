@@ -1087,8 +1087,10 @@ include-rebol-bulk: [
 	;- native extensions
 	:include-ext-easing
 	:include-ext-matrix
+	:include-ext-speak
 	:include-ext-sqlite
 	:include-ext-miniaudio
+	:include-ext-triangulate
 	;- for tests:
 	:include-ext-xtest
 	;- not recommanded:
@@ -1409,12 +1411,61 @@ include-ext-miniaudio: [
 	do %make/tools/make-extension.r3 "${NEST_ROOT}/src/extensions/miniaudio/miniaudio.reb"
 ]
 
+include-ext-speak: [
+	#if (any [Windows? MacOS?]) [
+		clean: %extensions/speak/speak.c ;; always recompile (contains Rebol code)
+		host-files: [
+			%extensions/speak/speak.c
+			%extensions/speak/speak-commands.c
+			%extensions/speak/gen-speak.c
+			#if Windows? [
+				%extensions/speak/speak-win.cpp
+			]
+			#if macOS? [
+				%extensions/speak/speak-mac.m
+			]
+		]
+		#if Windows? [
+			library: %sapi
+		]
+		#if macOS? [
+			cflags: -Wno-deprecated-declarations
+			frameworks: [AppKit]
+		]
+		do %make/tools/make-extension.r3 "${NEST_ROOT}/src/extensions/speak/speak.reb"
+	]
+]
+
+include-ext-triangulate: [
+	clean: %extensions/triangulate/triangulate.c ;; always recompile (contains Rebol code)
+	host-files: [
+		%extensions/triangulate/triangle.c
+		%extensions/triangulate/triangulate.c
+		%extensions/triangulate/triangulate-commands.c
+		%extensions/triangulate/gen-triangulate.c
+	]
+	defines: [
+		TRILIBRARY
+		NO_TIMER
+		REDUCED 	;; to eliminate all features that are primarily of research interest
+		;CPU86
+		;CDT_ONLY   ;; includes only constrained Delaunay triangulation algorithm
+	]
+	#if Posix? [
+		define: ANSI_DECLARATORS
+	]
+	do %make/tools/make-extension.r3 "${NEST_ROOT}/src/extensions/triangulate/triangulate.reb"
+]
+
+
 ;; standalone libraries
-make-ext-easing:    [ host-files: _ :include-ext-easing    files: only :host-files :make-ext ]
-make-ext-xtest:     [ host-files: _ :include-ext-xtest     files: only :host-files :make-ext ]
-make-ext-matrix:    [ host-files: _ :include-ext-matrix    files: only :host-files :make-ext ]
-make-ext-miniaudio: [ host-files: _ :include-ext-miniaudio files: only :host-files :make-ext ]
-make-ext-sqlite:    [ host-files: _ :include-ext-sqlite    files: only :host-files :make-ext ]
+make-ext-easing:      [ host-files: _ :include-ext-easing      files: only :host-files :make-ext ]
+make-ext-xtest:       [ host-files: _ :include-ext-xtest       files: only :host-files :make-ext ]
+make-ext-matrix:      [ host-files: _ :include-ext-matrix      files: only :host-files :make-ext ]
+make-ext-miniaudio:   [ host-files: _ :include-ext-miniaudio   files: only :host-files :make-ext ]
+make-ext-speak:       [ host-files: _ :include-ext-speak       files: only :host-files :make-ext ]
+make-ext-sqlite:      [ host-files: _ :include-ext-sqlite      files: only :host-files :make-ext ]
+make-ext-triangulate: [ host-files: _ :include-ext-triangulate files: only :host-files :make-ext ]
 
 eggs: [
 	#if Windows? [
@@ -2192,7 +2243,18 @@ eggs: [
 	"MiniAudio extension 64bit"     [ name: %miniaudio-x64.rebx   :arch-x64   :make-ext-miniaudio ]
 	"MiniAudio extension ARM 64bit" [ name: %miniaudio-arm64.rebx :arch-arm64 :make-ext-miniaudio ]
 
+#if (any [Windows? MacOS?]) [
+	"Speak extension 32bit"     [ name: %speak-x86.rebx   :arch-x86   :make-ext-speak ]
+	"Speak extension 64bit"     [ name: %speak-x64.rebx   :arch-x64   :make-ext-speak ]
+	"Speak extension ARM 64bit" [ name: %speak-arm64.rebx :arch-arm64 :make-ext-speak ]
+]
+
+	"Triangulate extension 32bit"     [ name: %triangulate-x86.rebx   :arch-x86   :make-ext-triangulate ]
+	"Triangulate extension 64bit"     [ name: %triangulate-x64.rebx   :arch-x64   :make-ext-triangulate ]
+	"Triangulate extension ARM 64bit" [ name: %triangulate-arm64.rebx :arch-arm64 :make-ext-triangulate ]
+
 	"Amalgamate extension include file" [
+		name: %rebol-extension.h
 		do %make/tools/amalgamate-ext.r3
 	]
 	
