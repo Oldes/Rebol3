@@ -38,26 +38,13 @@ int Triangulate_Init(void) {
 	return TRUE;
 }
 
-// The four entry points below are the only symbols this library needs to
-// export, so it is built with -fvisibility=hidden (see the nest file) and
-// they have to say so themselves: on POSIX `RXIEXT` is a plain `extern`,
-// which the hidden default would swallow along with everything else.
-// API_EXPORT is what the API header already uses for exactly this; on
-// Windows RXIEXT is a dllexport already, so nothing is added there.
-#ifdef TO_WINDOWS
-#define EXT_ENTRY RXIEXT
-#else
-#define EXT_ENTRY RXIEXT API_EXPORT
-#endif
-
-
 #ifdef REB_EXT
 
 /***********************************************************************
 **  Standalone extension library
 ***********************************************************************/
 
-EXT_ENTRY const char *RX_Init(int opts, RL_LIB *lib) {
+RXIEXT const char *RX_Init(int opts, RL_LIB *lib) {
 	REBYTE ver[8];
 	RL = lib;
 	RL_VERSION(ver);
@@ -70,19 +57,19 @@ EXT_ENTRY const char *RX_Init(int opts, RL_LIB *lib) {
 	return init_block;
 }
 
-EXT_ENTRY int RX_Quit(int opts) {
+RXIEXT int RX_Quit(int opts) {
 	return 0;
 }
 
 // Reports the RL_API ABI this was built against, so `load-extension`
 // can refuse an incompatible host. An absent symbol means ABI 0.
-EXT_ENTRY int RX_Abi(void) {
+RXIEXT int RX_Abi(void) {
 	return RL_ABI_VERSION;
 }
 
 // Resolved by name, so the spelling is fixed. The bounds-checked
 // dispatcher is generated into gen-triangulate.c.
-EXT_ENTRY int RX_Call(int cmd, RXIFRM *frm, void *ctx) {
+RXIEXT int RX_Call(int cmd, RXIFRM *frm, void *ctx) {
 	return Triangulate_RX_Call(cmd, frm, ctx);
 }
 

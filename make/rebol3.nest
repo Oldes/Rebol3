@@ -1325,6 +1325,7 @@ make-ext: [
 	#if FreeBSD? [ flag: -fPIC :target-freebsd ]
 	#if ('NetBSD = system/platform) [ flag: -fPIC :target-netbsd ]
 	#if ('Turris = system/platform) [ flag: -fPIC :target-turris ]
+	#if Posix?   [ flag: "-fvisibility=hidden" ]
 ]
 
 ;; Per-extension sources and generator invocation, referenced by both modes.

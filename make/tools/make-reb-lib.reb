@@ -242,20 +242,30 @@ form-header/gen "REBOL Host and Extension API" %reb-lib.reb %make-reb-lib.reb
 // Function entry points for reb-lib (used for MACROS below):}
 rlib
 {
+#ifndef API_EXPORT
+# define RL_API API_EXPORT
+# ifdef TO_WINDOWS
+#  define API_EXPORT __declspec(dllexport)
+# else
+#  define API_EXPORT __attribute__((visibility("default")))
+# endif
+#endif
+
 // Extension entry point functions:
 #ifdef TO_WINDOWS
 #ifdef __cplusplus
-#define RXIEXT extern "C" __declspec(dllexport)
+#define RXIEXT extern "C" API_EXPORT
 #else
-#define RXIEXT __declspec(dllexport)
+#define RXIEXT API_EXPORT
 #endif
 #else
-#define RXIEXT extern
+#define RXIEXT extern API_EXPORT
 #endif
 
 RXIEXT const char *RX_Init(int opts, RL_LIB *lib);
 RXIEXT int RX_Quit(int opts);
 RXIEXT int RX_Call(int cmd, RXIFRM *frm, void *data);
+RXIEXT int RX_Abi(void);
 
 // The macros below will require this base pointer:
 extern RL_LIB *RL;  // is passed to the RX_Init() function

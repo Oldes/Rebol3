@@ -33,15 +33,6 @@
 #include "reb-evtypes.h"
 #include "reb-ext-handler.h"
 
-#ifndef API_EXPORT
-# define RL_API API_EXPORT
-# ifdef TO_WINDOWS
-#  define API_EXPORT __declspec(dllexport)
-# else
-#  define API_EXPORT __attribute__((visibility("default")))
-# endif
-#endif
-
 // RXIARG has 16bytes and so there is room only for 15 args, because
 // the first RXIARG in the RXIFRM contains types of all used command args.
 #define MAX_RXI_ARGS 15
