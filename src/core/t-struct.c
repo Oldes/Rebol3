@@ -142,7 +142,7 @@ void Get_Struct_Field_Value(REBSTU* stu, REBSTF* field, REBVAL* val)
 		REBCNT sym = (REBCNT)type_to_sym[type];
 
 		if (type > STRUCT_TYPE_DOUBLE || sym == NOT_FOUND) {
-			// Type has no vector equivalent — fall back to a block of scalars
+			// Type has no vector equivalent ï¿½ fall back to a block of scalars
 			ser = Make_Block(field->dimension);
 			REBCNT n = 0;
 			SET_TYPE(val, REB_BLOCK);
@@ -155,7 +155,7 @@ void Get_Struct_Field_Value(REBSTU* stu, REBSTF* field, REBVAL* val)
 			}
 		}
 		else {
-			// Type maps to a known vector word — use a vector for efficiency
+			// Type maps to a known vector word ï¿½ use a vector for efficiency
 			ser = Make_Vector_From_Word(sym, field->dimension);
 
 			// Bulk-copy the raw field bytes directly into the vector's data buffer
@@ -678,7 +678,9 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 	}
 
 	STRUCT_DATA(stu) = Make_Binary(STRUCT_SIZE(stu));
-	LABEL_SERIES(VAL_STRUCT_FIELDS(out), "struct_data");
+	// Rebol values which may be stored in the data are marked by Mark_Struct!
+	BARE_SERIES(STRUCT_DATA(stu));
+	LABEL_SERIES(STRUCT_DATA(stu), "struct_data");
 	SERIES_TAIL(STRUCT_DATA(stu)) = STRUCT_SIZE(stu);
 
 	if (IS_BLOCK(values)) {
@@ -914,7 +916,7 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 
 		//Debug_Fmt("?? store: %r value: %r", pvs->store, pvs->value);
 
-		// Simple get-path — just return the stored value.
+		// Simple get-path ï¿½ just return the stored value.
 		if (!pvs->setval) return PE_USE;
 
 		// Deep set-path: save the field selector, then advance pvs->value
@@ -952,7 +954,7 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 		}
 	}
 	else {
-		// Simple set-path (e.g. struct/field: 123) — set the field directly.
+		// Simple set-path (e.g. struct/field: 123) ï¿½ set the field directly.
 		res = Set_Struct_Var(stu, pvs->select, NULL, pvs->setval);
 	}
 	return res ? PE_OK : PE_BAD_SET;

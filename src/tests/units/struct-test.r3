@@ -450,6 +450,60 @@ s: #(struct! [
 	s: #(struct! [a [uint16!] b [int32!]] [1 -1])
 	--assert #{0100FFFFFFFF} = to binary! s
 ===end-group===
+
+
+===start-group=== "Struct GC"
+;; Rebol values stored in a struct are reachable only from the struct's data
+;; series, so the GC must find them there. `flush` and `reuse` below make an
+;; unmarked value really disappear - the value is first pushed out of the GC's
+;; infant nursery and once collected, its memory is taken by other series.
+flush: does [loop 100 [make binary! 64]]
+reuse: does [loop 100 [append copy "" "0123456789abcdef"]]
+
+--test-- "GC marks a rebval! field which is not at the struct's head"
+	s: make struct! [n [int8!] val [rebval!]]
+	s/n: 42
+	--assert string? s/val: copy "keep me alive"
+	flush
+	--assert not error? try [recycle]
+	reuse
+	--assert s/n = 42
+	--assert s/val == "keep me alive"
+
+--test-- "GC marks all values of a rebval! array field"
+	s: make struct! [n [int16!] vals [rebval! [2]]]
+	--assert block? s/vals: reduce [copy "first" copy "second"]
+	flush
+	--assert not error? try [recycle]
+	reuse
+	--assert s/vals == ["first" "second"]
+
+--test-- "GC marks rebval! fields of a nested struct"
+	s: make struct! [
+		id    [uint8!]
+		inner [struct! [val [rebval!]]]
+	]
+	s/id: 7
+	--assert string? s/inner/val: copy "nested value"
+	flush
+	--assert not error? try [recycle]
+	reuse
+	--assert s/id = 7
+	--assert s/inner/val == "nested value"
+
+--test-- "GC marks rebval! fields of a deeply nested struct"
+	s: make struct! [
+		a [struct! [b [struct! [val [rebval!]]]] [2]]
+	]
+	--assert string? s/a/1/b/val: copy "first"
+	--assert string? s/a/2/b/val: copy "second"
+	flush
+	--assert not error? try [recycle]
+	reuse
+	--assert s/a/1/b/val == "first"
+	--assert s/a/2/b/val == "second"
+
+===end-group===
 ] ;>= 3.19.1
 
 ===start-group=== "Invalid struct construction"
