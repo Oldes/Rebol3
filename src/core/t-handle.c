@@ -33,37 +33,74 @@
 
 extern const REBYTE Reb_To_RXT[REB_MAX];
 extern RXIARG Value_To_RXI(REBVAL *val); // f-extension.c
-extern void RXI_To_Value(REBVAL *val, RXIARG arg, REBCNT type); // f-extension.c
+extern void RXI_To_Value(REBVAL *val, RXIARG arg, REBCNT type); // f-extension.
+
 
 /***********************************************************************
 **
 */	REBINT Cmp_Handle(REBVAL *a, REBVAL *b)
 /*
+**		Ordering for SORT and for the comparison actions.
+**
+**		Returns <0, 0 or >0, and 0 only for the SAME handle. The order
+**		between two different ones is arbitrary but total and stable,
+**		which is all a sort asks for: context handles first, then by
+**		type name, then by the address of the thing they hold.
+**
 ***********************************************************************/
 {
-	REBYTE *sp;
-	REBYTE *tp;
-	if (IS_CONTEXT_HANDLE(a)) {
-		if (IS_CONTEXT_HANDLE(b)) {
-			if (VAL_HANDLE_SYM(a) != VAL_HANDLE_SYM(b)) {
-				// comparing 2 context handles of different types
-				sp = VAL_HANDLE_NAME(a);
-				tp = VAL_HANDLE_NAME(b);
-				return Compare_UTF8(sp, tp, (REBCNT)LEN_BYTES(tp)) + 2;
-			}
-		}
-		else {
-			// comparing context-handle with data-handle
-			return -1;
-		}
+	REBINT  diff;
+	REBUPT  pa, pb;
+
+	// A context handle and a data handle are never interleaved.
+	if (IS_CONTEXT_HANDLE(a) != IS_CONTEXT_HANDLE(b))
+		return IS_CONTEXT_HANDLE(a) ? -1 : 1;
+
+	// Two context handles of different types sort by type NAME, so that
+	// a sorted block groups by type and reads the way a person expects.
+	//
+	// Compare_UTF8 answers on a scale of its own, and the sign reads the
+	// OPPOSITE way round from a subtraction: -1 means s1 > s2. Its
+	// header gives the conversion, and both halves are needed here -
+	//
+	//     -3  s1 < s2, really different   -> +2
+	//     -1  s1 > s2, really different   -> +2
+	//      1  s1 < s2, differs by case    -> -2
+	//      3  s1 > s2, differs by case    -> -2
+	//      0  identical
+	//
+	// The case range cannot arise while type names are canon symbols -
+	// two spellings differing only in case are one symbol, and the test
+	// above has already established the symbols differ - but converting
+	// it correctly costs one line and removes the question.
+	if (IS_CONTEXT_HANDLE(a) && VAL_HANDLE_SYM(a) != VAL_HANDLE_SYM(b)) {
+		REBYTE* sp = VAL_HANDLE_NAME(a);
+		REBYTE* tp = VAL_HANDLE_NAME(b);
+		diff = Compare_UTF8(sp, tp, (REBCNT)LEN_BYTES(tp));
+		if (diff < 0) return diff + 2;
+		if (diff > 0) return diff - 2;
+		// Identical spelling under two symbols: fall through, so the two
+		// are still ordered rather than reported equal.
 	}
-	else if (IS_CONTEXT_HANDLE(b)) {
-		// comparing data-handle with context-handle
-		return 1;
-	}
-	// same ctx-handle types or both data handles
-	return (VAL_HANDLE_I32(a) - VAL_HANDLE_I32(b));
+
+	// Same type, or both data handles: the address decides.
+	//
+	// The WHOLE pointer. VAL_HANDLE_I32 is an int view of the same union
+	// - half a pointer on a 64 bit build - and subtracting two of them
+	// overflows for addresses far enough apart, which is a sign flip
+	// rather than a wrong order. Compared, never subtracted.
+	pa = (REBUPT)VAL_HANDLE_DATA(a);
+	pb = (REBUPT)VAL_HANDLE_DATA(b);
+	if (pa != pb) return (pa < pb) ? -1 : 1;
+
+	// Identical payloads under different names are still different
+	// handles - and this is the last thing left to separate them.
+	if (VAL_HANDLE_SYM(a) != VAL_HANDLE_SYM(b))
+		return (VAL_HANDLE_SYM(a) < VAL_HANDLE_SYM(b)) ? -1 : 1;
+
+	return 0;
 }
+
 
 /***********************************************************************
 **
@@ -72,19 +109,36 @@ extern void RXI_To_Value(REBVAL *val, RXIARG arg, REBCNT type); // f-extension.c
 ***********************************************************************/
 {
 	REBINT diff;
-	if (mode > 0) {
-		return ((VAL_HANDLE_FLAGS(a) == VAL_HANDLE_FLAGS(b))
-			&&  (VAL_HANDLE_DATA(a)  == VAL_HANDLE_DATA(b)));
+
+	if (mode >= 0) {
+		// EQUAL? and STRICT-EQUAL? are the same question for a handle.
+		// There is no loose form: no case, no encoding, no index into a
+		// series - nothing two distinct handles could differ in and
+		// still be the same value. So `=` means what `==` means, and
+		// FIND, SELECT and UNIQUE do the right thing by consequence.
+		if (IS_CONTEXT_HANDLE(a) || IS_CONTEXT_HANDLE(b)) {
+			if (!IS_CONTEXT_HANDLE(a) || !IS_CONTEXT_HANDLE(b)) return 0;
+
+			// The context alone. Equal contexts have equal types, and
+			// the flags are deliberately NOT consulted: they carry
+			// HANDLE_CONTEXT_MARKED, which the collector owns, so two
+			// values naming this one handle can hold different
+			// snapshots of it.
+			return (VAL_HANDLE_CTX(a) == VAL_HANDLE_CTX(b));
+		}
+
+		// A data handle is what it points at, what kind of pointer that
+		// is, and what it is called. The bookkeeping bits are masked out
+		// here for the same reason as above.
+		return (VAL_HANDLE_DATA(a) == VAL_HANDLE_DATA(b))
+			&& (VAL_HANDLE_SYM(a) == VAL_HANDLE_SYM(b))
+			&& ((VAL_HANDLE_FLAGS(a) & HANDLE_VALUE_FLAGS)
+				== (VAL_HANDLE_FLAGS(b) & HANDLE_VALUE_FLAGS));
 	}
-	else if (mode == 0) {
-		return (IS_CONTEXT_HANDLE(a) && IS_CONTEXT_HANDLE(b)
-			&& (VAL_HANDLE_SYM(a) == VAL_HANDLE_SYM(b)));
-	}
-	else {
-		diff = Cmp_Handle(a, b);
-		if (mode == -1) return (diff >= 0);
-		return (diff > 0);
-	}
+
+	diff = Cmp_Handle(a, b);
+	if (mode == -1) return (diff >= 0);
+	return (diff > 0);
 }
 
 
@@ -126,10 +180,10 @@ extern void RXI_To_Value(REBVAL *val, RXIARG arg, REBCNT type); // f-extension.c
 					return PE_USE;
 				}
 			}
+			// A word this handle does not know is an error, as before -
+			// except TYPE, which is answered below for every handle
+			// rather than only for a live context one.
 			if (sym != SYM_TYPE) return PE_BAD_SELECT;
-			val = pvs->store;
-			Set_Word(val, VAL_HANDLE_SYM(data), NULL, 0);
-			return PE_USE;
 		} else {
 			if (spec.set_path) {
 				type = Reb_To_RXT[VAL_TYPE(val)];
@@ -138,6 +192,16 @@ extern void RXI_To_Value(REBVAL *val, RXIARG arg, REBCNT type); // f-extension.c
 			}
 		}
 	}
+ 
+	// The type comes out of the value itself, so this is reachable for a
+	// context handle whose get_path refused the word, for one whose
+	// context has been released, and for a data handle which never had a
+	// context at all. It is the same answer MOLD prints.
+	if (val == 0 && sym == SYM_TYPE) {
+		Set_Word(pvs->store, VAL_HANDLE_SYM(data), NULL, 0);
+		return PE_USE;
+	}
+ 
 	// for the data handles, return NONE on get
 	return NZ(val) ? PE_BAD_SET : PE_NONE;
 }
