@@ -666,24 +666,21 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 	// At this point, the struct specification should be ready.
 	REBSTU *stu = &VAL_STRUCT(out);
 
-	if (IS_BINARY(values)) {
-		if (VAL_BIN_LEN(values) < STRUCT_SIZE(stu)) Trap_Arg(values);
-		if (STRUCT_DATA(stu)) {
-			COPY_MEM(STRUCT_DATA_BIN(stu), VAL_BIN_DATA(values), STRUCT_SIZE(stu));
-		}
-		else {
-			STRUCT_DATA(stu) = VAL_SERIES(values);
-		}
-		return TRUE;
-	}
-
+	// The struct always owns its data!
 	STRUCT_DATA(stu) = Make_Binary(STRUCT_SIZE(stu));
 	// Rebol values which may be stored in the data are marked by Mark_Struct!
 	BARE_SERIES(STRUCT_DATA(stu));
 	LABEL_SERIES(STRUCT_DATA(stu), "struct_data");
 	SERIES_TAIL(STRUCT_DATA(stu)) = STRUCT_SIZE(stu);
 
-	if (IS_BLOCK(values)) {
+	if (IS_BINARY(values)) {
+		// Raw data must not be used to initialize a struct holding Rebol
+		// values, because the GC would try to mark random bytes as values!
+		if (STRUCT_PROTECTED(stu)) Trap0(RE_PROTECTED);
+		if (VAL_BIN_LEN(values) < STRUCT_SIZE(stu)) Trap_Arg(values);
+		COPY_MEM(STRUCT_DATA_BIN(stu), VAL_BIN_DATA(values), STRUCT_SIZE(stu));
+	}
+	else if (IS_BLOCK(values)) {
 		init_fields(out, values);
 	}
 	return TRUE;
@@ -1117,6 +1114,8 @@ static void init_fields(REBVAL *ret, REBVAL *spec)
 				}
 				else if (IS_BINARY(arg) && VAL_BIN_LEN(arg) >= VAL_STRUCT_SIZE(val)) {
 					//TODO: special error when data are not large enough?
+					// Raw data must not be used with a struct holding Rebol values!
+					if (VAL_STRUCT_PROTECTED(val)) Trap0(RE_PROTECTED);
 					COPY_MEM(VAL_STRUCT_DATA_BIN(ret), VAL_BIN_DATA(arg), VAL_STRUCT_SIZE(val));
 				}
 				else {

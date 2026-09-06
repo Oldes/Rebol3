@@ -452,6 +452,42 @@ s: #(struct! [
 ===end-group===
 
 
+===start-group=== "Struct construction using binary data"
+--test-- "Struct constructed from binary data"
+	s: transcode/one {#(struct! [a [uint8!] b [uint16!]] #{010200})}
+	--assert struct? s
+	--assert all [s/a = 1 s/b = 2]
+	--assert #{010200} == to binary! s
+	;; data longer than the struct are truncated
+	s: transcode/one {#(struct! [a [uint8!] b [uint16!]] #{010200FFFF})}
+	--assert #{010200} == to binary! s
+
+--test-- "Struct's binary data must not be shorter than the struct"
+	--assert error? try [transcode/one/error {#(struct! [a [uint8!] b [uint16!]] #{0102})}]
+
+--test-- "Struct with Rebol values cannot be initialized using binary data"
+	;; the GC would try to mark random bytes as Rebol values!
+	bin: append/dup make binary! 64 #{FF} 64
+	s: make struct! [n [uint8!] val [rebval!]]
+	--assert all [
+		error? e: try [make s bin]
+		e/id = 'protected
+	]
+	--assert none? s/val
+	;; the same must be true for a struct with a nested Rebol value
+	s: make struct! [n [uint8!] inner [struct! [val [rebval!]]]]
+	--assert all [
+		error? e: try [make s bin]
+		e/id = 'protected
+	]
+	--assert none? s/inner/val
+	;; and also when using the construction syntax
+	--assert error? try [transcode/one/error {#(struct! [val [rebval!]] #{FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF})}]
+	--assert not error? try [recycle]
+
+===end-group===
+
+
 ===start-group=== "Struct GC"
 ;; Rebol values stored in a struct are reachable only from the struct's data
 ;; series, so the GC must find them there. `flush` and `reuse` below make an
