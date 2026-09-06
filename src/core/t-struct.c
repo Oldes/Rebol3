@@ -289,7 +289,14 @@ static REBOOL assign_scalar(REBSTU *stu,
 				Trap_Type(val);
 			}
 			d = VAL_DECIMAL(val);
-			i = (u64) d;
+			if (IS_INTEGER_TYPE(field->type)) {
+				// Casting a value which does not fit into a 64bit integer
+				// (or a NaN) is an undefined behavior in C!
+				if (!(d >= -9223372036854775808.0 && d < 9223372036854775808.0))
+					Trap0(RE_OVERFLOW);
+				// Signed conversion! Truncates towards zero also for negatives.
+				i = (u64)(i64)d;
+			}
 			break;
 		case REB_INTEGER:
 			if (!IS_NUMERIC_TYPE(field->type)
@@ -297,7 +304,8 @@ static REBOOL assign_scalar(REBSTU *stu,
 				Trap_Type(val);
 			}
 			i = (u64) VAL_INT64(val);
-			d = (double)i;
+			// Must not be converted from the unsigned value, else the sign is lost!
+			d = (double)VAL_INT64(val);
 			break;
 		case REB_STRUCT:
 			if (STRUCT_TYPE_STRUCT != field->type) {

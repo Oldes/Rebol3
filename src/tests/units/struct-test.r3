@@ -124,6 +124,32 @@ if system/version >= 3.19.1 [
 	--assert all [attempt [f32x2/a: #(f32! [1.0 2.0])]  f32x2/a == #(f32! [1.0 2.0])]
 	--assert all [attempt [f64x2/a: #(f64! [1.0 2.0])]  f64x2/a == #(f64! [1.0 2.0])]
 
+--test-- "Assigning negative numbers"
+	;; the sign must not be lost when an integer is stored in a float field!
+	s: make struct! [a [float!] b [double!]]
+	s/a: -1
+	s/b: -2
+	--assert s/a == -1.0
+	--assert s/b == -2.0
+	--assert #{000080BF00000000000000C0} == to binary! s
+	--assert #{000080BF00000000000000C0} == to binary! make s [-1 -2]
+	;; decimals are truncated towards zero when stored in an integer field
+	s: make struct! [a [int32!] b [int8!]]
+	s/a: -1.5
+	s/b: -2.9
+	--assert s/a == -1
+	--assert s/b == -2
+	s/a: 1.9
+	--assert s/a == 1
+
+--test-- "Assigning a decimal which does not fit into an integer field"
+	s: make struct! [a [int32!]]
+	s/a: 123
+	--assert error? try [s/a:  1e300]
+	--assert error? try [s/a: -1e300]
+	--assert error? try [s/a: 1.#nan]
+	--assert s/a == 123 ;; not modified
+
 --test-- "Struct construction with initial value (using named fields)"
 	--assert all [struct? i8:  #(struct! [a [int8!]   b [int8!]] [a:  23 ])  i8/a  = 23  i8/b  = 0 ]
 	--assert all [struct? i16: #(struct! [a [int16!]  b [int8!]] [a:  23 ])  i16/a = 23  i16/b = 0 ]
