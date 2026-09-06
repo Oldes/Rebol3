@@ -393,6 +393,45 @@ if system/version >= 3.19.1 [
 		s/val/a == "X23"
 	]]
 
+--test-- "Setting an element of a struct's array"
+	s: make struct! [a [struct! [x [uint32!] y [uint32!]] [2]]]
+	src: make struct! [x [uint32!] y [uint32!]]
+	src/x: 1 src/y: 2
+	--assert all [
+		not error? try [s/a/2: src]
+		#{0000000000000000 0100000002000000} == to binary! s
+	]
+	;; the index must be inside the array's range
+	--assert error? try [s/a/0: src]
+	--assert error? try [s/a/3: src]
+	--assert error? try [s/a/(-1): src]
+	;; ... and nothing may be modified in such a case
+	--assert #{0000000000000000 0100000002000000} == to binary! s
+	;; the assigned struct must have the same size...
+	--assert error? try [s/a/1: make struct! [n [int8!]]]
+	;; ... and the same field types!
+	--assert error? try [s/a/1: make struct! [x [int32!] y [int32!]]]
+	;; a value which is not a struct is not accepted
+	--assert error? try [s/a/1: 5]
+	--assert error? try [s/a/1: "hello"]
+	;; ... but a block with values is
+	--assert all [
+		not error? try [s/a/1: [3 4]]
+		#{0300000004000000 0100000002000000} == to binary! s
+	]
+
+--test-- "Setting an element of a struct's array with Rebol values"
+	;; raw data must never be stored into a `rebval!` field,
+	;; because the GC would try to mark it as a Rebol value!
+	n: length? make struct! [v [rebval!]] ;; size of the internal Rebol value
+	s: make struct! [a [struct! [v [rebval!]] [2]]]
+	raw: make struct! compose/deep [b [uint8! [(n)]]]
+	change raw append/dup make binary! n #{FF} n
+	--assert n = length? raw
+	--assert error? try [s/a/1: raw]
+	--assert none? s/a/1/v
+	--assert not error? try [recycle]
+
 --test-- "Setting inner struct"
 	s: make struct! [
 		id  [uint16!]

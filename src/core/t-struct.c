@@ -929,14 +929,18 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 
 		switch (field->type) {
 		case STRUCT_TYPE_STRUCT:
-			if (IS_INTEGER(pvs->select) && IS_BLOCK(pvs->store) && IS_STRUCT(pvs->value)) {
+			// NOTE: don't test pvs->store here! It may be already modified
+			// by Next_Path above (it is used as a scratch value).
+			if (field->array && IS_INTEGER(pvs->select)) {
 				// Setting one struct element inside an array of structs by index,
 				// e.g.: st/arr/2: st/arr/1
-				// Copy the source struct's raw bytes into the correct slot.
-				REBCNT idx = VAL_INT64(pvs->select);
-				if (idx > field->dimension) return PE_BAD_SET; // index out of range
-				void* data = STRUCT_DATA_BIN(stu) + field->offset + (idx - 1) * field->size;
-				COPY_MEM(data, VAL_STRUCT_DATA_BIN(pvs->value), field->size);
+				// NOTE: the index is validated when the temporary block with the
+				// array's values is accessed, but don't rely on it here!
+				REBI64 idx = VAL_INT64(pvs->select);
+				if (idx < 1 || idx > (REBI64)field->dimension)
+					return PE_BAD_SET; // index out of range
+				// assign_scalar validates that the value may be assigned!
+				res = assign_scalar(stu, field, (REBCNT)(idx - 1), pvs->value);
 			}
 			break;
 		case STRUCT_TYPE_REBVAL:
