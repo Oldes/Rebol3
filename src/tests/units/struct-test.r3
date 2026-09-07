@@ -223,6 +223,12 @@ if system/version >= 3.19.1 [
 		true
 	]
 
+--test-- "Construct a struct using symbols non-canonically"
+	--assert not error? try [transcode/one {#(struct! [x [int8!]] [x: 1])}]
+	--assert not error? try [transcode/one {#(struct! [x [int8!]] [X: 1])}]
+	--assert not error? try [transcode/one {#(struct! [X [int8!]] [x: 1])}]
+	--assert not error? try [transcode/one {#(struct! [X [int8!]] [X: 1])}]
+
 --test-- "Construction from struct prototype (using values only)"
 	proto!: #(struct! [a [uint8!] b [uint8!]] [1 2])
 	--assert all [proto!/a = 1 proto!/b = 2]

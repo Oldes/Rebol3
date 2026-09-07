@@ -806,7 +806,7 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 
 			field = (REBSTF *)SERIES_SKIP(VAL_STRUCT_FIELDS(out), field_num);
 			field->offset = (REBCNT)offset;
-			field->sym = VAL_WORD_SYM(blk);
+			field->sym = VAL_WORD_CANON(blk);
 			VAL_SET_LINE(blk);
 			++blk;
 
