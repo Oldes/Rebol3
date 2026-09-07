@@ -213,6 +213,16 @@ if system/version >= 3.19.1 [
 	--assert all [attempt [s: make proto! [3 * 10 4 * 10]]        s/a = 30 s/b = 40]
 	--assert all [attempt [s: make proto! [b: 3 * 10 a: 4 * 10]]  s/b = 30 s/a = 40]
 
+--test-- "Construction from a struct prototype using an invalid spec"
+	;; like: make proto! [a: 1 20 30] where 20 is not a set-word!
+	--assert for i 800 1000 1 [
+		if attempt [make proto! compose [a: 1 (i) 20]][
+			;; return FALSE when construction is successful (which should not happen)
+			break/return false
+		]
+		true
+	]
+
 --test-- "Construction from struct prototype (using values only)"
 	proto!: #(struct! [a [uint8!] b [uint8!]] [1 2])
 	--assert all [proto!/a = 1 proto!/b = 2]

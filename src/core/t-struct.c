@@ -1067,10 +1067,10 @@ static void init_fields(REBVAL *ret, REBVAL *spec)
 			REBCNT i = 0;
 			word = blk;
 			fld_val = blk + 1;
-
-			if (IS_END(fld_val)) {
+			if (!IS_SET_WORD(word))
+				Trap_Arg(word);
+			if (IS_END(fld_val))
 				Trap1(RE_NEED_VALUE, word);
-			}
 			// Iterate all fields (first value is used for info)
 			for (i = 1; i < SERIES_TAIL(fields); i++) {
 				fld = (REBSTF *)SERIES_SKIP(fields, i);
