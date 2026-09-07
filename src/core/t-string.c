@@ -750,7 +750,8 @@ FORCE_INLINE
 
 	if (IS_INTEGER(pvs->select) || IS_DECIMAL(pvs->select)) {
 		i = Int32(pvs->select);
-		if (i == 0) return PE_NONE; // like in case: path/0
+		if (i == 0)
+			return (pvs->setval) ? PE_BAD_RANGE : PE_NONE;
 		if (i < 0) i++;
 		if (IS_UTF8_SERIES(ser)) {
 			n = i - 1;

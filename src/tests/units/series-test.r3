@@ -702,6 +702,20 @@ Rebol [
 	--test-- "get on path"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/248
 		--assert tuple? get 'system/version
+
+	--test-- "path block index resolve"
+		b: [1 2]
+		--assert none? b/-1
+		--assert none? b/0
+		--assert  1 == b/1
+		--assert none? b/10
+
+	--test-- "path string index resolve"
+		s: "12"
+		--assert none? s/0
+		--assert #"1" == s/1
+		--assert none? s/10
+
 ===end-group===
 
 ===start-group=== "SET-PATH"
@@ -720,6 +734,21 @@ Rebol [
 			error? e: try [data/c: 30]
 			e/id = 'invalid-path
 		]
+	--test-- "set-path block with index"
+		b: [1 2]
+		--assert all [error? e: try [b/-2: 10] e/id = 'out-of-range]
+		--assert all [error? e: try [b/-1: 10] e/id = 'out-of-range]
+		--assert all [error? e: try [b/0:  10] e/id = 'out-of-range]
+		--assert all [error? e: try [b/10: 10] e/id = 'out-of-range]
+		--assert all [b/1: 10  b/1 == 10]
+
+	--test-- "set-path string with index"
+		s: "12"
+		--assert all [error? e: try [s/-2: 10] e/id = 'out-of-range]
+		--assert all [error? e: try [s/-1: 10] e/id = 'out-of-range]
+		--assert all [error? e: try [s/0:  10] e/id = 'out-of-range]
+		--assert all [error? e: try [s/10: 10] e/id = 'out-of-range]
+		--assert all [s/1: #"x"  s/1 == #"x"]
 ===end-group===
 
 

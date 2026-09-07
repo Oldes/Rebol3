@@ -714,7 +714,11 @@ done:
 
 	if (IS_INTEGER(pvs->select) || IS_DECIMAL(pvs->select)) {
 		REBINT i = Int32(pvs->select);
-		if (i == 0) return PE_NONE; // like in case: path/0
+		if (i == 0) {
+			// "value out of range" error with: path/0: 10
+			// returns NONE for: path/0
+			return (pvs->setval) ? PE_BAD_RANGE : PE_NONE;
+		}
 		if (i < 0) i++;
 		n = i + VAL_INDEX(pvs->value) - 1;
 	}
@@ -728,8 +732,12 @@ done:
 	}
 
 	if (n < 0 || (REBCNT)n >= VAL_TAIL(pvs->value)) {
-		if (pvs->setval) return PE_BAD_SELECT;
-		return PE_NONE;
+		return (pvs->setval)
+			// in case of setting a path,
+			// return "cannot access c in path" error when used path/c: 10
+			// and or "value out of range" error with: path/10: 10
+			? ((IS_INTEGER(pvs->select) || IS_DECIMAL(pvs->select)) ? PE_BAD_RANGE : PE_BAD_SELECT)
+			: PE_NONE;
 	}
 
 	if (pvs->setval) TRAP_PROTECT(VAL_SERIES(pvs->value));
