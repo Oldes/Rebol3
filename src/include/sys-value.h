@@ -1144,6 +1144,14 @@ enum Handle_Flags {
 	HANDLE_CONTEXT_LOCKED = 1 << 5,  // so Rebol will not GC the handle if C side still depends on it
 };
 
+/***********************************************************************
+**  Which flags are part of what a handle IS.
+**
+**  The low three say what kind of payload the value carries; the rest
+**  are context bookkeeping which changes while the value does not.
+***********************************************************************/
+#define HANDLE_VALUE_FLAGS  (HANDLE_SERIES | HANDLE_RELEASABLE | HANDLE_CONTEXT)
+
 enum Handle_Spec_Flags {
 	HANDLE_REQUIRES_HOB_ON_FREE = 1 << 0
 };

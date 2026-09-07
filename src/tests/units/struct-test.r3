@@ -124,6 +124,32 @@ if system/version >= 3.19.1 [
 	--assert all [attempt [f32x2/a: #(f32! [1.0 2.0])]  f32x2/a == #(f32! [1.0 2.0])]
 	--assert all [attempt [f64x2/a: #(f64! [1.0 2.0])]  f64x2/a == #(f64! [1.0 2.0])]
 
+--test-- "Assigning negative numbers"
+	;; the sign must not be lost when an integer is stored in a float field!
+	s: make struct! [a [float!] b [double!]]
+	s/a: -1
+	s/b: -2
+	--assert s/a == -1.0
+	--assert s/b == -2.0
+	--assert #{000080BF00000000000000C0} == to binary! s
+	--assert #{000080BF00000000000000C0} == to binary! make s [-1 -2]
+	;; decimals are truncated towards zero when stored in an integer field
+	s: make struct! [a [int32!] b [int8!]]
+	s/a: -1.5
+	s/b: -2.9
+	--assert s/a == -1
+	--assert s/b == -2
+	s/a: 1.9
+	--assert s/a == 1
+
+--test-- "Assigning a decimal which does not fit into an integer field"
+	s: make struct! [a [int32!]]
+	s/a: 123
+	--assert error? try [s/a:  1e300]
+	--assert error? try [s/a: -1e300]
+	--assert error? try [s/a: 1.#nan]
+	--assert s/a == 123 ;; not modified
+
 --test-- "Struct construction with initial value (using named fields)"
 	--assert all [struct? i8:  #(struct! [a [int8!]   b [int8!]] [a:  23 ])  i8/a  = 23  i8/b  = 0 ]
 	--assert all [struct? i16: #(struct! [a [int16!]  b [int8!]] [a:  23 ])  i16/a = 23  i16/b = 0 ]
@@ -186,6 +212,22 @@ if system/version >= 3.19.1 [
 	;; the block is evaluated like reduce/no-set
 	--assert all [attempt [s: make proto! [3 * 10 4 * 10]]        s/a = 30 s/b = 40]
 	--assert all [attempt [s: make proto! [b: 3 * 10 a: 4 * 10]]  s/b = 30 s/a = 40]
+
+--test-- "Construction from a struct prototype using an invalid spec"
+	;; like: make proto! [a: 1 20 30] where 20 is not a set-word!
+	--assert for i 800 1000 1 [
+		if attempt [make proto! compose [a: 1 (i) 20]][
+			;; return FALSE when construction is successful (which should not happen)
+			break/return false
+		]
+		true
+	]
+
+--test-- "Construct a struct using symbols non-canonically"
+	--assert not error? try [transcode/one {#(struct! [x [int8!]] [x: 1])}]
+	--assert not error? try [transcode/one {#(struct! [x [int8!]] [X: 1])}]
+	--assert not error? try [transcode/one {#(struct! [X [int8!]] [x: 1])}]
+	--assert not error? try [transcode/one {#(struct! [X [int8!]] [X: 1])}]
 
 --test-- "Construction from struct prototype (using values only)"
 	proto!: #(struct! [a [uint8!] b [uint8!]] [1 2])
@@ -393,6 +435,45 @@ if system/version >= 3.19.1 [
 		s/val/a == "X23"
 	]]
 
+--test-- "Setting an element of a struct's array"
+	s: make struct! [a [struct! [x [uint32!] y [uint32!]] [2]]]
+	src: make struct! [x [uint32!] y [uint32!]]
+	src/x: 1 src/y: 2
+	--assert all [
+		not error? try [s/a/2: src]
+		#{0000000000000000 0100000002000000} == to binary! s
+	]
+	;; the index must be inside the array's range
+	--assert error? try [s/a/0: src]
+	--assert error? try [s/a/3: src]
+	--assert error? try [s/a/(-1): src]
+	;; ... and nothing may be modified in such a case
+	--assert #{0000000000000000 0100000002000000} == to binary! s
+	;; the assigned struct must have the same size...
+	--assert error? try [s/a/1: make struct! [n [int8!]]]
+	;; ... and the same field types!
+	--assert error? try [s/a/1: make struct! [x [int32!] y [int32!]]]
+	;; a value which is not a struct is not accepted
+	--assert error? try [s/a/1: 5]
+	--assert error? try [s/a/1: "hello"]
+	;; ... but a block with values is
+	--assert all [
+		not error? try [s/a/1: [3 4]]
+		#{0300000004000000 0100000002000000} == to binary! s
+	]
+
+--test-- "Setting an element of a struct's array with Rebol values"
+	;; raw data must never be stored into a `rebval!` field,
+	;; because the GC would try to mark it as a Rebol value!
+	n: length? make struct! [v [rebval!]] ;; size of the internal Rebol value
+	s: make struct! [a [struct! [v [rebval!]] [2]]]
+	raw: make struct! compose/deep [b [uint8! [(n)]]]
+	change raw append/dup make binary! n #{FF} n
+	--assert n = length? raw
+	--assert error? try [s/a/1: raw]
+	--assert none? s/a/1/v
+	--assert not error? try [recycle]
+
 --test-- "Setting inner struct"
 	s: make struct! [
 		id  [uint16!]
@@ -449,6 +530,96 @@ s: #(struct! [
 --test-- "to binary! struct!"
 	s: #(struct! [a [uint16!] b [int32!]] [1 -1])
 	--assert #{0100FFFFFFFF} = to binary! s
+===end-group===
+
+
+===start-group=== "Struct construction using binary data"
+--test-- "Struct constructed from binary data"
+	s: transcode/one {#(struct! [a [uint8!] b [uint16!]] #{010200})}
+	--assert struct? s
+	--assert all [s/a = 1 s/b = 2]
+	--assert #{010200} == to binary! s
+	;; data longer than the struct are truncated
+	s: transcode/one {#(struct! [a [uint8!] b [uint16!]] #{010200FFFF})}
+	--assert #{010200} == to binary! s
+
+--test-- "Struct's binary data must not be shorter than the struct"
+	--assert error? try [transcode/one/error {#(struct! [a [uint8!] b [uint16!]] #{0102})}]
+
+--test-- "Struct with Rebol values cannot be initialized using binary data"
+	;; the GC would try to mark random bytes as Rebol values!
+	bin: append/dup make binary! 64 #{FF} 64
+	s: make struct! [n [uint8!] val [rebval!]]
+	--assert all [
+		error? e: try [make s bin]
+		e/id = 'protected
+	]
+	--assert none? s/val
+	;; the same must be true for a struct with a nested Rebol value
+	s: make struct! [n [uint8!] inner [struct! [val [rebval!]]]]
+	--assert all [
+		error? e: try [make s bin]
+		e/id = 'protected
+	]
+	--assert none? s/inner/val
+	;; and also when using the construction syntax
+	--assert error? try [transcode/one/error {#(struct! [val [rebval!]] #{FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF})}]
+	--assert not error? try [recycle]
+
+===end-group===
+
+
+===start-group=== "Struct GC"
+;; Rebol values stored in a struct are reachable only from the struct's data
+;; series, so the GC must find them there. `flush` and `reuse` below make an
+;; unmarked value really disappear - the value is first pushed out of the GC's
+;; infant nursery and once collected, its memory is taken by other series.
+flush: does [loop 100 [make binary! 64]]
+reuse: does [loop 100 [append copy "" "0123456789abcdef"]]
+
+--test-- "GC marks a rebval! field which is not at the struct's head"
+	s: make struct! [n [int8!] val [rebval!]]
+	s/n: 42
+	--assert string? s/val: copy "keep me alive"
+	flush
+	--assert not error? try [recycle]
+	reuse
+	--assert s/n = 42
+	--assert s/val == "keep me alive"
+
+--test-- "GC marks all values of a rebval! array field"
+	s: make struct! [n [int16!] vals [rebval! [2]]]
+	--assert block? s/vals: reduce [copy "first" copy "second"]
+	flush
+	--assert not error? try [recycle]
+	reuse
+	--assert s/vals == ["first" "second"]
+
+--test-- "GC marks rebval! fields of a nested struct"
+	s: make struct! [
+		id    [uint8!]
+		inner [struct! [val [rebval!]]]
+	]
+	s/id: 7
+	--assert string? s/inner/val: copy "nested value"
+	flush
+	--assert not error? try [recycle]
+	reuse
+	--assert s/id = 7
+	--assert s/inner/val == "nested value"
+
+--test-- "GC marks rebval! fields of a deeply nested struct"
+	s: make struct! [
+		a [struct! [b [struct! [val [rebval!]]]] [2]]
+	]
+	--assert string? s/a/1/b/val: copy "first"
+	--assert string? s/a/2/b/val: copy "second"
+	flush
+	--assert not error? try [recycle]
+	reuse
+	--assert s/a/1/b/val == "first"
+	--assert s/a/2/b/val == "second"
+
 ===end-group===
 ] ;>= 3.19.1
 

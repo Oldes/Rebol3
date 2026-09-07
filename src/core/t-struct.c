@@ -141,7 +141,7 @@ void Get_Struct_Field_Value(REBSTU* stu, REBSTF* field, REBVAL* val)
 		REBCNT sym = (REBCNT)type_to_sym[type];
 
 		if (type > STRUCT_TYPE_DOUBLE || sym == NOT_FOUND) {
-			// Type has no vector equivalent — fall back to a block of scalars
+			// Type has no vector equivalent ï¿½ fall back to a block of scalars
 			REBSER* ser = Make_Block(field->dimension);
 			REBCNT n = 0;
 			SET_TYPE(val, REB_BLOCK);
@@ -156,7 +156,7 @@ void Get_Struct_Field_Value(REBSTU* stu, REBSTF* field, REBVAL* val)
 			VAL_INDEX(val) = 0;
 		}
 		else {
-			// Type maps to a known vector word — use a vector for efficiency
+			// Type maps to a known vector word ï¿½ use a vector for efficiency
 			Make_Vector_From_Word(val, sym, field->dimension);
 			ASSERT1(NZ(VAL_SERIES(val)), RP_INTERNAL);
 			// Bulk-copy the raw field bytes directly into the vector's data buffer
@@ -285,7 +285,14 @@ static REBOOL assign_scalar(REBSTU *stu,
 				Trap_Type(val);
 			}
 			d = VAL_DECIMAL(val);
-			i = (u64) d;
+			if (IS_INTEGER_TYPE(field->type)) {
+				// Casting a value which does not fit into a 64bit integer
+				// (or a NaN) is an undefined behavior in C!
+				if (!(d >= -9223372036854775808.0 && d < 9223372036854775808.0))
+					Trap0(RE_OVERFLOW);
+				// Signed conversion! Truncates towards zero also for negatives.
+				i = (u64)(i64)d;
+			}
 			break;
 		case REB_INTEGER:
 			if (!IS_NUMERIC_TYPE(field->type)
@@ -293,7 +300,8 @@ static REBOOL assign_scalar(REBSTU *stu,
 				Trap_Type(val);
 			}
 			i = (u64) VAL_INT64(val);
-			d = (double)i;
+			// Must not be converted from the unsigned value, else the sign is lost!
+			d = (double)VAL_INT64(val);
 			break;
 		case REB_STRUCT:
 			if (STRUCT_TYPE_STRUCT != field->type) {
@@ -662,22 +670,21 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 	// At this point, the struct specification should be ready.
 	REBSTU *stu = &VAL_STRUCT(out);
 
-	if (IS_BINARY(values)) {
-		if (VAL_BIN_LEN(values) < STRUCT_SIZE(stu)) Trap_Arg(values);
-		if (STRUCT_DATA(stu)) {
-			COPY_MEM(STRUCT_DATA_BIN(stu), VAL_BIN_DATA(values), STRUCT_SIZE(stu));
-		}
-		else {
-			STRUCT_DATA(stu) = VAL_SERIES(values);
-		}
-		return TRUE;
-	}
-
+	// The struct always owns its data!
 	STRUCT_DATA(stu) = Make_Binary(STRUCT_SIZE(stu));
-	LABEL_SERIES(VAL_STRUCT_FIELDS(out), "struct_data");
+	// Rebol values which may be stored in the data are marked by Mark_Struct!
+	BARE_SERIES(STRUCT_DATA(stu));
+	LABEL_SERIES(STRUCT_DATA(stu), "struct_data");
 	SERIES_TAIL(STRUCT_DATA(stu)) = STRUCT_SIZE(stu);
 
-	if (IS_BLOCK(values)) {
+	if (IS_BINARY(values)) {
+		// Raw data must not be used to initialize a struct holding Rebol
+		// values, because the GC would try to mark random bytes as values!
+		if (STRUCT_PROTECTED(stu)) Trap0(RE_PROTECTED);
+		if (VAL_BIN_LEN(values) < STRUCT_SIZE(stu)) Trap_Arg(values);
+		COPY_MEM(STRUCT_DATA_BIN(stu), VAL_BIN_DATA(values), STRUCT_SIZE(stu));
+	}
+	else if (IS_BLOCK(values)) {
 		init_fields(out, values);
 	}
 	return TRUE;
@@ -795,7 +802,7 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 
 			field = (REBSTF *)SERIES_SKIP(VAL_STRUCT_FIELDS(out), field_num);
 			field->offset = (REBCNT)offset;
-			field->sym = VAL_WORD_SYM(blk);
+			field->sym = VAL_WORD_CANON(blk);
 			VAL_SET_LINE(blk);
 			++blk;
 
@@ -910,7 +917,7 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 
 		//Debug_Fmt("?? store: %r value: %r", pvs->store, pvs->value);
 
-		// Simple get-path — just return the stored value.
+		// Simple get-path ï¿½ just return the stored value.
 		if (!pvs->setval) return PE_USE;
 
 		// Deep set-path: save the field selector, then advance pvs->value
@@ -926,14 +933,18 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 
 		switch (field->type) {
 		case STRUCT_TYPE_STRUCT:
-			if (IS_INTEGER(pvs->select) && IS_BLOCK(pvs->store) && IS_STRUCT(pvs->value)) {
+			// NOTE: don't test pvs->store here! It may be already modified
+			// by Next_Path above (it is used as a scratch value).
+			if (field->array && IS_INTEGER(pvs->select)) {
 				// Setting one struct element inside an array of structs by index,
 				// e.g.: st/arr/2: st/arr/1
-				// Copy the source struct's raw bytes into the correct slot.
-				REBCNT idx = VAL_INT64(pvs->select);
-				if (idx > field->dimension) return PE_BAD_SET; // index out of range
-				void* data = STRUCT_DATA_BIN(stu) + field->offset + (idx - 1) * field->size;
-				COPY_MEM(data, VAL_STRUCT_DATA_BIN(pvs->value), field->size);
+				// NOTE: the index is validated when the temporary block with the
+				// array's values is accessed, but don't rely on it here!
+				REBI64 idx = VAL_INT64(pvs->select);
+				if (idx < 1 || idx > (REBI64)field->dimension)
+					return PE_BAD_SET; // index out of range
+				// assign_scalar validates that the value may be assigned!
+				res = assign_scalar(stu, field, (REBCNT)(idx - 1), pvs->value);
 			}
 			break;
 		case STRUCT_TYPE_REBVAL:
@@ -948,7 +959,7 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 		}
 	}
 	else {
-		// Simple set-path (e.g. struct/field: 123) — set the field directly.
+		// Simple set-path (e.g. struct/field: 123) ï¿½ set the field directly.
 		res = Set_Struct_Var(stu, pvs->select, NULL, pvs->setval);
 	}
 	return res ? PE_OK : PE_BAD_SET;
@@ -1052,10 +1063,10 @@ static void init_fields(REBVAL *ret, REBVAL *spec)
 			REBCNT i = 0;
 			word = blk;
 			fld_val = blk + 1;
-
-			if (IS_END(fld_val)) {
+			if (!IS_SET_WORD(word))
+				Trap_Arg(word);
+			if (IS_END(fld_val))
 				Trap1(RE_NEED_VALUE, word);
-			}
 			// Iterate all fields (first value is used for info)
 			for (i = 1; i < SERIES_TAIL(fields); i++) {
 				fld = (REBSTF *)SERIES_SKIP(fields, i);
@@ -1111,6 +1122,8 @@ static void init_fields(REBVAL *ret, REBVAL *spec)
 				}
 				else if (IS_BINARY(arg) && VAL_BIN_LEN(arg) >= VAL_STRUCT_SIZE(val)) {
 					//TODO: special error when data are not large enough?
+					// Raw data must not be used with a struct holding Rebol values!
+					if (VAL_STRUCT_PROTECTED(val)) Trap0(RE_PROTECTED);
 					COPY_MEM(VAL_STRUCT_DATA_BIN(ret), VAL_BIN_DATA(arg), VAL_STRUCT_SIZE(val));
 				}
 				else {

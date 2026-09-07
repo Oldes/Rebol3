@@ -147,41 +147,44 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 		CHECK_MARK(GOB_DATA(gob), depth);
 	}
 }
-#ifdef unused
+
 /***********************************************************************
 **
-*/	static void Mark_Struct_Field(REBSTU *stu, REBSTF *field, REBCNT depth)
+*/	static void Mark_Struct_Fields(REBSTU *stu, REBSER *fields, REBCNT offset, REBCNT depth)
 /*
+**		Mark all Rebol values stored in a struct's data, including values
+**		held in nested structs. `fields` is the field record series of the
+**		(nested) struct and `offset` is its position in the data series.
+**
 ***********************************************************************/
 {
-	if (field->type == STRUCT_TYPE_REBVAL) {
-		REBCNT i;
-		ASSERT2(field->size == sizeof(REBVAL), RP_BAD_SIZE);
-		for (i = 0; i < field->dimension; i++) {
-			REBVAL *data = (REBVAL *)SERIES_SKIP(STRUCT_DATA_BIN(stu),
-				STRUCT_OFFSET(stu) + field->offset + i * field->size);
-			if (field->done) {
-				Mark_Value(data, depth);
+	REBSTF *field = (REBSTF *)BLK_HEAD(fields) + 1; // the info is at the head
+	REBCNT count = SERIES_TAIL(fields) - 1;
+	REBCNT i, n;
+	REBVAL *val;
+
+	for (i = 0; i < count; i++, field++) {
+		if (!field->done) continue;
+		switch (field->type) {
+		case STRUCT_TYPE_REBVAL:
+			ASSERT2(field->size == sizeof(REBVAL), RP_BAD_SIZE);
+			for (n = 0; n < field->dimension; n++) {
+				val = (REBVAL *)BIN_SKIP(STRUCT_DATA(stu), offset + field->offset + n * field->size);
+				if (!IS_END(val)) Mark_Value(val, depth + 1);
 			}
+			break;
+		case STRUCT_TYPE_STRUCT:
+			// A nested struct may hold Rebol values too!
+			if (!field->spec || !field->spec->series) break;
+			// Skip it when there is nothing to mark in it.
+			if (!(((REBSTI *)BLK_HEAD(field->spec->series))->flags & 1)) break;
+			for (n = 0; n < field->dimension; n++) {
+				Mark_Struct_Fields(stu, field->spec->series, offset + field->offset + n * field->size, depth + 1);
+			}
+			break;
 		}
 	}
-#ifdef todo
-	if (field->type == STRUCT_TYPE_STRUCT) {
-		REBCNT len = 0;
-		REBSER *series = NULL;
-
-		CHECK_MARK(field->fields, depth);
-		CHECK_MARK(field->spec, depth);
-
-		series = field->fields;
-		for (len = 0; len < series->tail; len++) {
-			Mark_Struct_Field(stu, (struct Struct_Field *)SERIES_SKIP(series, len), depth + 1);
-		}
-	}
-#endif
-	/* ignore primitive datatypes */
 }
-#endif
 
 /***********************************************************************
 **
@@ -200,24 +203,9 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 	MARK_SERIES(STRUCT_FIELDS_SER(stu));
 	ASSERT2(IS_BARE_SERIES(stu->data), RP_BAD_SERIES);
 	ASSERT2(!IS_EXT_SERIES(stu->data), RP_BAD_SERIES);
-	ASSERT2(SERIES_TAIL(stu->data) == 1, RP_BAD_SERIES);
 
-	if (STRUCT_NEEDS_MARK(stu)) {
-		REBCNT n, i;
-		REBVAL *val;
-		REBSTF *field = STRUCT_FIELDS(stu);
-		for (i = 0; i < STRUCT_FIELDS_NUM(stu); i++, field++) {
-			if (field->done) {
-				if (field->type == STRUCT_TYPE_REBVAL) {
-					ASSERT2(field->size == sizeof(REBVAL), RP_BAD_SIZE);
-					for (n = 0; n < field->dimension; n++) {
-						val = (REBVAL *)STRUCT_DATA_BIN(stu) + field->offset + n * field->size;
-						if (!IS_END(val)) Mark_Value(val, depth + 1);
-					}
-				}
-			}
-		}
-	}
+	if (STRUCT_NEEDS_MARK(stu))
+		Mark_Struct_Fields(stu, STRUCT_FIELDS_SER(stu), STRUCT_OFFSET(stu), depth);
 }
 
 
