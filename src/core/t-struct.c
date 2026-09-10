@@ -261,10 +261,9 @@ REBFLG Get_Struct_Var(REBSTU *stu, REBVAL *word, REBVAL *val)
 		}
 		if (type != SYM_WORDS) {
 			val = Append_Value(out);
-			if (field->dimension > 1) {
+			if (field->array) {
 				dim = Make_Block(field->dimension);
-				SET_TYPE(val, REB_BLOCK);
-				VAL_SERIES(val) = dim;
+				Set_Block(val, dim);
 				for (n = 0; n < field->dimension; n++) {
 					REBVAL* dv = Append_Value(dim);
 					get_scalar(stu, field, n, dv);
@@ -1083,7 +1082,7 @@ static void Copy_Struct_Val(REBVAL *src, REBVAL *dst)
 }
 
 static void init_field(REBVAL *ret, REBSTF *fld, REBVAL *value) {
-	if (fld->dimension > 1) {
+	if (fld->array) {
 		if (IS_BLOCK(value)) {
 			if (VAL_LEN(value) != fld->dimension) {
 				Trap_Arg(value);

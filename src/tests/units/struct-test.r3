@@ -695,6 +695,44 @@ if system/version >= 3.19.1 [
 	--assert error? try [s/w: #(u32! [999999 2])]
 	--assert s/w == [#(none) #(none)]
 	--assert not error? try [recycle]
+
+--test-- "Field with a single-element array"
+	;; `[type! [1]]` is an array of one value, not a scalar!
+	s: make struct! [a [int8! [1]]]
+	--assert [a [int8! [1]]] = spec-of s
+	--assert 1 = length? s
+	--assert vector? s/a
+	--assert s/a == #(i8! [0])
+	;; the reflectors must agree with the accessor
+	--assert [a: [0]] = body-of s
+	--assert [[0]]    = values-of s
+	--assert (mold/all/flat s) = "#(struct! [a [int8! [1]]] [a: [0]])"
+	;; setting uses the array form...
+	--assert all [
+		not error? try [s/a: [3]]
+		s/a == #(i8! [3])
+	]
+	--assert all [
+		not error? try [s/a/1: 4]
+		s/a == #(i8! [4])
+	]
+	--assert error? try [s/a: 5] ;; a scalar is not accepted
+	;; ... and so does the construction
+	p: make struct! [a [int8! [1]]]
+	--assert all [
+		struct? s2: make p [a: [7]]
+		s2/a == #(i8! [7])
+	]
+	--assert all [
+		struct? s3: make p [[7]]
+		s3/a == #(i8! [7])
+	]
+	--assert error? try [make p [a: 7]]
+	;; the molded form must reload to an equal struct
+	--assert all [
+		struct? s4: transcode/one mold/all/flat s
+		(to binary! s4) == to binary! s
+	]
 ===end-group===
 
 
