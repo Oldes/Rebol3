@@ -217,9 +217,64 @@ if system/version >= 3.19.1 [
 	--assert all [s1/a = 10 s1/b = 2 ]
 	--assert all [s2/a = 1  s2/b = 20]
 	--assert all [s3/a = 10 s3/b = 20]
-	;; the block is evaluated like reduce/no-set
-	--assert all [attempt [s: make proto! [3 * 10 4 * 10]]        s/a = 30 s/b = 40]
-	--assert all [attempt [s: make proto! [b: 3 * 10 a: 4 * 10]]  s/b = 30 s/a = 40]
+	;; the block is NOT evaluated - use compose when needed
+	--assert error? try [make proto! [3 * 10 4 * 10]]
+	--assert error? try [make proto! [b: 3 * 10 a: 4 * 10]]
+	--assert all [attempt [s: make proto! compose [(3 * 10) (4 * 10)]]       s/a = 30 s/b = 40]
+	--assert all [attempt [s: make proto! compose [b: (3 * 10) a: (4 * 10)]] s/b = 30 s/a = 40]
+
+	pr: #(struct! [a [uint8!] b [word!] c [uint8!]] [a: 1 b: + c: 2])
+	s4: make pr [10 * 20]
+	--assert all [
+		;; the prototype is not modified...
+		pr/a = 1  pr/b = '+  pr/c = 2
+		;; ... and `10 * 20` is stored as three values, not evaluated to 200
+		s4/a = 10 s4/b = '*  s4/c = 20
+	]
+
+--test-- "Make and the construction syntax follow the same rules"
+	p: make struct! [a [uint8!] b [uint8!]]
+	--assert error? try [make p [1 + 1]]
+	--assert error? try [transcode/one/error {#(struct! [a [uint8!] b [uint8!]] [1 + 1])}]
+	--assert all [
+		struct? s: make p compose [(1 + 1)]
+		s/a = 2
+	]
+
+--test-- "Neither change nor make evaluates the block"
+	;; values are stored as they are, like in any other series modification:
+	;;     head change [. .] [1 * 2] == [1 * 2]
+	foo: 'bar
+	baz: 'qux
+	w: make struct! [a [word!] b [word!]]
+	--assert all [
+		not error? try [change w [foo baz]]
+		w/a = 'foo ;; the word itself, not its value
+		w/b = 'baz
+	]
+	--assert all [
+		not error? try [w2: make w [foo baz]]
+		w2/a = 'foo
+		w2/b = 'baz
+	]
+	--assert all [
+		not error? try [w2: make w compose [(foo) (baz)]]
+		w2/a = 'bar ;; ... and here the values
+		w2/b = 'qux
+	]
+	;; the same with named fields
+	--assert all [
+		not error? try [change w [b: foo]]
+		w/b = 'foo
+	]
+	--assert all [
+		not error? try [w2: make w [b: foo]]
+		w2/b = 'foo
+	]
+	--assert all [
+		not error? try [w2: make w compose [b: (foo)]]
+		w2/b = 'bar
+	]
 
 --test-- "Construction from a struct prototype using an invalid spec"
 	;; like: make proto! [a: 1 20 30] where 20 is not a set-word!

@@ -1188,8 +1188,10 @@ static void init_fields(REBVAL *ret, REBVAL *spec)
 				Copy_Struct_Val(val, ret);
 				/* only accept value initialization */
 				if (IS_BLOCK(arg)) {
-					Reduce_Block_No_Set(VAL_SERIES(arg), VAL_INDEX(arg), NULL);
-					init_fields(ret, DS_TOP);
+					// The values are used as they are, like in the construction
+					// syntax. Use `compose` when evaluation is needed, e.g.:
+					//     make proto compose [a: (1 + 2)]
+					init_fields(ret, arg);
 				}
 				else if (IS_BINARY(arg) && VAL_BIN_LEN(arg) >= VAL_STRUCT_SIZE(val)) {
 					//TODO: special error when data are not large enough?
