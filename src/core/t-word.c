@@ -56,7 +56,12 @@
 		e = VAL_WORD_CANON(a) == VAL_WORD_CANON(b);
 		if (mode == 1) e &= VAL_WORD_INDEX(a) == VAL_WORD_INDEX(b)
 			&& VAL_WORD_FRAME(a) == VAL_WORD_FRAME(b);
-		else if (mode >= 2) {
+		else if (mode == 2) {
+			// Strict equality compares the exact spelling (alias),
+			// not the binding - that is what `same?` is for!
+			e = VAL_WORD_SYM(a) == VAL_WORD_SYM(b);
+		}
+		else if (mode >= 3) {
 			e = (VAL_WORD_SYM(a) == VAL_WORD_SYM(b) &&
 				VAL_WORD_INDEX(a) == VAL_WORD_INDEX(b) &&
 				VAL_WORD_FRAME(a) == VAL_WORD_FRAME(b));
