@@ -150,6 +150,7 @@ static REBFLG get_scalar(REBSTU *stu,
 			break;
 		default:
 			/* should never be here */
+			SET_NONE(val);
 			return FALSE;
 	}
 	return TRUE;
@@ -630,14 +631,13 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 					DS_PUSH_END;
 					REBVAL *inner = DS_TOP;
 					res = Prepare_Struct(inner, val);
-					if (!res) {
-						//RL_Print("Failed to make nested struct!\n");
-						return FALSE;
+					if (res) {
+						field->size = VAL_STRUCT_SIZE(inner);
+						field->spec = VAL_STRUCT_SPEC(inner);
+						STRUCT_FLAGS(stu) |= VAL_STRUCT_FLAGS(inner);
 					}
-					field->size = VAL_STRUCT_SIZE(inner);
-					field->spec = VAL_STRUCT_SPEC(inner);
-					STRUCT_FLAGS(stu) |= VAL_STRUCT_FLAGS(inner);
 					DS_POP;
+					if (!res) return FALSE; //RL_Print("Failed to make nested struct!\n");
 				}
 				else {
 					return FALSE;
@@ -753,10 +753,14 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 		n = Find_Entry(VAL_SERIES(struct_specs), data, 0, TRUE);
 	}
 	else if (!IS_BLOCK(data)) return FALSE; // validate early!
-	else hash = Hash_Block_Value(data);
+	else {
+		hash = Hash_Block_Value(data);
+		// The zero hash means "no key to look for", so a spec must never use it!
+		if (hash == 0) hash = 1;
+	}
 
+	SET_INTEGER(&key, hash);
 	if (hash) {
-		SET_INTEGER(&key, hash);
 		n = Find_Entry(VAL_SERIES(struct_specs), &key, 0, TRUE);
 	}
 	if (n == NOT_FOUND) {
@@ -898,9 +902,10 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 
 		if (error) {
 			Free_Series(VAL_STRUCT_FIELDS(out));
+			VAL_STRUCT_FIELDS(out) = NULL; // don't keep a freed series in the spec!
 			SET_UNSET(out);
 			switch (error) {
-			case FIELD_ERROR_SIZE_LIMIT:   Trap1(RE_SIZE_LIMIT, out);
+			case FIELD_ERROR_SIZE_LIMIT:   Trap1(RE_SIZE_LIMIT, data);
 			case FIELD_ERROR_INVALID_SPEC: Trap_Arg(blk);
 			}
 		}
@@ -1177,6 +1182,9 @@ static void init_fields(REBVAL *ret, REBVAL *spec)
 		case A_TO:
 			// Clone an existing STRUCT:
 			if (IS_STRUCT(val)) {
+				// Raw data must never be used with a struct holding Rebol values,
+				// no matter how long the data are!
+				if (IS_BINARY(arg) && VAL_STRUCT_PROTECTED(val)) Trap0(RE_PROTECTED);
 				Copy_Struct_Val(val, ret);
 				/* only accept value initialization */
 				if (IS_BLOCK(arg)) {
@@ -1185,8 +1193,6 @@ static void init_fields(REBVAL *ret, REBVAL *spec)
 				}
 				else if (IS_BINARY(arg) && VAL_BIN_LEN(arg) >= VAL_STRUCT_SIZE(val)) {
 					//TODO: special error when data are not large enough?
-					// Raw data must not be used with a struct holding Rebol values!
-					if (VAL_STRUCT_PROTECTED(val)) Trap0(RE_PROTECTED);
 					COPY_MEM(VAL_STRUCT_DATA_BIN(ret), VAL_BIN_DATA(arg), VAL_STRUCT_SIZE(val));
 				}
 				else {

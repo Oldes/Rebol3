@@ -610,6 +610,25 @@ if system/version >= 3.19.1 [
 		struct? s: transcode/one {#(struct! [a [uint8!] b [uint8!]] #{0304})}
 		#{0304} == to binary! s
 	]
+
+--test-- "Struct size limit error reports the spec"
+	--assert all [
+		error? e: try [make struct! [a [int64! [1000000000]]]]
+		e/id = 'size-limit
+		block? e/arg1 ;; not an unset!
+	]
+
+--test-- "Raw data are refused for a protected struct whatever their length"
+	s: make struct! [n [uint8!] val [rebval!]]
+	--assert all [
+		error? e: try [make s #{FF}] ;; shorter than the struct
+		e/id = 'protected
+	]
+	--assert all [
+		error? e: try [make s append/dup make binary! 64 #{FF} 64]
+		e/id = 'protected
+	]
+	--assert none? s/val
 ===end-group===
 
 
