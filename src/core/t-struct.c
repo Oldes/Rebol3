@@ -953,6 +953,7 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 		// Deep set-path: save the field selector, then advance pvs->value
 		// to pvs->store so Next_Path operates on the field's current value.
 		REBVAL* sel = pvs->select;
+		REBVAL* prev_path = pvs->path;
 		pvs->value = pvs->store;
 
 		// Walk the remainder of the path, resolving the final value to set.
@@ -988,9 +989,12 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 			// has already written through it - nothing to do here.
 			break;
 		case STRUCT_TYPE_REBVAL:
-			// For REBVAL fields, a numeric sub-select means Next_Path already
-			// resolved the target; otherwise set via the original field name.
-			if (!IS_INTEGER(pvs->select))
+			// An immediate value (like date!) is modified only in the scratch
+			// value, so it must be stored back into the field. That is valid
+			// just for a single path step - a deeper path uses pvs->store for
+			// its own results and modifies the real value in place anyway!
+			// A numeric sub-select means Next_Path already resolved the target.
+			if (!IS_INTEGER(pvs->select) && pvs->path == prev_path + 1)
 				res = Set_Struct_Var(stu, sel, NULL, pvs->store);
 			break;
 		default:

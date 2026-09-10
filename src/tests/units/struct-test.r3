@@ -567,6 +567,29 @@ if system/version >= 3.19.1 [
 	--assert s/a/1 = s/a/2
 	--assert not same? s/a/1 s/a/2	
 
+--test-- "Deep path into a struct's rebval! field"
+	inner: make struct! [pos [struct! [x [uint8!] y [uint8!]]]]
+	s: make struct! [n [int8!] val [rebval!]]
+	s/n: 42
+	s/val: inner
+	--assert not error? try [s/val/pos/x: 1]
+	--assert same? inner s/val ;; the field must still hold the same struct!
+	--assert inner/pos/x == 1  ;; ... and the value was really stored
+	--assert s/n == 42         ;; nothing else was touched
+
+--test-- "Setting a field of an immediate value in a rebval! field"
+	;; immediates are modified in a scratch value, so they must be stored back
+	s: make struct! [val [rebval!]]
+	s/val: 1-Jan-2000
+	--assert all [
+		not error? try [s/val/year: 2026]
+		s/val = 1-Jan-2026
+	]
+	s/val: 1x2
+	--assert all [
+		not error? try [s/val/x: 10]
+		s/val = 10x2
+	]
 ===end-group===
 
 
