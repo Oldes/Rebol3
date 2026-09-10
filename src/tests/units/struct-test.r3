@@ -531,7 +531,33 @@ if system/version >= 3.19.1 [
 	--assert s1 = s2        ;; compares only field types
 	--assert not (s1 == s2) ;; compares alse field names
 	s1/a: 1
-	
+
+--test-- "Comparing struct values at different positions"
+	;; two fields with the same spec share both the fields series and the data
+	;; series - only the offset differs, so it must be part of the comparison
+	s: make struct! [
+		a [struct! [x [uint8!] y [uint8!]]]
+		b [struct! [x [uint8!] y [uint8!]]]
+	]
+	s/a/x: 1
+	--assert not same? s/a s/b
+	--assert not (s/a == s/b)
+	--assert not (s/a =  s/b)   ;; content differs too
+	s/a/x: 0
+	--assert s/a = s/b          ;; same content...
+	--assert not same? s/a s/b  ;; ...but not the same struct
+	--assert same? s/a s/a
+
+--test-- "Comparing elements of a struct's array"
+	s: make struct! [a [struct! [n [int8!]] [2]]]
+	s/a/1/n: 1
+	s/a/2/n: 2
+	--assert not same? s/a/1 s/a/2
+	--assert not (s/a/1 == s/a/2)
+	--assert not (s/a/1 =  s/a/2)
+	s/a/2/n: 1
+	--assert s/a/1 = s/a/2
+	--assert not same? s/a/1 s/a/2	
 
 ===end-group===
 

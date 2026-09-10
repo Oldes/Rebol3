@@ -972,14 +972,29 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 **
 */	REBINT Cmp_Struct(REBVAL *s, REBVAL *t)
 /*
+**		Compares identity only: the same fields (spec), the same data
+**		series and the same position in it. Never compares content!
+**
 ***********************************************************************/
 {
-	REBINT n = AS_INT(VAL_STRUCT_FIELDS(s) - VAL_STRUCT_FIELDS(t));
-	if (n != 0) {
-		return n;
-	}
-	n = AS_INT(VAL_STRUCT_DATA(s) - VAL_STRUCT_DATA(t));
-	return n;
+    REBUPT a, b;
+
+    a = (REBUPT)VAL_STRUCT_FIELDS(s);
+    b = (REBUPT)VAL_STRUCT_FIELDS(t);
+    if (a < b) return -1;
+    if (a > b) return 1;
+
+    a = (REBUPT)VAL_STRUCT_DATA(s);
+    b = (REBUPT)VAL_STRUCT_DATA(t);
+    if (a < b) return -1;
+    if (a > b) return 1;
+
+    a = VAL_STRUCT_OFFSET(s);
+    b = VAL_STRUCT_OFFSET(t);
+    if (a < b) return -1;
+    if (a > b) return 1;
+
+    return 0;
 }
 
 /***********************************************************************
