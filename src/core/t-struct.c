@@ -60,6 +60,10 @@ static const REBCNT type_to_sym [STRUCT_TYPE_MAX] = {
 	SYM_REBVALX
 };
 
+// Array fields of these types are exposed as a block of values, not as a vector!
+#define IS_BLOCK_BACKED_FIELD(f) \
+	((f)->type > STRUCT_TYPE_DOUBLE || type_to_sym[(f)->type] == NOT_FOUND)
+
 static REBFLG get_scalar(REBSTU *stu,
 				  REBSTF *field,
 				  REBCNT n, /* element index, starting from 0 */
@@ -136,13 +140,8 @@ void Get_Struct_Field_Value(REBSTU* stu, REBSTF* field, REBVAL* val)
 {
 	if (field->array) {
 		REBSER* ser;
-		REBINT type = field->type;
-
-		// Look up the vector-compatible symbol for this field type
-		REBCNT sym = (REBCNT)type_to_sym[type];
-
-		if (type > STRUCT_TYPE_DOUBLE || sym == NOT_FOUND) {
-			// Type has no vector equivalent � fall back to a block of scalars
+		if (IS_BLOCK_BACKED_FIELD(field)) {
+			// Type has no vector equivalent - fall back to a block of scalars
 			REBCNT n;
 			ser = Make_Block(field->dimension);
 			// The value must reference the series BEFORE anything else can be
@@ -156,8 +155,8 @@ void Get_Struct_Field_Value(REBSTU* stu, REBSTF* field, REBVAL* val)
 			}
 		}
 		else {
-			// Type maps to a known vector word � use a vector for efficiency
-			ser = Make_Vector_From_Word(sym, field->dimension);
+			// Type maps to a known vector word - use a vector for efficiency
+			ser = Make_Vector_From_Word((REBCNT)type_to_sym[field->type], field->dimension);
 			SET_VECTOR(val, ser);
 
 			// Bulk-copy the raw field bytes directly into the vector's data buffer
@@ -920,7 +919,7 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 
 		//Debug_Fmt("?? store: %r value: %r", pvs->store, pvs->value);
 
-		// Simple get-path � just return the stored value.
+		// Simple get-path - just return the stored value.
 		if (!pvs->setval) return PE_USE;
 
 		// Deep set-path: save the field selector, then advance pvs->value
@@ -934,21 +933,31 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 		//Debug_Fmt("<- value: %r select: %r prev: %r", pvs->value, pvs->select, sel);
 		//Debug_Fmt("== store: %r value : %r", pvs->store, pvs->value);
 
-		switch (field->type) {
-		case STRUCT_TYPE_STRUCT:
-			// NOTE: don't test pvs->store here! It may be already modified
-			// by Next_Path above (it is used as a scratch value).
-			if (field->array && IS_INTEGER(pvs->select)) {
-				// Setting one struct element inside an array of structs by index,
-				// e.g.: st/arr/2: st/arr/1
-				// NOTE: the index is validated when the temporary block with the
-				// array's values is accessed, but don't rely on it here!
-				REBI64 idx = VAL_INT64(pvs->select);
-				if (idx < 1 || idx > (REBI64)field->dimension)
-					return PE_BAD_SET; // index out of range
+		// NOTE: don't test pvs->store here! It may be already modified
+		// by Next_Path above (it is used as a scratch value).
+		if (field->array && IS_INTEGER(pvs->select)) {
+			// Setting one element of an array field by index,
+			// e.g.: st/arr/2: st/arr/1
+			// NOTE: the index is validated when the temporary series with the
+			// array's values is accessed, but don't rely on it here!
+			REBI64 idx = VAL_INT64(pvs->select);
+			if (idx < 1 || idx > (REBI64)field->dimension)
+				return PE_BAD_SET; // index out of range
+			if (IS_BLOCK_BACKED_FIELD(field)) {
+				// Next_Path modified only the temporary block, so the new
+				// value must still be stored into the struct's data.
 				// assign_scalar validates that the value may be assigned!
 				res = assign_scalar(stu, field, (REBCNT)(idx - 1), pvs->value);
+			} else {
+				// Numeric arrays are exposed as a vector which Next_Path
+				// modified in place - store the whole vector back.
+				res = Set_Struct_Var(stu, sel, NULL, pvs->value);
 			}
+		}
+		else switch (field->type) {
+		case STRUCT_TYPE_STRUCT:
+			// A nested struct shares the data series, so the inner set-path
+			// has already written through it - nothing to do here.
 			break;
 		case STRUCT_TYPE_REBVAL:
 			// For REBVAL fields, a numeric sub-select means Next_Path already
@@ -962,7 +971,7 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 		}
 	}
 	else {
-		// Simple set-path (e.g. struct/field: 123) � set the field directly.
+		// Simple set-path (e.g. struct/field: 123) - set the field directly.
 		res = Set_Struct_Var(stu, pvs->select, NULL, pvs->setval);
 	}
 	return res ? PE_OK : PE_BAD_SET;

@@ -6,6 +6,14 @@ Rebol [
 	Needs:   [%../quick-test-module.r3]
 ]
 
+;; Rebol values stored in a struct are reachable only from the struct's data
+;; series, so the GC must find them there. `flush` and `reuse` below make an
+;; unmarked value really disappear - the value is first pushed out of the GC's
+;; infant nursery and once collected, its memory is taken by other series.
+flush: does [loop 100 [make binary! 64]]
+reuse: does [loop 100 [append copy "" "0123456789abcdef"]]
+
+
 ~~~start-file~~~ "STRUCT"
 ;; Struct datatype was reimplemented and so this test is only
 ;; for the recent version!
@@ -579,6 +587,56 @@ if system/version >= 3.19.1 [
 		2 = length? s/p
 		struct? first s/p
 	]
+--test-- "Setting an element of a word! array field"
+	s: make struct! [w [word! [3]]]
+	--assert all [
+		not error? try [s/w/2: 'foo]
+		s/w/2 == 'foo
+		s/w   == [#(none) foo #(none)]
+	]
+	--assert all [
+		not error? try [s/w/1: 'bar]
+		s/w == [bar foo #(none)]
+	]
+	;; the index must be inside the array's range...
+	--assert error? try [s/w/0: 'x]
+	--assert error? try [s/w/4: 'x]
+	--assert error? try [s/w/(-1): 'x]
+	;; ... and only a word may be stored
+	--assert error? try [s/w/1: 5]
+	--assert s/w == [bar foo #(none)]
+
+--test-- "Setting an element of a rebval! array field"
+	s: make struct! [n [int8!] vals [rebval! [2]]]
+	--assert all [
+		not error? try [s/vals/1: str: copy "first"]
+		s/vals/1 == "first"
+		none? s/vals/2
+	]
+	--assert all [
+		not error? try [s/vals/2: 42]
+		s/vals == ["first" 42]
+	]
+	--assert same? str s/vals/1 ;; the value refers to the same series
+	--assert error? try [s/vals/0: 1]
+	--assert error? try [s/vals/3: 1]
+	;; the GC must find values stored this way
+	flush
+	--assert not error? try [recycle]
+	reuse
+	--assert s/vals == ["first" 42]
+
+--test-- "Setting an element of a numeric array field"
+	;; these are exposed as a vector and were already working - regression only
+	s: make struct! [a [int16! [3]] b [float! [2]]]
+	--assert all [
+		not error? try [s/a/2: 300]
+		s/a == #(i16! [0 300 0])
+		not error? try [s/b/1: 1.5]
+		s/b == #(f32! [1.5 0.0])
+	]
+	--assert error? try [s/a/4: 1]
+	--assert s/a == #(i16! [0 300 0])
 ===end-group===
 
 
@@ -649,13 +707,6 @@ s: #(struct! [
 
 ===start-group=== "Struct GC"
 recycle/torture
-;; Rebol values stored in a struct are reachable only from the struct's data
-;; series, so the GC must find them there. `flush` and `reuse` below make an
-;; unmarked value really disappear - the value is first pushed out of the GC's
-;; infant nursery and once collected, its memory is taken by other series.
-flush: does [loop 100 [make binary! 64]]
-reuse: does [loop 100 [append copy "" "0123456789abcdef"]]
-
 --test-- "GC marks a rebval! field which is not at the struct's head"
 	s: make struct! [n [int8!] val [rebval!]]
 	s/n: 42
