@@ -590,6 +590,26 @@ if system/version >= 3.19.1 [
 		not error? try [s/val/x: 10]
 		s/val = 10x2
 	]
+
+--test-- "Making a struct from a spec only"
+	;; no initial value may be taken from behind the spec argument
+	--assert all [
+		struct? s: make struct! [a [uint8!] b [uint8!]]
+		#{0000} == to binary! s
+	]
+	--assert all [
+		struct? s: to struct! [a [uint8!] b [uint8!]]
+		#{0000} == to binary! s
+	]
+	;; initial values are given only by the construction syntax
+	--assert all [
+		struct? s: transcode/one {#(struct! [a [uint8!] b [uint8!]] [1 2])}
+		#{0102} == to binary! s
+	]
+	--assert all [
+		struct? s: transcode/one {#(struct! [a [uint8!] b [uint8!]] #{0304})}
+		#{0304} == to binary! s
+	]
 ===end-group===
 
 

@@ -1198,8 +1198,15 @@ static void init_fields(REBVAL *ret, REBVAL *spec)
 				// Initialize STRUCT from block:
 				// make struct! [a [uint16!]]
 				if (IS_BLOCK(arg)) {
-					DS_PUSH_END;
-					if (!MT_Struct(ret, arg, REB_STRUCT)) {
+					// MT_Struct expects the spec to be followed by an optional
+					// initial value (block or binary), like in the construction
+					// syntax: #(struct! [a [uint16!]] [1]). There is none here,
+					// so pass a terminated pair instead of relying on the value
+					// which happens to follow the argument on the stack!
+					REBVAL data[2];
+					data[0] = *arg;
+					SET_END(&data[1]);
+					if (!MT_Struct(ret, data, REB_STRUCT)) {
 						goto is_arg_error;
 					}
 				} else {
