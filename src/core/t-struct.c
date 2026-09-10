@@ -667,11 +667,16 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 	++ val;
 
 	if (IS_BLOCK(val)) {// make struct [a [int32! [2]]]
-		// Multi-dimensional field
-		if (!IS_INTEGER(VAL_BLK_DATA(val))) {
+		// Array field - the block must hold exactly one positive integer
+		// which fits into the field's dimension (32 bits)!
+		REBVAL *dim = VAL_BLK_DATA(val);
+		if (!IS_INTEGER(dim) || NOT_END(dim + 1)) {
 			return FALSE;
 		}
-		field->dimension = (REBCNT)VAL_INT64(VAL_BLK_DATA(val));
+		if (VAL_INT64(dim) < 1 || VAL_INT64(dim) > (REBI64)VAL_STRUCT_LIMIT) {
+			return FALSE;
+		}
+		field->dimension = (REBCNT)VAL_INT64(dim);
 		field->array = TRUE;
 		++ val;
 	} else {

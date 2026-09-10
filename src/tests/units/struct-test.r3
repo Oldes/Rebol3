@@ -940,6 +940,47 @@ either system/version < 3.19.1 [
 			error? e: transcode/one/error {#(struct [a [uint8!]] [random 10])}
 			e/id = 'malconstruct
 		]
+	--test-- "Invalid array dimension"
+		;; the dimension must be a single positive integer...
+		--assert all [
+			error? e: try [make struct! [a [int8! [0]]]]
+			e/id = 'invalid-arg
+		]
+		--assert all [
+			error? e: try [make struct! [a [int8! [-1]]]]
+			e/id = 'invalid-arg
+		]
+		--assert all [
+			error? e: try [make struct! [a [int8! []]]]
+			e/id = 'invalid-arg
+		]
+		--assert all [
+			error? e: try [make struct! [a [int8! [2 3]]]]
+			e/id = 'invalid-arg
+		]
+		--assert all [
+			error? e: try [make struct! [a [int8! [1.5]]]]
+			e/id = 'invalid-arg
+		]
+		;; ... which must not be silently truncated to 32 bits!
+		--assert all [
+			error? e: try [make struct! [a [int8! [4294967297]]]] ;; would be 1
+			e/id = 'invalid-arg
+		]
+		--assert all [
+			error? e: try [make struct! [a [int8! [2147483648000]]]] ;; would be 0
+			e/id = 'invalid-arg
+		]
+		;; the same applies to a nested struct
+		--assert all [
+			error? e: try [make struct! [a [struct! [x [int8!]] [0]]]]
+			e/id = 'invalid-arg
+		]
+		;; a single-element array is still valid
+		--assert all [
+			struct? s: make struct! [a [int8! [1]]]
+			1 = length? s
+		]
 ]
 ===end-group===
 
