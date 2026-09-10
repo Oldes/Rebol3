@@ -350,6 +350,36 @@ if system/version >= 3.19.1 [
 	--assert (to binary! s/b  ) == #{0100000002000000}
 	--assert (to binary! s    ) == #{000000000100000002000000}
 
+--test-- "Setting a deeply nested struct using a block"
+	;; the write offset must include the parent struct's own offset!
+	s: make struct! [
+		a [uint32!]
+		b [struct! [x [uint32!] y [struct! [yy [uint32!]]]]]
+	]
+	--assert all [
+		not error? try [s/b/y: [2]]
+		s/b/y/yy == 2
+		s/b/x    == 0 ;; must not be overwritten!
+		s/a      == 0
+		#{00000000 00000000 02000000} == to binary! s
+	]
+
+--test-- "Setting an inner struct of an array element using a block"
+	s: make struct! [
+		pad [uint16!]
+		a   [struct! [p [struct! [x [uint8!] y [uint8!]]]] [2]]
+	]
+	--assert all [
+		not error? try [s/a/2/p: [3 4]]
+		s/a/2/p/x == 3
+		s/a/2/p/y == 4
+		#{0000 0000 0304} == to binary! s ;; pad and a/1 untouched
+	]
+	--assert all [
+		not error? try [s/a/1/p: [1 2]]
+		#{0000 0102 0304} == to binary! s
+	]
+
 --test-- "Nested structs with Rebol values"
 	--assert all [
 		attempt [s: make struct! [val [rebval!] pos [struct! pair8!]]]

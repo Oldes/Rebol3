@@ -324,7 +324,9 @@ static REBOOL assign_scalar(REBSTU *stu,
 				SET_TYPE(DS_TOP, REB_STRUCT);
 				VAL_STRUCT_SPEC(DS_TOP) = field->spec;
 				VAL_STRUCT_DATA(DS_TOP) = stu->data;
-				VAL_STRUCT_OFFSET(DS_TOP) = field->offset + n * field->size;
+				// The offset must be relative to the data series, so it has to
+				// include the offset of the (possibly nested) parent struct!
+				VAL_STRUCT_OFFSET(DS_TOP) = stu->offset + field->offset + n * field->size;
 				VAL_STRUCT_SIZE(DS_TOP) = field->size;
 				init_fields(DS_TOP, val);
 				DS_POP;
