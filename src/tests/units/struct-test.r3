@@ -637,6 +637,41 @@ if system/version >= 3.19.1 [
 	]
 	--assert error? try [s/a/4: 1]
 	--assert s/a == #(i16! [0 300 0])
+
+--test-- "Setting an array field using a vector"
+	s: make struct! [a [int32! [2]] w [word! [2]]]
+	--assert all [
+		not error? try [s/a: #(i32! [1 2])]
+		s/a == #(i32! [1 2])
+	]
+	;; the vector's type must match the field's type...
+	--assert error? try [s/a: #(u32! [1 2])]     ;; same width, other sign
+	--assert error? try [s/a: #(f32! [1.0 2.0])] ;; same width, other type
+	--assert error? try [s/a: #(i16! [1 2])]     ;; other width
+	;; ... and it must have as many values as the array
+	--assert error? try [s/a: #(i32! [1 2 3])]
+	--assert error? try [s/a: #(i32! [1])]
+	--assert s/a == #(i32! [1 2]) ;; nothing was modified
+	;; a block is still converted to the field's type
+	--assert all [
+		not error? try [s/a: [3 4]]
+		s/a == #(i32! [3 4])
+	]
+
+--test-- "Setting an array field using a vector which is not at its head"
+	s: make struct! [a [int32! [2]]]
+	--assert all [
+		not error? try [s/a: skip #(i32! [9 1 2]) 1]
+		s/a == #(i32! [1 2])
+	]
+
+--test-- "A word! array must not be filled with raw vector data"
+	;; raw integers stored into a word! field would be used as symbol ids!
+	s: make struct! [w [word! [2]]]
+	--assert error? try [s/w: #(i32! [1 2])]
+	--assert error? try [s/w: #(u32! [999999 2])]
+	--assert s/w == [#(none) #(none)]
+	--assert not error? try [recycle]
 ===end-group===
 
 

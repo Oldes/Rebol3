@@ -60,6 +60,28 @@ static const REBCNT type_to_sym [STRUCT_TYPE_MAX] = {
 	SYM_REBVALX
 };
 
+// Vector encoding for field types which have a vector equivalent (-1 = none)
+static const REBINT type_to_vect [STRUCT_TYPE_MAX] = {
+	VTUI08,
+	VTSI08,
+	VTUI16,
+	VTSI16,
+	VTUI32,
+	VTSI32,
+	VTUI64,
+	VTSI64,
+	-1, //STRUCT_TYPE_INTEGER
+
+	VTSF32,
+	VTSF64,
+	-1, //STRUCT_TYPE_DECIMAL
+
+	-1, //STRUCT_TYPE_POINTER
+	-1, //STRUCT_TYPE_STRUCT
+	-1, //STRUCT_TYPE_WORD
+	-1  //STRUCT_TYPE_REBVAL
+};
+
 // Array fields of these types are exposed as a block of values, not as a vector!
 #define IS_BLOCK_BACKED_FIELD(f) \
 	((f)->type > STRUCT_TYPE_DOUBLE || type_to_sym[(f)->type] == NOT_FOUND)
@@ -403,10 +425,16 @@ static REBOOL assign_scalar(REBSTU *stu,
 						return FALSE;
 					}
 					if (IS_VECTOR(val)) {
-						if (field->size != VAL_VEC_WIDTH(val)) {
+						// The vector's element type must match the field's type!
+						// Else raw bytes of a foreign type would be stored, which
+						// is fatal for a word! field (an invalid symbol id).
+						REBINT vect = type_to_vect[field->type];
+						if (vect < 0 || VECT_TYPE(VAL_SERIES(val)) != (REBCNT)vect) {
 							return FALSE;
 						}
-						COPY_MEM(STRUCT_DATA_BIN(stu) + field->offset, VAL_BIN_DATA(val), field->dimension * field->size);
+						// NOTE: VAL_DATA (not VAL_BIN_DATA) - the vector's index
+						// counts elements, not bytes!
+						COPY_MEM(STRUCT_DATA_BIN(stu) + field->offset, VAL_DATA(val), field->dimension * field->size);
 					}
 					else {
 						// data in a block
