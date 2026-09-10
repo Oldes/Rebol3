@@ -143,20 +143,22 @@ void Get_Struct_Field_Value(REBSTU* stu, REBSTF* field, REBVAL* val)
 
 		if (type > STRUCT_TYPE_DOUBLE || sym == NOT_FOUND) {
 			// Type has no vector equivalent � fall back to a block of scalars
+			REBCNT n;
 			ser = Make_Block(field->dimension);
-			REBCNT n = 0;
-			SET_TYPE(val, REB_BLOCK);
+			// The value must reference the series BEFORE anything else can be
+			// allocated! `val` is usually pvs->store, which lives on the data
+			// stack, so the GC would else mark a block with a stale series.
+			Set_Block(val, ser);
 
-			// Iterate over each element, extract it as a scalar, and append to the block
+			// Iterate over each element and extract it as a scalar
 			for (n = 0; n < field->dimension; n++) {
-				REBVAL elem;
-				get_scalar(stu, field, n, &elem);
-				Append_Val(ser, &elem);
+				get_scalar(stu, field, n, Append_Value(ser));
 			}
 		}
 		else {
 			// Type maps to a known vector word � use a vector for efficiency
 			ser = Make_Vector_From_Word(sym, field->dimension);
+			SET_VECTOR(val, ser);
 
 			// Bulk-copy the raw field bytes directly into the vector's data buffer
 			COPY_MEM(
@@ -164,12 +166,7 @@ void Get_Struct_Field_Value(REBSTU* stu, REBSTF* field, REBVAL* val)
 				STRUCT_DATA_BIN(stu) + field->offset,
 				field->dimension * field->size
 			);
-			SET_TYPE(val, REB_VECTOR);
 		}
-
-		// Point val at the newly created series, starting at index 0
-		VAL_SERIES(val) = ser;
-		VAL_INDEX(val) = 0;
 	}
 	else {
 		// Non-array field - retrieve a single scalar value directly

@@ -536,6 +536,26 @@ if system/version >= 3.19.1 [
 ===end-group===
 
 
+===start-group=== "Struct array fields"
+--test-- "Reading array fields (block-backed and vector-backed)"
+	s: make struct! [
+		w [word!   [3]]
+		n [int16!  [3]]
+		p [struct! [x [uint8!] y [uint8!]] [2]]
+	]
+	--assert all [
+		block?  s/w
+		3 = length? s/w
+		s/w = [_ _ _]
+		vector? s/n
+		s/n = #(i16! [0 0 0])
+		block?  s/p
+		2 = length? s/p
+		struct? first s/p
+	]
+===end-group===
+
+
 ===start-group=== "Struct reflection"
 ;@@ https://github.com/Oldes/Rebol-issues/issues/2577
 s: #(struct! [
@@ -599,7 +619,10 @@ s: #(struct! [
 ===end-group===
 
 
+
+
 ===start-group=== "Struct GC"
+recycle/torture
 ;; Rebol values stored in a struct are reachable only from the struct's data
 ;; series, so the GC must find them there. `flush` and `reuse` below make an
 ;; unmarked value really disappear - the value is first pushed out of the GC's
@@ -650,6 +673,27 @@ reuse: does [loop 100 [append copy "" "0123456789abcdef"]]
 	--assert s/a/1/b/val == "first"
 	--assert s/a/2/b/val == "second"
 
+--test-- "GC does not see a partially constructed array value"
+	;; Get_Struct_Field_Value writes into pvs->store - a data stack slot the GC
+	;; marks - so the value must reference its new series before appending the
+	;; elements. The append expands the block (and so may recycle) whenever the
+	;; preallocated block has no spare slot, which depends on the pool sizes -
+	;; hence the sweep over dimensions.
+	--assert not error? try [
+		repeat n 40 [
+			s: make struct! compose/deep [
+				w [word!   [(n)]]
+				v [rebval! [(n)]]
+			]
+			if any [
+				n <> length? s/w
+				n <> length? s/v
+				not none? first s/w
+				not none? first s/v
+			][ fail "bad array field" ]
+		]
+	]
+recycle/on
 ===end-group===
 ] ;>= 3.19.1
 
