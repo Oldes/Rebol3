@@ -134,6 +134,25 @@ typedef int (*RXICAL)(int cmd, RXIFRM *args, REBCEC *ctx);
 
 #pragma pack()
 
+// Resolved description of a struct argument, filled by RL_Struct_Info().
+//
+// A struct value is only a view into a data series: the root struct and every
+// (nested) struct field share one data series and differ just in the spec and
+// the offset. So the size of THIS struct can never be derived from the data
+// series - it lives in the specification and must be looked up by the id.
+typedef struct rxi_struct_info {
+	REBYTE *data;   // first byte of THIS struct (root data + offset)
+	REBCNT  size;   // size of THIS struct, in bytes
+	REBCNT  count;  // number of fields
+	REBCNT  id;     // spec id (hash of the specification block)
+	REBCNT  flags;  // STRUCT_FLAG_MARK | STRUCT_FLAG_PROTECTED
+	REBSER *fields; // field list series: REBSTI header + REBSTF[count]
+} RXISTRU;
+
+// Field list of a resolved struct (the REBSTI header is skipped).
+#define RXI_STRUCT_FIELDS(i)    ((REBSTF *)BLK_HEAD((i)->fields) + 1)
+
+
 // Access macros (indirect access via RXIFRM pointer):
 #define RXA_ARG(f,n)            ((f)->args[n])
 #define RXA_COUNT(f)            (RXA_ARG(f,0).bytes[0]) // number of args
@@ -165,11 +184,15 @@ typedef int (*RXICAL)(int cmd, RXIFRM *args, REBCEC *ctx);
 #define RXA_IMAGE_BITS(f,n)     ((REBYTE *)RL_SERIES((RXA_ARG(f,n).image), RXI_SER_DATA))
 #define RXA_IMAGE_WIDTH(f,n)    (RXA_ARG(f,n).width)
 #define RXA_IMAGE_HEIGHT(f,n)   (RXA_ARG(f,n).height)
-#define RXA_STRUCT_SER(f,n)		  (RXA_ARG(f,n).structure.series)
-#define RXA_STRUCT_BIN(f,n)     ((REBYTE *)(SERIES_DATA(RXA_STRUCT_SER(f,n))) + RXA_INDEX(f,n))
-#define RXA_STRUCT_LEN(f,n)     (SERIES_TAIL(RXA_STRUCT_SER(f,n)) - RXA_INDEX(f,n)) // length in bytes
+
+#define RXA_STRUCT_SER(f,n)     (RXA_ARG(f,n).structure.series)
+#define RXA_STRUCT_OFFSET(f,n)  (RXA_ARG(f,n).structure.offset)
 #define RXA_STRUCT_ID(f,n)      (RXA_ARG(f,n).structure.id)
-#define RXA_STRUCT_SPEC(f,n)	(RL_STRUCT_SPEC(RXA_STRUCT_ID(f,n)))
+#define RXA_STRUCT_SPEC(f,n)    (RL_STRUCT_SPEC(RXA_STRUCT_ID(f,n)))
+// Resolve a struct argument in one lookup. Returns FALSE for an unknown spec
+// id or a view which does not fit into its data series - ALWAYS check it.
+#define RXA_STRUCT_INFO(f,n,i)  (RL_STRUCT_INFO(&RXA_ARG(f,n), (i)))
+
 #define RXA_VECTOR_SERIES(f,n)  (RXA_ARG(f,n).vector.series)
 #define RXA_VECTOR_INDEX(f,n)   (RXA_ARG(f,n).vector.index)
 #define RXA_VECTOR_INFO(f,n)    (RXA_ARG(f,n).vector.info)

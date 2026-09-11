@@ -1411,6 +1411,50 @@ RL_API REBCNT RL_Decode_UTF8_Char(const REBYTE *str, REBCNT *len)
 	return Register_Compress_Method(sym, encoder, decoder);
 }
 
+/***********************************************************************
+**
+*/	RL_API REBFLG RL_Struct_Info(RXIARG *arg, RXISTRU *out)
+/*
+**	Resolve a struct argument into a directly usable description.
+**
+**	A struct value is a view into a shared data series, so its size and
+**	flags live in the specification, not in the series. This performs the
+**	spec lookup once and validates that the view fits into the data.
+**
+**	Returns:
+**		TRUE when the argument describes a usable struct, else FALSE
+**		(no data series, unknown spec id, or the view runs past the data).
+**	Arguments:
+**		arg - struct argument as received in a command frame
+**		out - filled with data pointer, size, count, id, flags, field list
+*/
+{
+	REBSER *data;
+	REBSER *spec;
+	REBSTI *info;
+
+	if (!out) return FALSE;
+	CLEARS(out);
+	if (!arg || !(data = arg->structure.series)) return FALSE;
+
+	spec = RL_Struct_Spec(arg->structure.id);
+	if (!spec || !spec->series) return FALSE;
+
+	info = (REBSTI *)BLK_HEAD(spec->series);
+
+	// A malformed or hostile RXIARG must not become an out of bounds write.
+	if ((REBU64)arg->structure.offset + (REBU64)info->size
+		> (REBU64)SERIES_TAIL(data)) return FALSE;
+
+	out->data   = BIN_SKIP(data, arg->structure.offset);
+	out->size   = info->size;
+	out->count  = info->count;
+	out->id     = info->id;
+	out->flags  = info->flags;
+	out->fields = spec->series;
+	return TRUE;
+}
+
 
 
 #include "reb-lib-lib.h"

@@ -95,6 +95,9 @@ mezzanine: [
 	a: b: c: h: x: y: none
 	i: make image! 2x2
 	s: make struct! [a [uint8!]]
+	;; Nested struct - `n/b` is a VIEW into n's data at a non-zero offset,
+	;; so its size can only come from the specification.
+	n: make struct! [a [uint8!] b [struct! [c [uint32!] d [uint32!]]]]
 
 	xtest: does [
 		foreach blk [
@@ -152,6 +155,16 @@ mezzanine: [
 			[{foo} == path %foo]
 
 			[probe s stru s]
+			;; The returned struct must be the same value, not a copy.
+			[same? s stru s]
+			;; A nested view must report ITS OWN size (8), not the bytes
+			;; left in the root data series, and must round-trip with its
+			;; offset intact.
+			[stru n/b]
+			[same? n/b stru n/b]
+			;; Bumping the first byte of the view must land inside `b`,
+			;; i.e. touch b/c and leave a alone.
+			[n/a: 10 n/b/c: 0 stru n/b reduce [n/a n/b/c]]
 		][
 			print [{^/^[[7mtest:^[[0m^[[1;32m} mold blk {^[[0m}]
 			print join {^[[1;33m} [do blk {^[[m}]

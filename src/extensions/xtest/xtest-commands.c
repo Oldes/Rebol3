@@ -18,6 +18,8 @@
 
 static const REBYTE* ERR_INVALID_HANDLE = (const REBYTE*)"Invalid XTest handle!";
 static const REBYTE* ERR_NO_HANDLE      = (const REBYTE*)"Failed to create the XTest handle!";
+static const REBYTE* ERR_BAD_STRUCT     = (const REBYTE*)"Unusable struct argument!";
+static const REBYTE* ERR_RAW_STRUCT     = (const REBYTE*)"Struct does not allow raw modification!";
 
 
 //== callbacks ================================================================
@@ -348,31 +350,37 @@ COMMAND cmd_xtest_path(RXIFRM *frm, void *ctx) {
 //== structs ==================================================================
 
 COMMAND cmd_xtest_stru(RXIFRM *frm, void *ctx) {
-	REBYTE *bin = RXA_STRUCT_BIN(frm, 1);
-	REBSER *spec;
+	RXISTRU stru;
+	REBSTF *field;
+	REBYTE *word;
 
-	// Using any struct... it just must have at least 1 byte.
-	if (RXA_STRUCT_LEN(frm, 1) > 0) {
-		bin[0] = bin[0] + 1;
+	// One lookup gives the bytes of THIS struct, its real size and its flags.
+	// It also rejects a view which does not fit into the data series.
+	if (!RXA_STRUCT_INFO(frm, 1, &stru)) RETURN_ERROR(ERR_BAD_STRUCT);
+
+	printf("struct id: %u size: %u fields: %u flags: %u offset: %u\n",
+		stru.id, stru.size, stru.count, stru.flags,
+		RXA_STRUCT_OFFSET(frm, 1));
+
+	field = RXI_STRUCT_FIELDS(&stru);
+	for (REBCNT i = 0; i < stru.count; ++i, ++field) {
+		word = RL_WORD_STRING(field->sym); // allocates a new string!
+		printf(" field name: %s\n", word);
+		printf("       type: %i size: %u offset: %u%s\n",
+			field->type, field->size, field->offset,
+			field->array ? " (array)" : "");
+		free(word); // release the string
 	}
 
-	// Testing access to the struct's specification...
-	spec = RXA_STRUCT_SPEC(frm, 1);
-	if (spec && spec->series) {
-		REBSTI *info  = (REBSTI *)BIN_HEAD(spec->series);
-		REBSTF *field = (REBSTF *)info + 1;
-		REBYTE *word;
-		printf("struct id: %u fields: %u\n", info->id, info->count);
-		for (REBCNT i = 0; i < info->count; ++i, ++field) {
-			word = RL_WORD_STRING(field->sym); // allocates a new string!
-			printf(" field name: %s\n", word);
-			printf("       type: %u size: %u\n", field->type, field->size);
-			free(word); // release the string
-		}
-	}
+	// Raw byte modification is only safe on a plain, unprotected struct:
+	// STRUCT_FLAG_MARK data holds real REBVALs which the GC walks.
+	if (stru.flags & (STRUCT_FLAG_MARK | STRUCT_FLAG_PROTECTED))
+		RETURN_ERROR(ERR_RAW_STRUCT);
+
+	if (stru.size > 0) stru.data[0] = stru.data[0] + 1;
+
 	return RXR_VALUE;
 }
-
 
 //== handle callbacks =========================================================
 
