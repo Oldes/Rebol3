@@ -20,6 +20,9 @@ static const REBYTE* ERR_INVALID_HANDLE = (const REBYTE*)"Invalid XTest handle!"
 static const REBYTE* ERR_NO_HANDLE      = (const REBYTE*)"Failed to create the XTest handle!";
 static const REBYTE* ERR_BAD_STRUCT     = (const REBYTE*)"Unusable struct argument!";
 static const REBYTE* ERR_RAW_STRUCT     = (const REBYTE*)"Struct does not allow raw modification!";
+static const REBYTE* ERR_NO_FIELD       = (const REBYTE*)"No such field in the struct!";
+static const REBYTE* ERR_NOT_ARRAY      = (const REBYTE*)"The field is not an array!";
+static const REBYTE* ERR_NOT_INT_ARRAY  = (const REBYTE*)"The field is not an array of integers!";
 
 
 //== callbacks ================================================================
@@ -366,9 +369,9 @@ COMMAND cmd_xtest_stru(RXIFRM *frm, void *ctx) {
 	for (REBCNT i = 0; i < stru.count; ++i, ++field) {
 		word = RL_WORD_STRING(field->sym); // allocates a new string!
 		printf(" field name: %s\n", word);
-		printf("       type: %i size: %u offset: %u%s\n",
+		printf("       type: %i size: %u offset: %u dim: %u total: %u\n",
 			field->type, field->size, field->offset,
-			field->array ? " (array)" : "");
+			field->dimension, field->size * field->dimension);
 		free(word); // release the string
 	}
 
@@ -400,6 +403,52 @@ COMMAND cmd_xtest_stru0(RXIFRM *frm, void *ctx) {
 	// Nothing to initialize: the data are zeroed, which is also what makes
 	// a struct with `rebval!` fields safe to hand back to the GC.
 	RXA_TYPE(frm, 1) = RXT_STRUCT;
+	return RXR_VALUE;
+}
+
+// Sum the elements of an integer array field, addressed the way an
+// extension must: base + field->offset + n * field->size. The data are
+// packed, so an element may be misaligned and has to be copied out - never
+// read through a typed pointer (undefined behavior).
+#define SUM_ELEMENT(type) { type v; COPY_MEM(&v, el, sizeof(v)); sum += (i64)v; break; }
+
+COMMAND cmd_xtest_strua(RXIFRM *frm, void *ctx) {
+	RXISTRU stru;
+	REBSTF *field;
+	REBCNT  sym = RXA_WORD(frm, 2); // canon symbol, same id as field->sym
+	REBCNT  i, n;
+	i64     sum = 0;
+
+	if (!RXA_STRUCT_INFO(frm, 1, &stru)) RETURN_ERROR(ERR_BAD_STRUCT);
+
+	field = RXI_STRUCT_FIELDS(&stru);
+	for (i = 0; i < stru.count; ++i, ++field) {
+		if (field->sym == sym) break;
+	}
+	if (i >= stru.count) RETURN_ERROR(ERR_NO_FIELD);
+	if (!field->array)   RETURN_ERROR(ERR_NOT_ARRAY);
+
+	printf("array field: type: %i size: %u dim: %u offset: %u total: %u\n",
+		field->type, field->size, field->dimension, field->offset,
+		field->size * field->dimension);
+
+	for (n = 0; n < field->dimension; ++n) {
+		REBYTE *el = stru.data + field->offset + n * field->size;
+		switch (field->type) {
+		case STRUCT_TYPE_UINT8:  SUM_ELEMENT(u8)
+		case STRUCT_TYPE_INT8:   SUM_ELEMENT(i8)
+		case STRUCT_TYPE_UINT16: SUM_ELEMENT(u16)
+		case STRUCT_TYPE_INT16:  SUM_ELEMENT(i16)
+		case STRUCT_TYPE_UINT32: SUM_ELEMENT(u32)
+		case STRUCT_TYPE_INT32:  SUM_ELEMENT(i32)
+		case STRUCT_TYPE_UINT64: SUM_ELEMENT(u64)
+		case STRUCT_TYPE_INT64:  SUM_ELEMENT(i64)
+		default: RETURN_ERROR(ERR_NOT_INT_ARRAY);
+		}
+	}
+
+	RXA_INT64(frm, 1) = sum;
+	RXA_TYPE(frm, 1) = RXT_INTEGER;
 	return RXR_VALUE;
 }
 

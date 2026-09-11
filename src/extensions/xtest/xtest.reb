@@ -87,6 +87,7 @@ commands: [
 	path:   ["converts Rebol file to an OS file string" f [file!] /full "full path"]
 	stru:   ["test struct passing" val [struct!] /read "inspect only, do not modify the data"]
 	stru0:  ["make a new struct of the same specification" val [struct!]]
+	strua:  ["sum the elements of an integer array field" val [struct!] field [word!]]
 ]
 
 ;; ---------------------------------------------------------------------------
@@ -104,6 +105,13 @@ mezzanine: [
 	;; writes from an extension would corrupt them.
 	p: make struct! [a [uint8!] v [rebval!]]
 	q: none
+	;; Array fields. `a` maps to a vector on the Rebol side, `w` is a block
+	;; of words (no vector equivalent), `r` holds three Rebol values which
+	;; the GC must mark individually.
+	v: make struct! [a [int32! [4]] b [uint8!]]
+	w: make struct! [n [word! [2]]]
+	r: make struct! [v [rebval! [3]]]
+	z: none
 
 	xtest: does [
 		foreach blk [
@@ -194,6 +202,26 @@ mezzanine: [
 			[t: stru0 p  none? t/v]
 			;; The new struct must survive a collection on its own.
 			[t: stru0 p  recycle  t/v: q  recycle  same? q t/v]
+
+			;; The C side must reach every element at the right stride, and
+			;; `b` after the array must be left alone.
+			[v/a: [1 2 3 4]  v/b: 200  reduce [strua v 'a  v/b]]
+			;; A negative element proves the type is honoured, not just the width.
+			[v/a: [1 -2 3 -4]  strua v 'a]
+			;; Unknown field and non-array field are refused, not guessed at.
+			[error? try [strua v 'nope]]
+			[error? try [strua v 'b]]
+			;; A word! array has no vector equivalent - the extension must
+			;; refuse it rather than sum raw symbol ids.
+			[w/n: [alpha beta]  error? try [strua w 'n]]
+			;; Every element of a rebval! array must be marked, including the
+			;; last one - an off-by-one in Mark_Struct_Fields would show only
+			;; here.
+			[q: "first"  z: "last"  r/v: reduce [q 'middle z]]
+			[recycle  reduce [same? q first r/v  same? z last r/v]]
+			;; ...and the same through a struct the extension created.
+			[t: stru0 r  t/v: reduce [q 'middle z]  recycle  same? z last t/v]
+ 
 
 		][
 			print [{^/^[[7mtest:^[[0m^[[1;32m} mold blk {^[[0m}]
