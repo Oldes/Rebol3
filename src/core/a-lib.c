@@ -1455,6 +1455,77 @@ RL_API REBCNT RL_Decode_UTF8_Char(const REBYTE *str, REBCNT *len)
 	return TRUE;
 }
 
+/***********************************************************************
+**
+*/	RL_API REBFLG RL_Make_Struct(RXIARG *out, REBCNT id, RXISTRU *info)
+/*
+**	Create a new struct value of an already registered specification.
+**
+**	The specification must already exist in system/catalog/structs, where
+**	Prepare_Struct interns it when Rebol code evaluates `make struct!
+**	[...]` - so an extension instantiates a shape its own module declared
+**	rather than defining one in C. The data series is allocated zeroed and
+**	is owned by the struct.
+**
+**	The zeroing is required, not incidental: a zeroed `rebval!` field reads
+**	as END, which get_scalar reports as none and Mark_Struct_Fields skips.
+**	Uninitialized bytes there would be marked by the GC as garbage values.
+**
+**	Like RL_Make_String and RL_Make_Block, the result is protected from the
+**	GC only as a recently allocated series. Store it into a command frame
+**	argument and return it; do not hold it across a large number of other
+**	allocations.
+**
+**	Returns:
+**		TRUE when the struct was created, else FALSE (unknown spec id or
+**		a zero-sized specification).
+**	Arguments:
+**		out  - command frame argument which receives the new struct
+**		id   - spec id (hash of the specification block)
+**		info - filled like RL_Struct_Info; may be NULL
+*/
+{
+	REBSER *spec;
+	REBSER *fields;
+	REBSER *data;
+	REBSTI *sti;
+
+	if (!out) return FALSE;
+	if (info) CLEARS(info);
+
+	spec = RL_Struct_Spec(id);
+	if (!spec || !spec->series) return FALSE;
+
+	fields = spec->series;
+	sti    = (REBSTI *)BLK_HEAD(fields);
+	if (sti->size == 0) return FALSE;
+
+	// The struct always owns its data. Make_Binary clears the memory - see
+	// the note above, this is what makes a value-holding struct safe here.
+	data = Make_Binary(sti->size);
+	BARE_SERIES(data); // values in it are marked by Mark_Struct, not as a block
+	LABEL_SERIES(data, "struct_data");
+	SERIES_TAIL(data) = sti->size;
+	// Remember the root field list in the (otherwise unused) series link so
+	// that the GC can mark ALL values in the data, even when they are later
+	// reached only from a view into a nested part. Same as MT_Struct does
+	// via STRUCT_DATA_ROOT(), which needs a REBSTU we do not have here.
+	data->series = fields;
+
+	out->structure.series = data;
+	out->structure.offset = 0;
+	out->structure.id     = sti->id;
+
+	if (info) {
+		info->data   = BIN_HEAD(data);
+		info->size   = sti->size;
+		info->count  = sti->count;
+		info->id     = sti->id;
+		info->flags  = sti->flags;
+		info->fields = fields;
+	}
+	return TRUE;
+}
 
 
 #include "reb-lib-lib.h"

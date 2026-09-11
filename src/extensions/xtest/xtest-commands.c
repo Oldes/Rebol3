@@ -386,6 +386,23 @@ COMMAND cmd_xtest_stru(RXIFRM *frm, void *ctx) {
 	return RXR_VALUE;
 }
 
+COMMAND cmd_xtest_stru0(RXIFRM *frm, void *ctx) {
+	RXISTRU stru;
+	// Read the id BEFORE overwriting the argument slot with the new struct.
+	REBCNT id = RXA_STRUCT_ID(frm, 1);
+
+	if (!RL_MAKE_STRUCT(&RXA_ARG(frm, 1), id, &stru))
+		RETURN_ERROR(ERR_BAD_STRUCT);
+
+	printf("new struct id: %u size: %u fields: %u flags: %u\n",
+		stru.id, stru.size, stru.count, stru.flags);
+
+	// Nothing to initialize: the data are zeroed, which is also what makes
+	// a struct with `rebval!` fields safe to hand back to the GC.
+	RXA_TYPE(frm, 1) = RXT_STRUCT;
+	return RXR_VALUE;
+}
+
 //== handle callbacks =========================================================
 
 int XTestContext_free(void *hndl) {

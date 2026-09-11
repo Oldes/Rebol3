@@ -86,13 +86,14 @@ commands: [
 	echo:   ["return the input value" value]
 	path:   ["converts Rebol file to an OS file string" f [file!] /full "full path"]
 	stru:   ["test struct passing" val [struct!] /read "inspect only, do not modify the data"]
+	stru0:  ["make a new struct of the same specification" val [struct!]]
 ]
 
 ;; ---------------------------------------------------------------------------
 ;; Module body. Previously a C string literal with escaped newlines - as a
 ;; block it is ordinary Rebol code that an editor can indent and check.
 mezzanine: [
-	a: b: c: h: x: y: none
+	a: b: c: h: x: y: t: none
 	i: make image! 2x2
 	s: make struct! [a [uint8!]]
 	;; Nested struct - `n/b` is a VIEW into n's data at a non-zero offset,
@@ -180,6 +181,19 @@ mezzanine: [
 			;; ...and the held value must survive a collection, which is
 			;; the whole reason the flag exists.
 			[recycle same? q p/v]
+
+			;; An extension can instantiate any spec already registered in
+			;; system/catalog/structs - a fresh struct, not a view into the
+			;; one it was given.
+			[t: stru0 s  all [struct? t  not same? t s  zero? t/a]]
+			;; The data start zeroed, so a nested field is usable at once...
+			[t: stru0 n  t/b/c: 42  reduce [t/a t/b/c]]
+			;; ...and a `rebval!` field reads as none, because a zeroed slot
+			;; is END ("never set") rather than a garbage value the GC would
+			;; try to mark.
+			[t: stru0 p  none? t/v]
+			;; The new struct must survive a collection on its own.
+			[t: stru0 p  recycle  t/v: q  recycle  same? q t/v]
 
 		][
 			print [{^/^[[7mtest:^[[0m^[[1;32m} mold blk {^[[0m}]
