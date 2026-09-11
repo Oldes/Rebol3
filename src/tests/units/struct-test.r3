@@ -6,6 +6,14 @@ Rebol [
 	Needs:   [%../quick-test-module.r3]
 ]
 
+;; Rebol values stored in a struct are reachable only from the struct's data
+;; series, so the GC must find them there. `flush` and `reuse` below make an
+;; unmarked value really disappear - the value is first pushed out of the GC's
+;; infant nursery and once collected, its memory is taken by other series.
+flush: does [loop 100 [make binary! 64]]
+reuse: does [loop 100 [append copy "" "0123456789abcdef"]]
+
+
 ~~~start-file~~~ "STRUCT"
 ;; Struct datatype was reimplemented and so this test is only
 ;; for the recent version!
@@ -209,9 +217,64 @@ if system/version >= 3.19.1 [
 	--assert all [s1/a = 10 s1/b = 2 ]
 	--assert all [s2/a = 1  s2/b = 20]
 	--assert all [s3/a = 10 s3/b = 20]
-	;; the block is evaluated like reduce/no-set
-	--assert all [attempt [s: make proto! [3 * 10 4 * 10]]        s/a = 30 s/b = 40]
-	--assert all [attempt [s: make proto! [b: 3 * 10 a: 4 * 10]]  s/b = 30 s/a = 40]
+	;; the block is NOT evaluated - use compose when needed
+	--assert error? try [make proto! [3 * 10 4 * 10]]
+	--assert error? try [make proto! [b: 3 * 10 a: 4 * 10]]
+	--assert all [attempt [s: make proto! compose [(3 * 10) (4 * 10)]]       s/a = 30 s/b = 40]
+	--assert all [attempt [s: make proto! compose [b: (3 * 10) a: (4 * 10)]] s/b = 30 s/a = 40]
+
+	pr: #(struct! [a [uint8!] b [word!] c [uint8!]] [a: 1 b: + c: 2])
+	s4: make pr [10 * 20]
+	--assert all [
+		;; the prototype is not modified...
+		pr/a = 1  pr/b = '+  pr/c = 2
+		;; ... and `10 * 20` is stored as three values, not evaluated to 200
+		s4/a = 10 s4/b = '*  s4/c = 20
+	]
+
+--test-- "Make and the construction syntax follow the same rules"
+	p: make struct! [a [uint8!] b [uint8!]]
+	--assert error? try [make p [1 + 1]]
+	--assert error? try [transcode/one/error {#(struct! [a [uint8!] b [uint8!]] [1 + 1])}]
+	--assert all [
+		struct? s: make p compose [(1 + 1)]
+		s/a = 2
+	]
+
+--test-- "Neither change nor make evaluates the block"
+	;; values are stored as they are, like in any other series modification:
+	;;     head change [. .] [1 * 2] == [1 * 2]
+	foo: 'bar
+	baz: 'qux
+	w: make struct! [a [word!] b [word!]]
+	--assert all [
+		not error? try [change w [foo baz]]
+		w/a = 'foo ;; the word itself, not its value
+		w/b = 'baz
+	]
+	--assert all [
+		not error? try [w2: make w [foo baz]]
+		w2/a = 'foo
+		w2/b = 'baz
+	]
+	--assert all [
+		not error? try [w2: make w compose [(foo) (baz)]]
+		w2/a = 'bar ;; ... and here the values
+		w2/b = 'qux
+	]
+	;; the same with named fields
+	--assert all [
+		not error? try [change w [b: foo]]
+		w/b = 'foo
+	]
+	--assert all [
+		not error? try [w2: make w [b: foo]]
+		w2/b = 'foo
+	]
+	--assert all [
+		not error? try [w2: make w compose [b: (foo)]]
+		w2/b = 'bar
+	]
 
 --test-- "Construction from a struct prototype using an invalid spec"
 	;; like: make proto! [a: 1 20 30] where 20 is not a set-word!
@@ -268,6 +331,21 @@ if system/version >= 3.19.1 [
 		none? s/a
 		none? s/b
 	]
+
+--test-- "Fields holding Rebol values are aligned"
+	n: length? make struct! [v [rebval!]] ;; size of the internal Rebol value
+	;; a rebval! field is aligned...
+	--assert (4 + n) = length? make struct! [x [int8!] v [rebval!]]
+	--assert (4 + n) = length? make struct! [x [int8!] y [int8!] v [rebval!]]
+	--assert (8 + n) = length? make struct! [x [int32!] y [int8!] v [rebval!]]
+	;; ... and so is a nested struct which holds Rebol values
+	--assert (4 + n) = length? make struct! [x [int8!] s [struct! [v [rebval!]]]]
+	;; the size is rounded up, so the values stay aligned in an array too
+	--assert (2 * (4 + n)) = length? make struct! [a [struct! [v [rebval!] x [int8!]] [2]]]
+	;; structs without Rebol values stay packed!
+	--assert 3 = length? make struct! [a [uint8!] b [uint16!]]
+	--assert 6 = length? make struct! [id [uint16!] pos [struct! [x [uint8!] y [uint8!]] [2]]]
+	recycle	
 
 --test-- "Registering a struct"
 	--assert not error? try [
@@ -349,6 +427,36 @@ if system/version >= 3.19.1 [
 	--assert (to binary! s/b/y) == #{02000000}
 	--assert (to binary! s/b  ) == #{0100000002000000}
 	--assert (to binary! s    ) == #{000000000100000002000000}
+
+--test-- "Setting a deeply nested struct using a block"
+	;; the write offset must include the parent struct's own offset!
+	s: make struct! [
+		a [uint32!]
+		b [struct! [x [uint32!] y [struct! [yy [uint32!]]]]]
+	]
+	--assert all [
+		not error? try [s/b/y: [2]]
+		s/b/y/yy == 2
+		s/b/x    == 0 ;; must not be overwritten!
+		s/a      == 0
+		#{00000000 00000000 02000000} == to binary! s
+	]
+
+--test-- "Setting an inner struct of an array element using a block"
+	s: make struct! [
+		pad [uint16!]
+		a   [struct! [p [struct! [x [uint8!] y [uint8!]]]] [2]]
+	]
+	--assert all [
+		not error? try [s/a/2/p: [3 4]]
+		s/a/2/p/x == 3
+		s/a/2/p/y == 4
+		#{0000 0000 0304} == to binary! s ;; pad and a/1 untouched
+	]
+	--assert all [
+		not error? try [s/a/1/p: [1 2]]
+		#{0000 0102 0304} == to binary! s
+	]
 
 --test-- "Nested structs with Rebol values"
 	--assert all [
@@ -472,7 +580,7 @@ if system/version >= 3.19.1 [
 	--assert n = length? raw
 	--assert error? try [s/a/1: raw]
 	--assert none? s/a/1/v
-	--assert not error? try [recycle]
+	recycle
 
 --test-- "Setting inner struct"
 	s: make struct! [
@@ -501,8 +609,269 @@ if system/version >= 3.19.1 [
 	--assert s1 = s2        ;; compares only field types
 	--assert not (s1 == s2) ;; compares alse field names
 	s1/a: 1
-	
 
+--test-- "Comparing struct values at different positions"
+	;; two fields with the same spec share both the fields series and the data
+	;; series - only the offset differs, so it must be part of the comparison
+	s: make struct! [
+		a [struct! [x [uint8!] y [uint8!]]]
+		b [struct! [x [uint8!] y [uint8!]]]
+	]
+	s/a/x: 1
+	--assert not same? s/a s/b
+	--assert not (s/a == s/b)
+	--assert not (s/a =  s/b)   ;; content differs too
+	s/a/x: 0
+	--assert s/a = s/b          ;; same content...
+	--assert not same? s/a s/b  ;; ...but not the same struct
+	--assert same? s/a s/a
+
+--test-- "Comparing elements of a struct's array"
+	s: make struct! [a [struct! [n [int8!]] [2]]]
+	s/a/1/n: 1
+	s/a/2/n: 2
+	--assert not same? s/a/1 s/a/2
+	--assert not (s/a/1 == s/a/2)
+	--assert not (s/a/1 =  s/a/2)
+	s/a/2/n: 1
+	--assert s/a/1 = s/a/2
+	--assert not same? s/a/1 s/a/2	
+
+--test-- "Deep path into a struct's rebval! field"
+	inner: make struct! [pos [struct! [x [uint8!] y [uint8!]]]]
+	s: make struct! [n [int8!] val [rebval!]]
+	s/n: 42
+	s/val: inner
+	--assert not error? try [s/val/pos/x: 1]
+	--assert same? inner s/val ;; the field must still hold the same struct!
+	--assert inner/pos/x == 1  ;; ... and the value was really stored
+	--assert s/n == 42         ;; nothing else was touched
+
+--test-- "Setting a field of an immediate value in a rebval! field"
+	;; immediates are modified in a scratch value, so they must be stored back
+	s: make struct! [val [rebval!]]
+	s/val: 1-Jan-2000
+	--assert all [
+		not error? try [s/val/year: 2026]
+		s/val = 1-Jan-2026
+	]
+	s/val: 1x2
+	--assert all [
+		not error? try [s/val/x: 10]
+		s/val = 10x2
+	]
+
+--test-- "Making a struct from a spec only"
+	;; no initial value may be taken from behind the spec argument
+	--assert all [
+		struct? s: make struct! [a [uint8!] b [uint8!]]
+		#{0000} == to binary! s
+	]
+	--assert all [
+		struct? s: to struct! [a [uint8!] b [uint8!]]
+		#{0000} == to binary! s
+	]
+	;; initial values are given only by the construction syntax
+	--assert all [
+		struct? s: transcode/one {#(struct! [a [uint8!] b [uint8!]] [1 2])}
+		#{0102} == to binary! s
+	]
+	--assert all [
+		struct? s: transcode/one {#(struct! [a [uint8!] b [uint8!]] #{0304})}
+		#{0304} == to binary! s
+	]
+
+--test-- "Struct size limit error reports the spec"
+	--assert all [
+		error? e: try [make struct! [a [int64! [1000000000]]]]
+		e/id = 'size-limit
+		block? e/arg1 ;; not an unset!
+	]
+
+--test-- "Raw data are refused for a protected struct whatever their length"
+	s: make struct! [n [uint8!] val [rebval!]]
+	--assert all [
+		error? e: try [make s #{FF}] ;; shorter than the struct
+		e/id = 'protected
+	]
+	--assert all [
+		error? e: try [make s append/dup make binary! 64 #{FF} 64]
+		e/id = 'protected
+	]
+	--assert none? s/val
+===end-group===
+
+
+===start-group=== "Struct array fields"
+--test-- "Reading array fields (block-backed and vector-backed)"
+	s: make struct! [
+		w [word!   [3]]
+		n [int16!  [3]]
+		p [struct! [x [uint8!] y [uint8!]] [2]]
+	]
+	--assert all [
+		block?  s/w
+		3 = length? s/w
+		s/w = [_ _ _]
+		vector? s/n
+		s/n = #(i16! [0 0 0])
+		block?  s/p
+		2 = length? s/p
+		struct? first s/p
+	]
+--test-- "Setting an element of a word! array field"
+	s: make struct! [w [word! [3]]]
+	--assert all [
+		not error? try [s/w/2: 'foo]
+		s/w/2 == 'foo
+		s/w   == [#(none) foo #(none)]
+	]
+	--assert all [
+		not error? try [s/w/1: 'bar]
+		s/w == [bar foo #(none)]
+	]
+	;; the index must be inside the array's range...
+	--assert error? try [s/w/0: 'x]
+	--assert error? try [s/w/4: 'x]
+	--assert error? try [s/w/(-1): 'x]
+	;; ... and only a word may be stored
+	--assert error? try [s/w/1: 5]
+	--assert s/w == [bar foo #(none)]
+
+--test-- "Setting an element of a rebval! array field"
+	s: make struct! [n [int8!] vals [rebval! [2]]]
+	--assert all [
+		not error? try [s/vals/1: str: copy "first"]
+		s/vals/1 == "first"
+		none? s/vals/2
+	]
+	--assert all [
+		not error? try [s/vals/2: 42]
+		s/vals == ["first" 42]
+	]
+	--assert same? str s/vals/1 ;; the value refers to the same series
+	--assert error? try [s/vals/0: 1]
+	--assert error? try [s/vals/3: 1]
+	;; the GC must find values stored this way
+	flush
+	recycle
+	reuse
+	--assert s/vals == ["first" 42]
+
+--test-- "Setting an element of a numeric array field"
+	;; these are exposed as a vector and were already working - regression only
+	s: make struct! [a [int16! [3]] b [float! [2]]]
+	--assert all [
+		not error? try [s/a/2: 300]
+		s/a == #(i16! [0 300 0])
+		not error? try [s/b/1: 1.5]
+		s/b == #(f32! [1.5 0.0])
+	]
+	--assert error? try [s/a/4: 1]
+	--assert s/a == #(i16! [0 300 0])
+
+--test-- "Setting an array field using a vector"
+	s: make struct! [a [int32! [2]] w [word! [2]]]
+	--assert all [
+		not error? try [s/a: #(i32! [1 2])]
+		s/a == #(i32! [1 2])
+	]
+	;; the vector's type must match the field's type...
+	--assert error? try [s/a: #(u32! [1 2])]     ;; same width, other sign
+	--assert error? try [s/a: #(f32! [1.0 2.0])] ;; same width, other type
+	--assert error? try [s/a: #(i16! [1 2])]     ;; other width
+	;; ... and it must have as many values as the array
+	--assert error? try [s/a: #(i32! [1 2 3])]
+	--assert error? try [s/a: #(i32! [1])]
+	--assert s/a == #(i32! [1 2]) ;; nothing was modified
+	;; a block is still converted to the field's type
+	--assert all [
+		not error? try [s/a: [3 4]]
+		s/a == #(i32! [3 4])
+	]
+
+--test-- "Setting an array field using a vector which is not at its head"
+	s: make struct! [a [int32! [2]]]
+	--assert all [
+		not error? try [s/a: skip #(i32! [9 1 2]) 1]
+		s/a == #(i32! [1 2])
+	]
+
+--test-- "A word! array must not be filled with raw vector data"
+	;; raw integers stored into a word! field would be used as symbol ids!
+	s: make struct! [w [word! [2]]]
+	--assert error? try [s/w: #(i32! [1 2])]
+	--assert error? try [s/w: #(u32! [999999 2])]
+	--assert s/w == [#(none) #(none)]
+	recycle
+
+--test-- "Field with a single-element array"
+	;; `[type! [1]]` is an array of one value, not a scalar!
+	s: make struct! [a [int8! [1]]]
+	--assert [a [int8! [1]]] = spec-of s
+	--assert 1 = length? s
+	--assert vector? s/a
+	--assert s/a == #(i8! [0])
+	;; the reflectors must agree with the accessor
+	--assert [a: [0]] = body-of s
+	--assert [[0]]    = values-of s
+	--assert (mold/all/flat s) = "#(struct! [a [int8! [1]]] [a: [0]])"
+	;; setting uses the array form...
+	--assert all [
+		not error? try [s/a: [3]]
+		s/a == #(i8! [3])
+	]
+	--assert all [
+		not error? try [s/a/1: 4]
+		s/a == #(i8! [4])
+	]
+	--assert error? try [s/a: 5] ;; a scalar is not accepted
+	;; ... and so does the construction
+	p: make struct! [a [int8! [1]]]
+	--assert all [
+		struct? s2: make p [a: [7]]
+		s2/a == #(i8! [7])
+	]
+	--assert all [
+		struct? s3: make p [[7]]
+		s3/a == #(i8! [7])
+	]
+	--assert error? try [make p [a: 7]]
+	;; the molded form must reload to an equal struct
+	--assert all [
+		struct? s4: transcode/one mold/all/flat s
+		(to binary! s4) == to binary! s
+	]
+
+--test-- "Access to misaligned fields"
+	;; the struct's data are packed, so all fields but the first are misaligned
+	s: make struct! [
+		pad [uint8!]
+		u16 [uint16!] i16 [int16!]
+		u32 [uint32!] i32 [int32!]
+		u64 [uint64!] i64 [int64!]
+		f32 [float!]  f64 [double!]
+		w   [word!]
+	]
+	--assert all [
+		not error? try [
+			s/u16: 43981            s/i16: -12345
+			s/u32: 2309737967       s/i32: -305419896
+			s/u64: 81985529216486895 s/i64: -81985529216486895
+			s/f32: 1.5              s/f64: -2.5
+			s/w: 'foo
+		]
+		s/u16 == 43981             s/i16 == -12345
+		s/u32 == 2309737967        s/i32 == -305419896
+		s/u64 == 81985529216486895 s/i64 == -81985529216486895
+		s/f32 == 1.5               s/f64 == -2.5
+		s/w = 'foo
+	]
+	;; the layout stays packed and little endian
+	p: make struct! [a [uint8!] b [uint16!]]
+	p/a: 1 p/b: 4660
+	--assert #{013412} == to binary! p
+	--assert 3 = length? p
 ===end-group===
 
 
@@ -564,25 +933,21 @@ s: #(struct! [
 	--assert none? s/inner/val
 	;; and also when using the construction syntax
 	--assert error? try [transcode/one/error {#(struct! [val [rebval!]] #{FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF})}]
-	--assert not error? try [recycle]
+	recycle
 
 ===end-group===
 
 
-===start-group=== "Struct GC"
-;; Rebol values stored in a struct are reachable only from the struct's data
-;; series, so the GC must find them there. `flush` and `reuse` below make an
-;; unmarked value really disappear - the value is first pushed out of the GC's
-;; infant nursery and once collected, its memory is taken by other series.
-flush: does [loop 100 [make binary! 64]]
-reuse: does [loop 100 [append copy "" "0123456789abcdef"]]
 
+
+===start-group=== "Struct GC"
+recycle/torture
 --test-- "GC marks a rebval! field which is not at the struct's head"
 	s: make struct! [n [int8!] val [rebval!]]
 	s/n: 42
 	--assert string? s/val: copy "keep me alive"
 	flush
-	--assert not error? try [recycle]
+	recycle
 	reuse
 	--assert s/n = 42
 	--assert s/val == "keep me alive"
@@ -591,7 +956,7 @@ reuse: does [loop 100 [append copy "" "0123456789abcdef"]]
 	s: make struct! [n [int16!] vals [rebval! [2]]]
 	--assert block? s/vals: reduce [copy "first" copy "second"]
 	flush
-	--assert not error? try [recycle]
+	recycle
 	reuse
 	--assert s/vals == ["first" "second"]
 
@@ -603,23 +968,59 @@ reuse: does [loop 100 [append copy "" "0123456789abcdef"]]
 	s/id: 7
 	--assert string? s/inner/val: copy "nested value"
 	flush
-	--assert not error? try [recycle]
+	recycle
 	reuse
 	--assert s/id = 7
 	--assert s/inner/val == "nested value"
 
---test-- "GC marks rebval! fields of a deeply nested struct"
-	s: make struct! [
-		a [struct! [b [struct! [val [rebval!]]]] [2]]
-	]
+--test-- "GC marks all values of a struct reached from a nested view"
+	;; the data series is shared by all views, and it is marked only once,
+	;; so the values must be marked from the root of the data!
+	s: make struct! [a [struct! [val [rebval!]] [2]]]
+	--assert string? s/a/1/val: copy "first"
+	--assert string? s/a/2/val: copy "second"
+	v: s/a/1 ;; a view into the head of the data
+	flush
+	recycle
+	reuse
+	--assert v/val == "first"
+	--assert s/a/2/val == "second" ;; must not be collected!
+	;; a value left dangling in the data would crash the next mark pass
+	recycle
+
+--test-- "GC marks a deeply nested struct while its views are on the stack"
+	s: make struct! [a [struct! [b [struct! [val [rebval!]]]] [2]]]
 	--assert string? s/a/1/b/val: copy "first"
 	--assert string? s/a/2/b/val: copy "second"
 	flush
-	--assert not error? try [recycle]
+	recycle
 	reuse
 	--assert s/a/1/b/val == "first"
 	--assert s/a/2/b/val == "second"
+	recycle
 
+
+--test-- "GC does not see a partially constructed array value"
+	;; Get_Struct_Field_Value writes into pvs->store - a data stack slot the GC
+	;; marks - so the value must reference its new series before appending the
+	;; elements. The append expands the block (and so may recycle) whenever the
+	;; preallocated block has no spare slot, which depends on the pool sizes -
+	;; hence the sweep over dimensions.
+	--assert not error? try [
+		repeat n 40 [
+			s: make struct! compose/deep [
+				w [word!   [(n)]]
+				v [rebval! [(n)]]
+			]
+			if any [
+				n <> length? s/w
+				n <> length? s/v
+				not none? first s/w
+				not none? first s/v
+			][ fail "bad array field" ]
+		]
+	]
+recycle/on
 ===end-group===
 ] ;>= 3.19.1
 
@@ -692,6 +1093,47 @@ either system/version < 3.19.1 [
 		--assert all [
 			error? e: transcode/one/error {#(struct [a [uint8!]] [random 10])}
 			e/id = 'malconstruct
+		]
+	--test-- "Invalid array dimension"
+		;; the dimension must be a single positive integer...
+		--assert all [
+			error? e: try [make struct! [a [int8! [0]]]]
+			e/id = 'invalid-arg
+		]
+		--assert all [
+			error? e: try [make struct! [a [int8! [-1]]]]
+			e/id = 'invalid-arg
+		]
+		--assert all [
+			error? e: try [make struct! [a [int8! []]]]
+			e/id = 'invalid-arg
+		]
+		--assert all [
+			error? e: try [make struct! [a [int8! [2 3]]]]
+			e/id = 'invalid-arg
+		]
+		--assert all [
+			error? e: try [make struct! [a [int8! [1.5]]]]
+			e/id = 'invalid-arg
+		]
+		;; ... which must not be silently truncated to 32 bits!
+		--assert all [
+			error? e: try [make struct! [a [int8! [4294967297]]]] ;; would be 1
+			e/id = 'invalid-arg
+		]
+		--assert all [
+			error? e: try [make struct! [a [int8! [2147483648000]]]] ;; would be 0
+			e/id = 'invalid-arg
+		]
+		;; the same applies to a nested struct
+		--assert all [
+			error? e: try [make struct! [a [struct! [x [int8!]] [0]]]]
+			e/id = 'invalid-arg
+		]
+		;; a single-element array is still valid
+		--assert all [
+			struct? s: make struct! [a [int8! [1]]]
+			1 = length? s
 		]
 ]
 ===end-group===

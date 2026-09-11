@@ -82,6 +82,27 @@ Rebol [
 	--assert     equal? 'a 'A
 	--assert 'a = 'A
 
+	--test-- "strict-equal?"
+	;; the binding is not part of the word's value - that is what `same?` tests
+	o: object [foo: 1]
+	bound: in o 'foo
+	plain: 'foo
+	--assert bound  =  plain
+	--assert bound  == plain
+	--assert strict-equal? bound plain
+	--assert not same? bound plain
+	;; the result must not differ from the same words compared inside a block
+	--assert (reduce [bound]) == (reduce [plain])
+	--assert not same? (reduce [bound]) (reduce [plain])
+	--assert not equiv? bound plain
+
+	--test-- "strict-equal? is case sensitive"
+	--assert 'FOO == 'FOO
+	--assert 'foo =  'FOO
+	--assert not ('foo == 'FOO)
+	--assert not strict-equal? 'foo 'FOO
+	--assert not ((reduce ['foo]) == (reduce ['FOO]))
+
 ===end-group===
 
 ===start-group=== "word issues"

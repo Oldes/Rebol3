@@ -48,4 +48,9 @@ enum {
 	STRUCT_TYPE_MAX
 };
 
+// These depend on the order of the types above!
+#define IS_STRUCT_INTEGER_TYPE(t) ((t) < STRUCT_TYPE_INTEGER)
+#define IS_STRUCT_DECIMAL_TYPE(t) ((t) > STRUCT_TYPE_INTEGER && (t) < STRUCT_TYPE_DECIMAL)
+#define IS_STRUCT_NUMERIC_TYPE(t) (IS_STRUCT_INTEGER_TYPE(t) || IS_STRUCT_DECIMAL_TYPE(t))
+
 #define VAL_STRUCT_LIMIT	MAX_U32
