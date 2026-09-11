@@ -372,10 +372,14 @@ COMMAND cmd_xtest_stru(RXIFRM *frm, void *ctx) {
 		free(word); // release the string
 	}
 
-	// Raw byte modification is only safe on a plain, unprotected struct:
-	// STRUCT_FLAG_MARK data holds real REBVALs which the GC walks.
-	if (stru.flags & (STRUCT_FLAG_MARK | STRUCT_FLAG_PROTECTED))
-		RETURN_ERROR(ERR_RAW_STRUCT);
+	// Inspection is always safe, so /read stops here.
+	if (RXA_REF(frm, 2)) return RXR_VALUE;
+
+	// Writing raw bytes is not: MARK data holds real REBVALs which the GC
+	// walks, and PROTECTED forbids raw modification. Refuse loudly rather
+	// than corrupt the data - this is the guard every extension touching
+	// struct bytes must make.
+	if (!RXI_STRUCT_WRITABLE(&stru)) RETURN_ERROR(ERR_RAW_STRUCT);
 
 	if (stru.size > 0) stru.data[0] = stru.data[0] + 1;
 

@@ -152,6 +152,13 @@ typedef struct rxi_struct_info {
 // Field list of a resolved struct (the REBSTI header is skipped).
 #define RXI_STRUCT_FIELDS(i)    ((REBSTF *)BLK_HEAD((i)->fields) + 1)
 
+// TRUE when an extension may write raw bytes into the struct's data.
+// STRUCT_FLAG_MARK data holds real REBVALs which the GC walks, and
+// STRUCT_FLAG_PROTECTED forbids raw modification outright. Reading is
+// always allowed - this gates writes only.
+#define RXI_STRUCT_WRITABLE(i)  \
+	(((i)->flags & (STRUCT_FLAG_MARK | STRUCT_FLAG_PROTECTED)) == 0)
+
 
 // Access macros (indirect access via RXIFRM pointer):
 #define RXA_ARG(f,n)            ((f)->args[n])

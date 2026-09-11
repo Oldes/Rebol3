@@ -85,7 +85,7 @@ commands: [
 	str0:   ["return a constructed string"]
 	echo:   ["return the input value" value]
 	path:   ["converts Rebol file to an OS file string" f [file!] /full "full path"]
-	stru:   ["test struct passing" val [struct!]]
+	stru:   ["test struct passing" val [struct!] /read "inspect only, do not modify the data"]
 ]
 
 ;; ---------------------------------------------------------------------------
@@ -98,6 +98,11 @@ mezzanine: [
 	;; Nested struct - `n/b` is a VIEW into n's data at a non-zero offset,
 	;; so its size can only come from the specification.
 	n: make struct! [a [uint8!] b [struct! [c [uint32!] d [uint32!]]]]
+	;; A `rebval!` field makes t-struct flag the spec MARK|PROTECTED: the
+	;; data now holds real Rebol values which the GC walks, so raw byte
+	;; writes from an extension would corrupt them.
+	p: make struct! [a [uint8!] v [rebval!]]
+	q: none
 
 	xtest: does [
 		foreach blk [
@@ -165,6 +170,17 @@ mezzanine: [
 			;; Bumping the first byte of the view must land inside `b`,
 			;; i.e. touch b/c and leave a alone.
 			[n/a: 10 n/b/c: 0 stru n/b reduce [n/a n/b/c]]
+			
+			;; Reading a marked/protected struct is allowed...
+			[q: "held by the struct"  p/a: 1  p/v: q  stru/read p]
+			;; ...writing into it must be refused, not silently done.
+			[error? try [stru p]]
+			;; ...and the refusal must leave the data untouched.
+			[p/a]
+			;; ...and the held value must survive a collection, which is
+			;; the whole reason the flag exists.
+			[recycle same? q p/v]
+
 		][
 			print [{^/^[[7mtest:^[[0m^[[1;32m} mold blk {^[[0m}]
 			print join {^[[1;33m} [do blk {^[[m}]
