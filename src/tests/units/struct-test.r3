@@ -345,7 +345,7 @@ if system/version >= 3.19.1 [
 	;; structs without Rebol values stay packed!
 	--assert 3 = length? make struct! [a [uint8!] b [uint16!]]
 	--assert 6 = length? make struct! [id [uint16!] pos [struct! [x [uint8!] y [uint8!]] [2]]]
-	--assert not error? try [recycle]	
+	recycle	
 
 --test-- "Registering a struct"
 	--assert not error? try [
@@ -580,7 +580,7 @@ if system/version >= 3.19.1 [
 	--assert n = length? raw
 	--assert error? try [s/a/1: raw]
 	--assert none? s/a/1/v
-	--assert not error? try [recycle]
+	recycle
 
 --test-- "Setting inner struct"
 	s: make struct! [
@@ -754,7 +754,7 @@ if system/version >= 3.19.1 [
 	--assert error? try [s/vals/3: 1]
 	;; the GC must find values stored this way
 	flush
-	--assert not error? try [recycle]
+	recycle
 	reuse
 	--assert s/vals == ["first" 42]
 
@@ -803,7 +803,7 @@ if system/version >= 3.19.1 [
 	--assert error? try [s/w: #(i32! [1 2])]
 	--assert error? try [s/w: #(u32! [999999 2])]
 	--assert s/w == [#(none) #(none)]
-	--assert not error? try [recycle]
+	recycle
 
 --test-- "Field with a single-element array"
 	;; `[type! [1]]` is an array of one value, not a scalar!
@@ -933,7 +933,7 @@ s: #(struct! [
 	--assert none? s/inner/val
 	;; and also when using the construction syntax
 	--assert error? try [transcode/one/error {#(struct! [val [rebval!]] #{FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF})}]
-	--assert not error? try [recycle]
+	recycle
 
 ===end-group===
 
@@ -947,7 +947,7 @@ recycle/torture
 	s/n: 42
 	--assert string? s/val: copy "keep me alive"
 	flush
-	--assert not error? try [recycle]
+	recycle
 	reuse
 	--assert s/n = 42
 	--assert s/val == "keep me alive"
@@ -956,7 +956,7 @@ recycle/torture
 	s: make struct! [n [int16!] vals [rebval! [2]]]
 	--assert block? s/vals: reduce [copy "first" copy "second"]
 	flush
-	--assert not error? try [recycle]
+	recycle
 	reuse
 	--assert s/vals == ["first" "second"]
 
@@ -968,22 +968,37 @@ recycle/torture
 	s/id: 7
 	--assert string? s/inner/val: copy "nested value"
 	flush
-	--assert not error? try [recycle]
+	recycle
 	reuse
 	--assert s/id = 7
 	--assert s/inner/val == "nested value"
 
---test-- "GC marks rebval! fields of a deeply nested struct"
-	s: make struct! [
-		a [struct! [b [struct! [val [rebval!]]]] [2]]
-	]
+--test-- "GC marks all values of a struct reached from a nested view"
+	;; the data series is shared by all views, and it is marked only once,
+	;; so the values must be marked from the root of the data!
+	s: make struct! [a [struct! [val [rebval!]] [2]]]
+	--assert string? s/a/1/val: copy "first"
+	--assert string? s/a/2/val: copy "second"
+	v: s/a/1 ;; a view into the head of the data
+	flush
+	recycle
+	reuse
+	--assert v/val == "first"
+	--assert s/a/2/val == "second" ;; must not be collected!
+	;; a value left dangling in the data would crash the next mark pass
+	recycle
+
+--test-- "GC marks a deeply nested struct while its views are on the stack"
+	s: make struct! [a [struct! [b [struct! [val [rebval!]]]] [2]]]
 	--assert string? s/a/1/b/val: copy "first"
 	--assert string? s/a/2/b/val: copy "second"
 	flush
-	--assert not error? try [recycle]
+	recycle
 	reuse
 	--assert s/a/1/b/val == "first"
 	--assert s/a/2/b/val == "second"
+	recycle
+
 
 --test-- "GC does not see a partially constructed array value"
 	;; Get_Struct_Field_Value writes into pvs->store - a data stack slot the GC

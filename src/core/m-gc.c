@@ -175,9 +175,8 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 			break;
 		case STRUCT_TYPE_STRUCT:
 			// A nested struct may hold Rebol values too!
-			if (!field->spec || !field->spec->series) break;
 			// Skip it when there is nothing to mark in it.
-			if (!(((REBSTI *)BLK_HEAD(field->spec->series))->flags & 1)) break;
+			if (!FIELD_SPEC_HAS_VALUES(field)) break;
 			for (n = 0; n < field->dimension; n++) {
 				Mark_Struct_Fields(stu, field->spec->series, offset + field->offset + n * field->size, depth + 1);
 			}
@@ -204,8 +203,15 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 	ASSERT2(IS_BARE_SERIES(stu->data), RP_BAD_SERIES);
 	ASSERT2(!IS_EXT_SERIES(stu->data), RP_BAD_SERIES);
 
-	if (STRUCT_NEEDS_MARK(stu))
-		Mark_Struct_Fields(stu, STRUCT_FIELDS_SER(stu), STRUCT_OFFSET(stu), depth);
+	// The data series is shared by all views into it, and it is marked just
+	// once, so the values must always be marked from the root of the data -
+	// this struct may be only a view into a nested part of it!
+	REBSER *root = STRUCT_DATA(stu)->series;
+	if (root) {
+		MARK_SERIES(root);
+		if (FIELDS_NEED_MARK(root))
+			Mark_Struct_Fields(stu, root, 0, depth);
+	}
 }
 
 

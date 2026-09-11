@@ -31,16 +31,6 @@
 #include "sys-core.h"
 #include "sys-hash.h"
 
-// A REBVAL stored in a struct is accessed directly (the GC marks it in place),
-// so it must be aligned - see the `#pragma pack` in sys-value.h!
-#define STRUCT_VALUE_ALIGN 4
-#define STRUCT_FIELD_HAS_VALUES(f) \
-	((f)->spec && (f)->spec->series && (((REBSTI *)BLK_HEAD((f)->spec->series))->flags & 1))
-
-#define IS_INTEGER_TYPE(t) ((t) < STRUCT_TYPE_INTEGER)
-#define IS_DECIMAL_TYPE(t) ((t) > STRUCT_TYPE_INTEGER && (t) < STRUCT_TYPE_DECIMAL)
-#define IS_NUMERIC_TYPE(t) (IS_INTEGER_TYPE(t) || IS_DECIMAL_TYPE(t))
-
 REBFLG MT_Struct(REBVAL *out, REBVAL *data, REBCNT type);
 static void init_fields(REBVAL *ret, REBVAL *spec);
 
@@ -292,11 +282,11 @@ static REBOOL assign_scalar(REBSTU *stu,
 
 	switch (VAL_TYPE(val)) {
 		case REB_DECIMAL:
-			if (!IS_NUMERIC_TYPE(field->type)) {
+			if (!IS_STRUCT_NUMERIC_TYPE(field->type)) {
 				Trap_Type(val);
 			}
 			d = VAL_DECIMAL(val);
-			if (IS_INTEGER_TYPE(field->type)) {
+			if (IS_STRUCT_INTEGER_TYPE(field->type)) {
 				// Casting a value which does not fit into a 64bit integer
 				// (or a NaN) is an undefined behavior in C!
 				if (!(d >= -9223372036854775808.0 && d < 9223372036854775808.0))
@@ -306,7 +296,7 @@ static REBOOL assign_scalar(REBSTU *stu,
 			}
 			break;
 		case REB_INTEGER:
-			if (!IS_NUMERIC_TYPE(field->type)
+			if (!IS_STRUCT_NUMERIC_TYPE(field->type)
 				&& field->type != STRUCT_TYPE_POINTER) {
 				Trap_Type(val);
 			}
@@ -677,6 +667,10 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 	BARE_SERIES(STRUCT_DATA(stu));
 	LABEL_SERIES(STRUCT_DATA(stu), "struct_data");
 	SERIES_TAIL(STRUCT_DATA(stu)) = STRUCT_SIZE(stu);
+	// Remember the root field list in the (otherwise unused) series link, so
+	// that the GC can always mark ALL values in the data, even when the data
+	// are reached only from a value which is a view into a nested part!
+	STRUCT_DATA_ROOT(stu) = STRUCT_FIELDS_SER(stu);
 
 	if (IS_BINARY(values)) {
 		// Raw data must not be used to initialize a struct holding Rebol
@@ -817,7 +811,7 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 			}
 			// Fields holding Rebol values must be aligned for the GC!
 			if (field->type == STRUCT_TYPE_REBVAL
-				|| (field->type == STRUCT_TYPE_STRUCT && STRUCT_FIELD_HAS_VALUES(field))) {
+				|| (field->type == STRUCT_TYPE_STRUCT && FIELD_SPEC_HAS_VALUES(field))) {
 				offset = ALIGN(offset, STRUCT_VALUE_ALIGN);
 				field->offset = (REBCNT)offset;
 			}
@@ -865,10 +859,8 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 				break;
 			}
 			
-			if (field->type == STRUCT_TYPE_REBVAL) VAL_STRUCT_FLAGS(out) |= 3; // readonly, needs GC mark
-			//else if (field->type == STRUCT_TYPE_STRUCT) VAL_STRUCT_FLAGS(out) |= 1; // needs GC mark
-			// NOTE: a nested struct propagates its own flags in parse_field_type,
-			// so bit 1 means "really holds Rebol values"!
+			if (field->type == STRUCT_TYPE_REBVAL)
+				VAL_STRUCT_FLAGS(out) |= STRUCT_FLAG_MARK | STRUCT_FLAG_PROTECTED;
 		
 			field->done = TRUE;
 			++SERIES_TAIL(VAL_STRUCT_FIELDS(out));
@@ -1059,6 +1051,7 @@ static void Copy_Struct(REBSTU *src, REBSTU *dst)
 	STRUCT_DATA(dst) = Make_Binary(STRUCT_SIZE(src));
 	BARE_SERIES(STRUCT_DATA(dst));
 	SERIES_TAIL(STRUCT_DATA(dst)) = STRUCT_SIZE(src);
+	STRUCT_DATA_ROOT(dst) = STRUCT_FIELDS_SER(dst); // the root field list
 	COPY_MEM(STRUCT_DATA_BIN(dst), STRUCT_DATA_BIN(src), STRUCT_SIZE(src));
 }
 

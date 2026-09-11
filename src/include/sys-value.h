@@ -398,7 +398,7 @@ static REBCNT byte_sizes[4] = { 1, 2, 4, 8 };
 	REBCNT  flags;
 	union {
 		REBCNT size;	// used for vectors and bitsets
-		REBSER *series;	// MAP datatype uses this
+		REBSER *series;	// used by MAP (hashes) and by STRUCT (see below)
 		struct {
 			REBCNT wide:16;
 			REBCNT high:16;
@@ -1317,6 +1317,40 @@ typedef struct Reb_Struct_Info {
 #define VAL_STRUCT_HASH(v)  (((REBSTI *)BLK_HEAD(VAL_STRUCT_FIELDS(v)))->hash)
 #define VAL_STRUCT_NEEDS_MARK(v) ((((REBSTI *)BLK_HEAD(VAL_STRUCT_FIELDS(v)))->flags & 1) != 0)
 #define VAL_STRUCT_PROTECTED(v) ((((REBSTI *)BLK_HEAD(VAL_STRUCT_FIELDS(v)))->flags & 2) != 0)
+
+// A struct value is only a view into a data series: the root struct and the
+// values of all its (nested) struct fields share one data series and differ
+// just in the spec and the offset. The series link (otherwise used only by
+// MAP) holds the related field lists:
+//
+//     spec->series   field list (REBSTI + REBSTF array) of that specification
+//     data->series   field list of the ROOT struct of these data
+//
+// The root is needed by the GC: the data series is marked only once, so the
+// Rebol values in it must always be marked from the root of the data, even
+// when the data are reached from a value covering just a nested part of it.
+
+#define STRUCT_DATA_ROOT(s)     (STRUCT_DATA(s)->series)
+#define VAL_STRUCT_DATA_ROOT(v) (VAL_STRUCT_DATA(v)->series)
+
+// Accessors for a bare field list series (the GC has no REBSTU to use)
+#define FIELDS_INFO(ser)        ((REBSTI *)BLK_HEAD(ser))
+#define FIELDS_NEED_MARK(ser)   ((FIELDS_INFO(ser)->flags & STRUCT_FLAG_MARK) != 0)
+
+// Rebol values stored in a struct are accessed in place, so the fields
+// holding them must be aligned - see the `#pragma pack` above!
+#define STRUCT_VALUE_ALIGN 4
+
+// True when a struct field is a nested struct which holds Rebol values
+#define FIELD_SPEC_HAS_VALUES(f) \
+	((f)->spec && (f)->spec->series && FIELDS_NEED_MARK((f)->spec->series))
+
+enum {
+	STRUCT_FLAG_MARK      = 1, // holds Rebol values which the GC must mark
+	STRUCT_FLAG_PROTECTED = 2, // raw data modification is not allowed
+};
+
+
 
 /***********************************************************************
 **
