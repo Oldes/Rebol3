@@ -86,6 +86,12 @@ static const REBINT type_to_vect [STRUCT_TYPE_MAX] = {
 #define IS_BLOCK_BACKED_FIELD(f) \
 	((f)->type > STRUCT_TYPE_DOUBLE || type_to_sym[(f)->type] == NOT_FOUND)
 
+// The struct's data are packed, so its fields may be misaligned! Accessing
+// them using a typed pointer is an undefined behavior, so the value must be
+// copied in and out instead.
+#define GET_FIELD_VALUE(type, set) { type n; COPY_MEM(&n, data, sizeof(n)); set(val, n); break; }
+#define SET_FIELD_VALUE(type, num) { type n = (type)(num); COPY_MEM(data, &n, sizeof(n)); break; }
+
 static REBFLG get_scalar(REBSTU *stu,
 				  REBSTF *field,
 				  REBCNT n, /* element index, starting from 0 */
@@ -93,39 +99,17 @@ static REBFLG get_scalar(REBSTU *stu,
 {
 	REBYTE *data = STRUCT_DATA_BIN(stu) + field->offset + n * field->size;
 	switch (field->type) {
-		case STRUCT_TYPE_UINT8:
-			SET_INTEGER(val, *(u8*)data);
-			break;
-		case STRUCT_TYPE_INT8:
-			SET_INTEGER(val, *(i8*)data);
-			break;
-		case STRUCT_TYPE_UINT16:
-			SET_INTEGER(val, *(u16*)data);
-			break;
-		case STRUCT_TYPE_INT16:
-			SET_INTEGER(val, *(i16*)data);
-			break;
-		case STRUCT_TYPE_UINT32:
-			SET_INTEGER(val, *(u32*)data);
-			break;
-		case STRUCT_TYPE_INT32:
-			SET_INTEGER(val, *(i32*)data);
-			break;
-		case STRUCT_TYPE_UINT64:
-			SET_INTEGER(val, *(u64*)data);
-			break;
-		case STRUCT_TYPE_INT64:
-			SET_INTEGER(val, *(i64*)data);
-			break;
-		case STRUCT_TYPE_FLOAT:
-			SET_DECIMAL(val, *(float*)data);
-			break;
-		case STRUCT_TYPE_DOUBLE:
-			SET_DECIMAL(val, *(double*)data);
-			break;
-		case STRUCT_TYPE_POINTER:
-			SET_INTEGER(val, (u64)*(void**)data);
-			break;
+		case STRUCT_TYPE_UINT8:   GET_FIELD_VALUE(u8,  SET_INTEGER)
+		case STRUCT_TYPE_INT8:    GET_FIELD_VALUE(i8,  SET_INTEGER)
+		case STRUCT_TYPE_UINT16:  GET_FIELD_VALUE(u16, SET_INTEGER)
+		case STRUCT_TYPE_INT16:   GET_FIELD_VALUE(i16, SET_INTEGER)
+		case STRUCT_TYPE_UINT32:  GET_FIELD_VALUE(u32, SET_INTEGER)
+		case STRUCT_TYPE_INT32:   GET_FIELD_VALUE(i32, SET_INTEGER)
+		case STRUCT_TYPE_UINT64:  GET_FIELD_VALUE(u64, SET_INTEGER)
+		case STRUCT_TYPE_INT64:   GET_FIELD_VALUE(i64, SET_INTEGER)
+		case STRUCT_TYPE_FLOAT:   GET_FIELD_VALUE(float,  SET_DECIMAL)
+		case STRUCT_TYPE_DOUBLE:  GET_FIELD_VALUE(double, SET_DECIMAL)
+		case STRUCT_TYPE_POINTER: GET_FIELD_VALUE(void*,  SET_INTEGER)
 		case STRUCT_TYPE_STRUCT:
 			{
 				SET_TYPE(val, REB_STRUCT);
@@ -136,17 +120,16 @@ static REBFLG get_scalar(REBSTU *stu,
 			}
 			break;
 
-		case STRUCT_TYPE_WORD:
-			if (*(REBINT *)data == 0)
-				SET_NONE(val);
-			else 
-				Set_Word(val, *(REBINT *)data, NULL, 0);
+		case STRUCT_TYPE_WORD: {
+				REBCNT sym;
+				COPY_MEM(&sym, data, sizeof(sym));
+				if (sym == 0) SET_NONE(val);
+				else Set_Word(val, sym, NULL, 0);
+			}
 			break;
 		case STRUCT_TYPE_REBVAL:
-			if (*(REBINT *)data == 0)
-				SET_NONE(val);
-			else
-				COPY_MEM(val, data, sizeof(REBVAL));
+			COPY_MEM(val, data, sizeof(REBVAL));
+			if (IS_END(val)) SET_NONE(val); // the field was never set
 			break;
 		default:
 			/* should never be here */
@@ -356,40 +339,18 @@ static REBOOL assign_scalar(REBSTU *stu,
 	}
 
 	switch (field->type) {
-		case STRUCT_TYPE_INT8:
-			*(i8*)data = (i8)i;
-			break;
-		case STRUCT_TYPE_UINT8:
-			*(u8*)data = (u8)i;
-			break;
-		case STRUCT_TYPE_INT16:
-			*(i16*)data = (i16)i;
-			break;
-		case STRUCT_TYPE_UINT16:
-			*(u16*)data = (u16)i;
-			break;
-		case STRUCT_TYPE_INT32:
-			*(i32*)data = (i32)i;
-			break;
+		case STRUCT_TYPE_INT8:    SET_FIELD_VALUE(i8,  i)
+		case STRUCT_TYPE_UINT8:   SET_FIELD_VALUE(u8,  i)
+		case STRUCT_TYPE_INT16:   SET_FIELD_VALUE(i16, i)
+		case STRUCT_TYPE_UINT16:  SET_FIELD_VALUE(u16, i)
+		case STRUCT_TYPE_INT32:   SET_FIELD_VALUE(i32, i)
 		case STRUCT_TYPE_UINT32:
-		case STRUCT_TYPE_WORD:
-			*(u32*)data = (u32)i;
-			break;
-		case STRUCT_TYPE_INT64:
-			*(i64*)data = (i64)i;
-			break;
-		case STRUCT_TYPE_UINT64:
-			*(u64*)data = (u64)i;
-			break;
-		case STRUCT_TYPE_POINTER:
-			*(void**)data = (void*)i;
-			break;
-		case STRUCT_TYPE_FLOAT:
-			*(float*)data = (float)d;
-			break;
-		case STRUCT_TYPE_DOUBLE:
-			*(double*)data = (double)d;
-			break;
+		case STRUCT_TYPE_WORD:    SET_FIELD_VALUE(u32, i)
+		case STRUCT_TYPE_INT64:   SET_FIELD_VALUE(i64, i)
+		case STRUCT_TYPE_UINT64:  SET_FIELD_VALUE(u64, i)
+		case STRUCT_TYPE_POINTER: SET_FIELD_VALUE(void*, i)
+		case STRUCT_TYPE_FLOAT:   SET_FIELD_VALUE(float,  d)
+		case STRUCT_TYPE_DOUBLE:  SET_FIELD_VALUE(double, d)
 		case STRUCT_TYPE_STRUCT:
 			if (field->size != VAL_STRUCT_SIZE(val)) {
 				Trap_Arg(val);

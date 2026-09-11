@@ -827,6 +827,36 @@ if system/version >= 3.19.1 [
 		struct? s4: transcode/one mold/all/flat s
 		(to binary! s4) == to binary! s
 	]
+
+--test-- "Access to misaligned fields"
+	;; the struct's data are packed, so all fields but the first are misaligned
+	s: make struct! [
+		pad [uint8!]
+		u16 [uint16!] i16 [int16!]
+		u32 [uint32!] i32 [int32!]
+		u64 [uint64!] i64 [int64!]
+		f32 [float!]  f64 [double!]
+		w   [word!]
+	]
+	--assert all [
+		not error? try [
+			s/u16: 43981            s/i16: -12345
+			s/u32: 2309737967       s/i32: -305419896
+			s/u64: 81985529216486895 s/i64: -81985529216486895
+			s/f32: 1.5              s/f64: -2.5
+			s/w: 'foo
+		]
+		s/u16 == 43981             s/i16 == -12345
+		s/u32 == 2309737967        s/i32 == -305419896
+		s/u64 == 81985529216486895 s/i64 == -81985529216486895
+		s/f32 == 1.5               s/f64 == -2.5
+		s/w = 'foo
+	]
+	;; the layout stays packed and little endian
+	p: make struct! [a [uint8!] b [uint16!]]
+	p/a: 1 p/b: 4660
+	--assert #{013412} == to binary! p
+	--assert 3 = length? p
 ===end-group===
 
 
