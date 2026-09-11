@@ -30,6 +30,8 @@
 
 #include "sys-core.h"
 
+static REBVAL *Make_Vector_Struct_Spec(REBSER *fields, REBVAL *bp, REBVAL *value, REBFLG with_size);
+
 static const REBCNT normalized_vect_sym[29] = {
 	SYM_INT8X,     //SYM_INT8X
 	SYM_INT16X,    //SYM_INT16X
@@ -513,7 +515,12 @@ return_number:
 	REBCNT len = VAL_LEN(vect);
 	REBYTE *data = VAL_VEC_HEAD(vect);
 	REBCNT type = VAL_VEC_TYPE(vect);
-	REBSER *ser = Make_Block(len);
+	REBSER *ser;
+
+	// Struct elements have no block representation yet!
+	if (VECT_IS_STRUCT(type)) Trap0(RE_FEATURE_NA);
+
+	ser = Make_Block(len);
 	REBVAL *val = NULL;
 	REBCNT reb_type = (type >= VTSF08) ? REB_DECIMAL : REB_INTEGER;
 
@@ -1197,6 +1204,33 @@ static REBINT cmp_u64_dec(REBU64 u, REBDEC d) {
 	return TRUE;
 }
 
+/***********************************************************************
+**
+*/	REBINT Make_Vector_Struct(REBVAL* val, REBSER* fields, REBINT cols)
+/*
+**		fields: field list of the struct used as the element prototype
+**		cols:   number of elements
+**
+**		The data are zero filled. The struct must not hold any Rebol values -
+**		the vector's data are raw bytes which the GC never marks!
+**
+***********************************************************************/
+{
+	REBSER* ser;
+	REBCNT  size = FIELDS_INFO(fields)->size;
+
+	// The element size is kept as the series width, which is 8 bits only!
+	if (size == 0 || size > VECT_STRUCT_MAX_SIZE) return FALSE;
+	// Raw data must never be marked as Rebol values by the GC!
+	if (FIELDS_NEED_MARK(fields)) return FALSE;
+
+	if (!(ser = Make_Vector_Series(cols, size, 1))) return FALSE;
+	// Like in a struct's data series, the link holds the element's field list.
+	ser->series = fields;
+	SET_VECTOR(val, ser, VTSTRUCT);
+	return TRUE;
+}
+
 static
 REBCNT Get_Vector_Type_From_Symbol(REBCNT sym) {
 	sym = Normalize_Vector_Type_Symbol(sym);
@@ -1240,15 +1274,27 @@ REBCNT Get_Vector_Type_From_Symbol(REBCNT sym) {
 	REBVAL *iblk = 0;
 	REBLEN index = 0;
 
+	// vector of structs: #(vector! #(struct! [x [int32!]]) 2 #{...})
+	if (IS_STRUCT(bp))
+		return Make_Vector_Struct_Spec(VAL_STRUCT_FIELDS(bp), bp + 1, value, FALSE);
+
 	// Vector type:
 	if (!IS_WORD(bp)) return 0;
 	if (VAL_WORD_CANON(bp) == SYM_VECTOR_TYPE) {
 		// allow #(vector! uint8! [1 2 3])
 		bp++;
+		if (IS_STRUCT(bp))
+			return Make_Vector_Struct_Spec(VAL_STRUCT_FIELDS(bp), bp + 1, value, FALSE);
 		if (!IS_WORD(bp)) return 0;
 	}
 	REBCNT vtype = Get_Vector_Type_From_Symbol(VAL_WORD_CANON(bp));
-	if (vtype == UNKNOWN) return 0;
+	if (vtype == UNKNOWN) {
+		// a registered struct: #(vector! point2d! #{...})
+		REBVAL *spec = Find_Struct_Spec(bp);
+		if (spec && IS_BLOCK(spec) && VAL_SERIES(spec)->series)
+			return Make_Vector_Struct_Spec(VAL_SERIES(spec)->series, bp + 1, value, FALSE);
+		return 0;
+	}
 	//printf("vtype: wide: %u bits: %u sign: %u\n", VECT_WIDE(vtype), VECT_BITS(vtype), VECT_SIGN(vtype));
 
 	bp++;
@@ -1280,6 +1326,59 @@ REBCNT Get_Vector_Type_From_Symbol(REBCNT sym) {
 	VAL_INDEX(value) = index;
 	return value;
 }
+
+// Makes a vector of structs. The element prototype is already resolved, `bp`
+// are the values which follow it. All of them are optional:
+//
+//     make vector! [:point 100]
+//     make vector! [point2d! 100]           ;; a registered struct
+//     make vector! [:point :size :data :index]
+//     #(vector! #(struct! [x [int32!] y [int32!]]) #{...} 2)
+//
+// Like with the other vector types, the number of elements may be used only in
+// the MAKE specification - in the construction syntax it is given by the data!
+static
+REBVAL *Make_Vector_Struct_Spec(REBSER *fields, REBVAL *bp, REBVAL *value, REBFLG with_size)
+{
+	REBCNT size = FIELDS_INFO(fields)->size;
+	REBINT cols = 0;
+	REBLEN index = 0;
+	REBVAL *data = NULL;
+	REBVAL *val = bp;
+
+	if (IS_GET_WORD(val)) val = Get_Var(val);
+	// Number of elements:
+	if (with_size && IS_INTEGER(val)) {
+		cols = Int32s(val, 0); // traps on negative
+		val = ++bp;
+		if (IS_GET_WORD(val)) val = Get_Var(val);
+	}
+	// Initial data:
+	if (IS_BINARY(val)) {
+		REBCNT len = size ? (VAL_LEN(val) / size) : 0;
+		if (len == 0 && VAL_LEN(val) > 0) return 0;
+		if (len > (REBCNT)cols && cols == 0) cols = len;
+		data = val;
+		val = ++bp;
+		if (IS_GET_WORD(val)) val = Get_Var(val);
+	}
+	// Index offset:
+	if (IS_INTEGER(val)) {
+		index = Int32s(val, 1) - 1;
+		val = ++bp;
+	}
+	if (NOT_END(val)) return 0;
+
+	if (!Make_Vector_Struct(value, fields, cols)) return 0;
+	if (data) {
+		REBCNT len = MIN(VAL_LEN(data), VAL_TAIL(value) * size);
+		if (len > 0) COPY_MEM(VAL_VEC_HEAD(value), VAL_BIN_DATA(data), len);
+	}
+	if (index > VAL_TAIL(value)) return 0;
+	VAL_INDEX(value) = index;
+	return value;
+}
+
 
 /***********************************************************************
 **
@@ -1320,6 +1419,17 @@ REBCNT Get_Vector_Type_From_Symbol(REBCNT sym) {
 	REBVAL *iblk = 0;
 	REBVAL *val;
 	REBCNT vtype = UNKNOWN;
+
+	// Vector of structs, like: make vector! [:point 100] or [point2d! 100]
+	val = bp;
+	if (IS_GET_WORD(val)) val = Get_Var(val);
+	if (IS_STRUCT(val))
+		return Make_Vector_Struct_Spec(VAL_STRUCT_FIELDS(val), bp + 1, value, TRUE);
+	if (IS_WORD(val) && Get_Vector_Type_From_Symbol(VAL_WORD_CANON(val)) == UNKNOWN) {
+		REBVAL *spec = Find_Struct_Spec(val);
+		if (spec && IS_BLOCK(spec) && VAL_SERIES(spec)->series)
+			return Make_Vector_Struct_Spec(VAL_SERIES(spec)->series, bp + 1, value, TRUE);
+	}
 
 	if (IS_WORD(bp)) {
 		// Using the prefered type like: make vector! [uint8! ...]
@@ -1442,6 +1552,27 @@ data_spec:
 }
 
 
+// Compares the raw data of two vectors with struct elements.
+// Both must hold elements of the very same specification!
+static
+REBINT Compare_Vector_Struct(REBVAL *a, REBVAL *b)
+{
+	REBCNT wide = VAL_VEC_WIDE(a);
+	REBCNT la = VAL_LEN(a);
+	REBCNT lb = VAL_LEN(b);
+	REBCNT len = MIN(la, lb) * wide;
+	REBYTE *pa = VAL_VEC_DATA(a);
+	REBYTE *pb = VAL_VEC_DATA(b);
+	REBCNT n;
+
+	for (n = 0; n < len; n++) {
+		if (pa[n] != pb[n]) return (pa[n] > pb[n]) ? 1 : -1;
+	}
+	if (la == lb) return 0;
+	return (la > lb) ? 1 : -1;
+}
+
+
 /***********************************************************************
 **
 */	REBINT CT_Vector(REBVAL *a, REBVAL *b, REBINT mode)
@@ -1457,6 +1588,17 @@ data_spec:
 
 	if (mode == 3)
 		return VAL_SERIES(a) == VAL_SERIES(b) && VAL_INDEX(a) == VAL_INDEX(b);
+
+	// Struct elements are not numbers - such vectors are compared as raw data
+	// and only when both hold elements of the very same specification.
+	if (VAL_VEC_IS_STRUCT(a) || VAL_VEC_IS_STRUCT(b)) {
+		if (!VAL_VEC_IS_STRUCT(a) || !VAL_VEC_IS_STRUCT(b)) return 0;
+		if (VAL_VEC_STRUCT(a) != VAL_VEC_STRUCT(b)) return 0;
+		num = Compare_Vector_Struct(a, b);
+		if (mode >=  0) return (num == 0);
+		if (mode == -1) return (num >= 0);
+		return (num > 0);
+	}
 
 	// Strict equality additionally requires the same element type.
 	// Loose equality deliberately ignores it, so #(i32! [1]) = #(f32! [1.0])
@@ -1485,6 +1627,9 @@ data_spec:
 	REBINT vtype = VAL_VEC_TYPE(val);
 	REBINT n;	
 	REBYTE *vp = vect->data;
+
+	// Elements of a vector of structs are not accessible yet!
+	if (VECT_IS_STRUCT(vtype)) return PE_BAD_SELECT;
 
 	if (IS_INTEGER(sel) || IS_DECIMAL(sel)) {
 		n = Int32(sel);
@@ -1611,6 +1756,11 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 	// Check must be in this order (to avoid checking a non-series value);
 	if (action >= A_TAKE && action <= A_SORT && IS_PROTECT_SERIES(vect))
 		Trap0(RE_PROTECTED);
+
+	// A vector of structs holds no numbers, so only the generic series actions
+	// resolved by Do_Series_Action above are supported for it so far!
+	if (!IS_DATATYPE(value) && VAL_VEC_IS_STRUCT(value))
+		Trap_Action(VAL_TYPE(value), action);
 
 	switch (action) {
 
@@ -2010,6 +2160,57 @@ bad_make:
 	return (action == A_APPEND) ? 0 : index;
 }
 
+// A vector with struct elements has no readable value representation, so it is
+// molded using the raw data:
+//
+//     #(vector! #(struct! [x [int32!] y [int32!]]) #{...})
+//     #(vector! #(struct! point2d!) #{...})
+static
+void Mold_Vector_Struct(REBVAL *value, REB_MOLD *mold, REBFLG molded)
+{
+	REBSER *fields = VAL_VEC_STRUCT(value);
+	REBOOL  all    = GET_MOPT(mold, MOPT_MOLD_ALL);
+	REBCNT  len    = all ? VAL_TAIL(value) : VAL_LEN(value);
+	REBYTE *data   = all ? VAL_VEC_HEAD(value) : VAL_VEC_DATA(value);
+	REBCNT  size   = len * VAL_VEC_WIDE(value);
+	REBSER *bin;
+	REBVAL  tmp;
+
+	if (molded) {
+		Emit(mold, "S", "#(vector! #(struct! ");
+		if (FIELDS_INFO(fields)->name) {
+			// The specification is registered under a name
+			Emit(mold, "N", FIELDS_INFO(fields)->name);
+		}
+		else if (FIELDS_SPEC(fields)) {
+			Set_Block(&tmp, FIELDS_SPEC(fields));
+			Emit(mold, "V", &tmp);
+		}
+		else {
+			// Should not happen - the specification is kept with the fields!
+			Append_Int(mold->series, FIELDS_INFO(fields)->id);
+ 		}
+		Emit(mold, "S", ") ");
+	}
+
+	// The number of elements is given by the data, like with the other types!
+	bin = Make_Binary(size);
+	if (size > 0) COPY_MEM(BIN_HEAD(bin), data, size);
+	SERIES_TAIL(bin) = size;
+	Set_Binary(&tmp, bin);
+	Emit(mold, "V", &tmp);
+	Free_Series(bin);
+
+	if (molded) {
+		if (all && VAL_INDEX(value)) {
+ 			Append_Byte(mold->series, ' ');
+ 			Append_Int(mold->series, VAL_INDEX(value) + 1);
+ 		}
+		Append_Byte(mold->series, ')');
+ 	}
+}
+
+
 /***********************************************************************
 **
 */	void Mold_Vector(REBVAL *value, REB_MOLD *mold, REBFLG molded)
@@ -2030,6 +2231,11 @@ bad_make:
 	REBYTE buf[32];
 	REBYTE l;
 	REBOOL indented = !GET_MOPT(mold, MOPT_INDENT);
+
+	if (VECT_IS_STRUCT(vtype)) {
+		Mold_Vector_Struct(value, mold, molded);
+		return;
+	}
 
 	if (GET_MOPT(mold, MOPT_MOLD_ALL)) {
 		len = VAL_TAIL(value);

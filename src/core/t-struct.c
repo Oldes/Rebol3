@@ -639,6 +639,25 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 
 /***********************************************************************
 **
+*/	REBVAL *Find_Struct_Spec(REBVAL *key)
+/*
+**		Returns the specification registered in system/catalog/structs
+**		under the given name (word!) or id (integer!), or NULL when there
+**		is no such struct.
+**
+***********************************************************************/
+{
+	REBVAL *struct_specs = Get_System(SYS_CATALOG, CAT_STRUCTS);
+	REBCNT n;
+
+	if (!IS_WORD(key) && !IS_INTEGER(key)) return NULL;
+	n = Find_Entry(VAL_SERIES(struct_specs), key, 0, TRUE);
+	if (n == NOT_FOUND) return NULL;
+	return VAL_BLK_SKIP(struct_specs, n);
+}
+
+/***********************************************************************
+**
 */	REBFLG MT_Struct(REBVAL *out, REBVAL *data, REBCNT type)
 /*
 ***********************************************************************/
@@ -692,6 +711,7 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 	REBVAL *struct_specs = Get_System(SYS_CATALOG, CAT_STRUCTS);
 	REBCNT hash = 0, n = NOT_FOUND;
 	REBOOL new_spec = FALSE;
+	REBVAL *found = NULL;
 
 	if (IS_INTEGER(data)) {
 		// Struct spec id used like:
@@ -701,7 +721,7 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 	else if (IS_WORD(data)) {
 		// Struct spec as a registered struct name
 		// #(struct! some-struct [a: 1 b: 2])
-		n = Find_Entry(VAL_SERIES(struct_specs), data, 0, TRUE);
+		found = Find_Struct_Spec(data);
 	}
 	else if (!IS_BLOCK(data)) return FALSE; // validate early!
 	else {
@@ -712,9 +732,9 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 
 	SET_INTEGER(&key, hash);
 	if (hash) {
-		n = Find_Entry(VAL_SERIES(struct_specs), &key, 0, TRUE);
+		found = Find_Struct_Spec(data);
 	}
-	if (n == NOT_FOUND) {
+	if (found == NULL) {
 		if (!IS_BLOCK(data)) {
 			Trap_Arg(data);
 		}
@@ -726,7 +746,7 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 		new_spec = TRUE;
 	}
 	else {
-		spec = *VAL_BLK_SKIP(struct_specs, n);
+		spec = *found;
 	}
 
 	REBSTU *stu = &VAL_STRUCT(out);
@@ -764,6 +784,10 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 		VAL_STRUCT_COUNT(out) = field_num;
 		BARE_SERIES(VAL_STRUCT_FIELDS(out));                  // does not hold Rebol values
 		KEEP_SERIES(VAL_STRUCT_FIELDS(out), "struct_fields"); // protect from GC
+		// The specification knows its field list (spec->series) - keep also the
+		// opposite direction, so that the specification may be resolved from a
+		// bare field list (used when molding a vector of structs).
+		FIELDS_SPEC(VAL_STRUCT_FIELDS(out)) = VAL_SERIES(&spec);
 		SERIES_TAIL(VAL_STRUCT_FIELDS(out)) = field_num = 1;  // info at the head
 		VAL_STRUCT_ID(out) = hash;
 

@@ -642,6 +642,9 @@ enum {
 	VT_MAX,
 };
 
+// Elements are structs - their size is not encoded in the type identifier!
+#define VTSTRUCT  VT_MAX
+
 #define VECT_BB_MASK    0x00000003  // bits 1..0   -- bit-width code (0-3)
 #define VECT_SIGN_MASK  0x00000004  // bit  2      -- signed flag
 #define VECT_TYPE_MASK  0x00000008  // bit  3      -- float flag
@@ -677,8 +680,20 @@ enum {
 #define VECT_DECI(vtype) ((vtype & 8) != 0)
 #define VECT_DIMS(vtype) 1 // TODO!
 
+// Struct elements have an arbitrary size which cannot be derived from the type
+// identifier, so it is kept as the series width - and that one is 8 bits only!
+#define VECT_IS_STRUCT(vtype)  ((vtype) == VTSTRUCT)
+#define VECT_STRUCT_MAX_SIZE   255
+
+#define VAL_VEC_IS_STRUCT(v) VECT_IS_STRUCT(VAL_VEC_TYPE(v))
+// A vector of structs keeps the element's field list in the series link, just
+// like a struct's data series does, so that an element may be used as a struct
+// view. Both the fields and the specification are protected from the GC when
+// the struct is prepared, so there is nothing to mark here.
+#define VAL_VEC_STRUCT(v) (VAL_SERIES(v)->series)
+
 #define VAL_VEC_BITS(v)  (VECT_BITS(VAL_VEC_INFO(v)))
-#define VAL_VEC_WIDE(v)  (VECT_WIDE(VAL_VEC_INFO(v)))
+#define VAL_VEC_WIDE(v)  (VAL_VEC_IS_STRUCT(v) ? SERIES_WIDE(VAL_SERIES(v)) : VECT_WIDE(VAL_VEC_INFO(v)))
 #define VAL_VEC_SIGN(v)  (VECT_SIGN(VAL_VEC_INFO(v)))  
 #define VAL_VEC_DECI(v)  (VECT_DECI(VAL_VEC_INFO(v)))  
 
@@ -1368,6 +1383,7 @@ typedef struct Reb_Struct_Info {
 
 // Accessors for a bare field list series (the GC has no REBSTU to use)
 #define FIELDS_INFO(ser)        ((REBSTI *)BLK_HEAD(ser))
+#define FIELDS_SPEC(ser)        ((ser)->series) // back-pointer to the spec block
 #define FIELDS_NEED_MARK(ser)   ((FIELDS_INFO(ser)->flags & STRUCT_FLAG_MARK) != 0)
 
 // Rebol values stored in a struct are accessed in place, so the fields

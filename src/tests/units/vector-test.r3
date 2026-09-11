@@ -1818,6 +1818,67 @@ Rebol [
 
 ===end-group===
 
+===start-group=== "VECTOR of STRUCTs"
+	point: make struct! [x [int32!] y [int32!]]
+
+--test-- "make a vector of structs"
+	--assert vector? v: make vector! [:point 3]
+	--assert 3 = length? v
+	;; the data are zero filled and give the number of elements
+	--assert {#(vector! #(struct! [x [int32!] y [int32!]]) #{000000000000000000000000000000000000000000000000})} = mold/all/flat v
+
+--test-- "make a vector of structs with initial data"
+	--assert vector? v: make vector! [:point #{0100000002000000}]
+	--assert 1 = length? v
+	--assert v == load mold/all v
+
+--test-- "make a vector of structs using get-words"
+	size: 2
+	data: #{0100000002000000}
+	--assert vector? v: make vector! [:point :size :data]
+	--assert 2 = length? v
+
+--test-- "vector of structs construction syntax"
+	--assert vector? v: load {#(vector! #(struct! [x [int32!] y [int32!]]) #{00000000000000000000000000000000})}
+	--assert 2 = length? v
+	--assert v = make vector! [:point 2]
+	--assert 2 = index? load {#(vector! #(struct! [x [int32!] y [int32!]]) #{01000000020000000300000004000000} 2)}
+
+--test-- "vector of registered structs is molded using the name"
+	register point2d!: #(struct! [x [int32!] y [int32!]])
+	--assert {#(vector! #(struct! point2d!) #{00000000000000000000000000000000})} = mold/flat make vector! [:point2d! 2]
+	--assert (make vector! [:point2d! 2]) == load mold/all make vector! [:point2d! 2]
+
+--test-- "a registered struct may be used just by its name"
+	--assert vector? v: make vector! [point2d! 2]
+	--assert 2 = length? v
+	--assert v == make vector! [:point2d! 2]
+	--assert v == load {#(vector! point2d! #{00000000000000000000000000000000})}
+	;; an unknown word is still an error
+	--assert error? try [make vector! [nonsense! 2]]
+	--assert error? try [load {#(vector! nonsense! #{0000})}]
+
+--test-- "vector of structs must not hold Rebol values"
+	holder: make struct! [val [rebval!]]
+	--assert error? try [make vector! [:holder 2]]
+
+--test-- "element of a vector of structs is limited to 255 bytes"
+	--assert struct? big: make struct! [data [uint8! [256]]]
+	--assert error? try [make vector! [:big 1]]
+	small: make struct! [data [uint8! [255]]]
+	--assert vector? make vector! [:small 1]
+
+--test-- "vector of structs: not yet supported actions"
+	v: make vector! [:point 2]
+	--assert error? try [v/1]
+	--assert error? try [copy v]
+	--assert error? try [to block! v]
+	--assert error? try [v + 1]
+
+
+===end-group===
+
+
 
 mx: try [import 'matrix]   ;; module exports nothing - reach the words through it
 if module? mx [
