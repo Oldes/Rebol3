@@ -1613,6 +1613,58 @@ REBINT Compare_Vector_Struct(REBVAL *a, REBVAL *b)
 }
 
 
+// Path access to a vector with struct elements. The picked element is a struct
+// value sharing the vector's data series, so it may be modified in place:
+//
+//     v/2/x: 42
+//     s: pick v 2   s/x: 42
+static
+REBINT Path_Vector_Struct(REBPVS *pvs)
+{
+	REBVAL *sel  = pvs->select;
+	REBVAL *val  = pvs->value;
+	REBSER *vect = VAL_SERIES(val);
+	REBSER *fields = VAL_VEC_STRUCT(val);
+	REBCNT  size = SERIES_WIDE(vect);
+	REBVAL *set;
+	REBINT  n;
+
+	// The value is stored only in the last step of the path, so that `v/2/x: 1`
+	// modifies the field and not the whole element! (There is no path at all
+	// when the action is used directly, like in `poke v 2 s`)
+	set = (pvs->path == 0 || IS_END(pvs->path + 1)) ? pvs->setval : NULL;
+
+	if (!IS_INTEGER(sel) && !IS_DECIMAL(sel)) return PE_BAD_SELECT;
+
+	n = Int32(sel);
+	// allow PICK with zero index but not for POKE
+	if (n == 0) return set ? PE_BAD_RANGE : PE_NONE;
+	// Negative selector is relative to the vector's current position.
+	if (n < 0) n++;
+	n += VAL_INDEX(val);
+	if (n <= 0 || (REBCNT)n > vect->tail) return set ? PE_BAD_RANGE : PE_NONE;
+
+	if (set) {
+		// Only a struct of the same specification may be stored!
+		if (!IS_STRUCT(set)
+			|| VAL_STRUCT_SIZE(set) != size
+			|| !Same_Struct_Fields(fields, VAL_STRUCT_FIELDS(set))
+		) return PE_BAD_SET;
+		TRAP_PROTECT(vect);
+		COPY_MEM(BIN_SKIP(vect, (n - 1) * size), VAL_STRUCT_DATA_BIN(set), size);
+		return PE_OK;
+	}
+
+	// The element is just a view into the vector's data!
+	val = pvs->value = pvs->store;
+	SET_TYPE(val, REB_STRUCT);
+	VAL_STRUCT_SPEC(val) = FIELDS_SPEC(fields);
+	VAL_STRUCT_DATA(val) = vect;
+	VAL_STRUCT_OFFSET(val) = (n - 1) * size;
+	return PE_OK;
+}
+
+
 /***********************************************************************
 **
 */	REBINT PD_Vector(REBPVS *pvs)
@@ -1628,8 +1680,8 @@ REBINT Compare_Vector_Struct(REBVAL *a, REBVAL *b)
 	REBINT n;	
 	REBYTE *vp = vect->data;
 
-	// Elements of a vector of structs are not accessible yet!
-	if (VECT_IS_STRUCT(vtype)) return PE_BAD_SELECT;
+	// Elements of a vector of structs are struct views into its data!
+	if (VECT_IS_STRUCT(vtype)) return Path_Vector_Struct(pvs);
 
 	if (IS_INTEGER(sel) || IS_DECIMAL(sel)) {
 		n = Int32(sel);
@@ -1758,9 +1810,17 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 		Trap0(RE_PROTECTED);
 
 	// A vector of structs holds no numbers, so only the generic series actions
-	// resolved by Do_Series_Action above are supported for it so far!
-	if (!IS_DATATYPE(value) && VAL_VEC_IS_STRUCT(value))
-		Trap_Action(VAL_TYPE(value), action);
+	// resolved by Do_Series_Action above and the element access are supported
+	// for it so far!
+	if (!IS_DATATYPE(value) && VAL_VEC_IS_STRUCT(value)) {
+		switch (action) {
+		case A_PICK:
+		case A_POKE:
+			break;
+		default:
+			Trap_Action(VAL_TYPE(value), action);
+		}
+	}
 
 	switch (action) {
 

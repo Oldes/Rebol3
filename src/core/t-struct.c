@@ -248,7 +248,13 @@ REBFLG Get_Struct_Var(REBSTU *stu, REBVAL *word, REBVAL *val)
 	}
 }
 
-static REBOOL same_fields(REBSER *tgt, REBSER *src)
+/***********************************************************************
+**
+*/	REBOOL Same_Struct_Fields(REBSER *tgt, REBSER *src)
+/*
+**		Do both field lists describe the same structure?
+**
+***********************************************************************/
 {
 	if (SERIES_TAIL(tgt) != SERIES_TAIL(src)) {
 		return FALSE;
@@ -343,7 +349,7 @@ static REBOOL assign_scalar(REBSTU *stu,
 			if (field->size != VAL_STRUCT_SIZE(val)) {
 				Trap_Arg(val);
 			}
-			if (same_fields(field->spec->series, VAL_STRUCT_FIELDS(val))) {
+			if (Same_Struct_Fields(field->spec->series, VAL_STRUCT_FIELDS(val))) {
 				COPY_MEM(data, VAL_STRUCT_DATA_BIN(val), field->size);
 			}
 			else {
@@ -732,7 +738,7 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 
 	SET_INTEGER(&key, hash);
 	if (hash) {
-		found = Find_Struct_Spec(data);
+		found = Find_Struct_Spec(&key);
 	}
 	if (found == NULL) {
 		if (!IS_BLOCK(data)) {
@@ -1048,7 +1054,7 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 			}
 			return IS_STRUCT(a) && IS_STRUCT(b)
 				 && VAL_STRUCT_SIZE(a) == VAL_STRUCT_SIZE(b)
-				 && same_fields(VAL_STRUCT_FIELDS(a), VAL_STRUCT_FIELDS(b))
+				 && Same_Struct_Fields(VAL_STRUCT_FIELDS(a), VAL_STRUCT_FIELDS(b))
 				 && !memcmp(VAL_STRUCT_DATA_BIN(a), VAL_STRUCT_DATA_BIN(b), VAL_STRUCT_SIZE(a));
 		default:
 			return -1;

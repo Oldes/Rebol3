@@ -1868,9 +1868,55 @@ Rebol [
 	small: make struct! [data [uint8! [255]]]
 	--assert vector? make vector! [:small 1]
 
+--test-- "pick an element of a vector of structs"
+	v: make vector! [:point 3]
+	--assert struct? s: pick v 2
+	--assert 0 = s/x
+	--assert none? pick v 4
+	--assert none? pick v 0
+	--assert struct? pick (skip v 2) -1        ;; relative to the current position
+	--assert none? pick v -1                   ;; nothing before the head
+
+--test-- "an element is a view into the vector's data"
+	v: make vector! [:point 3]
+	s: pick v 2
+	s/x: 42
+	--assert 42 = v/2/x
+	--assert 0  = v/1/x
+
+--test-- "path access into a vector of structs"
+	v: make vector! [:point 3]
+	v/1/x: 1
+	v/3/y: 7
+	--assert 1 = v/1/x
+	--assert 0 = v/1/y
+	--assert 7 = v/3/y
+	--assert none? v/4
+	--assert error? try [v/4/x: 1]
+	--assert error? try [v/0/x: 1]
+
+--test-- "poke a vector of structs"
+	v: make vector! [:point 3]
+	s: make struct! [x [int32!] y [int32!]]
+	s/x: 5
+	poke v 1 s
+	--assert 5 = v/1/x
+	;; the poked struct is copied, not referenced
+	s/x: 6
+	--assert 5 = v/1/x
+	;; only a struct of the same specification is accepted
+	--assert error? try [poke v 1 make struct! [a [int32!]]]
+	--assert error? try [poke v 1 5]
+	--assert error? try [poke v 4 s]
+	--assert error? try [poke v 0 s]
+
+--test-- "a protected vector of structs cannot be poked"
+	v: protect make vector! [:point 2]
+	--assert error? try [poke v 1 make struct! [x [int32!] y [int32!]]]
+	unprotect v
+
 --test-- "vector of structs: not yet supported actions"
 	v: make vector! [:point 2]
-	--assert error? try [v/1]
 	--assert error? try [copy v]
 	--assert error? try [to block! v]
 	--assert error? try [v + 1]
