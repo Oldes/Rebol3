@@ -332,6 +332,21 @@ if system/version >= 3.19.1 [
 		none? s/b
 	]
 
+--test-- "Fields holding Rebol values are aligned"
+	n: length? make struct! [v [rebval!]] ;; size of the internal Rebol value
+	;; a rebval! field is aligned...
+	--assert (4 + n) = length? make struct! [x [int8!] v [rebval!]]
+	--assert (4 + n) = length? make struct! [x [int8!] y [int8!] v [rebval!]]
+	--assert (8 + n) = length? make struct! [x [int32!] y [int8!] v [rebval!]]
+	;; ... and so is a nested struct which holds Rebol values
+	--assert (4 + n) = length? make struct! [x [int8!] s [struct! [v [rebval!]]]]
+	;; the size is rounded up, so the values stay aligned in an array too
+	--assert (2 * (4 + n)) = length? make struct! [a [struct! [v [rebval!] x [int8!]] [2]]]
+	;; structs without Rebol values stay packed!
+	--assert 3 = length? make struct! [a [uint8!] b [uint16!]]
+	--assert 6 = length? make struct! [id [uint16!] pos [struct! [x [uint8!] y [uint8!]] [2]]]
+	--assert not error? try [recycle]	
+
 --test-- "Registering a struct"
 	--assert not error? try [
 		register pair8!: make struct! [x [uint8!] y [uint8!]]

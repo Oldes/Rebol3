@@ -31,6 +31,12 @@
 #include "sys-core.h"
 #include "sys-hash.h"
 
+// A REBVAL stored in a struct is accessed directly (the GC marks it in place),
+// so it must be aligned - see the `#pragma pack` in sys-value.h!
+#define STRUCT_VALUE_ALIGN 4
+#define STRUCT_FIELD_HAS_VALUES(f) \
+	((f)->spec && (f)->spec->series && (((REBSTI *)BLK_HEAD((f)->spec->series))->flags & 1))
+
 #define IS_INTEGER_TYPE(t) ((t) < STRUCT_TYPE_INTEGER)
 #define IS_DECIMAL_TYPE(t) ((t) > STRUCT_TYPE_INTEGER && (t) < STRUCT_TYPE_DECIMAL)
 #define IS_NUMERIC_TYPE(t) (IS_INTEGER_TYPE(t) || IS_DECIMAL_TYPE(t))
@@ -109,7 +115,7 @@ static REBFLG get_scalar(REBSTU *stu,
 		case STRUCT_TYPE_INT64:   GET_FIELD_VALUE(i64, SET_INTEGER)
 		case STRUCT_TYPE_FLOAT:   GET_FIELD_VALUE(float,  SET_DECIMAL)
 		case STRUCT_TYPE_DOUBLE:  GET_FIELD_VALUE(double, SET_DECIMAL)
-		case STRUCT_TYPE_POINTER: GET_FIELD_VALUE(void*,  SET_INTEGER)
+		case STRUCT_TYPE_POINTER: GET_FIELD_VALUE(REBUPT, SET_INTEGER)
 		case STRUCT_TYPE_STRUCT:
 			{
 				SET_TYPE(val, REB_STRUCT);
@@ -348,7 +354,7 @@ static REBOOL assign_scalar(REBSTU *stu,
 		case STRUCT_TYPE_WORD:    SET_FIELD_VALUE(u32, i)
 		case STRUCT_TYPE_INT64:   SET_FIELD_VALUE(i64, i)
 		case STRUCT_TYPE_UINT64:  SET_FIELD_VALUE(u64, i)
-		case STRUCT_TYPE_POINTER: SET_FIELD_VALUE(void*, i)
+		case STRUCT_TYPE_POINTER: SET_FIELD_VALUE(REBUPT, i)
 		case STRUCT_TYPE_FLOAT:   SET_FIELD_VALUE(float,  d)
 		case STRUCT_TYPE_DOUBLE:  SET_FIELD_VALUE(double, d)
 		case STRUCT_TYPE_STRUCT:
@@ -809,6 +815,12 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 				error = FIELD_ERROR_INVALID_SPEC;
 				break;
 			}
+			// Fields holding Rebol values must be aligned for the GC!
+			if (field->type == STRUCT_TYPE_REBVAL
+				|| (field->type == STRUCT_TYPE_STRUCT && STRUCT_FIELD_HAS_VALUES(field))) {
+				offset = ALIGN(offset, STRUCT_VALUE_ALIGN);
+				field->offset = (REBCNT)offset;
+			}
 			// Compute a hash of the field's type and dimensions (used for fast struct comparison).
 			k1 = field->type;
 			bmix(&h1, &k1);
@@ -854,7 +866,9 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 			}
 			
 			if (field->type == STRUCT_TYPE_REBVAL) VAL_STRUCT_FLAGS(out) |= 3; // readonly, needs GC mark
-			else if (field->type == STRUCT_TYPE_STRUCT) VAL_STRUCT_FLAGS(out) |= 1; // needs GC mark
+			//else if (field->type == STRUCT_TYPE_STRUCT) VAL_STRUCT_FLAGS(out) |= 1; // needs GC mark
+			// NOTE: a nested struct propagates its own flags in parse_field_type,
+			// so bit 1 means "really holds Rebol values"!
 		
 			field->done = TRUE;
 			++SERIES_TAIL(VAL_STRUCT_FIELDS(out));
@@ -874,6 +888,8 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 		//Dump_Series(VAL_STRUCT_FIELDS(out), "struct_fields");
 
 		// Store complete length of the struct
+		// (rounded up, so that an array of these structs keeps its values aligned)
+		if (VAL_STRUCT_FLAGS(out) & 1) offset = ALIGN(offset, STRUCT_VALUE_ALIGN);
 		STRUCT_SIZE(stu) = (REBCNT)offset;
 
 		// Finalize and store the fields hash
