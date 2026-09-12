@@ -1938,9 +1938,34 @@ Rebol [
 	--assert c == make vector! [:point 0]
 
 
---test-- "vector of structs: not yet supported actions"
+--test-- "convert a vector of structs to a block"
 	v: make vector! [:point 2]
-	--assert error? try [to block! v]
+	v/1/x: 1
+	v/2/y: 2
+	--assert block? b: to block! v
+	--assert 2 = length? b
+	--assert struct? b/1
+	--assert 1 = b/1/x
+	--assert 2 = b/2/y
+	;; the block holds copies - it does not share the vector's data
+	b/1/x: 9
+	--assert 1 = v/1/x
+	--assert [] = to block! make vector! [:point 0]
+
+--test-- "foreach over a vector of structs gives views"
+	v: make vector! [:point 3]
+	n: 0
+	foreach s v [n: n + 1  s/x: n]
+	--assert 3 = n
+	--assert 1 = v/1/x
+	--assert 3 = v/3/x
+
+
+--test-- "structs cannot be inserted into a numeric vector"
+	v: make vector! [:point 2]
+	--assert error? try [append make vector! [int32! 2] v]
+
+--test-- "vector of structs: not supported actions"
 	--assert error? try [v + 1]
 
 

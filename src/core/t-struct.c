@@ -1075,7 +1075,14 @@ static void Copy_Struct(REBSTU *src, REBSTU *dst)
 	COPY_MEM(STRUCT_DATA_BIN(dst), STRUCT_DATA_BIN(src), STRUCT_SIZE(src));
 }
 
-static void Copy_Struct_Val(REBVAL *src, REBVAL *dst)
+/***********************************************************************
+**
+*/	void Copy_Struct_Value(REBVAL *src, REBVAL *dst)
+/*
+**		Makes an independent copy of a struct value - the copy has its
+**		own data series, so the source may be just a view.
+**
+***********************************************************************/
 {
 	SET_STRUCT(dst);
 	Copy_Struct(&VAL_STRUCT(src), &VAL_STRUCT(dst));
@@ -1175,7 +1182,7 @@ static void init_fields(REBVAL *ret, REBVAL *spec)
 				// Raw data must never be used with a struct holding Rebol values,
 				// no matter how long the data are!
 				if (IS_BINARY(arg) && VAL_STRUCT_PROTECTED(val)) Trap0(RE_PROTECTED);
-				Copy_Struct_Val(val, ret);
+				Copy_Struct_Value(val, ret);
 				/* only accept value initialization */
 				if (IS_BLOCK(arg)) {
 					// The values are used as they are, like in the construction
@@ -1260,7 +1267,7 @@ static void init_fields(REBVAL *ret, REBVAL *spec)
 			// Allow only a simple copy without any refinements.
 			if (D_REF(ARG_COPY_PART) || D_REF(ARG_COPY_DEEP) || D_REF(ARG_COPY_TYPES))
 				Trap0(RE_BAD_REFINES);
-			Copy_Struct_Val(val, ret);
+			Copy_Struct_Value(val, ret);
 			break;
 
 		default:

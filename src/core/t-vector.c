@@ -515,14 +515,25 @@ return_number:
 	REBCNT len = VAL_LEN(vect);
 	REBYTE *data = VAL_VEC_HEAD(vect);
 	REBCNT type = VAL_VEC_TYPE(vect);
-	REBSER *ser;
-
-	// Struct elements have no block representation yet!
-	if (VECT_IS_STRUCT(type)) Trap0(RE_FEATURE_NA);
-
-	ser = Make_Block(len);
+	REBSER *ser = Make_Block(len);
 	REBVAL *val = NULL;
 	REBCNT reb_type = (type >= VTSF08) ? REB_DECIMAL : REB_INTEGER;
+
+	if (VECT_IS_STRUCT(type)) {
+		// Unlike PICK, the conversion does not share the vector's data - each
+		// element is copied, so that the block can be modified on its own.
+		REBVAL view;
+		SERIES_TAIL(ser) = len;
+		// The copies allocate, so the block must survive a possible GC!
+		SAVE_SERIES(ser);
+		val = BLK_HEAD(ser);
+		for (REBCNT n = VAL_INDEX(vect); n < VAL_TAIL(vect); n++, val++) {
+			Set_Vector_Struct(&view, vect, n);
+			Copy_Struct_Value(&view, val);
+		}
+		UNSAVE_SERIES(ser);
+		return ser;
+	}
 
 	if (len > 0) {
 		val = BLK_HEAD(ser);
@@ -1160,11 +1171,35 @@ static REBINT cmp_u64_dec(REBU64 u, REBDEC d) {
 
 /***********************************************************************
 **
+*/	void Set_Vector_Struct(REBVAL *val, REBVAL *vec, REBCNT index)
+/*
+**		Makes a struct view of the vector's element at the given index
+**		(zero based). The view shares the vector's data series, so it
+**		may be used to modify the element in place!
+**
+***********************************************************************/
+{
+	REBSER *ser    = VAL_SERIES(vec);
+	REBSER *fields = VAL_VEC_STRUCT(vec);
+
+	SET_TYPE(val, REB_STRUCT);
+	VAL_STRUCT_SPEC(val)   = FIELDS_SPEC(fields);
+	VAL_STRUCT_DATA(val)   = ser;
+	VAL_STRUCT_OFFSET(val) = index * SERIES_WIDE(ser);
+}
+
+/***********************************************************************
+**
 */	void Get_Vector_Value(REBVAL *var, REBVAL *vec, REBCNT index)
 /*
 ***********************************************************************/
 {
 	REBCNT type  = VAL_VEC_TYPE(vec);
+	if (VECT_IS_STRUCT(type)) {
+		// The element is a view - FOREACH can modify the vector in place!
+		Set_Vector_Struct(var, vec, index);
+		return;
+	}
 	get_vect(type, VAL_VEC_HEAD(vec), index, var);
 	SET_TYPE(var, (type >= VTSF08) ? REB_DECIMAL : REB_INTEGER);
 }
@@ -1656,11 +1691,8 @@ REBINT Path_Vector_Struct(REBPVS *pvs)
 	}
 
 	// The element is just a view into the vector's data!
-	val = pvs->value = pvs->store;
-	SET_TYPE(val, REB_STRUCT);
-	VAL_STRUCT_SPEC(val) = FIELDS_SPEC(fields);
-	VAL_STRUCT_DATA(val) = vect;
-	VAL_STRUCT_OFFSET(val) = (n - 1) * size;
+	pvs->value = pvs->store;
+	Set_Vector_Struct(pvs->value, val, n - 1);
 	return PE_OK;
 }
 
@@ -2152,6 +2184,12 @@ bad_make:
 	if (IS_VECTOR(src_val)) {
 		REBLEN index = MIN(VAL_TAIL(src_val), VAL_INDEX(src_val));
 		REBLEN part = VAL_TAIL(src_val) - index;
+		// Structs have no numeric representation, so they may be copied only
+		// between vectors with the very same element specification!
+		if ((VECT_IS_STRUCT(vtype) || VAL_VEC_IS_STRUCT(src_val))
+			&& (vtype != VAL_VEC_TYPE(src_val)
+				|| VAL_VEC_STRUCT(vec) != VAL_VEC_STRUCT(src_val))
+		)	Trap_Arg(src_val);
 		if (action != A_CHANGE && GET_FLAG(flags, AN_PART) && dst_len < AS_INT(part))
 			part = dst_len;
 		if (vtype == VAL_VEC_TYPE(src_val)) {
