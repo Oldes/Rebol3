@@ -1849,6 +1849,7 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 		case A_PICK:
 		case A_POKE:
 		case A_COPY:
+		case A_CLEAR:
 			break;
 		default:
 			Trap_Action(VAL_TYPE(value), action);

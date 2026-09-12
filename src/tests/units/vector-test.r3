@@ -1961,6 +1961,34 @@ Rebol [
 	--assert 3 = v/3/x
 
 
+--test-- "an empty vector of structs"
+	--assert vector? v: make vector! [:point 0]
+	--assert 0 = length? v
+	--assert empty? v
+	--assert none? pick v 1
+	--assert [] = to block! v
+	--assert {#(vector! #(struct! [x [int32!] y [int32!]]) #{})} = mold/all/flat v
+	--assert v == load mold/all v
+	--assert v == copy v
+
+--test-- "clear a vector of structs"
+	v: make vector! [:point 3]
+	v/2/x: 42
+	--assert vector? clear v
+	--assert 0 = length? v
+	--assert v == make vector! [:point 0]
+	--assert {#(vector! #(struct! [x [int32!] y [int32!]]) #{})} = mold/all/flat v
+
+--test-- "clear a vector of structs from a position"
+	v: make vector! [:point 3]
+	v/1/x: 1
+	v/2/x: 2
+	--assert 0 = length? c: clear skip v 1
+	--assert 1 = length? head c
+	--assert 1 = length? v
+	--assert 1 = v/1/x
+
+
 --test-- "structs cannot be inserted into a numeric vector"
 	v: make vector! [:point 2]
 	--assert error? try [append make vector! [int32! 2] v]
