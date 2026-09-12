@@ -938,6 +938,51 @@ s: #(struct! [
 ===end-group===
 
 
+===start-group=== "Struct PICK, POKE and SELECT"
+--test-- "pick and select a struct field by name"
+	s: make struct! [x [int32!] y [int32!]]
+	s/x: 42
+	--assert 42 = pick s 'x
+	--assert 42 = select s 'x
+	--assert  0 = pick s 'y
+	;; an unknown field is none
+	--assert none? pick s 'z
+	--assert none? select s 'z
+	;; only a field name may be used
+	--assert error? try [pick s 1]
+	--assert error? try [pick s "x"]
+
+--test-- "poke a struct field by name"
+	s: make struct! [x [int32!] y [int32!]]
+	--assert 42 = poke s 'x 42
+	--assert 42 = s/x
+	--assert  0 = s/y
+	--assert error? try [poke s 'z 1]
+	--assert error? try [poke s 'x "not a number"]
+	--assert error? try [poke s 1 42]
+
+--test-- "pick and poke a field of a nested struct"
+	s: make struct! [p [struct! [x [int32!] y [int32!]]] n [int32!]]
+	--assert struct? p: pick s 'p
+	poke p 'x 7
+	;; the nested struct shares the data
+	--assert 7 = s/p/x
+	--assert 7 = pick pick s 'p 'x
+
+--test-- "pick and poke a struct element of a vector"
+	s: make struct! [x [int32!] y [int32!]]
+	v: make vector! [:s 2]
+	s: first v
+	poke s 'x 3
+	--assert 3 = v/1/x
+	--assert 3 = pick first v 'x
+	foreach e v [poke e 'y 5]
+	--assert 5 = v/1/y
+	--assert 5 = v/2/y
+
+===end-group===
+
+
 
 
 ===start-group=== "Struct GC"

@@ -1255,6 +1255,23 @@ static void init_fields(REBVAL *ret, REBVAL *spec)
 			break;
 		//TODO: A_QUERY to access struct's name and id?
 
+		case A_PICK:
+		case A_SELECT:
+			// Access a field by its name, like: pick s 'x
+			if (!IS_STRUCT(val)) goto is_arg_error;
+			if (!IS_WORD(arg)) Trap_Arg(arg);
+			if (!Get_Struct_Var(&VAL_STRUCT(val), arg, ret)) return R_NONE;
+			break;
+
+		case A_POKE:
+			// Set a field by its name, like: poke s 'x 42
+			if (!IS_STRUCT(val)) goto is_arg_error;
+			if (!IS_WORD(arg)) Trap_Arg(arg);
+			TRAP_PROTECT(VAL_STRUCT_DATA(val));
+			if (!Set_Struct_Var(&VAL_STRUCT(val), arg, NULL, D_ARG(3)))
+				Trap_Arg(D_ARG(3));
+			return R_ARG3;
+
 		case A_LENGTHQ:
 			SET_INTEGER(ret, VAL_STRUCT_SIZE(val));
 			break;
