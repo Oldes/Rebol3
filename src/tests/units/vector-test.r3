@@ -2287,6 +2287,74 @@ Rebol [
 	unprotect v
 
 
+--test-- "remove an element of a vector of structs"
+	v: make vector! [:point 3]
+	v/1/x: 1
+	v/2/x: 2
+	v/3/x: 3
+	--assert vector? remove v
+	--assert 2 = length? v
+	--assert [2 3] = collect [foreach e v [keep e/x]]
+
+--test-- "remove returns the vector at the same position"
+	v: make vector! [:point 3]
+	v/1/x: 1
+	v/2/x: 2
+	v/3/x: 3
+	--assert 2 = index? remove skip v 1
+	--assert [1 3] = collect [foreach e head v [keep e/x]]
+
+--test-- "remove/part a vector of structs"
+	v: make vector! [:point 4]
+	v/1/x: 1
+	v/2/x: 2
+	v/3/x: 3
+	v/4/x: 4
+	remove/part v 2
+	--assert 2 = length? v
+	--assert [3 4] = collect [foreach e v [keep e/x]]
+	;; /part accepts a position as well
+	v: make vector! [:point 4]
+	v/4/x: 4
+	remove/part v skip v 3
+	--assert 1 = length? v
+	--assert 4 = v/1/x
+
+--test-- "remove/part with a zero or negative length does nothing"
+	v: make vector! [:point 2]
+	v/1/x: 1
+	remove/part v 0
+	--assert 2 = length? v
+	remove/part v -1
+	--assert 2 = length? v
+	--assert 1 = v/1/x
+
+--test-- "remove at the tail of a vector of structs"
+	v: make vector! [:point 2]
+	remove tail v
+	--assert 2 = length? v
+	;; removing more than there is removes the rest
+	remove/part v 10
+	--assert 0 = length? v
+
+--test-- "remove from an empty vector of structs"
+	v: make vector! [:point 0]
+	--assert vector? remove v
+	--assert 0 = length? v
+
+--test-- "a protected vector of structs cannot be removed from"
+	v: protect make vector! [:point 2]
+	--assert error? try [remove v]
+	--assert error? try [remove/part v 1]
+	unprotect v
+	--assert 1 = length? remove v
+
+--test-- "remove/key is not supported for a vector of structs"
+	v: make vector! [:point 2]
+	--assert error? try [remove/key v 1]
+
+
+
 --test-- "vector of structs: not supported actions"
 	--assert error? try [v + 1]
 
