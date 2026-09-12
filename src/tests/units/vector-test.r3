@@ -1868,6 +1868,24 @@ Rebol [
 	small: make struct! [data [uint8! [255]]]
 	--assert vector? make vector! [:small 1]
 
+--test-- "an empty vector of structs"
+	--assert vector? v: make vector! [:point 0]
+	--assert 0 = length? v
+	--assert empty? v
+	--assert none? pick v 1
+	--assert [] = to block! v
+	--assert {#(vector! #(struct! [x [int32!] y [int32!]]) #{})} = mold/all/flat v
+	--assert v == load mold/all v
+	--assert v == copy v
+
+--test-- "vector of structs: not supported actions"
+	--assert error? try [v + 1]
+
+===end-group===
+
+===start-group=== "VECTOR of STRUCTs element access"
+	point: make struct! [x [int32!] y [int32!]]
+
 --test-- "pick an element of a vector of structs"
 	v: make vector! [:point 3]
 	--assert struct? s: pick v 2
@@ -1910,44 +1928,18 @@ Rebol [
 	--assert error? try [poke v 4 s]
 	--assert error? try [poke v 0 s]
 
---test-- "a protected vector of structs cannot be poked"
-	v: protect make vector! [:point 2]
-	--assert error? try [poke v 1 make struct! [x [int32!] y [int32!]]]
-	unprotect v
-
---test-- "a protected vector of structs cannot be modified"
+--test-- "foreach over a vector of structs gives views"
 	v: make vector! [:point 3]
-	v/1/x: 1
-	protect v
-	;; reading is still allowed
+	n: 0
+	foreach s v [n: n + 1  s/x: n]
+	--assert 3 = n
 	--assert 1 = v/1/x
-	--assert struct? s: pick v 1
-	--assert 3 = length? v
-	--assert vector? c: copy v
-	;; but not any modification
-	--assert error? try [poke v 1 make struct! [x [int32!] y [int32!]]]
-	--assert error? try [v/1: make struct! [x [int32!] y [int32!]]]
-	--assert error? try [v/2/x: 2]
-	--assert error? try [clear v]
-	--assert 1 = v/1/x
-	;; the copy is not protected
-	c/2/x: 2
-	--assert 2 = c/2/x
-	unprotect v
-	v/2/x: 2
-	--assert 2 = v/2/x
+	--assert 3 = v/3/x
 
---test-- "a struct view taken before PROTECT still writes"
-	;; the view shares the data series, so the protection is not on the view
-	v: make vector! [:point 2]
-	s: pick v 1
-	protect v
-	--assert error? try [v/1/x: 1]
-	s/x: 1               ;; @@ should this be refused too?
-	--assert 1 = v/1/x
-	unprotect v
+===end-group===
 
-
+===start-group=== "VECTOR of STRUCTs copy and conversion"
+	point: make struct! [x [int32!] y [int32!]]
 
 --test-- "copy a vector of structs"
 	v: make vector! [:point 3]
@@ -1970,7 +1962,6 @@ Rebol [
 	--assert 0 = length? c
 	--assert c == make vector! [:point 0]
 
-
 --test-- "convert a vector of structs to a block"
 	v: make vector! [:point 2]
 	v/1/x: 1
@@ -1985,24 +1976,10 @@ Rebol [
 	--assert 1 = v/1/x
 	--assert [] = to block! make vector! [:point 0]
 
---test-- "foreach over a vector of structs gives views"
-	v: make vector! [:point 3]
-	n: 0
-	foreach s v [n: n + 1  s/x: n]
-	--assert 3 = n
-	--assert 1 = v/1/x
-	--assert 3 = v/3/x
+===end-group===
 
-
---test-- "an empty vector of structs"
-	--assert vector? v: make vector! [:point 0]
-	--assert 0 = length? v
-	--assert empty? v
-	--assert none? pick v 1
-	--assert [] = to block! v
-	--assert {#(vector! #(struct! [x [int32!] y [int32!]]) #{})} = mold/all/flat v
-	--assert v == load mold/all v
-	--assert v == copy v
+===start-group=== "VECTOR of STRUCTs modification"
+	point: make struct! [x [int32!] y [int32!]]
 
 --test-- "clear a vector of structs"
 	v: make vector! [:point 3]
@@ -2196,7 +2173,6 @@ Rebol [
 	--assert 1 = length? v
 	--assert 0 = v/1/x
 
-
 --test-- "change an element of a vector of structs"
 	v: make vector! [:point 3]
 	s: make struct! [x [int32!] y [int32!]]
@@ -2210,12 +2186,6 @@ Rebol [
 	--assert tail? change/part next v s 2
 	--assert 2 = length? v
 	--assert 255 = v/2/x
-
---test-- "a protected vector of structs cannot be appended to"
-	v: protect make vector! [:point 1]
-	--assert error? try [append v make struct! [x [int32!] y [int32!]]]
-	--assert error? try [insert v make struct! [x [int32!] y [int32!]]]
-	unprotect v
 
 --test-- "take a struct from a vector of structs"
 	v: make vector! [:point 3]
@@ -2280,13 +2250,6 @@ Rebol [
 	--assert 2 = length? take/part v 10
 	--assert 0 = length? v
 
---test-- "a protected vector of structs cannot be taken from"
-	v: protect make vector! [:point 2]
-	--assert error? try [take v]
-	--assert error? try [take/part v 1]
-	unprotect v
-
-
 --test-- "remove an element of a vector of structs"
 	v: make vector! [:point 3]
 	v/1/x: 1
@@ -2342,6 +2305,64 @@ Rebol [
 	--assert vector? remove v
 	--assert 0 = length? v
 
+--test-- "remove/key is not supported for a vector of structs"
+	v: make vector! [:point 2]
+	--assert error? try [remove/key v 1]
+
+===end-group===
+
+===start-group=== "VECTOR of STRUCTs protection"
+	point: make struct! [x [int32!] y [int32!]]
+
+--test-- "a protected vector of structs cannot be poked"
+	v: protect make vector! [:point 2]
+	--assert error? try [poke v 1 make struct! [x [int32!] y [int32!]]]
+	unprotect v
+
+--test-- "a protected vector of structs cannot be modified"
+	v: make vector! [:point 3]
+	v/1/x: 1
+	protect v
+	;; reading is still allowed
+	--assert 1 = v/1/x
+	--assert struct? s: pick v 1
+	--assert 3 = length? v
+	--assert vector? c: copy v
+	;; but not any modification
+	--assert error? try [poke v 1 make struct! [x [int32!] y [int32!]]]
+	--assert error? try [v/1: make struct! [x [int32!] y [int32!]]]
+	--assert error? try [v/2/x: 2]
+	--assert error? try [clear v]
+	--assert 1 = v/1/x
+	;; the copy is not protected
+	c/2/x: 2
+	--assert 2 = c/2/x
+	unprotect v
+	v/2/x: 2
+	--assert 2 = v/2/x
+
+--test-- "a struct view taken before PROTECT still writes"
+	;; the view shares the data series, so the protection is not on the view
+	v: make vector! [:point 2]
+	s: pick v 1
+	protect v
+	--assert error? try [v/1/x: 1]
+	s/x: 1               ;; @@ should this be refused too?
+	--assert 1 = v/1/x
+	unprotect v
+
+--test-- "a protected vector of structs cannot be appended to"
+	v: protect make vector! [:point 1]
+	--assert error? try [append v make struct! [x [int32!] y [int32!]]]
+	--assert error? try [insert v make struct! [x [int32!] y [int32!]]]
+	unprotect v
+
+--test-- "a protected vector of structs cannot be taken from"
+	v: protect make vector! [:point 2]
+	--assert error? try [take v]
+	--assert error? try [take/part v 1]
+	unprotect v
+
 --test-- "a protected vector of structs cannot be removed from"
 	v: protect make vector! [:point 2]
 	--assert error? try [remove v]
@@ -2349,14 +2370,8 @@ Rebol [
 	unprotect v
 	--assert 1 = length? remove v
 
---test-- "remove/key is not supported for a vector of structs"
-	v: make vector! [:point 2]
-	--assert error? try [remove/key v 1]
-
---test-- "vector of structs: not supported actions"
-	--assert error? try [v + 1]
-
 ===end-group===
+
 
 
 ===start-group=== "FIND and SELECT for vectors"
