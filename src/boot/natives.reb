@@ -359,8 +359,8 @@ while: native [
 
 as: native [
 	{Coerce a series into a compatible datatype without copying it.}
-	type [any-block! any-string! datatype!] "The datatype or example value"
-	spec [any-block! any-string!] "The series to coerce"
+	type [any-block! any-string! datatype! word! struct!] "The datatype or example value"
+	spec [any-block! any-string! vector!] "The series to coerce"
 ]
 
 bind: native [

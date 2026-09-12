@@ -215,17 +215,30 @@ static int Check_Char_Range(REBVAL *val, REBCNT limit)
 **
 */	REBNATIVE(as)
 /*
-**	NOTE: It is not possible to coerce a binary with vectors, because
-**	vector info is encoded in the series and casting it to binary
-**	would destroy it.
-**	It is also not possible to coerce a binary with strings, because
+**	NOTE: It is not possible to coerce a binary with strings, because
 **	strings are internally UTF-8 encoded and modifying binary directly
 **	could corrupt this encoding!
+**
+**	A vector is coerced to another element type of the same size and its
+**	data are shared - so a vector of 32bit numbers may be used as a
+**	vector of four byte structs and the other way round.
 ***********************************************************************/
 {
 	REBVAL *type = D_ARG(1);
 	REBVAL *spec = D_ARG(2);
-	REBCNT target = IS_DATATYPE(type)? VAL_DATATYPE(type) : VAL_TYPE(type);
+	REBCNT target;
+
+	// The element type of a vector is not a datatype - it may be a struct, a
+	// registered struct name or an element type word, like: as uint32! v
+	if (IS_VECTOR(spec)) {
+		if (As_Vector(type, spec)) return R_ARG2;
+		// The target is reported as it was given - a datatype value would say
+		// just `word!` for an element type like uint32!
+		Set_Datatype(spec, VAL_TYPE(spec));
+		Trap2(RE_NOT_SAME_CLASS, spec, type);
+	}
+
+	target = IS_DATATYPE(type)? VAL_DATATYPE(type) : VAL_TYPE(type);
 	if ((ANY_BLOCK(spec) && ANY_BLOCK_TYPE(target)) || (ANY_STR(spec) && ANY_STR_TYPE(target))) {
 		SET_TYPE(spec, target);
 	} else {

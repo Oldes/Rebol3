@@ -1446,6 +1446,57 @@ REBVAL *Make_Vector_Struct_Spec(REBSER *fields, REBVAL *bp, REBVAL *value, REBFL
 
 /***********************************************************************
 **
+*/	REBFLG As_Vector(REBVAL *type, REBVAL *vec)
+/*
+**		Coerces a vector to another element type without copying its data.
+**		The element size must stay the same - it is stored as the series
+**		width, which is shared by all values using the same data!
+**
+**		type: a struct value, a registered struct name or an element type
+**		      word, like: as uint32! v
+**
+**		Returns FALSE when the coercion is not possible.
+**
+***********************************************************************/
+{
+	REBCNT  wide   = VAL_VEC_WIDE(vec);
+	REBSER *fields = NULL;
+	REBCNT  vtype  = UNKNOWN;
+
+	if (IS_STRUCT(type)) {
+		fields = VAL_STRUCT_FIELDS(type);
+	}
+	else if (IS_WORD(type)) {
+		vtype = Get_Vector_Type_From_Symbol(VAL_WORD_CANON(type));
+		if (vtype == UNKNOWN) {
+			// A registered struct, like: as point2d! v
+			REBVAL *spec = Find_Struct_Spec(type);
+			if (!spec || !IS_BLOCK(spec) || !VAL_SERIES(spec)->series) return FALSE;
+			fields = VAL_SERIES(spec)->series;
+		}
+	}
+	else return FALSE;
+
+	if (fields) {
+		if (FIELDS_INFO(fields)->size != wide) return FALSE;
+		// Raw data must never be marked as Rebol values by the GC!
+		if (FIELDS_NEED_MARK(fields)) return FALSE;
+		// The element specification is kept in the series, so it is shared
+		// with any other value using the same data!
+		VAL_SERIES(vec)->series = fields;
+		vtype = VTSTRUCT;
+	}
+	else if (VECT_WIDE(vtype) != wide) return FALSE;
+
+	// Only the element type changes - the shape and the position are kept.
+	VAL_VEC_INFO(vec) = (VAL_VEC_INFO(vec) & ~VECT_INFO_TYPE_MASK)
+	                  | (vtype & VECT_INFO_TYPE_MASK);
+	return TRUE;
+}
+
+
+/***********************************************************************
+**
 */	REBVAL *Make_Vector_Spec(REBVAL *spec, REBVAL *value)
 /*
 **	Make a vector from an extended block spec.

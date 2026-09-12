@@ -2544,6 +2544,83 @@ Rebol [
 ===end-group===
 
 
+===start-group=== "AS - coercing vectors"
+	rgba:  make struct! [r [uint8!] g [uint8!] b [uint8!] a [uint8!]]
+	point: make struct! [x [int32!] y [int32!]]
+
+--test-- "coerce a numeric vector to a vector of structs"
+	px: make vector! [uint32! 2]
+	v: as rgba px
+	--assert vector? v
+	--assert 2 = length? v
+	--assert struct? v/1
+	--assert 0 = v/1/r
+
+--test-- "the coerced vector shares the data"
+	px: make vector! [uint32! 2]
+	v: as rgba px
+	v/1/r: 1
+	v/1/g: 2
+	v/1/b: 3
+	v/1/a: 4
+	--assert 0#04030201 = px/1
+	px/2: 0
+	v/2/b: 255
+	--assert 0#00FF0000 = px/2
+	;; the original value keeps its own element type
+	--assert integer? px/1
+
+--test-- "coerce a vector of structs back to numbers"
+	v: make vector! [:rgba 2]
+	v/1/r: 1
+	px: as 'uint32! v
+	--assert vector? px
+	--assert 1 = px/1
+	--assert integer? px/1
+	;; still the same data
+	px/2: 0#04030201
+	--assert 1 = v/2/r
+	--assert 2 = v/2/g
+	--assert 3 = v/2/b
+	--assert 4 = v/2/a
+
+--test-- "a registered struct may be used by its name"
+	register color!: #(struct! [r [uint8!] g [uint8!] b [uint8!] a [uint8!]])
+	px: make vector! [uint32! 1]
+	v: as color! px
+	--assert struct? v/1
+
+--test-- "the element size must stay the same"
+	--assert error? try [as rgba make vector! [uint8! 4]]
+	--assert error? try [as rgba make vector! [uint64! 2]]
+	--assert error? try [as point make vector! [uint32! 2]]
+	--assert error? try [as 'uint8! make vector! [uint32! 2]]
+	--assert error? try [as 'uint16! make vector! [:rgba 2]]
+	;; the same size is fine
+	--assert vector? as 'int32! make vector! [uint32! 2]
+
+--test-- "only an element type can be the target"
+	px: make vector! [uint32! 2]
+	--assert error? try [as block! px]
+	--assert error? try [as 1 px]
+	--assert error? try [as 'nonsense! px]
+
+--test-- "a struct holding Rebol values cannot be used"
+	holder: make struct! [val [rebval!]]
+	--assert error? try [as holder make vector! [uint64! 2]]
+
+--test-- "the shape and the position are kept"
+	px: make vector! [uint32! 2x2]
+	v: as rgba skip px 1
+	--assert 3 = length? v
+	--assert 2 = index? v
+	v: as rgba px
+	--assert 2x2 = v/shape
+
+===end-group===
+
+
+
 mx: try [import 'matrix]   ;; module exports nothing - reach the words through it
 if module? mx [
 ;; float comparison helper (elementwise, with tolerance)
