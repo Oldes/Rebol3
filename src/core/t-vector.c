@@ -1592,17 +1592,12 @@ data_spec:
 static
 REBINT Compare_Vector_Struct(REBVAL *a, REBVAL *b)
 {
-	REBCNT wide = VAL_VEC_WIDE(a);
-	REBCNT la = VAL_LEN(a);
-	REBCNT lb = VAL_LEN(b);
-	REBCNT len = MIN(la, lb) * wide;
-	REBYTE *pa = VAL_VEC_DATA(a);
-	REBYTE *pb = VAL_VEC_DATA(b);
-	REBCNT n;
+	REBCNT la  = VAL_LEN(a);
+	REBCNT lb  = VAL_LEN(b);
+	REBCNT len = MIN(la, lb) * VAL_VEC_WIDE(a);
+	REBINT num = len ? memcmp(VAL_VEC_DATA(a), VAL_VEC_DATA(b), len) : 0;
 
-	for (n = 0; n < len; n++) {
-		if (pa[n] != pb[n]) return (pa[n] > pb[n]) ? 1 : -1;
-	}
+	if (num != 0) return (num > 0) ? 1 : -1;
 	if (la == lb) return 0;
 	return (la > lb) ? 1 : -1;
 }
@@ -1857,6 +1852,8 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 		case A_INSERT:
 		case A_CHANGE:
 		case A_TAKE:
+		case A_FIND:
+		case A_SELECT:
 			break;
 		default:
 			Trap_Action(VAL_TYPE(value), action);
@@ -2070,6 +2067,35 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 		}
 		break;
 	
+	case A_FIND:
+	case A_SELECT:
+	{
+		REBCNT args = Find_Refines(ds, ALL_FIND_REFS);
+		REBCNT found;
+		REBINT skip = 1;
+
+		index = VAL_INDEX(value);
+		len = VAL_TAIL(value);
+		if (args & AM_FIND_PART) len = index + Partial(value, 0, D_ARG(ARG_FIND_RANGE), 0);
+		if (args & AM_FIND_SKIP) {
+			skip = Int32(D_ARG(ARG_FIND_SIZE));
+			if (skip == 0) return R_NONE;
+		}
+
+		found = Find_Vector(value, arg, index, (REBCNT)len, args, skip);
+		if (found == NOT_FOUND) return R_NONE;
+
+		if (action == A_FIND) {
+			if (args & AM_FIND_TAIL) found++;
+			VAL_INDEX(value) = found;
+			break;
+		}
+		// SELECT returns the element which follows the found one
+		if (++found >= VAL_TAIL(value)) return R_NONE;
+		Get_Vector_Value(D_RET, value, found);
+		return R_RET;
+	}
+
 	//-- Modification:
 	case A_APPEND:
 	case A_INSERT:
@@ -2171,6 +2197,91 @@ bad_make:
 	Trap_Make(REB_VECTOR, arg);
 }
 
+
+// Is the element at the given index equal to the target? A struct is compared
+// as raw data (`pat`), a number with the decoded element.
+static
+REBFLG Match_Vector_Element(REBCNT vtype, REBYTE *data, REBCNT size, REBCNT index, REBYTE *pat, REBVAL *target)
+{
+	REBVAL tmp;
+
+	if (pat) return (0 == memcmp(data + (index * size), pat, size));
+
+	get_vect(vtype, data, index, &tmp);
+	SET_TYPE(&tmp, (vtype >= VTSF08) ? REB_DECIMAL : REB_INTEGER);
+	return (0 == Cmp_Value(&tmp, target, FALSE));
+}
+
+/***********************************************************************
+**
+*/	REBCNT Find_Vector(REBVAL *vec, REBVAL *target, REBCNT index, REBCNT tail, REBCNT flags, REBINT skip)
+/*
+**		Searches a vector for an element equal to the target and returns
+**		its index, or NOT_FOUND. A struct element is compared as raw data
+**		and so only a struct of the vector's own specification can match,
+**		while a number is compared with the decoded element, so that an
+**		integer may be found in a vector of decimals and the other way.
+**		A target which cannot match at all is not an error - it is simply
+**		not found.
+**
+**		/LAST searches the range from its end, while /REVERSE searches
+**		backwards from the current position, towards the head.
+**
+***********************************************************************/
+{
+	REBCNT  vtype = VAL_VEC_TYPE(vec);
+	REBCNT  size  = VAL_VEC_WIDE(vec);
+	REBYTE *data  = VAL_VEC_HEAD(vec);
+	REBYTE *pat   = NULL;
+	REBINT  n, lo;
+
+	if (tail > VAL_TAIL(vec)) tail = VAL_TAIL(vec);
+	if (index > VAL_TAIL(vec)) return NOT_FOUND;
+	if (skip <= 0) skip = 1;
+
+	if (VECT_IS_STRUCT(vtype)) {
+		// Only a struct of the vector's own specification can be found!
+		if (!IS_STRUCT(target)
+			|| VAL_STRUCT_SIZE(target) != size
+			|| !Same_Struct_Fields(VAL_VEC_STRUCT(vec), VAL_STRUCT_FIELDS(target))
+		)	return NOT_FOUND;
+		pat = VAL_STRUCT_DATA_BIN(target);
+	}
+	else if (!IS_INTEGER(target) && !IS_DECIMAL(target) && !IS_PERCENT(target))
+		return NOT_FOUND;
+
+	// The search is anchored at the current position:
+	if (flags & AM_FIND_MATCH) {
+		if (index >= tail) return NOT_FOUND;
+		return Match_Vector_Element(vtype, data, size, index, pat, target)
+			? index : NOT_FOUND;
+	}
+
+	if (flags & (AM_FIND_LAST | AM_FIND_REVERSE)) {
+		if (flags & AM_FIND_REVERSE) {
+			// backwards from the current position, towards the head
+			lo = 0;
+			n  = (REBINT)index - 1;
+		}
+		else {
+			// the same range as a plain FIND, but the last match is returned
+			lo = (REBINT)index;
+			n  = (REBINT)tail - 1;
+		}
+		if (n >= (REBINT)VAL_TAIL(vec)) n = (REBINT)VAL_TAIL(vec) - 1;
+		for (; n >= lo; n -= skip) {
+			if (Match_Vector_Element(vtype, data, size, (REBCNT)n, pat, target))
+				return (REBCNT)n;
+		}
+		return NOT_FOUND;
+	}
+
+	for (n = (REBINT)index; n < (REBINT)tail; n += skip) {
+		if (Match_Vector_Element(vtype, data, size, (REBCNT)n, pat, target))
+			return (REBCNT)n;
+	}
+	return NOT_FOUND;
+}
 
 // Copies the data of a struct into the buffer at the given element index.
 // Only a struct of the vector's own element specification is accepted!

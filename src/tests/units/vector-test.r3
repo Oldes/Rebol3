@@ -2353,15 +2353,103 @@ Rebol [
 	v: make vector! [:point 2]
 	--assert error? try [remove/key v 1]
 
-
-
 --test-- "vector of structs: not supported actions"
 	--assert error? try [v + 1]
-
 
 ===end-group===
 
 
+===start-group=== "FIND and SELECT for vectors"
+--test-- "find a value in a numeric vector"
+	v: #(i32! [1 2 3 2 1])
+	--assert 2 = index? find v 2
+	--assert 1 = index? find v 1
+	--assert none? find v 9
+	;; the result is the vector at the found position
+	--assert vector? find v 3
+	--assert 3 = first find v 3
+
+--test-- "find/last and find/reverse in a numeric vector"
+	v: #(i32! [1 2 3 2 1])
+	--assert 4 = index? find/last v 2
+	--assert 5 = index? find/last v 1
+	--assert 2 = index? find/reverse skip v 2 2
+	--assert none? find/reverse v 2          ;; nothing before the head
+	--assert 4 = index? find/reverse tail v 2
+
+--test-- "find/tail /part /skip /match in a numeric vector"
+	v: #(i32! [1 2 3 2 1])
+	--assert 3 = index? find/tail v 2
+	--assert none? find/part v 3 2
+	--assert 3 = index? find/part v 3 3
+	--assert 1 = index? find/skip v 1 2
+	--assert none? find/skip v 2 2
+	--assert 1 = index? find/match v 1
+	--assert none? find/match v 2
+
+--test-- "find compares the value, not its type"
+	--assert 2 = index? find #(i32! [1 2 3]) 2.0
+	--assert 2 = index? find #(f64! [1.0 2.0]) 2
+	--assert none? find #(i32! [1 2 3]) 2.5
+	;; a value which cannot be in the vector is simply not found
+	--assert none? find #(i32! [1 2 3]) "2"
+	--assert none? find #(i32! [1 2 3]) none
+
+--test-- "select in a numeric vector"
+	v: #(i32! [1 2 3])
+	--assert 2 = select v 1
+	--assert 3 = select v 2
+	;; nothing follows the last element
+	--assert none? select v 3
+	--assert none? select v 9
+
+--test-- "find a struct in a vector of structs"
+	v: make vector! [:point 3]
+	v/1/x: 1
+	v/2/x: 2
+	v/3/x: 3
+	s: make struct! [x [int32!] y [int32!]]
+	s/x: 2
+	--assert 2 = index? find v s
+	--assert 3 = index? find/tail v s
+	s/x: 9
+	--assert none? find v s
+	;; all the fields must match
+	s/x: 3
+	s/y: 1
+	--assert none? find v s
+
+--test-- "find/last a struct in a vector of structs"
+	v: make vector! [:point 4]
+	v/2/x: 1
+	v/4/x: 1
+	s: make struct! [x [int32!] y [int32!]]
+	s/x: 1
+	--assert 2 = index? find v s
+	--assert 4 = index? find/last v s
+
+--test-- "only a struct of the same specification can be found"
+	v: make vector! [:point 2]
+	--assert none? find v make struct! [a [int32!]]
+	--assert none? find v 0
+	--assert none? find v "x"
+
+--test-- "select in a vector of structs"
+	v: make vector! [:point 3]
+	v/1/x: 1
+	v/2/x: 2
+	s: make struct! [x [int32!] y [int32!]]
+	s/x: 1
+	--assert struct? e: select v s
+	--assert 2 = e/x
+	;; the selected element is a view into the vector
+	poke e 'y 7
+	--assert 7 = v/2/y
+	;; nothing follows the last element
+	poke s 'x 0
+	poke s 'y 0
+	--assert none? select skip v 2 s
+===end-group===
 
 mx: try [import 'matrix]   ;; module exports nothing - reach the words through it
 if module? mx [
