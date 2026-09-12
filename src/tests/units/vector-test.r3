@@ -2466,6 +2466,84 @@ Rebol [
 	--assert none? select skip v 2 s
 ===end-group===
 
+
+===start-group=== "VECTOR of STRUCTs shape"
+	point: make struct! [x [int32!] y [int32!]]
+
+--test-- "make a shaped vector of structs"
+	--assert vector? v: make vector! [:point 3x2]
+	--assert 6 = length? v
+	--assert 3x2 = v/shape
+	--assert v/shaped
+	--assert 64 = v/size          ;; the element size in bits
+
+--test-- "a plain vector of structs is not shaped"
+	v: make vector! [:point 6]
+	--assert 6x1 = v/shape
+	--assert not v/shaped
+
+--test-- "the shape of a vector of structs must be positive"
+	--assert error? try [make vector! [:point 0x2]]
+	--assert error? try [make vector! [:point 2x0]]
+
+--test-- "a shaped vector of structs may be initialized"
+	v: make vector! [:point 2x2 #{0100000000000000020000000000000003000000000000000400000000000000}]
+	--assert 4 = length? v
+	--assert 2x2 = v/shape
+	--assert [1 2 3 4] = collect [foreach e v [keep e/x]]
+
+--test-- "the shape of a vector of structs may be changed"
+	v: make vector! [:point 4]
+	v/shape: 2x2
+	--assert 2x2 = v/shape
+	;; the shape must match the number of elements
+	--assert error? try [v/shape: 3x2]
+	--assert error? try [v/shape: 0x4]
+
+--test-- "a pair addresses an element of a shaped vector of structs"
+	v: make vector! [:point 2x2]
+	v/1/x: 1
+	v/2/x: 2
+	v/3/x: 3
+	v/4/x: 4
+	--assert 1 = v/1x1/x
+	--assert 2 = v/2x1/x
+	--assert 3 = v/1x2/x
+	--assert 4 = v/2x2/x
+	v/2x2/y: 9
+	--assert 9 = v/4/y
+	--assert none? v/3x1
+	--assert error? try [v/3x1/x: 1]
+
+--test-- "mold a shaped vector of structs puts each row on its own line"
+	v: make vector! [:point 2x2]
+	v/1/x: 1
+	v/3/x: 2
+	m: mold/all v
+	--assert not none? find m "2x2"
+	--assert not none? find m lf
+	--assert v == load m
+	w: load m
+	--assert 2x2 = w/shape
+
+--test-- "a copy of a shaped vector of structs keeps the shape"
+	v: make vector! [:point 2x2]
+	c: copy v
+	--assert 2x2 = c/shape
+	;; a partial copy has no shape of its own
+	c: copy/part v 2
+	--assert 2x1 = c/shape
+
+--test-- "the statistics of a vector of structs are not available"
+	v: make vector! [:point 2x2]
+	--assert error? try [v/sum]
+	--assert error? try [v/minimum]
+	--assert error? try [v/signed]
+	--assert error? try [v/element-type]
+
+===end-group===
+
+
 mx: try [import 'matrix]   ;; module exports nothing - reach the words through it
 if module? mx [
 ;; float comparison helper (elementwise, with tolerance)

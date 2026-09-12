@@ -433,6 +433,22 @@ void Find_Maximum_Of_Vector(REBVAL *vect, REBVAL *ret) {
 	
 	REBCNT type = VAL_VEC_TYPE(vec);
 
+	if (VECT_IS_STRUCT(type)) {
+		// A struct element is not a number - there are no statistics, sign or
+		// element type word to report for it.
+		switch (field) {
+		case SYM_LENGTH:
+		case SYM_SHAPE:
+		case SYM_SHAPED:
+			break; // resolved below - these do not depend on the element type
+		case SYM_SIZE:
+			SET_INTEGER(ret, VAL_VEC_WIDE(vec) * 8); // element size in bits
+			return TRUE;
+		default:
+			return FALSE;
+		}
+	}
+
 	switch (field) {
 	case SYM_ELEMENT_TYPE:
 		Init_Word(ret, SYM_INT8X + Normalize_Vector_Type_Symbol(type));
@@ -1241,10 +1257,11 @@ static REBINT cmp_u64_dec(REBU64 u, REBDEC d) {
 
 /***********************************************************************
 **
-*/	REBINT Make_Vector_Struct(REBVAL* val, REBSER* fields, REBINT cols)
+*/	REBINT Make_Vector_Struct(REBVAL* val, REBSER* fields, REBINT cols, REBINT rows)
 /*
 **		fields: field list of the struct used as the element prototype
-**		cols:   number of elements
+**		cols:   number of elements per row
+**		rows:   number of rows (1 for a plain vector)
 **
 **		The data are zero filled. The struct must not hold any Rebol values -
 **		the vector's data are raw bytes which the GC never marks!
@@ -1259,10 +1276,12 @@ static REBINT cmp_u64_dec(REBU64 u, REBDEC d) {
 	// Raw data must never be marked as Rebol values by the GC!
 	if (FIELDS_NEED_MARK(fields)) return FALSE;
 
-	if (!(ser = Make_Vector_Series(cols, size, 1))) return FALSE;
+	if (rows < 1) rows = 1;
+	if (!(ser = Make_Vector_Series(cols, size, rows))) return FALSE;
 	// Like in a struct's data series, the link holds the element's field list.
 	ser->series = fields;
 	SET_VECTOR(val, ser, VTSTRUCT);
+	Set_Vector_Shape(val, rows);
 	return TRUE;
 }
 
@@ -1366,6 +1385,7 @@ REBCNT Get_Vector_Type_From_Symbol(REBCNT sym) {
 // are the values which follow it. All of them are optional:
 //
 //     make vector! [:point 100]
+//     make vector! [:point 3x2]             ;; a shaped vector (3 cols, 2 rows)
 //     make vector! [point2d! 100]           ;; a registered struct
 //     make vector! [:point :size :data :index]
 //     #(vector! #(struct! [x [int32!] y [int32!]]) #{...} 2)
@@ -1377,6 +1397,7 @@ REBVAL *Make_Vector_Struct_Spec(REBSER *fields, REBVAL *bp, REBVAL *value, REBFL
 {
 	REBCNT size = FIELDS_INFO(fields)->size;
 	REBINT cols = 0;
+	REBINT rows = 1;
 	REBLEN index = 0;
 	REBVAL *data = NULL;
 	REBVAL *val = bp;
@@ -1385,6 +1406,14 @@ REBVAL *Make_Vector_Struct_Spec(REBSER *fields, REBVAL *bp, REBVAL *value, REBFL
 	// Number of elements:
 	if (with_size && IS_INTEGER(val)) {
 		cols = Int32s(val, 0); // traps on negative
+		val = ++bp;
+		if (IS_GET_WORD(val)) val = Get_Var(val);
+	}
+	// Shape (the number of elements is given by it):
+	else if (IS_PAIR(val)) {
+		cols = VAL_PAIR_X_INT(val);
+		rows = VAL_PAIR_Y_INT(val);
+		if (cols <= 0 || rows <= 0) Trap_Range(val);
 		val = ++bp;
 		if (IS_GET_WORD(val)) val = Get_Var(val);
 	}
@@ -1404,7 +1433,7 @@ REBVAL *Make_Vector_Struct_Spec(REBSER *fields, REBVAL *bp, REBVAL *value, REBFL
 	}
 	if (NOT_END(val)) return 0;
 
-	if (!Make_Vector_Struct(value, fields, cols)) return 0;
+	if (!Make_Vector_Struct(value, fields, cols, rows)) return 0;
 	if (data) {
 		REBCNT len = MIN(VAL_LEN(data), VAL_TAIL(value) * size);
 		if (len > 0) COPY_MEM(VAL_VEC_HEAD(value), VAL_BIN_DATA(data), len);
@@ -1668,14 +1697,28 @@ REBINT Path_Vector_Struct(REBPVS *pvs)
 	// so `v/2/x: 1` must be refused as well as `poke v 2 s`!
 	if (pvs->setval) TRAP_PROTECT(vect);
 
-	if (!IS_INTEGER(sel) && !IS_DECIMAL(sel)) return PE_BAD_SELECT;
+	if (IS_PAIR(sel)) {
+		// Row and column of a shaped vector, like: v/2x1
+		REBCNT rows = Vector_Rows(val);
+		REBCNT cols = VAL_LEN(val) / rows;
+		REBINT col  = VAL_PAIR_X_INT(sel);
+		REBINT row  = VAL_PAIR_Y_INT(sel);
 
-	n = Int32(sel);
-	// allow PICK with zero index but not for POKE
-	if (n == 0) return set ? PE_BAD_RANGE : PE_NONE;
-	// Negative selector is relative to the vector's current position.
-	if (n < 0) n++;
-	n += VAL_INDEX(val);
+		if (col < 1 || row < 1 || (REBCNT)col > cols || (REBCNT)row > rows)
+			return set ? PE_BAD_RANGE : PE_NONE;
+
+		n = (row - 1) * cols + col + VAL_INDEX(val);
+	}
+	else {
+		if (!IS_INTEGER(sel) && !IS_DECIMAL(sel)) return PE_BAD_SELECT;
+
+		n = Int32(sel);
+		// allow PICK with zero index but not for POKE
+		if (n == 0) return set ? PE_BAD_RANGE : PE_NONE;
+		// Negative selector is relative to the vector's current position.
+		if (n < 0) n++;
+		n += VAL_INDEX(val);
+	}
 	if (n <= 0 || (REBCNT)n > vect->tail) return set ? PE_BAD_RANGE : PE_NONE;
 
 	if (set) {
@@ -1710,8 +1753,9 @@ REBINT Path_Vector_Struct(REBPVS *pvs)
 	REBINT n;	
 	REBYTE *vp = vect->data;
 
-	// Elements of a vector of structs are struct views into its data!
-	if (VECT_IS_STRUCT(vtype)) return Path_Vector_Struct(pvs);
+	// Elements of a vector of structs are struct views into its data! A word
+	// selector (like /SHAPE) is resolved by the common code below.
+	if (VECT_IS_STRUCT(vtype) && !IS_WORD(sel)) return Path_Vector_Struct(pvs);
 
 	if (IS_INTEGER(sel) || IS_DECIMAL(sel)) {
 		n = Int32(sel);
@@ -1924,7 +1968,7 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 		if (len <= 0) {
 			// Copy_Binary_Part is not safe with a zero length.
 			if (fields) {
-				if (!Make_Vector_Struct(value, fields, 0)) Trap0(RE_NO_MEMORY);
+				if (!Make_Vector_Struct(value, fields, 0, 1)) Trap0(RE_NO_MEMORY);
 			}
 			else if (!Make_Vector(value, vtype, 0, 1)) Trap0(RE_NO_MEMORY);
 			break;
@@ -2139,7 +2183,7 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 		if (len == 0) {
 			if (do_part) {
 				if (VECT_IS_STRUCT(vtype)) {
-					if (!Make_Vector_Struct(D_RET, VAL_VEC_STRUCT(value), 0))
+					if (!Make_Vector_Struct(D_RET, VAL_VEC_STRUCT(value), 0, 1))
 						Trap0(RE_NO_MEMORY);
 				}
 				else if (!Make_Vector(D_RET, vtype, 0, 1))
@@ -2437,6 +2481,10 @@ void Mold_Vector_Struct(REBVAL *value, REB_MOLD *mold, REBFLG molded)
 	REBCNT  len    = all ? VAL_TAIL(value) : VAL_LEN(value);
 	REBYTE *data   = all ? VAL_VEC_HEAD(value) : VAL_VEC_DATA(value);
 	REBCNT  size   = len * VAL_VEC_WIDE(value);
+	REBCNT  rows   = VAL_VEC_ROWS(value);
+	REBCNT  cols   = (rows > 1) ? VAL_VEC_COLS(value) : 0;
+	// The shape is emitted only for a whole vector, like with the other types
+	REBOOL  shaped = (rows > 1) && (VAL_INDEX(value) == 0) && (len == VAL_TAIL(value));
 	REBSER *bin;
 	REBVAL  tmp;
 
@@ -2457,15 +2505,37 @@ void Mold_Vector_Struct(REBVAL *value, REB_MOLD *mold, REBFLG molded)
 			Append_Int(mold->series, FIELDS_INFO(fields)->id);
  		}
 		Emit(mold, "S", ") ");
+		if (shaped) Emit(mold, "IxI ", cols, rows);
 	}
 
 	// The number of elements is given by the data, like with the other types!
-	bin = Make_Binary(size);
-	if (size > 0) COPY_MEM(BIN_HEAD(bin), data, size);
-	SERIES_TAIL(bin) = size;
-	Set_Binary(&tmp, bin);
-	Emit(mold, "V", &tmp);
-	Free_Series(bin);
+	if (shaped) {
+		// Each row of the data is put on its own line - the line breaks are
+		// just a whitespace inside the binary!
+		REBCNT row = cols * VAL_VEC_WIDE(value); // bytes per row
+		REBCNT n;
+		Append_Bytes(mold->series, "#{");
+		for (n = 0; n < rows; n++) {
+			// Also the first row starts on a new line, so that all of them
+			// are aligned at the same column.
+			Append_Byte(mold->series, LF);
+			bin = Make_Binary(row);
+			COPY_MEM(BIN_HEAD(bin), data + (n * row), row);
+			SERIES_TAIL(bin) = row;
+			Set_Binary(&tmp, bin);
+			Emit(mold, "E", Encode_Base16(&tmp, 0, row, FALSE));
+			Free_Series(bin);
+		}
+		Append_Byte(mold->series, '}');
+	}
+	else {
+		bin = Make_Binary(size);
+		if (size > 0) COPY_MEM(BIN_HEAD(bin), data, size);
+		SERIES_TAIL(bin) = size;
+		Set_Binary(&tmp, bin);
+		Emit(mold, "V", &tmp);
+		Free_Series(bin);
+	}
 
 	if (molded) {
 		if (all && VAL_INDEX(value)) {
