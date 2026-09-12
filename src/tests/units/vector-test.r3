@@ -1915,9 +1915,31 @@ Rebol [
 	--assert error? try [poke v 1 make struct! [x [int32!] y [int32!]]]
 	unprotect v
 
+
+--test-- "copy a vector of structs"
+	v: make vector! [:point 3]
+	v/2/x: 42
+	--assert vector? c: copy v
+	--assert 3 = length? c
+	--assert c == v
+	;; the copy has its own data
+	c/2/x: 1
+	--assert 42 = v/2/x
+	--assert c <> v
+
+--test-- "copy/part a vector of structs"
+	v: make vector! [:point 3]
+	v/3/y: 7
+	--assert 2 = length? copy/part v 2
+	--assert 1 = length? c: copy skip v 2
+	--assert 7 = c/1/y
+	--assert vector? c: copy/part v 0
+	--assert 0 = length? c
+	--assert c == make vector! [:point 0]
+
+
 --test-- "vector of structs: not yet supported actions"
 	v: make vector! [:point 2]
-	--assert error? try [copy v]
 	--assert error? try [to block! v]
 	--assert error? try [v + 1]
 

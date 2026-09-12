@@ -1816,6 +1816,7 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 		switch (action) {
 		case A_PICK:
 		case A_POKE:
+		case A_COPY:
 			break;
 		default:
 			Trap_Action(VAL_TYPE(value), action);
@@ -1878,12 +1879,17 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 	{
 		REBCNT vtype = VAL_VEC_TYPE(value);
 		REBCNT rows;
+		// The element specification of a vector of structs (NULL otherwise):
+		REBSER *fields = VECT_IS_STRUCT(vtype) ? VAL_VEC_STRUCT(value) : NULL;
 
 		len = Partial(value, 0, D_ARG(ARG_COPY_RANGE), 0); // can modify value index
 
 		if (len <= 0) {
 			// Copy_Binary_Part is not safe with a zero length.
-			if (!Make_Vector(value, vtype, 0, 1)) Trap0(RE_NO_MEMORY);
+			if (fields) {
+				if (!Make_Vector_Struct(value, fields, 0)) Trap0(RE_NO_MEMORY);
+			}
+			else if (!Make_Vector(value, vtype, 0, 1)) Trap0(RE_NO_MEMORY);
 			break;
 		}
 
@@ -1892,8 +1898,11 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 		// (which overwrites the value's packed type/rows field).
 		rows = Vector_Rows_For(value, len);
 
+		// Copy_Binary_Part keeps the series width, which is the element size!
 		ser = Copy_Binary_Part(vect, VAL_INDEX(value), len);
 		SET_VECTOR(value, ser, vtype);
+		// Like in Make_Vector_Struct, the link holds the element's field list.
+		if (fields) ser->series = fields;
 		Set_Vector_Shape(value, rows);
 	}	break;
 
