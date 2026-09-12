@@ -2021,10 +2021,203 @@ Rebol [
 	--assert 1 = length? v
 	--assert 1 = v/1/x
 
+--test-- "append a struct to a vector of structs"
+	v: make vector! [:point 0]
+	s: make struct! [x [int32!] y [int32!]]
+	s/x: 1
+	--assert vector? append v s
+	--assert 1 = length? v
+	--assert 1 = v/1/x
+	;; the appended data are copies
+	s/x: 2
+	--assert 1 = v/1/x
+	append v s
+	--assert 2 = length? v
+	--assert 2 = v/2/x
 
---test-- "structs cannot be inserted into a numeric vector"
+--test-- "append/dup a struct to a vector of structs"
+	v: make vector! [:point 0]
+	s: make struct! [x [int32!] y [int32!]]
+	s/y: 9
+	--assert 3 = length? append/dup v s 3
+	--assert 9 = v/3/y
+
+--test-- "append a block of structs"
+	v: make vector! [:point 0]
+	a: make point []
+	b: make struct! [x [int32!] y [int32!]]
+	a/x: 1
+	b/x: 2
+	--assert 2 = length? append v reduce [a b]
+	--assert 1 = v/1/x
+	--assert 2 = v/2/x
+
+--test-- "append a vector of structs"
 	v: make vector! [:point 2]
-	--assert error? try [append make vector! [int32! 2] v]
+	v/1/x: 7
+	--assert 4 = length? c: append copy v v
+	--assert 7 = c/3/x
+
+--test-- "append a binary to a vector of structs"
+	v: make vector! [:point 0]
+	--assert 1 = length? append v #{0100000002000000}
+	--assert 1 = v/1/x
+	--assert 2 = v/1/y
+
+--test-- "only a struct of the same specification may be appended"
+	v: make vector! [:point 0]
+	--assert error? try [append v 1]
+	--assert error? try [append v "x"]
+	--assert error? try [append v make struct! [a [int32!]]]
+	--assert error? try [append v reduce [1]]
+	--assert error? try [append v make vector! [int32! 2]]
+	--assert 0 = length? v
+
+--test-- "structs cannot be appended to a numeric vector"
+	--assert error? try [append make vector! [int32! 0] make struct! [x [int32!] y [int32!]]]
+
+--test-- "insert a struct into a vector of structs"
+	v: make vector! [:point 2]
+	v/1/x: 1
+	s: make struct! [x [int32!] y [int32!]]
+	s/x: 5
+	insert v s
+	--assert 3 = length? v
+	--assert 5 = v/1/x
+	--assert 1 = v/2/x
+	insert skip v 2 s
+	--assert 4 = length? v
+	--assert 5 = v/3/x
+
+--test-- "insert returns the position after the inserted data"
+	v: make vector! [:point 2]
+	s: make struct! [x [int32!] y [int32!]]
+	s/x: 1
+	--assert 2 = index? insert v s
+	--assert 3 = length? head v
+	--assert 4 = index? insert/dup head v s 3
+
+--test-- "insert into an empty vector of structs"
+	v: make vector! [:point 0]
+	s: make struct! [x [int32!] y [int32!]]
+	s/x: 5
+	insert v s
+	--assert 1 = length? head v
+	--assert 5 = v/1/x
+
+--test-- "insert at the tail of a vector of structs"
+	v: make vector! [:point 2]
+	s: make struct! [x [int32!] y [int32!]]
+	s/x: 9
+	insert tail v s
+	--assert 3 = length? head v
+	--assert 9 = v/3/x
+	--assert 0 = v/1/x
+
+--test-- "insert keeps the elements after the position"
+	v: make vector! [:point 3]
+	v/1/x: 1
+	v/2/x: 2
+	v/3/x: 3
+	s: make struct! [x [int32!] y [int32!]]
+	s/x: 8
+	insert skip v 1 s
+	--assert 4 = length? v
+	--assert [1 8 2 3] = collect [foreach e v [keep e/x]]
+
+--test-- "insert a block of structs"
+	v: make vector! [:point 1]
+	a: make struct! [x [int32!] y [int32!]]
+	b: make struct! [x [int32!] y [int32!]]
+	a/x: 1
+	b/x: 2
+	insert v reduce [a b]
+	--assert 3 = length? v
+	--assert [1 2 0] = collect [foreach e v [keep e/x]]
+
+--test-- "insert/part a block of structs"
+	v: make vector! [:point 0]
+	a: make struct! [x [int32!] y [int32!]]
+	b: make struct! [x [int32!] y [int32!]]
+	a/x: 1
+	b/x: 2
+	insert/part v reduce [a b] 1
+	--assert 1 = length? v
+	--assert 1 = v/1/x
+
+--test-- "insert a vector of structs"
+	v: make vector! [:point 2]
+	v/1/x: 1
+	v/2/x: 2
+	w: make vector! [:point 1]
+	w/1/x: 7
+	insert v w
+	--assert 3 = length? v
+	--assert [7 1 2] = collect [foreach e v [keep e/x]]
+
+--test-- "insert/part a vector of structs"
+	v: make vector! [:point 0]
+	w: make vector! [:point 3]
+	w/1/x: 1
+	w/2/x: 2
+	w/3/x: 3
+	insert/part v w 2
+	--assert 2 = length? v
+	--assert [1 2] = collect [foreach e v [keep e/x]]
+
+--test-- "insert a binary into a vector of structs"
+	v: make vector! [:point 1]
+	insert v #{0100000002000000}
+	--assert 2 = length? v
+	--assert 1 = v/1/x
+	--assert 2 = v/1/y
+	--assert 0 = v/2/x
+
+--test-- "insert/dup a struct into a vector of structs"
+	v: make vector! [:point 1]
+	s: make struct! [x [int32!] y [int32!]]
+	s/x: 4
+	insert/dup v s 2
+	--assert 3 = length? v
+	--assert [4 4 0] = collect [foreach e v [keep e/x]]
+	;; a zero or negative dup count inserts nothing
+	insert/dup v s 0
+	--assert 3 = length? v
+	insert/dup v s -1
+	--assert 3 = length? v
+
+--test-- "only a struct of the same specification may be inserted"
+	v: make vector! [:point 1]
+	--assert error? try [insert v 1]
+	--assert error? try [insert v "x"]
+	--assert error? try [insert v make struct! [a [int32!]]]
+	--assert error? try [insert v reduce [make struct! [a [int32!]]]]
+	--assert error? try [insert v make vector! [int32! 2]]
+	--assert 1 = length? v
+	--assert 0 = v/1/x
+
+
+--test-- "change an element of a vector of structs"
+	v: make vector! [:point 3]
+	s: make struct! [x [int32!] y [int32!]]
+	s/x: 8
+	change skip v 1 s
+	--assert 3 = length? v
+	--assert 8 = v/2/x
+	--assert 0 = v/1/x
+	--assert 0 = v/3/x
+	s/x: 255
+	--assert tail? change/part next v s 2
+	--assert 2 = length? v
+	--assert 255 = v/2/x
+
+--test-- "a protected vector of structs cannot be appended to"
+	v: protect make vector! [:point 1]
+	--assert error? try [append v make struct! [x [int32!] y [int32!]]]
+	--assert error? try [insert v make struct! [x [int32!] y [int32!]]]
+	unprotect v
+
+
 
 --test-- "vector of structs: not supported actions"
 	--assert error? try [v + 1]

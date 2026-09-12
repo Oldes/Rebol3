@@ -1853,6 +1853,9 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 		case A_POKE:
 		case A_COPY:
 		case A_CLEAR:
+		case A_APPEND:
+		case A_INSERT:
+		case A_CHANGE:
 			break;
 		default:
 			Trap_Action(VAL_TYPE(value), action);
@@ -2153,6 +2156,21 @@ bad_make:
 }
 
 
+// Copies the data of a struct into the buffer at the given element index.
+// Only a struct of the vector's own element specification is accepted!
+static
+void Set_Vector_Struct_Value(REBVAL *vec, REBSER *buf, REBCNT index, REBVAL *val)
+{
+	REBCNT size = VAL_VEC_WIDE(vec);
+
+	if (!IS_STRUCT(val)
+		|| VAL_STRUCT_SIZE(val) != size
+		|| !Same_Struct_Fields(VAL_VEC_STRUCT(vec), VAL_STRUCT_FIELDS(val))
+	)	Trap_Arg(val);
+
+	COPY_MEM(BIN_SKIP(buf, index * size), VAL_STRUCT_DATA_BIN(val), size);
+}
+
 /***********************************************************************
 **
 */	REBCNT Modify_Vector(REBCNT action, REBVAL *vec, REBCNT index, REBVAL *src_val, REBCNT flags, REBINT dst_len, REBINT dups)
@@ -2232,8 +2250,16 @@ bad_make:
 		RESIZE_SERIES(src_ser, part * bpv);
 		// Encode values from the block vector to the temp buffer.
 		for (val = VAL_BLK_DATA(src_val); src_len < part; val++) {
-			Set_Vector_Value(vtype, src_ser->data, src_len++, val);
+			if (VECT_IS_STRUCT(vtype))
+				Set_Vector_Struct_Value(vec, src_ser, src_len++, val);
+			else
+				Set_Vector_Value(vtype, src_ser->data, src_len++, val);
 		}
+	}
+	else if (VECT_IS_STRUCT(vtype)) {
+		// Encode single struct into the temp buffer.
+		RESIZE_SERIES(src_ser, bpv);
+		Set_Vector_Struct_Value(vec, src_ser, src_len++, src_val);
 	}
 	else {
 		// Encode single value into the temp buffer.
