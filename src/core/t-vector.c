@@ -2289,8 +2289,10 @@ void Mold_Vector_Struct(REBVAL *value, REB_MOLD *mold, REBFLG molded)
 
 	if (molded) {
 		Emit(mold, "S", "#(vector! #(struct! ");
-		if (FIELDS_INFO(fields)->name) {
-			// The specification is registered under a name
+		if (!all && FIELDS_INFO(fields)->name) {
+			// The specification is registered under a name. Like with a struct
+			// value, the name is used only when not molding with /ALL, which
+			// must be readable without the registration.
 			Emit(mold, "N", FIELDS_INFO(fields)->name);
 		}
 		else if (FIELDS_SPEC(fields)) {
