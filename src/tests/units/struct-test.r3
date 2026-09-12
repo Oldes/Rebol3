@@ -987,6 +987,60 @@ s: #(struct! [
 	--assert error? try [poke s 'x 1]
 	unprotect s
 	--assert 1 = poke s 'x 1
+
+--test-- "protect a struct holding Rebol values"
+	s: make struct! [val [rebval!] n [int32!]]
+	s/val: b: copy [1 2 3]
+	protect s
+	;; the struct's own data are protected
+	--assert protected? s
+	--assert error? try [poke s 'n 1]
+	;; but not the value it holds
+	--assert not protected? b
+	--assert block? append b 4
+	unprotect s
+
+--test-- "protect/deep a struct holding Rebol values"
+	s: make struct! [val [rebval!] n [int32!]]
+	s/val: b: copy [1 2 3]
+	protect/deep s
+	--assert protected? s
+	--assert protected? b
+	--assert error? try [append b 4]
+	--assert error? try [poke s 'n 1]
+	unprotect/deep s
+	--assert not protected? b
+	--assert block? append b 4
+
+--test-- "protect/deep walks nested structs and arrays"
+	s: make struct! [
+		inner [struct! [val [rebval!]]]
+		vals [rebval! [2]]
+	]
+	s/inner/val: a: copy [1]
+	b: copy [2]
+	c: copy [3]
+	s/vals: reduce [b c]
+	protect/deep s
+	--assert protected? a
+	--assert protected? b
+	--assert protected? c
+	unprotect/deep s
+	--assert not protected? a
+	--assert not protected? b
+	--assert not protected? c
+
+--test-- "protect/deep can be used repeatedly"
+	;; the recursion marks are removed, so a second call still works
+	s: make struct! [val [rebval!]]
+	s/val: b: copy [1]
+	protect/deep s
+	unprotect/deep s
+	protect/deep s
+	--assert protected? b
+	unprotect/deep s
+	--assert not protected? b
+
 ===end-group===
 
 
