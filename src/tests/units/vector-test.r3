@@ -1915,6 +1915,39 @@ Rebol [
 	--assert error? try [poke v 1 make struct! [x [int32!] y [int32!]]]
 	unprotect v
 
+--test-- "a protected vector of structs cannot be modified"
+	v: make vector! [:point 3]
+	v/1/x: 1
+	protect v
+	;; reading is still allowed
+	--assert 1 = v/1/x
+	--assert struct? s: pick v 1
+	--assert 3 = length? v
+	--assert vector? c: copy v
+	;; but not any modification
+	--assert error? try [poke v 1 make struct! [x [int32!] y [int32!]]]
+	--assert error? try [v/1: make struct! [x [int32!] y [int32!]]]
+	--assert error? try [v/2/x: 2]
+	--assert error? try [clear v]
+	--assert 1 = v/1/x
+	;; the copy is not protected
+	c/2/x: 2
+	--assert 2 = c/2/x
+	unprotect v
+	v/2/x: 2
+	--assert 2 = v/2/x
+
+--test-- "a struct view taken before PROTECT still writes"
+	;; the view shares the data series, so the protection is not on the view
+	v: make vector! [:point 2]
+	s: pick v 1
+	protect v
+	--assert error? try [v/1/x: 1]
+	s/x: 1               ;; @@ should this be refused too?
+	--assert 1 = v/1/x
+	unprotect v
+
+
 
 --test-- "copy a vector of structs"
 	v: make vector! [:point 3]
@@ -1977,7 +2010,7 @@ Rebol [
 	--assert vector? clear v
 	--assert 0 = length? v
 	--assert v == make vector! [:point 0]
-	--assert {#(vector! #(struct! [x [int32!] y [int32!]]) #{})} = mold/all/flat v
+	--assert {#(vector! #(struct! [x [int32!] y [int32!]]) #{})} = probe mold/all/flat v
 
 --test-- "clear a vector of structs from a position"
 	v: make vector! [:point 3]

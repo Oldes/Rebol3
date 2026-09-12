@@ -1669,6 +1669,10 @@ REBINT Path_Vector_Struct(REBPVS *pvs)
 	// when the action is used directly, like in `poke v 2 s`)
 	set = (pvs->path == 0 || IS_END(pvs->path + 1)) ? pvs->setval : NULL;
 
+	// Any set-path modifies the vector's data, no matter how deep it goes,
+	// so `v/2/x: 1` must be refused as well as `poke v 2 s`!
+	if (pvs->setval) TRAP_PROTECT(vect);
+
 	if (!IS_INTEGER(sel) && !IS_DECIMAL(sel)) return PE_BAD_SELECT;
 
 	n = Int32(sel);
@@ -1685,7 +1689,6 @@ REBINT Path_Vector_Struct(REBPVS *pvs)
 			|| VAL_STRUCT_SIZE(set) != size
 			|| !Same_Struct_Fields(fields, VAL_STRUCT_FIELDS(set))
 		) return PE_BAD_SET;
-		TRAP_PROTECT(vect);
 		COPY_MEM(BIN_SKIP(vect, (n - 1) * size), VAL_STRUCT_DATA_BIN(set), size);
 		return PE_OK;
 	}
