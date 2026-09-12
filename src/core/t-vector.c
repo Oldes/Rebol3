@@ -1856,6 +1856,7 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 		case A_APPEND:
 		case A_INSERT:
 		case A_CHANGE:
+		case A_TAKE:
 			break;
 		default:
 			Trap_Action(VAL_TYPE(value), action);
@@ -2111,16 +2112,31 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 
 		if (len == 0) {
 			if (do_part) {
-				if (!Make_Vector(D_RET, vtype, 0, 1))
+				if (VECT_IS_STRUCT(vtype)) {
+					if (!Make_Vector_Struct(D_RET, VAL_VEC_STRUCT(value), 0))
+						Trap0(RE_NO_MEMORY);
+				}
+				else if (!Make_Vector(D_RET, vtype, 0, 1))
 					Trap0(RE_NO_MEMORY);
 			}
 			else SET_NONE(D_RET);
 			return R_RET;
 		}
 		if (do_part) {
+			// Copy_Binary_Part keeps the series width, which is the element size!
+			REBSER *fields = VECT_IS_STRUCT(vtype) ? VAL_VEC_STRUCT(value) : NULL;
 			ser = Copy_Binary_Part(vect, start, len);
 			SET_VECTOR(D_RET, ser, vtype);
+			// Like in Make_Vector_Struct, the link holds the element's field list.
+			if (fields) ser->series = fields;
 			VAL_VEC_SET_ROWS(D_RET, 1);
+		}
+		else if (VECT_IS_STRUCT(vtype)) {
+			// The element is removed below, so it must be copied out of the
+			// vector's data - a view would be left pointing to other data!
+			REBVAL view;
+			Set_Vector_Struct(&view, value, start);
+			Copy_Struct_Value(&view, D_RET);
 		}
 		else {
 			get_vect(vtype, vect->data, start, D_RET);

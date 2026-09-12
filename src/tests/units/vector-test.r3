@@ -2217,6 +2217,74 @@ Rebol [
 	--assert error? try [insert v make struct! [x [int32!] y [int32!]]]
 	unprotect v
 
+--test-- "take a struct from a vector of structs"
+	v: make vector! [:point 3]
+	v/1/x: 1
+	v/2/x: 2
+	v/3/x: 3
+	--assert struct? s: take v
+	--assert 1 = s/x
+	--assert 2 = length? v
+	--assert [2 3] = collect [foreach e v [keep e/x]]
+	;; the taken struct is a copy - it does not share the vector's data
+	poke s 'x 9
+	--assert 2 = v/1/x
+
+--test-- "take/last a struct from a vector of structs"
+	v: make vector! [:point 3]
+	v/1/x: 1
+	v/3/x: 3
+	s: take/last v
+	--assert 3 = s/x
+	--assert 2 = length? v
+	--assert 1 = v/1/x
+
+--test-- "take from a position"
+	v: make vector! [:point 3]
+	v/1/x: 1
+	v/2/x: 2
+	v/3/x: 3
+	s: take skip v 1
+	--assert 2 = s/x
+	--assert [1 3] = collect [foreach e head v [keep e/x]]
+
+--test-- "take from an empty vector of structs"
+	v: make vector! [:point 0]
+	--assert none? take v
+	--assert vector? t: take/part v 1
+	--assert 0 = length? t
+	--assert t == make vector! [:point 0]
+
+--test-- "take/part a vector of structs"
+	v: make vector! [:point 4]
+	v/1/x: 1
+	v/2/x: 2
+	v/3/x: 3
+	v/4/x: 4
+	--assert vector? t: take/part v 2
+	--assert 2 = length? t
+	--assert [1 2] = collect [foreach e t [keep e/x]]
+	--assert 2 = length? v
+	--assert [3 4] = collect [foreach e v [keep e/x]]
+	;; the taken part has its own data
+	t/1/x: 9
+	--assert 3 = v/1/x
+
+--test-- "take/part/last a vector of structs"
+	v: make vector! [:point 3]
+	v/3/x: 3
+	--assert 1 = length? t: take/part/last v 1
+	--assert 3 = t/1/x
+	--assert 2 = length? v
+	;; asking for more than there is takes all of it
+	--assert 2 = length? take/part v 10
+	--assert 0 = length? v
+
+--test-- "a protected vector of structs cannot be taken from"
+	v: protect make vector! [:point 2]
+	--assert error? try [take v]
+	--assert error? try [take/part v 1]
+	unprotect v
 
 
 --test-- "vector of structs: not supported actions"
