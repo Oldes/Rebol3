@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -72,6 +72,24 @@
 
 /***********************************************************************
 **
+*/	static void Protect_Data(REBSER *series, REBCNT flags)
+/*
+**		Sets or removes the protection of a series holding the data.
+**
+***********************************************************************/
+{
+	if (GET_FLAG(flags, PROT_SET)) {
+		PROTECT_SERIES(series);
+		if (GET_FLAG(flags, PROT_LOCK)) LOCK_SERIES(series);
+	}
+	else
+		//unprotect series only when not locked (using protect/permanently)
+		if (!IS_LOCK_SERIES(series))
+			UNPROTECT_SERIES(series);
+}
+
+/***********************************************************************
+**
 */	static void Protect_Value(REBVAL *value, REBCNT flags)
 /*
 **		Anything that calls this must call Unmark() when done.
@@ -82,6 +100,11 @@
 		Protect_Series(value, flags);
 	else if (IS_OBJECT(value) || IS_MODULE(value))
 		Protect_Object(value, flags);
+	else if (IS_STRUCT(value))
+		// A struct is not a series value, but its data are in one. Note that
+		// the data may be shared - with a nested struct or with a vector of
+		// structs - so the protection applies to all views of them!
+		Protect_Data(VAL_STRUCT_DATA(value), flags);
 }
 
 
@@ -97,14 +120,7 @@
 
 	if (IS_MARK_SERIES(series)) return; // avoid loop
 
-	if (GET_FLAG(flags, PROT_SET)) {
-		PROTECT_SERIES(series);
-		if (GET_FLAG(flags, PROT_LOCK)) LOCK_SERIES(series);
-	} 
-	else
-		//unprotect series only when not locked (using protect/permanently)
-		if (!IS_LOCK_SERIES(series))
-			UNPROTECT_SERIES(series);
+	Protect_Data(series, flags);
 
 	if (!ANY_BLOCK(val) || !GET_FLAG(flags, PROT_DEEP)) return;
 
@@ -267,6 +283,9 @@
 	}
 	else if (ANY_SERIES(value) || IS_MAP(value)) {
 		if(IS_PROTECT_SERIES(VAL_SERIES(value))) return R_TRUE;
+	}
+	else if (IS_STRUCT(value)) {
+		if(IS_PROTECT_SERIES(VAL_STRUCT_DATA(value))) return R_TRUE;
 	}
 	else if (IS_OBJECT(value) || IS_MODULE(value)) {
 		if(IS_PROTECT_SERIES(VAL_OBJ_FRAME(value))) return R_TRUE;

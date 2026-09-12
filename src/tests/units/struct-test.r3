@@ -980,6 +980,13 @@ s: #(struct! [
 	--assert 5 = v/1/y
 	--assert 5 = v/2/y
 
+--test-- "a protected struct cannot be poked"
+	s: protect make struct! [x [int32!] y [int32!]]
+	--assert protected? s
+	--assert 0 = pick s 'x
+	--assert error? try [poke s 'x 1]
+	unprotect s
+	--assert 1 = poke s 'x 1
 ===end-group===
 
 
