@@ -2620,6 +2620,58 @@ Rebol [
 ===end-group===
 
 
+===start-group=== "TO VECTOR! from an IMAGE"
+	rgba: make struct! [r [uint8!] g [uint8!] b [uint8!] a [uint8!]]
+
+--test-- "convert an image to a vector"
+	img: make image! 3x2
+	--assert vector? v: to vector! img
+	--assert 6 = length? v
+	--assert 3x2 = v/shape
+	;; a new image is white and fully opaque
+	--assert 0#FFFFFFFF = v/1
+
+--test-- "the components are normalized to the RGBA order"
+	img: make image! 2x1
+	img/1: 1.2.3
+	v: as rgba to vector! img
+	--assert 1 = v/1/r
+	--assert 2 = v/1/g
+	--assert 3 = v/1/b
+	--assert 255 = v/1/a
+	;; which is the same order as the RGBA binary conversion
+	--assert #{010203FF} = copy/part to binary! img 4
+
+--test-- "the pixels are converted in rows"
+	img: make image! 2x2
+	img/1: 255.0.0
+	img/4: 0.0.255
+	v: as rgba to vector! img
+	--assert 255 = v/1/r
+	--assert 255 = v/4/b
+	--assert 255 = v/1x1/r
+	--assert 255 = v/2x2/b
+
+--test-- "the alpha channel is kept"
+	img: make image! 1x1
+	img/1: 1.2.3.4
+	v: as rgba to vector! img
+	--assert 4 = v/1/a
+
+--test-- "the vector holds a copy of the pixels"
+	img: make image! 2x1
+	v: to vector! img
+	img/1: 0.0.0
+	--assert 0#FFFFFFFF = v/1      ;; the vector is not changed
+
+--test-- "convert an empty image"
+	img: make image! 0x0
+	--assert vector? v: to vector! img
+	--assert 0 = length? v
+
+===end-group===
+
+
 
 mx: try [import 'matrix]   ;; module exports nothing - reach the words through it
 if module? mx [

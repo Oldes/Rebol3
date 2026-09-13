@@ -1994,6 +1994,25 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 		// fall thru
 
 	case A_TO:
+		// CASE: to vector! img ;== a shaped vector of the image's pixels
+		if (IS_IMAGE(arg)) {
+			REBSER *img  = VAL_SERIES(arg);
+			REBCNT  cols = IMG_WIDE(img);
+			REBCNT  rows = IMG_HIGH(img);
+			REBYTE *src, *dst;
+			REBCNT  n;
+
+			if (!Make_Vector(value, VTUI32, cols, rows)) Trap0(RE_NO_MEMORY);
+			// The internal pixel order depends on the host system, so the
+			// pixels are normalized - the vector always holds the components
+			// in the RGBA order, like the RGBA binary conversion does.
+			src = QUAD_HEAD(img);
+			dst = VAL_VEC_HEAD(value);
+			for (n = VAL_TAIL(value); n > 0; n--, src += 4, dst += 4) {
+				*(REBCNT*)dst = TO_RGBA_COLOR(src[C_R], src[C_G], src[C_B], src[C_A]);
+			}
+			break;
+		}
 		// CASE: make vector! #{01FF} ;== #(uint8! [1 255]) 
 		if (IS_BINARY(arg)) {
 			len = VAL_LEN(arg);
