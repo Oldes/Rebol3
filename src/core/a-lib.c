@@ -1527,6 +1527,44 @@ RL_API REBCNT RL_Decode_UTF8_Char(const REBYTE *str, REBCNT *len)
 	return TRUE;
 }
 
+/***********************************************************************
+**
+*/	RL_API void* RL_Alloc(size_t size)
+/*
+**	Allocate memory that the interpreter itself may free.
+**
+**	Unlike RL_Mem_Alloc, this is the interpreter's plain accounted
+**	allocator - the same one used internally by Make_Mem - so a buffer
+**	handed back to the core (for example a codec's output, freed by
+**	DO-CODEC with a known size) must come from here, not from
+**	RL_Mem_Alloc, whose result carries a hidden header and may live in
+**	a memory pool. Free with RL_Free and the size passed to RL_Alloc.
+**
+**	Returns:
+**		Pointer to uninitialized memory, or 0 on failure.
+**	Arguments:
+**		size - number of bytes
+*/
+{
+	return Make_Mem(size);
+}
+
+/***********************************************************************
+**
+*/	RL_API void RL_Free(void *mem, size_t size)
+/*
+**	Frees memory allocated with RL_Alloc. The size must match.
+**
+**	Returns:
+**		nothing
+**	Arguments:
+**		mem  - pointer to initialized memory
+**		size - number of bytes
+*/
+{
+	Free_Mem(mem, size);
+}
+
 
 #include "reb-lib-lib.h"
 
