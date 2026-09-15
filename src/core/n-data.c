@@ -215,17 +215,30 @@ static int Check_Char_Range(REBVAL *val, REBCNT limit)
 **
 */	REBNATIVE(as)
 /*
-**	NOTE: It is not possible to coerce a binary with vectors, because
-**	vector info is encoded in the series and casting it to binary
-**	would destroy it.
-**	It is also not possible to coerce a binary with strings, because
+**	NOTE: It is not possible to coerce a binary with strings, because
 **	strings are internally UTF-8 encoded and modifying binary directly
 **	could corrupt this encoding!
+**
+**	A vector is coerced to another element type of the same size and its
+**	data are shared - so a vector of 32bit numbers may be used as a
+**	vector of four byte structs and the other way round.
 ***********************************************************************/
 {
 	REBVAL *type = D_ARG(1);
 	REBVAL *spec = D_ARG(2);
-	REBCNT target = IS_DATATYPE(type)? VAL_DATATYPE(type) : VAL_TYPE(type);
+	REBCNT target;
+
+	// The element type of a vector is not a datatype - it may be a struct, a
+	// registered struct name or an element type word, like: as uint32! v
+	if (IS_VECTOR(spec)) {
+		if (As_Vector(type, spec)) return R_ARG2;
+		// The target is reported as it was given - a datatype value would say
+		// just `word!` for an element type like uint32!
+		Set_Datatype(spec, VAL_TYPE(spec));
+		Trap2(RE_NOT_SAME_CLASS, spec, type);
+	}
+
+	target = IS_DATATYPE(type)? VAL_DATATYPE(type) : VAL_TYPE(type);
 	if ((ANY_BLOCK(spec) && ANY_BLOCK_TYPE(target)) || (ANY_STR(spec) && ANY_STR_TYPE(target))) {
 		SET_TYPE(spec, target);
 	} else {
@@ -234,6 +247,33 @@ static int Check_Char_Range(REBVAL *val, REBCNT limit)
 		Trap2(RE_NOT_SAME_CLASS, spec, type);
 	}
 	return R_ARG2;
+}
+
+/***********************************************************************
+**
+*/	REBNATIVE(slice)
+/*
+//	slice: native [
+//		"Make a lazy slice view into a series - no data is copied."
+//		series [any-block! string! binary! vector!]  "Source series"
+//		length [integer!] "Number of elements to include"
+//	]
+***********************************************************************/
+{
+	REBVAL* val  = D_ARG(1);
+	REBLEN  nlen = VAL_INT64(D_ARG(2)); // requested slice length
+	REBCNT  idx  = VAL_INDEX(val);      // current position within the series
+	REBLEN  olen = VAL_LEN(val);        // available length from current index
+	REBSER* ser  = VAL_SERIES(val);
+
+	if (nlen < 1)    Trap1(RE_OUT_OF_RANGE, D_ARG(2)); // reject non-positive lengths
+	if (nlen > olen) nlen = olen;                      // clamp to available length
+
+	// Make a new series node used to hold a slice.
+	ser = Make_Slice(ser, idx, nlen, (IS_VECTOR(val) ? VAL_VEC_WIDE(val) : SERIES_WIDE(ser)));
+	VAL_SERIES(val) = ser;              // point value at the new slice node
+	VAL_INDEX(val)  = 0;                // reset index of the new slice value
+	return R_ARG1;
 }
 
 

@@ -141,32 +141,24 @@ static
 void Get_Struct_Field_Value(REBSTU* stu, REBSTF* field, REBVAL* val)
 {
 	if (field->array) {
-		REBSER* ser;
 		if (IS_BLOCK_BACKED_FIELD(field)) {
 			// Type has no vector equivalent - fall back to a block of scalars
 			REBCNT n;
-			ser = Make_Block(field->dimension);
+			REBSER *ser = Make_Block(field->dimension);
 			// The value must reference the series BEFORE anything else can be
 			// allocated! `val` is usually pvs->store, which lives on the data
 			// stack, so the GC would else mark a block with a stale series.
 			Set_Block(val, ser);
-
-			// Iterate over each element and extract it as a scalar
 			for (n = 0; n < field->dimension; n++) {
 				get_scalar(stu, field, n, Append_Value(ser));
 			}
 		}
 		else {
 			// Type maps to a known vector word - use a vector for efficiency
-			ser = Make_Vector_From_Word((REBCNT)type_to_sym[field->type], field->dimension);
-			SET_VECTOR(val, ser);
-
-			// Bulk-copy the raw field bytes directly into the vector's data buffer
-			COPY_MEM(
-				SERIES_DATA(ser),
-				STRUCT_DATA_BIN(stu) + field->offset,
-				field->dimension * field->size
-			);
+			Make_Vector_From_Word(val, (REBCNT)type_to_sym[field->type], field->dimension);
+			ASSERT1(NZ(VAL_SERIES(val)), RP_INTERNAL);
+			COPY_MEM(VAL_VEC_HEAD(val), STRUCT_DATA_BIN(stu) + field->offset,
+			         field->dimension * field->size);
 		}
 	}
 	else {
@@ -256,7 +248,13 @@ REBFLG Get_Struct_Var(REBSTU *stu, REBVAL *word, REBVAL *val)
 	}
 }
 
-static REBOOL same_fields(REBSER *tgt, REBSER *src)
+/***********************************************************************
+**
+*/	REBOOL Same_Struct_Fields(REBSER *tgt, REBSER *src)
+/*
+**		Do both field lists describe the same structure?
+**
+***********************************************************************/
 {
 	if (SERIES_TAIL(tgt) != SERIES_TAIL(src)) {
 		return FALSE;
@@ -351,7 +349,7 @@ static REBOOL assign_scalar(REBSTU *stu,
 			if (field->size != VAL_STRUCT_SIZE(val)) {
 				Trap_Arg(val);
 			}
-			if (same_fields(field->spec->series, VAL_STRUCT_FIELDS(val))) {
+			if (Same_Struct_Fields(field->spec->series, VAL_STRUCT_FIELDS(val))) {
 				COPY_MEM(data, VAL_STRUCT_DATA_BIN(val), field->size);
 			}
 			else {
@@ -386,12 +384,10 @@ static REBOOL assign_scalar(REBSTU *stu,
 						// Else raw bytes of a foreign type would be stored, which
 						// is fatal for a word! field (an invalid symbol id).
 						REBINT vect = type_to_vect[field->type];
-						if (vect < 0 || VECT_TYPE(VAL_SERIES(val)) != (REBCNT)vect) {
+						if (vect < 0 || VAL_VEC_TYPE(val) != (REBCNT)vect)
 							return FALSE;
-						}
-						// NOTE: VAL_DATA (not VAL_BIN_DATA) - the vector's index
-						// counts elements, not bytes!
-						COPY_MEM(STRUCT_DATA_BIN(stu) + field->offset, VAL_DATA(val), field->dimension * field->size);
+						COPY_MEM(STRUCT_DATA_BIN(stu) + field->offset, VAL_DATA(val),
+						         field->dimension * field->size);
 					}
 					else {
 						// data in a block
@@ -649,6 +645,25 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 
 /***********************************************************************
 **
+*/	REBVAL *Find_Struct_Spec(REBVAL *key)
+/*
+**		Returns the specification registered in system/catalog/structs
+**		under the given name (word!) or id (integer!), or NULL when there
+**		is no such struct.
+**
+***********************************************************************/
+{
+	REBVAL *struct_specs = Get_System(SYS_CATALOG, CAT_STRUCTS);
+	REBCNT n;
+
+	if (!IS_WORD(key) && !IS_INTEGER(key)) return NULL;
+	n = Find_Entry(VAL_SERIES(struct_specs), key, 0, TRUE);
+	if (n == NOT_FOUND) return NULL;
+	return VAL_BLK_SKIP(struct_specs, n);
+}
+
+/***********************************************************************
+**
 */	REBFLG MT_Struct(REBVAL *out, REBVAL *data, REBCNT type)
 /*
 ***********************************************************************/
@@ -702,6 +717,7 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 	REBVAL *struct_specs = Get_System(SYS_CATALOG, CAT_STRUCTS);
 	REBCNT hash = 0, n = NOT_FOUND;
 	REBOOL new_spec = FALSE;
+	REBVAL *found = NULL;
 
 	if (IS_INTEGER(data)) {
 		// Struct spec id used like:
@@ -711,7 +727,7 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 	else if (IS_WORD(data)) {
 		// Struct spec as a registered struct name
 		// #(struct! some-struct [a: 1 b: 2])
-		n = Find_Entry(VAL_SERIES(struct_specs), data, 0, TRUE);
+		found = Find_Struct_Spec(data);
 	}
 	else if (!IS_BLOCK(data)) return FALSE; // validate early!
 	else {
@@ -722,9 +738,9 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 
 	SET_INTEGER(&key, hash);
 	if (hash) {
-		n = Find_Entry(VAL_SERIES(struct_specs), &key, 0, TRUE);
+		found = Find_Struct_Spec(&key);
 	}
-	if (n == NOT_FOUND) {
+	if (found == NULL) {
 		if (!IS_BLOCK(data)) {
 			Trap_Arg(data);
 		}
@@ -736,7 +752,7 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 		new_spec = TRUE;
 	}
 	else {
-		spec = *VAL_BLK_SKIP(struct_specs, n);
+		spec = *found;
 	}
 
 	REBSTU *stu = &VAL_STRUCT(out);
@@ -774,6 +790,10 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 		VAL_STRUCT_COUNT(out) = field_num;
 		BARE_SERIES(VAL_STRUCT_FIELDS(out));                  // does not hold Rebol values
 		KEEP_SERIES(VAL_STRUCT_FIELDS(out), "struct_fields"); // protect from GC
+		// The specification knows its field list (spec->series) - keep also the
+		// opposite direction, so that the specification may be resolved from a
+		// bare field list (used when molding a vector of structs).
+		FIELDS_SPEC(VAL_STRUCT_FIELDS(out)) = VAL_SERIES(&spec);
 		SERIES_TAIL(VAL_STRUCT_FIELDS(out)) = field_num = 1;  // info at the head
 		VAL_STRUCT_ID(out) = hash;
 
@@ -1034,7 +1054,7 @@ static REBOOL parse_field_type(REBSTU *stu, REBSTF *field, REBVAL *spec)
 			}
 			return IS_STRUCT(a) && IS_STRUCT(b)
 				 && VAL_STRUCT_SIZE(a) == VAL_STRUCT_SIZE(b)
-				 && same_fields(VAL_STRUCT_FIELDS(a), VAL_STRUCT_FIELDS(b))
+				 && Same_Struct_Fields(VAL_STRUCT_FIELDS(a), VAL_STRUCT_FIELDS(b))
 				 && !memcmp(VAL_STRUCT_DATA_BIN(a), VAL_STRUCT_DATA_BIN(b), VAL_STRUCT_SIZE(a));
 		default:
 			return -1;
@@ -1055,7 +1075,14 @@ static void Copy_Struct(REBSTU *src, REBSTU *dst)
 	COPY_MEM(STRUCT_DATA_BIN(dst), STRUCT_DATA_BIN(src), STRUCT_SIZE(src));
 }
 
-static void Copy_Struct_Val(REBVAL *src, REBVAL *dst)
+/***********************************************************************
+**
+*/	void Copy_Struct_Value(REBVAL *src, REBVAL *dst)
+/*
+**		Makes an independent copy of a struct value - the copy has its
+**		own data series, so the source may be just a view.
+**
+***********************************************************************/
 {
 	SET_STRUCT(dst);
 	Copy_Struct(&VAL_STRUCT(src), &VAL_STRUCT(dst));
@@ -1155,7 +1182,7 @@ static void init_fields(REBVAL *ret, REBVAL *spec)
 				// Raw data must never be used with a struct holding Rebol values,
 				// no matter how long the data are!
 				if (IS_BINARY(arg) && VAL_STRUCT_PROTECTED(val)) Trap0(RE_PROTECTED);
-				Copy_Struct_Val(val, ret);
+				Copy_Struct_Value(val, ret);
 				/* only accept value initialization */
 				if (IS_BLOCK(arg)) {
 					// The values are used as they are, like in the construction
@@ -1228,6 +1255,23 @@ static void init_fields(REBVAL *ret, REBVAL *spec)
 			break;
 		//TODO: A_QUERY to access struct's name and id?
 
+		case A_PICK:
+		case A_SELECT:
+			// Access a field by its name, like: pick s 'x
+			if (!IS_STRUCT(val)) goto is_arg_error;
+			if (!IS_WORD(arg)) Trap_Arg(arg);
+			if (!Get_Struct_Var(&VAL_STRUCT(val), arg, ret)) return R_NONE;
+			break;
+
+		case A_POKE:
+			// Set a field by its name, like: poke s 'x 42
+			if (!IS_STRUCT(val)) goto is_arg_error;
+			if (!IS_WORD(arg)) Trap_Arg(arg);
+			TRAP_PROTECT(VAL_STRUCT_DATA(val));
+			if (!Set_Struct_Var(&VAL_STRUCT(val), arg, NULL, D_ARG(3)))
+				Trap_Arg(D_ARG(3));
+			return R_ARG3;
+
 		case A_LENGTHQ:
 			SET_INTEGER(ret, VAL_STRUCT_SIZE(val));
 			break;
@@ -1240,7 +1284,7 @@ static void init_fields(REBVAL *ret, REBVAL *spec)
 			// Allow only a simple copy without any refinements.
 			if (D_REF(ARG_COPY_PART) || D_REF(ARG_COPY_DEEP) || D_REF(ARG_COPY_TYPES))
 				Trap0(RE_BAD_REFINES);
-			Copy_Struct_Val(val, ret);
+			Copy_Struct_Value(val, ret);
 			break;
 
 		default:

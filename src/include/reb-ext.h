@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,7 +22,7 @@
 **
 **  Summary: Extensions Include File
 **  Module:  reb-ext.h
-**  Author:  Carl Sassenrath
+**  Author:  Carl Sassenrath, Oldes
 **  Notes:
 **
 ***********************************************************************/
@@ -84,8 +84,9 @@ typedef union rxi_arg_val {
 	};
 	struct {
 		void *image;
-		int width:16;
-		int height:16;
+		REBCNT width:16;
+		REBCNT height:16;
+		REBCNT image_index;
 	};
 	struct {
 		union {
@@ -107,6 +108,11 @@ typedef union rxi_arg_val {
 		REBCNT offset;  // like series' index (used with nested structs)
 		REBCNT id;      // unique struct id counted as a hash of its specification
 	} structure;
+	struct {
+		REBSER *series;
+		REBCNT index;
+		REBCNT info;
+	} vector;
 
 } RXIARG;
 
@@ -128,6 +134,32 @@ typedef struct rxi_cmd_context {
 typedef int (*RXICAL)(int cmd, RXIFRM *args, REBCEC *ctx);
 
 #pragma pack()
+
+// Resolved description of a struct argument, filled by RL_Struct_Info().
+//
+// A struct value is only a view into a data series: the root struct and every
+// (nested) struct field share one data series and differ just in the spec and
+// the offset. So the size of THIS struct can never be derived from the data
+// series - it lives in the specification and must be looked up by the id.
+typedef struct rxi_struct_info {
+	REBYTE *data;   // first byte of THIS struct (root data + offset)
+	REBCNT  size;   // size of THIS struct, in bytes
+	REBCNT  count;  // number of fields
+	REBCNT  id;     // spec id (hash of the specification block)
+	REBCNT  flags;  // STRUCT_FLAG_MARK | STRUCT_FLAG_PROTECTED
+	REBSER *fields; // field list series: REBSTI header + REBSTF[count]
+} RXISTRU;
+
+// Field list of a resolved struct (the REBSTI header is skipped).
+#define RXI_STRUCT_FIELDS(i)    ((REBSTF *)BLK_HEAD((i)->fields) + 1)
+
+// TRUE when an extension may write raw bytes into the struct's data.
+// STRUCT_FLAG_MARK data holds real REBVALs which the GC walks, and
+// STRUCT_FLAG_PROTECTED forbids raw modification outright. Reading is
+// always allowed - this gates writes only.
+#define RXI_STRUCT_WRITABLE(i)  \
+	(((i)->flags & (STRUCT_FLAG_MARK | STRUCT_FLAG_PROTECTED)) == 0)
+
 
 // Access macros (indirect access via RXIFRM pointer):
 #define RXA_ARG(f,n)            ((f)->args[n])
@@ -160,11 +192,24 @@ typedef int (*RXICAL)(int cmd, RXIFRM *args, REBCEC *ctx);
 #define RXA_IMAGE_BITS(f,n)     ((REBYTE *)RL_SERIES((RXA_ARG(f,n).image), RXI_SER_DATA))
 #define RXA_IMAGE_WIDTH(f,n)    (RXA_ARG(f,n).width)
 #define RXA_IMAGE_HEIGHT(f,n)   (RXA_ARG(f,n).height)
-#define RXA_STRUCT_SER(f,n)		((RXA_ARG(f,n).structure.series))
-#define RXA_STRUCT_BIN(f,n)     ((REBYTE *)(SERIES_DATA(RXA_STRUCT_SER(f,n))) + RXA_INDEX(f,n))
-#define RXA_STRUCT_LEN(f,n)     (SERIES_TAIL(RXA_STRUCT_SER(f,n)) - RXA_INDEX(f,n)) // length in bytes
+#define RXA_IMAGE_INDEX(f,n)    (RXA_ARG(f,n).image_index)
+// The pixel the value is AT, and how many pixels are left from there -
+// the counterparts of VAL_IMAGE_DATA and VAL_IMAGE_LEN.
+#define RXA_IMAGE_DATA(f,n)     (RXA_IMAGE_BITS(f,n) + (RXA_IMAGE_INDEX(f,n) * 4))
+#define RXA_IMAGE_LEN(f,n)      (((REBCNT)RXA_IMAGE_WIDTH(f,n) * (REBCNT)RXA_IMAGE_HEIGHT(f,n)) \
+                                 - RXA_IMAGE_INDEX(f,n))
+
+#define RXA_STRUCT_SER(f,n)     (RXA_ARG(f,n).structure.series)
+#define RXA_STRUCT_OFFSET(f,n)  (RXA_ARG(f,n).structure.offset)
 #define RXA_STRUCT_ID(f,n)      (RXA_ARG(f,n).structure.id)
-#define RXA_STRUCT_SPEC(f,n)	(RL_STRUCT_SPEC(RXA_STRUCT_ID(f,n)))
+#define RXA_STRUCT_SPEC(f,n)    (RL_STRUCT_SPEC(RXA_STRUCT_ID(f,n)))
+// Resolve a struct argument in one lookup. Returns FALSE for an unknown spec
+// id or a view which does not fit into its data series - ALWAYS check it.
+#define RXA_STRUCT_INFO(f,n,i)  (RL_STRUCT_INFO(&RXA_ARG(f,n), (i)))
+
+#define RXA_VECTOR_SERIES(f,n)  (RXA_ARG(f,n).vector.series)
+#define RXA_VECTOR_INDEX(f,n)   (RXA_ARG(f,n).vector.index)
+#define RXA_VECTOR_INFO(f,n)    (RXA_ARG(f,n).vector.info)
 
 // Command function return values:
 enum rxi_return {
@@ -188,6 +233,20 @@ enum {
 	RXI_SER_WIDE,	// width of series (in bytes)
 	RXI_SER_LEFT,	// units free in series (past tail)
 };
+
+// Vector info
+#define RXI_VEC_TYPE_MASK   0x00000003
+#define RXI_VEC_SIGN_MASK   0x00000004
+#define RXI_VEC_FLOAT_MASK  0x00000008
+#define RXI_VEC_ROWS_SHIFT  8
+
+#define RXI_VECTOR_TYPE(info)   ((info) & 0x000000FF)
+#define RXI_VECTOR_BITS(info)   (8 << ((info) & RXI_VEC_TYPE_MASK))
+#define RXI_VECTOR_SIGNED(info) (((info) & RXI_VEC_SIGN_MASK) == 0)
+#define RXI_VECTOR_FLOAT(info)  (((info) & RXI_VEC_FLOAT_MASK) != 0)
+#define RXI_VECTOR_ROWS(info)   ((REBCNT)(info) >> RXI_VEC_ROWS_SHIFT)
+#define RXI_VECTOR_COLS(tail, info) \
+	(RXI_VECTOR_ROWS(info) ? ((REBCNT)(tail) / RXI_VECTOR_ROWS(info)) : 0)
 
 // Error Codes (returned in result value from some API functions):
 enum {

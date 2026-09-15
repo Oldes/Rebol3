@@ -644,27 +644,53 @@ RL_API void *RL_Make_Image(u32 width, u32 height)
 	return Make_Image(width, height, FALSE);
 }
 
-RL_API void *RL_Make_Vector(REBINT type, REBINT sign, REBINT dims, REBINT bits, REBINT size)
+RL_API int RL_Make_Vector(RXIARG *out, REBCNT type, REBINT cols, REBINT rows)
 /*
-**	Allocate a new vector of the given attributes.
+**	Allocate a new vector series with the given element type and shape.
 **
 **	Returns:
-**		A pointer to a vector series or zero.
+**		1 on success, 0 on failure. On failure `out` is left untouched.
+**		Fails if `type` is not a valid element type, if `cols` is
+**		negative, if `rows` is less than 1 or too large to encode, or
+**		if the total element count cannot be allocated.
 **	Arguments:
-**		type: the datatype
-**		sign: signed or unsigned
-**		dims: number of dimensions
-**		bits: number of bits per unit (8, 16, 32, 64)
-**		size: number of values
+**		out:  RXIARG to receive the vector (series, index and info)
+**		type: element type, one of the VT* values (VTSI08..VTSF64)
+**		cols: number of columns (0 makes an empty vector)
+**		rows: number of rows; 1 for an unshaped (plain) vector
 **	Notes:
-**		Allocated with REBOL's internal memory manager.
-**		Vectors are automatically garbage collected if there are
-**		no references to them from REBOL code (C code does nothing.)
+**		Contents are zero-filled. The element type and row count are
+**		encoded together in `out->vector.info`; use the VECT_* macros
+**		rather than unpacking it by hand. The VT* numbering is part of
+**		the extension ABI and must not be reordered.
+**
+**		A vector with more than one row is length-locked, matching
+**		vectors shaped from Rebol: rows travel with the value while the
+**		buffer length is shared, so APPEND/INSERT/CLEAR on it will error.
+**
+**		Allocated with REBOL's internal memory manager and garbage
+**		collected once no REBOL value references it. Until the returned
+**		RXIARG reaches REBOL, nothing references the series -- do not
+**		call other RL_ functions that may allocate in between.
 */
 {
-	// check if bits is valid 
-	if(!(bits == 8 || bits == 16 || bits == 32 || bits == 64)) return 0;
-	return Make_Vector(type, sign, dims, bits, size);
+	// Arguments come from third-party C -- validate before they reach the
+	// jump tables, where a bad type would be called as a function pointer.
+	if (type >= VT_MAX) return 0;
+	if (cols < 0 || rows < 1) return 0;
+	if ((REBCNT)rows > VECT_INFO_ROWS_MAX) return 0;   // must survive the shift
+
+	REBSER *ser = Make_Vector_Series(cols, VECT_WIDE(type), rows);
+	if (!ser) return 0;
+
+	// Match Set_Vector_Shape: a shaped vector's buffer is length-locked,
+	// because rows lives in the value while tail is shared.
+	if (rows > 1) SERIES_SET_FLAG(ser, SER_SIZEP);
+
+	out->vector.series = ser;
+	out->vector.index = 0;
+	out->vector.info = (type & VECT_INFO_TYPE_MASK) | (rows << VECT_INFO_ROWS_SHIFT);
+	return 1;
 }
 
 RL_API void RL_Protect_GC(REBSER *series, u32 flags)
@@ -1385,6 +1411,159 @@ RL_API REBCNT RL_Decode_UTF8_Char(const REBYTE *str, REBCNT *len)
 	return Register_Compress_Method(sym, encoder, decoder);
 }
 
+/***********************************************************************
+**
+*/	RL_API REBFLG RL_Struct_Info(RXIARG *arg, RXISTRU *out)
+/*
+**	Resolve a struct argument into a directly usable description.
+**
+**	A struct value is a view into a shared data series, so its size and
+**	flags live in the specification, not in the series. This performs the
+**	spec lookup once and validates that the view fits into the data.
+**
+**	Returns:
+**		TRUE when the argument describes a usable struct, else FALSE
+**		(no data series, unknown spec id, or the view runs past the data).
+**	Arguments:
+**		arg - struct argument as received in a command frame
+**		out - filled with data pointer, size, count, id, flags, field list
+*/
+{
+	REBSER *data;
+	REBSER *spec;
+	REBSTI *info;
+
+	if (!out) return FALSE;
+	CLEARS(out);
+	if (!arg || !(data = arg->structure.series)) return FALSE;
+
+	spec = RL_Struct_Spec(arg->structure.id);
+	if (!spec || !spec->series) return FALSE;
+
+	info = (REBSTI *)BLK_HEAD(spec->series);
+
+	// A malformed or hostile RXIARG must not become an out of bounds write.
+	if ((REBU64)arg->structure.offset + (REBU64)info->size
+		> (REBU64)SERIES_TAIL(data)) return FALSE;
+
+	out->data   = BIN_SKIP(data, arg->structure.offset);
+	out->size   = info->size;
+	out->count  = info->count;
+	out->id     = info->id;
+	out->flags  = info->flags;
+	out->fields = spec->series;
+	return TRUE;
+}
+
+/***********************************************************************
+**
+*/	RL_API REBFLG RL_Make_Struct(RXIARG *out, REBCNT id, RXISTRU *info)
+/*
+**	Create a new struct value of an already registered specification.
+**
+**	The specification must already exist in system/catalog/structs, where
+**	Prepare_Struct interns it when Rebol code evaluates `make struct!
+**	[...]` - so an extension instantiates a shape its own module declared
+**	rather than defining one in C. The data series is allocated zeroed and
+**	is owned by the struct.
+**
+**	The zeroing is required, not incidental: a zeroed `rebval!` field reads
+**	as END, which get_scalar reports as none and Mark_Struct_Fields skips.
+**	Uninitialized bytes there would be marked by the GC as garbage values.
+**
+**	Like RL_Make_String and RL_Make_Block, the result is protected from the
+**	GC only as a recently allocated series. Store it into a command frame
+**	argument and return it; do not hold it across a large number of other
+**	allocations.
+**
+**	Returns:
+**		TRUE when the struct was created, else FALSE (unknown spec id or
+**		a zero-sized specification).
+**	Arguments:
+**		out  - command frame argument which receives the new struct
+**		id   - spec id (hash of the specification block)
+**		info - filled like RL_Struct_Info; may be NULL
+*/
+{
+	REBSER *spec;
+	REBSER *fields;
+	REBSER *data;
+	REBSTI *sti;
+
+	if (!out) return FALSE;
+	if (info) CLEARS(info);
+
+	spec = RL_Struct_Spec(id);
+	if (!spec || !spec->series) return FALSE;
+
+	fields = spec->series;
+	sti    = (REBSTI *)BLK_HEAD(fields);
+	if (sti->size == 0) return FALSE;
+
+	// The struct always owns its data. Make_Binary clears the memory - see
+	// the note above, this is what makes a value-holding struct safe here.
+	data = Make_Binary(sti->size);
+	BARE_SERIES(data); // values in it are marked by Mark_Struct, not as a block
+	LABEL_SERIES(data, "struct_data");
+	SERIES_TAIL(data) = sti->size;
+	// Remember the root field list in the (otherwise unused) series link so
+	// that the GC can mark ALL values in the data, even when they are later
+	// reached only from a view into a nested part. Same as MT_Struct does
+	// via STRUCT_DATA_ROOT(), which needs a REBSTU we do not have here.
+	data->series = fields;
+
+	out->structure.series = data;
+	out->structure.offset = 0;
+	out->structure.id     = sti->id;
+
+	if (info) {
+		info->data   = BIN_HEAD(data);
+		info->size   = sti->size;
+		info->count  = sti->count;
+		info->id     = sti->id;
+		info->flags  = sti->flags;
+		info->fields = fields;
+	}
+	return TRUE;
+}
+
+/***********************************************************************
+**
+*/	RL_API void* RL_Alloc(size_t size)
+/*
+**	Allocate memory that the interpreter itself may free.
+**
+**	Unlike RL_Mem_Alloc, this is the interpreter's plain accounted
+**	allocator - the same one used internally by Make_Mem - so a buffer
+**	handed back to the core (for example a codec's output, freed by
+**	DO-CODEC with a known size) must come from here, not from
+**	RL_Mem_Alloc, whose result carries a hidden header and may live in
+**	a memory pool. Free with RL_Free and the size passed to RL_Alloc.
+**
+**	Returns:
+**		Pointer to uninitialized memory, or 0 on failure.
+**	Arguments:
+**		size - number of bytes
+*/
+{
+	return Make_Mem(size);
+}
+
+/***********************************************************************
+**
+*/	RL_API void RL_Free(void *mem, size_t size)
+/*
+**	Frees memory allocated with RL_Alloc. The size must match.
+**
+**	Returns:
+**		nothing
+**	Arguments:
+**		mem  - pointer to initialized memory
+**		size - number of bytes
+*/
+{
+	Free_Mem(mem, size);
+}
 
 
 #include "reb-lib-lib.h"

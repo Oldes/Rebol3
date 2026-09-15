@@ -22,7 +22,7 @@ product:  'core
 ; Next four fields are updated during build:
 platform: none
 version:  0.0.0
-build:    object [os: os-version: abi: sys: arch: libc: vendor: target: compiler: date: git: none]
+build:    object [os: os-version: abi: sys: arch: libc: vendor: target: compiler: date: git: extension-abi: none]
 
 user: construct [
 	name: none
@@ -564,15 +564,18 @@ standard: object [
 	]
 
 	vector-info: construct [
-		signed:     ; false if unsigned (always true for decimals)
-		type:       ; integer! or decimal! so far
-		size:       ; size per value in bits
-		length:     ; number of values
+		element-type: ; concrete vector element datatype (uint8!, int32!, float64!, ...)
+		signed:       ; false if unsigned (always true for decimals)
+		type:         ; integer! or decimal! so far
+		size:         ; size per value in bits
+		length:       ; number of values
+		shape:        ; cols and rows as a pair
+		shaped:       ; returns TRUE whether the vector has more than one row
 		minimum:
 		maximum:
-		range:      ; maximum - minimum
+		range:        ; maximum - minimum
 		sum:
-		mean:       ; average
+		mean:         ; average
 		median:
 		variance:
 		sample-variance:
