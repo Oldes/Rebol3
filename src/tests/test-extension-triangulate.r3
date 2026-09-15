@@ -22,29 +22,29 @@ print ["Running test on Rebol build:" mold to-block system/build]
 system/options/quiet: false
 system/options/log/rebol: 4
 
-;; Make sure that we load a fresh extension - the module directory may hold a
-;; previously installed copy, which would import cleanly and quietly make
-;; every test below meaningless.
-try [system/modules/triangulate: none]
-
-if CI?: any [
-	"true" = get-env "CI"
-	"true" = get-env "GITHUB_ACTIONS"
-	"true" = get-env "TRAVIS"
-	"true" = get-env "CIRCLECI"
-	"true" = get-env "GITLAB_CI"
-][
-	;; configure modules location for the CI test
-	system/options/modules: dirize to-rebol-file any [
-		get-env 'REBOL_MODULES_DIR
-		what-dir
+unless find system/options/args "--internal" [
+	either CI?: any [
+		"true" = get-env "CI"
+		"true" = get-env "GITHUB_ACTIONS"
+		"true" = get-env "TRAVIS"
+		"true" = get-env "CIRCLECI"
+		"true" = get-env "GITLAB_CI"
+	][
+		system/options/modules: dirize to-rebol-file any [
+			get-env 'REBOL_MODULES_DIR
+			what-dir
+		]
+		;; CI Test still prioritize existing module
+	][
+		;; Make sure that we load a fresh extension - the module directory may hold a
+		;; previously installed copy, which would import cleanly and quietly make
+		;; every test below meaningless.
+		try [system/modules/sqlite: none]
 	]
-]
 
-;; Honour an explicit directory outside CI as well, so a local run can be
-;; pointed at the build output without pretending to be a CI runner.
-if all [not CI?  modules-dir: get-env 'REBOL_MODULES_DIR][
-	system/options/modules: dirize to-rebol-file modules-dir
+	if all [not CI?  modules-dir: get-env 'REBOL_MODULES_DIR][
+		system/options/modules: dirize to-rebol-file modules-dir
+	]
 ]
 
 ;; NOTE: the module and its only command share the name `triangulate`, so the

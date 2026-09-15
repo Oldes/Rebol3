@@ -27,12 +27,7 @@ system/options/quiet: false
 system/options/log/rebol: 4
 
 unless find system/options/args "--internal" [
-	;; Make sure that we load a fresh extension - the module directory may hold a
-	;; previously installed copy, which would import cleanly and quietly make
-	;; every test below meaningless.
-	try [system/modules/qoi: none]
-
-	if CI?: any [
+	either CI?: any [
 		"true" = get-env "CI"
 		"true" = get-env "GITHUB_ACTIONS"
 		"true" = get-env "TRAVIS"
@@ -43,6 +38,12 @@ unless find system/options/args "--internal" [
 			get-env 'REBOL_MODULES_DIR
 			what-dir
 		]
+		;; CI Test still prioritize existing module
+	][
+		;; Make sure that we load a fresh extension - the module directory may hold a
+		;; previously installed copy, which would import cleanly and quietly make
+		;; every test below meaningless.
+		try [system/modules/sqlite: none]
 	]
 
 	if all [not CI?  modules-dir: get-env 'REBOL_MODULES_DIR][
