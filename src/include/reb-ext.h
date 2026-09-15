@@ -84,8 +84,9 @@ typedef union rxi_arg_val {
 	};
 	struct {
 		void *image;
-		int width:16;
-		int height:16;
+		REBCNT width:16;
+		REBCNT height:16;
+		REBCNT image_index;
 	};
 	struct {
 		union {
@@ -191,6 +192,12 @@ typedef struct rxi_struct_info {
 #define RXA_IMAGE_BITS(f,n)     ((REBYTE *)RL_SERIES((RXA_ARG(f,n).image), RXI_SER_DATA))
 #define RXA_IMAGE_WIDTH(f,n)    (RXA_ARG(f,n).width)
 #define RXA_IMAGE_HEIGHT(f,n)   (RXA_ARG(f,n).height)
+#define RXA_IMAGE_INDEX(f,n)    (RXA_ARG(f,n).image_index)
+// The pixel the value is AT, and how many pixels are left from there -
+// the counterparts of VAL_IMAGE_DATA and VAL_IMAGE_LEN.
+#define RXA_IMAGE_DATA(f,n)     (RXA_IMAGE_BITS(f,n) + (RXA_IMAGE_INDEX(f,n) * 4))
+#define RXA_IMAGE_LEN(f,n)      (((REBCNT)RXA_IMAGE_WIDTH(f,n) * (REBCNT)RXA_IMAGE_HEIGHT(f,n)) \
+                                 - RXA_IMAGE_INDEX(f,n))
 
 #define RXA_STRUCT_SER(f,n)     (RXA_ARG(f,n).structure.series)
 #define RXA_STRUCT_OFFSET(f,n)  (RXA_ARG(f,n).structure.offset)
