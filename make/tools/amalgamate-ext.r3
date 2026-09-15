@@ -97,6 +97,7 @@ context [
 		%reb-args.h
 		%reb-ext.h
 		%reb-ext-handler.h
+		%reb-codec.h
 		%reb-device.h
 		%reb-file.h
 		%reb-filereq.h

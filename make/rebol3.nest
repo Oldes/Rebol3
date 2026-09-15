@@ -18,7 +18,7 @@ temp:     %make/tmp/
 stack-size: 4194304 ;= 4MB (4 * 1024 * 1024)
 optimize:   2
 
-version: 3.22.5
+version: 3.22.6
 extension-abi: 1
 remove-docstrings: off
 
@@ -470,7 +470,7 @@ include-image-natives: [
 
 include-native-bmp-codec: [config: INCLUDE_BMP_CODEC core-files: %core/u-bmp.c]
 include-native-png-codec: [config: INCLUDE_PNG_CODEC core-files: %core/u-png.c core-files: %core/u-zlib.c]
-include-native-qoi-codec: [config: INCLUDE_QOI_CODEC core-files: %core/u-qoi.c]
+include-native-qoi-codec: [:include-ext-qoi] ;; embedded extension
 include-native-jpg-codec: [config: INCLUDE_JPG_CODEC core-files: %core/u-jpg.c]
 include-native-gif-codec: [config: INCLUDE_GIF_CODEC core-files: %core/u-gif.c]
 
@@ -1315,6 +1315,7 @@ make-ext: [
 	define:   REB_EXT
 	flags:    [-O2 shared]
 	compiler: clang
+	#if Windows? [ upx: on ]
 	#if Linux?   [ flag: -fPIC compiler: gcc ]
 	#if MacOS?   [ flag: fno-common :target-macos strip: off ]
 	#if OpenBSD? [ flag: -fPIC :target-openbsd ]
@@ -1457,6 +1458,15 @@ include-ext-triangulate: [
 	do %make/tools/make-extension.r3 "${NEST_ROOT}/src/extensions/triangulate/triangulate.reb"
 ]
 
+include-ext-qoi: [
+	clean: %extensions/qoi/qoi.c ;; always recompile (contains Rebol code)
+	host-files: [
+		%extensions/qoi/qoi.c
+		%extensions/qoi/qoi-commands.c
+		%extensions/qoi/gen-qoi.c
+	]
+	do %make/tools/make-extension.r3 "${NEST_ROOT}/src/extensions/qoi/qoi.reb"
+]
 
 ;; standalone libraries
 make-ext-easing:      [ host-files: _ :include-ext-easing      files: only :host-files :make-ext ]
@@ -1466,6 +1476,7 @@ make-ext-miniaudio:   [ host-files: _ :include-ext-miniaudio   files: only :host
 make-ext-speak:       [ host-files: _ :include-ext-speak       files: only :host-files :make-ext ]
 make-ext-sqlite:      [ host-files: _ :include-ext-sqlite      files: only :host-files :make-ext ]
 make-ext-triangulate: [ host-files: _ :include-ext-triangulate files: only :host-files :make-ext ]
+make-ext-qoi:         [ host-files: _ :include-ext-qoi         files: only :host-files :make-ext ]
 
 eggs: [
 	#if Windows? [
@@ -2242,6 +2253,10 @@ eggs: [
 	"MiniAudio extension 32bit"     [ name: %miniaudio-x86.rebx   :arch-x86   :make-ext-miniaudio ]
 	"MiniAudio extension 64bit"     [ name: %miniaudio-x64.rebx   :arch-x64   :make-ext-miniaudio ]
 	"MiniAudio extension ARM 64bit" [ name: %miniaudio-arm64.rebx :arch-arm64 :make-ext-miniaudio ]
+
+	"QOI Codec extension 32bit"     [ name: %qoi-x86.rebx   :arch-x86   :make-ext-qoi ]
+	"QOI Codec extension 64bit"     [ name: %qoi-x64.rebx   :arch-x64   :make-ext-qoi ]
+	"QOI Codec extension ARM 64bit" [ name: %qoi-arm64.rebx :arch-arm64 :make-ext-qoi ]
 
 #if (any [Windows? MacOS?]) [
 	"Speak extension 32bit"     [ name: %speak-x86.rebx   :arch-x86   :make-ext-speak ]
