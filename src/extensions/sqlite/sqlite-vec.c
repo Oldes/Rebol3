@@ -769,11 +769,14 @@ static f32 distance_hamming_u8(u8 *a, u8 *b, size_t n) {
 }
 
 #ifdef _MSC_VER
-#if !defined(__clang__) && (defined(_M_ARM) || defined(_M_ARM64))
+#if !defined(__clang__) && (defined(_M_ARM) || defined(_M_ARM64) || defined(_M_IX86))
 // From
 // https://github.com/ngtcp2/ngtcp2/blob/b64f1e77b5e0d880b93d31f474147fae4a1d17cc/lib/ngtcp2_ringbuf.c,
 // line 34-43
-static unsigned int __builtin_popcountl(unsigned int x) {
+// NOTE: the parameter must be 64 bits wide - distance_hamming_u64() calls
+// this with `va ^ vb`, where both are u64. With an `unsigned int` parameter
+// the upper half is dropped and the reported distance is wrong.
+static unsigned int __builtin_popcountl(unsigned long long x) {
   unsigned int c = 0;
   for (; x; ++c) {
     x &= x - 1;
