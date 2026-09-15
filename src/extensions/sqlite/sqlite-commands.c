@@ -243,7 +243,10 @@ COMMAND cmd_sqlite_close(RXIFRM* frm, void* reb_ctx) {
 
 	RESOLVE_SQLITE_CTX(ctx, 1);
 	if(ctx && ctx->db) {
-		sqlite3_close(ctx->db);
+		// close_v2, so that closing a connection whose statements are still
+		// open does not silently leak it - the handle is cleared here either
+		// way, so sqlite3_close()'s SQLITE_BUSY would leave it unreachable.
+		sqlite3_close_v2(ctx->db);
 		ctx->db = NULL;
 	}
 	return RXR_UNSET;
@@ -929,7 +932,13 @@ COMMAND cmd_sqlite_step(RXIFRM* frm, void* reb_ctx) {
 int SQLiteDBHandle_free(void *ctx) {
 	SQLITE_CONTEXT *c = (SQLITE_CONTEXT*)ctx;
 	debug_print("releasing sqlite db: %p\n", c->db);
-	if (c->db) sqlite3_close((sqlite3*)c->db);
+	// close_v2 and not close: the recycler releases handles in an arbitrary
+	// order, so a statement of this connection may still be alive here.
+	// sqlite3_close() refuses to close in that case (SQLITE_BUSY) and the
+	// connection leaks - leaving the database file locked on Windows.
+	// close_v2 marks it a zombie instead and frees it once the last of its
+	// statements is finalized. It is meant exactly for garbage collected hosts.
+	if (c->db) sqlite3_close_v2((sqlite3*)c->db);
 	return 0;
 }
 
