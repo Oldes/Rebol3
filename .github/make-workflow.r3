@@ -7,17 +7,32 @@ spec: [
 	branches: "[master]"
 	build: [
 		windows: [
-			"Rebol/Base x86"   %rebol3-base-windows-x86
-			"Rebol/Bulk x86"   %rebol3-bulk-windows-x86
-			"Rebol/Base x64"   %rebol3-base-windows-x64
-			"Rebol/Bulk x64"   %rebol3-bulk-windows-x64
+			runs-on: 'windows-latest
+			flags: "--msvc"
+			artifact-suffix: "exe"
+			targets: [
+				"Rebol/Base x86"   %rebol3-base-windows-x86
+				"Rebol/Bulk x86"   %rebol3-bulk-windows-x86
+				"Rebol/Base x64"   %rebol3-base-windows-x64
+				"Rebol/Bulk x64"   %rebol3-bulk-windows-x64
+			]
 		]
 		linux: [
-			"Rebol/Bulk x64"   %rebol3-bulk-linux-x64
+			runs-on: 'ubuntu-latest
+			flags: "--gzip"
+			artifact-suffix: "gz"
+			targets: [
+				"Rebol/Bulk x64"   %rebol3-bulk-linux-x64
+			]
 		]
 		macos: [
-			"Rebol/Bulk x64"   %rebol3-bulk-macos-x64
-			"Rebol/Bulk arm64" %rebol3-bulk-macos-arm64
+			runs-on: 'macos-latest
+			flags: "--gzip"
+			artifact-suffix: "gz"
+			targets: [
+				"Rebol/Bulk x64"   %rebol3-bulk-macos-x64
+				"Rebol/Bulk arm64" %rebol3-bulk-macos-arm64
+			]
 		]
 	]
 
@@ -40,18 +55,12 @@ make-workflow: function/with [spec] [
 	out: make string! 5000
 	emit-form template-header
 	emit "^/jobs:"
-	foreach [host targets] ctx/build [
-		ctx/HOST: host
-		either host = 'windows [
-			ctx/FLAGS: "--msvc"
-			ctx/ARTIFACT_SUFFIX: "exe"
-		][
-			ctx/FLAGS: "--gzip"
-			ctx/ARTIFACT_SUFFIX: "gz"
-		]
+	foreach [host host-spec] ctx/build [
+		ctx: make ctx host-spec
+		ctx/host: host
 		append clear ctx/steps LF
 		apps: clear []
-		foreach [title target] targets [
+		foreach [title target] ctx/targets [
 			unless find ctx/no-test target [ append apps target ]
 			emit-step [
 				"    - name: ^"[BUILD] " title {"^/}
@@ -74,22 +83,22 @@ make-workflow: function/with [spec] [
 ][
 	out: ctx: _
 	values: object [
-		NAME: "CI"
-		HOST: "linux"
-		BRANCHES: ""
-		ACTION_CHECKOUT: "actions/checkout@v5"
-		ACTION_SISKIN:   "oldes/install-siskin@v0.21.15"
-		ACTION_UPLOAD:   "actions/upload-artifact@v5"
-		STEPS: ""
-		FLAGS: "--gzip"
-		ARTIFACT_SUFFIX: "gz"
+		name: "ci"
+		host: "linux"
+		runs-on: "ubuntu-latest"
+		branches: ""
+		action-checkout: "actions/checkout@v5"
+		action-siskin:   "oldes/install-siskin@v0.21.15"
+		action-upload:   "actions/upload-artifact@v5"
+		steps: ""
+		flags: "--gzip"
+		artifact-suffix: "gz"
 		build:   []
 		tests:   []
 		no-test: []
 	]
 
-	template-header: next %%{
-#########################################################
+	template-header: %%{#########################################################
 # This file is generated using make-workflow.r3 script! #
 #########################################################
 
@@ -115,17 +124,17 @@ on:
   @HOST@:
     strategy:
       fail-fast: true
-    runs-on: @HOST@-latest
+    runs-on: @RUNS-ON@
     steps:
     - name: Checkout repository
-      uses: @ACTION_CHECKOUT@
+      uses: @ACTION-CHECKOUT@
     - name: Install Siskin Builder
-      uses: @ACTION_SISKIN@
+      uses: @ACTION-SISKIN@
     @STEPS@
-    - uses: @ACTION_UPLOAD@
+    - uses: @ACTION-UPLOAD@
       with:
         name: @NAME@-${{github.run_id}}-@HOST@
-        path: ./rebol3-*.@ARTIFACT_SUFFIX@
+        path: ./rebol3-*.@ARTIFACT-SUFFIX@
 }%%
 	emit: func[value][
 		append out value
