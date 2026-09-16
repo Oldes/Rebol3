@@ -26,6 +26,10 @@ c-prefix:  XTEST
 c-header: {
 extern REBCNT Handle_XTest;
 
+extern REBDEV Dev_XTest;
+extern int    Xtest_Dev_Id;
+extern REBCNT Xtest_Dev_Polls;
+
 typedef struct XTest_Context {
 	REBCNT id;
 	REBCNT flags;
@@ -68,7 +72,7 @@ commands: [
 	xarg2:  ["return second arg" arg1 arg2]
 	xword0: ["return system word from internal string"]
 	xword1: ["return word from string" str [string!]]
-	xobj1:  ["return obj field value" obj [object!] field [word! lit-word!]]
+	xobj1:  ["return obj field value" obj [object! port!] field [word! lit-word!]]
 	xobj2:  ["print object's field names and types" obj [object!]]
 	calls:  ["test sync callback" context [object!] word [word!]]
 	calla:  ["test async callback" context [object!] word [word!]]
@@ -88,6 +92,9 @@ commands: [
 	stru:   ["test struct passing" val [struct!] /read "inspect only, do not modify the data"]
 	stru0:  ["make a new struct of the same specification" val [struct!]]
 	strua:  ["sum the elements of an integer array field" val [struct!] field [word!]]
+	xdev:      ["return the id of the device the extension registered"]
+	xdev-poll: ["return how many times that device has been polled"]
+	xdev-err:  ["try to register that device again; returns the RDR_ code" size [integer!] "REBDEV size to claim, 0 = the real one"]
 ]
 
 ;; ---------------------------------------------------------------------------
@@ -111,7 +118,7 @@ mezzanine: [
 	v: make struct! [a [int32! [4]] b [uint8!]]
 	w: make struct! [n [word! [2]]]
 	r: make struct! [v [rebval! [3]]]
-	z: none
+	z: dev-id: dev-polls: none
 
 	xtest: does [
 		foreach blk [
@@ -145,6 +152,11 @@ mezzanine: [
 			[calls lib 'negate]
 			[calls lib 'sine]
 			[calla lib 'print]
+			[
+				prin {^/^[[7mAsync call result (should be printed 1234):^[[0m }
+				wait 0.1 ;; let async events happen
+				()       ;; returns unset
+			]
 			[img0]
 			[c: do-commands [a: xarg0 b: xarg1 333 xobj1 system 'version] reduce [a b c]]
 			[cec0 [a: cec1 b: cec1 c: cec1] reduce [a b c]]
@@ -222,13 +234,35 @@ mezzanine: [
 			;; ...and the same through a struct the extension created.
 			[t: stru0 r  t/v: reduce [q 'middle z]  recycle  same? z last t/v]
  
+			;; --- device registration -------------------------------------
+			;; The extension added a device to the host device table. Any
+			;; positive id means a slot was assigned; a failure would be one
+			;; of the negative RDR_ codes.
+			[dev-id: xdev  all [integer? dev-id  dev-id > 0]]
+			;; The same device must not go in twice - it has one pending list.
+			[-2 = xdev-err 0]
+			;; A caller built against a different REBDEV layout is refused.
+			[-3 = xdev-err 1]
+			;; Neither refusal may consume a slot, so the id is unchanged.
+			[dev-id = xdev]
 
+			;; RDO_AUTO_POLL makes the host poll the device from OS_Wait even
+			;; with nothing pending. This is what lets an extension pump an OS
+			;; event queue during WAIT - the reason for registering at all.
+			[dev-polls: xdev-poll  wait 0.1  (xdev-poll) > dev-polls]
+
+			;; --- port! as a command argument ------------------------------
+			;; A port's payload is its object frame (VAL_PORT == VAL_OBJ_FRAME),
+			;; so it crosses as RXE_OBJECT and must come back as the same port,
+			;; not a copy and not a plain object.
+			[port? echo system/ports/event]
+			[same? system/ports/event echo system/ports/event]
+			;; ...and the frame the extension receives must be readable.
+			[object? xobj1 system/ports/event 'spec]
 		][
 			print [{^/^[[7mtest:^[[0m^[[1;32m} mold blk {^[[0m}]
 			print join {^[[1;33m} [do blk {^[[m}]
 		]
-		prin {^/^[[7mAsync call result (should be printed 1234):^[[0m }
-		wait 0.1 ;; let async events happen
 		exit
 	]
 ]

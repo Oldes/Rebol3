@@ -1565,6 +1565,30 @@ RL_API REBCNT RL_Decode_UTF8_Char(const REBYTE *str, REBCNT *len)
 	Free_Mem(mem, size);
 }
 
+/***********************************************************************
+**
+*/	RL_API int RL_Register_Device(REBDEV *dev, u32 dev_size)
+/*
+**	Add a device to the device table at run time.
+**
+**	Returns:
+**		The assigned device id (>= RDI_MAX), or a negative RDR_ code:
+**		RDR_TABLE_FULL, RDR_BAD_DEVICE or RDR_BAD_REBDEV.
+**	Arguments:
+**		dev      - device structure, usually from DEFINE_DEV
+**		dev_size - sizeof(REBDEV) as the caller sees it
+**	Notes:
+**		The device and its command table must stay valid for the life
+**		of the process - devices cannot be unregistered, so a library
+**		which registers one must not be unloaded.
+**
+**		Pass the id as req->device to reach the device; events are
+**		posted with EVM_DEVICE and evt.req, as for built-in devices.
+*/
+{
+	return OS_Register_Device(dev, dev_size);
+}
+
 
 #include "reb-lib-lib.h"
 

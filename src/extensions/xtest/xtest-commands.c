@@ -520,3 +520,28 @@ int XTestContext_mold(REBHOB *hob, REBSER *str) {
 	APPEND_STRING(str, "0#%lx id: %u", (unsigned long)(uintptr_t)hob->data, xtest->id);
 	return len;
 }
+
+//== device registration ======================================================
+
+COMMAND cmd_xtest_xdev(RXIFRM *frm, void *ctx) {
+	RXA_INT64(frm, 1) = (i64)Xtest_Dev_Id;
+	RXA_TYPE(frm, 1) = RXT_INTEGER;
+	return RXR_VALUE;
+}
+
+COMMAND cmd_xtest_xdev_poll(RXIFRM *frm, void *ctx) {
+	RXA_INT64(frm, 1) = (i64)Xtest_Dev_Polls;
+	RXA_TYPE(frm, 1) = RXT_INTEGER;
+	return RXR_VALUE;
+}
+
+// Registration must refuse a device already in the table and a caller whose
+// REBDEV does not match the host's - and neither refusal may consume a slot,
+// which is what the unchanged id in the test afterwards checks.
+COMMAND cmd_xtest_xdev_err(RXIFRM *frm, void *ctx) {
+	u32 size = (u32)RXA_INT64(frm, 1);
+	if (size == 0) size = sizeof(REBDEV);
+	RXA_INT64(frm, 1) = (i64)RL_REGISTER_DEVICE(&Dev_XTest, size);
+	RXA_TYPE(frm, 1) = RXT_INTEGER;
+	return RXR_VALUE;
+}

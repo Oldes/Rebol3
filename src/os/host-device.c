@@ -124,6 +124,10 @@ REBDEV *Devices[RDI_LIMIT] =
 	DEVICE_PTR_AUDIO,
 };
 
+// Slots in use. Built-in devices occupy 0..RDI_MAX-1; OS_Register_Device
+// appends above that. Devices are never removed, so this only grows.
+static REBCNT Dev_Count = RDI_MAX;
+
 
 static int Poll_Default(REBDEV *dev)
 {
@@ -278,7 +282,7 @@ static int Poll_Default(REBDEV *dev)
 
 /***********************************************************************
 **
-*/	OS_API int OS_Call_Device(REBINT device, REBCNT command)
+*/	OS_API int OS_Call_Device(REBCNT device, REBCNT command)
 /*
 **		Shortcut for non-request calls to device.
 **
@@ -294,7 +298,7 @@ static int Poll_Default(REBDEV *dev)
 	REBREQ req;
 
 	// Validate device:
-	if (device >= RDI_MAX || !(dev = Devices[device]))
+	if (device >= Dev_Count || !(dev = Devices[device]))
 		return -1;
 
 	// Validate command:
@@ -329,7 +333,7 @@ static int Poll_Default(REBDEV *dev)
 	req->error = 0; // A94 - be sure its cleared
 
 	// Validate device:
-	if (req->device >= RDI_MAX || !(dev = Devices[req->device])) {
+	if (req->device >= Dev_Count || !(dev = Devices[req->device])) {
 		req->error = RDE_NO_DEVICE;
 		return -1;
 	}
@@ -377,7 +381,7 @@ static int Poll_Default(REBDEV *dev)
 
 /***********************************************************************
 **
-*/	OS_API REBREQ *OS_Make_Devreq(int device)
+*/	OS_API REBREQ *OS_Make_Devreq(REBCNT device)
 /*
 ***********************************************************************/
 {
@@ -386,7 +390,7 @@ static int Poll_Default(REBDEV *dev)
 	int size;
 
 	// Validate device:
-	if (device >= RDI_MAX || !(dev = Devices[device]))
+	if (device >= Dev_Count || !(dev = Devices[device]))
 		return 0;
 
 	size = dev->req_size ? dev->req_size : sizeof(REBREQ);
@@ -417,7 +421,7 @@ static int Poll_Default(REBDEV *dev)
 
 /***********************************************************************
 **
-*/	OS_API int OS_Poll_Devices(void)
+*/	OS_API REBCNT OS_Poll_Devices(void)
 /*
 **		Poll devices for activity.
 **
@@ -431,15 +435,15 @@ static int Poll_Default(REBDEV *dev)
 **
 ***********************************************************************/
 {
-	int d;
-	int cnt = 0;
+	REBCNT d;
+	REBCNT cnt = 0;
 	REBDEV *dev;
-	//int cc = 0;
+//	REBCNT cc = 0;
 
 	//printf("Polling Devices\n");
 
 	// Check each device:
-	for (d = 0; d < RDI_MAX; d++) {
+	for (d = 0; d < Dev_Count; d++) {
 		dev = Devices[d];
 		if (dev && (dev->pending || GET_FLAG(dev->flags, RDO_AUTO_POLL))) {
 			// If there is a custom polling function, use it:
@@ -472,11 +476,12 @@ static int Poll_Default(REBDEV *dev)
 **
 ***********************************************************************/
 {
-	int d;
+	if (!Dev_Count) return 0; // should not happen, but just in case.
+	REBCNT d = Dev_Count - 1;
 	REBDEV *dev;
 
-	for (d = RDI_MAX-1; d >= 0; d--) {
-		dev = Devices[d];
+	while (d > 0 ) {
+		dev = Devices[d--];
 		if (dev && GET_FLAG(dev->flags, RDF_INIT) && dev->commands[RDC_QUIT]) {
 			dev->commands[RDC_QUIT]((REBREQ*)dev);
 		}
@@ -533,4 +538,46 @@ static int Poll_Default(REBDEV *dev)
 	OS_Do_Device(&req, RDC_QUERY); // wait for timer or other event
 
 	return 1;  // layer above should check delta again
+}
+
+/***********************************************************************
+**
+*/	OS_API REBCNT OS_Register_Device(REBDEV *dev, u32 dev_size)
+/*
+**		Add a device to the device table at run time.
+**
+**		Returns the new device id (>= RDI_MAX), or one of the negative
+**		RDR_ codes on failure.
+**
+**		The device is not initialized here. As for a built-in device,
+**		RDC_INIT runs on the first OS_Do_Device unless RDO_MUST_INIT.
+**
+**		There is no way to remove a device: the table keeps the pointer
+**		for the life of the process, and OS_Poll_Devices will call
+**		through it. A shared library which registers a device must
+**		therefore stay loaded.
+**
+***********************************************************************/
+{
+	REBCNT d;
+
+	// The caller compiled this struct against its own reb-device.h.
+	if (dev_size != sizeof(REBDEV)) return RDR_BAD_REBDEV;
+	if (!dev || !dev->commands) return RDR_BAD_DEVICE;
+
+	// max_command indexes commands[]; Poll_Default also assumes RDC_MAX.
+	if (dev->max_command == 0 || dev->max_command > RDC_MAX) return RDR_BAD_DEVICE;
+
+	// OS_Make_Devreq allocates req_size bytes and treats them as REBREQ.
+	if (dev->req_size != 0 && (REBLEN)dev->req_size < sizeof(REBREQ)) return RDR_BAD_DEVICE;
+
+	// One device, one pending list - registering twice would corrupt it.
+	for (d = 0; d < Dev_Count; d++)
+		if (Devices[d] == dev) return RDR_BAD_DEVICE;
+
+	if (Dev_Count >= RDI_LIMIT) return RDR_TABLE_FULL;
+
+	dev->pending = 0;
+	Devices[Dev_Count] = dev;
+	return Dev_Count++;
 }

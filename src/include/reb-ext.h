@@ -183,6 +183,7 @@ typedef struct rxi_struct_info {
 #define RXA_INDEX(f,n)          (RXA_ARG(f,n).index)
 #define RXA_OBJECT(f,n)         (RXA_ARG(f,n).addr)
 #define RXA_MODULE(f,n)         (RXA_ARG(f,n).addr)
+#define RXA_PORT(f,n)           (RXA_ARG(f,n).addr)
 #define RXA_HANDLE(f,n)         (RXA_ARG(f,n).handle.ptr)
 #define RXA_HANDLE_CONTEXT(f,n) (RXA_ARG(f,n).handle.hob)
 #define RXA_HANDLE_TYPE(f,n)    (RXA_ARG(f,n).handle.type)
