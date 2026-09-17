@@ -15,6 +15,7 @@
 #include <string.h>
 
 #define ARG_Is_XTest(n)  FRM_IS_HANDLE(n, Handle_XTest)
+#define XDEV_REQ(n) RL_PORT_STATE(RXA_PORT(frm, n), (REBCNT)Xtest_Dev_Id)
 
 static const REBYTE* ERR_INVALID_HANDLE = (const REBYTE*)"Invalid XTest handle!";
 static const REBYTE* ERR_NO_HANDLE      = (const REBYTE*)"Failed to create the XTest handle!";
@@ -23,6 +24,8 @@ static const REBYTE* ERR_RAW_STRUCT     = (const REBYTE*)"Struct does not allow 
 static const REBYTE* ERR_NO_FIELD       = (const REBYTE*)"No such field in the struct!";
 static const REBYTE* ERR_NOT_ARRAY      = (const REBYTE*)"The field is not an array!";
 static const REBYTE* ERR_NOT_INT_ARRAY  = (const REBYTE*)"The field is not an array of integers!";
+static const REBYTE* ERR_NO_PORT_STATE  = (const REBYTE*)"Not a usable port!";
+static const REBYTE* ERR_DEVICE_FAIL    = (const REBYTE*)"Device command failed!";
 
 
 //== callbacks ================================================================
@@ -542,6 +545,40 @@ COMMAND cmd_xtest_xdev_err(RXIFRM *frm, void *ctx) {
 	u32 size = (u32)RXA_INT64(frm, 1);
 	if (size == 0) size = sizeof(REBDEV);
 	RXA_INT64(frm, 1) = (i64)RL_REGISTER_DEVICE(&Dev_XTest, size);
+	RXA_TYPE(frm, 1) = RXT_INTEGER;
+	return RXR_VALUE;
+}
+
+COMMAND cmd_xtest_xdev_open(RXIFRM *frm, void *ctx) {
+	REBREQ *req = XDEV_REQ(1);
+	if (!req) RETURN_ERROR(ERR_NO_PORT_STATE);
+	if (RL_DO_DEVICE(req, RDC_OPEN) < 0) RETURN_ERROR(ERR_DEVICE_FAIL);
+	return RXR_VALUE; // the port, unchanged
+}
+
+COMMAND cmd_xtest_xdev_close(RXIFRM *frm, void *ctx) {
+	REBREQ *req = XDEV_REQ(1);
+	if (!req) RETURN_ERROR(ERR_NO_PORT_STATE);
+	if (RL_DO_DEVICE(req, RDC_CLOSE) < 0) RETURN_ERROR(ERR_DEVICE_FAIL);
+	return RXR_VALUE;
+}
+
+COMMAND cmd_xtest_xdev_read(RXIFRM *frm, void *ctx) {
+	REBREQ *req = XDEV_REQ(1);
+	if (!req) RETURN_ERROR(ERR_NO_PORT_STATE);
+	if (RL_DO_DEVICE(req, RDC_READ) < 0) RETURN_ERROR(ERR_DEVICE_FAIL);
+	RXA_INT64(frm, 1) = (i64)req->actual;
+	RXA_TYPE(frm, 1) = RXT_INTEGER;
+	return RXR_VALUE;
+}
+
+// A built-in device must be refused: those carry a security policy that
+// only their own scheme applies.
+COMMAND cmd_xtest_xdev_forbid(RXIFRM *frm, void *ctx) {
+	REBREQ req;
+	CLEARS(&req);
+	req.device = RDI_FILE;
+	RXA_INT64(frm, 1) = (i64)RL_DO_DEVICE(&req, RDC_QUERY);
 	RXA_TYPE(frm, 1) = RXT_INTEGER;
 	return RXR_VALUE;
 }

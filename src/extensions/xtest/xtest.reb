@@ -95,6 +95,10 @@ commands: [
 	xdev:      ["return the id of the device the extension registered"]
 	xdev-poll: ["return how many times that device has been polled"]
 	xdev-err:  ["try to register that device again; returns the RDR_ code" size [integer!] "REBDEV size to claim, 0 = the real one"]
+	xdev-open:   ["open the test device for a port" port [port!]]
+	xdev-close:  ["close the test device for a port" port [port!]]
+	xdev-read:   ["read from the test device" port [port!]]
+	xdev-forbid: ["try to drive a built-in device; returns the result code"]
 ]
 
 ;; ---------------------------------------------------------------------------
@@ -118,7 +122,20 @@ mezzanine: [
 	v: make struct! [a [int32! [4]] b [uint8!]]
 	w: make struct! [n [word! [2]]]
 	r: make struct! [v [rebval! [3]]]
-	z: dev-id: dev-polls: none
+	z: dev-id: dev-polls: port: none
+
+	;; The Rebol-facing half of the port lives here, in the extension's own
+	;; mezzanine - the actor calls commands, and those reach the device
+	;; through RL_Port_State + RL_Do_Device.
+	sys/make-scheme [
+		title: "XTest device"
+		name:  'xtest
+		actor: object [
+			open:  func [port] [xdev-open port]
+			close: func [port] [xdev-close port]
+			read:  func [port] [xdev-read port]
+		]
+	]
 
 	xtest: does [
 		foreach blk [
@@ -249,7 +266,7 @@ mezzanine: [
 			;; RDO_AUTO_POLL makes the host poll the device from OS_Wait even
 			;; with nothing pending. This is what lets an extension pump an OS
 			;; event queue during WAIT - the reason for registering at all.
-			[dev-polls: xdev-poll  wait 0.1  (xdev-poll) > dev-polls]
+			[dev-polls: xdev-poll  wait 0.1  (probe xdev-poll) > dev-polls]
 
 			;; --- port! as a command argument ------------------------------
 			;; A port's payload is its object frame (VAL_PORT == VAL_OBJ_FRAME),
@@ -259,6 +276,20 @@ mezzanine: [
 			[same? system/ports/event echo system/ports/event]
 			;; ...and the frame the extension receives must be readable.
 			[object? xobj1 system/ports/event 'spec]
+
+			;; --- port scheme over the registered device -------------------
+			;; A scheme defined entirely in extension mezzanine, reaching a
+			;; device the extension registered itself.
+			[port: open [scheme: 'xtest]  port? port]
+			;; The request went through the device's own command table, so
+			;; READ reports the poll count Read_XTest put in req->actual.
+			[integer? read port]
+			;; Closing makes the device refuse further reads, which proves
+			;; RDC_OPEN/RDC_CLOSE reached it rather than being no-ops.
+			[close port  error? try [read port]]
+			;; A built-in device must be refused - its scheme applies the
+			;; security policy, and an extension must not route around it.
+			[-1 = xdev-forbid]
 		][
 			print [{^/^[[7mtest:^[[0m^[[1;32m} mold blk {^[[0m}]
 			print join {^[[1;33m} [do blk {^[[m}]

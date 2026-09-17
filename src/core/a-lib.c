@@ -1589,6 +1589,72 @@ RL_API REBCNT RL_Decode_UTF8_Char(const REBYTE *str, REBCNT *len)
 	return OS_Register_Device(dev, dev_size);
 }
 
+/***********************************************************************
+**
+*/	RL_API REBREQ *RL_Port_State(REBSER *port, REBCNT device)
+/*
+**	Get the native request of a port, creating it if it does not exist.
+**
+**	This is the handle the event machinery recognizes: the request it
+**	returns has req->port set, so an EVM_DEVICE event carrying it wakes
+**	that port. An extension must not improvise one - Pending_Port reads
+**	port/state as a REBREQ without checking the handle type, so a handle
+**	of any other type parked there is read as a request.
+**
+**	Returns:
+**		The port's request, or 0 if `port` is not a usable port frame.
+**	Arguments:
+**		port   - port frame, as received in a port! command argument
+**		device - device id from RL_Register_Device
+**	Notes:
+**		The state is sized sizeof(REBREQ) for every device (see
+**		Init_Ports), so a device needing more must keep it behind
+**		req->handle, the way dev-midi.c does.
+**
+**		Allocating the handle can trap on out of memory, which longjmps
+**		out of the extension - do not hold resources that only a return
+**		would release across this call.
+*/
+{
+	REBVAL *state;
+
+	if (!Is_Port_Frame(port)) return 0;
+
+	state = Use_Port_State_Handle(port, device);
+	if (!state) return 0;
+	return (REBREQ *)VAL_HANDLE_CONTEXT_DATA(state);
+}
+
+/***********************************************************************
+**
+*/	RL_API int RL_Do_Device(REBREQ *req, REBCNT command)
+/*
+**	Run a device command, as OS_Do_Device does for the built-in ports.
+**
+**	Returns:
+**		=0 command succeeded
+**		>0 command is pending (the request was attached for polling)
+**		<0 command failed; req->error holds the code
+**	Arguments:
+**		req     - request, usually from RL_Port_State
+**		command - RDC_ command code
+**	Notes:
+**		Only devices added by RL_Register_Device can be driven this way.
+**		The built-in devices are reached through their own port schemes,
+**		which apply the security policy (Secure_Port) before dispatching;
+**		an extension must not route around that.
+*/
+{
+	if (!req) return DR_ERROR;
+
+	if (req->device < RDI_MAX) {
+		req->error = RDE_NO_DEVICE;
+		return DR_ERROR;
+	}
+
+	return OS_Do_Device(req, command);
+}
+
 
 #include "reb-lib-lib.h"
 

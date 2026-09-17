@@ -43,6 +43,25 @@ static DEVICE_CMD Init_XTest(REBREQ *dr) {
 }
 
 static DEVICE_CMD Quit_XTest(REBREQ *dr) {
+	puts("XTest device quit.");
+	return DR_DONE;
+}
+
+static DEVICE_CMD Open_XTest(REBREQ *req) {
+	SET_OPEN(req);
+	return DR_DONE;
+}
+
+static DEVICE_CMD Close_XTest(REBREQ *req) {
+	SET_CLOSED(req);
+	return DR_DONE;
+}
+
+// Reports the poll count, so a READ through the port proves the request
+// really reached this device's command table.
+static DEVICE_CMD Read_XTest(REBREQ *req) {
+	if (!IS_OPEN(req)) { req->error = RDE_NO_INIT; return DR_ERROR; }
+	req->actual = Xtest_Dev_Polls;
 	return DR_DONE;
 }
 
@@ -57,9 +76,9 @@ static DEVICE_CMD Poll_XTest(REBREQ *dr) {
 static DEVICE_CMD_FUNC Xtest_Dev_Cmds[RDC_MAX] = {
 	Init_XTest,
 	Quit_XTest,
-	0,	// RDC_OPEN
-	0,	// RDC_CLOSE
-	0,	// RDC_READ
+	Open_XTest,
+	Close_XTest,
+	Read_XTest,
 	0,	// RDC_WRITE
 	Poll_XTest,
 	0,	// RDC_CONNECT

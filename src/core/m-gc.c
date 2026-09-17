@@ -108,6 +108,7 @@ REBVAL *N_watch(REBFRM *frame, REBVAL **inter_block)
 #endif
 
 extern REBDEV *Devices[];
+extern REBCNT Dev_Count;
 
 static void Mark_Series(REBSER *series, REBCNT depth);
 static void Mark_Value(REBVAL *val, REBCNT depth);
@@ -261,12 +262,12 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 **
 ***********************************************************************/
 {
-	int d;
+	REBCNT d;
 	REBDEV *dev;
 	REBREQ *req;
 	REBDEV **devices = Devices;// Host_Lib->devices;
 	
-	for (d = 0; d < RDI_MAX; d++) {
+	for (d = 0; d < Dev_Count; d++) {
 		dev = devices[d];
 		if (dev)
 			for (req = dev->pending; req; req = req->next)

@@ -126,7 +126,7 @@ REBDEV *Devices[RDI_LIMIT] =
 
 // Slots in use. Built-in devices occupy 0..RDI_MAX-1; OS_Register_Device
 // appends above that. Devices are never removed, so this only grows.
-static REBCNT Dev_Count = RDI_MAX;
+REBCNT Dev_Count = RDI_MAX;
 
 
 static int Poll_Default(REBDEV *dev)
