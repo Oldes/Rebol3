@@ -213,6 +213,16 @@ x*/	void RXI_To_Value(REBVAL *val, RXIARG arg, REBCNT type)
 		break;
 	case RXE_EVENT:
 		val->data.event = arg.event;
+		// An extension hands back raw bytes: a stale handle here would be
+		// marked - and then freed - as a live context. Drop the payload
+		// rather than trust it; everything else in the event stands.
+		if (VAL_EVENT_MODEL(val) == EVM_HANDLE) {
+			REBHOB *hob = VAL_EVENT_HOB(val);
+			if (!hob || !IS_USED_HOB(hob)) {
+				VAL_EVENT_MODEL(val) = EVM_DEVICE;
+				VAL_EVENT_SER(val) = 0;
+			}
+		}
 		break;
 	case RXE_NULL:
 		VAL_INT64(val) = 0;

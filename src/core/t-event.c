@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -105,18 +105,25 @@
 			VAL_EVENT_SER(value) = VAL_OBJ_FRAME(val);
 		}
 		else if (IS_NONE(val)) {
-			VAL_EVENT_MODEL(value) = EVM_GUI;
+			VAL_EVENT_MODEL(value) = EVM_DEVICE;
+			VAL_EVENT_SER(value) = 0;
 		} else return FALSE;
 		break;
 
-	case SYM_WINDOW:
-	case SYM_GOB:
-		if (IS_GOB(val)) {
-			VAL_EVENT_MODEL(value) = EVM_GUI;
-			VAL_EVENT_SER(value) = VAL_GOB(val);
+	case SYM_HANDLE:
+		// Only a CONTEXT handle: it is the only kind with a REBHOB the
+		// GC can mark and whose lifetime outlives the value.
+		if (IS_HANDLE(val) && IS_CONTEXT_HANDLE(val)) {
+			VAL_EVENT_MODEL(value) = EVM_HANDLE;
+			VAL_EVENT_HOB(value) = VAL_HANDLE_CTX(val);
 			break;
 		}
-		return FALSE; 
+		else if (IS_NONE(val)) {
+			VAL_EVENT_MODEL(value) = EVM_DEVICE;
+			VAL_EVENT_SER(value) = 0;
+			break;
+		}
+		return FALSE;
 
 	case SYM_OFFSET:
 		if (IS_PAIR(val)) {
@@ -133,7 +140,6 @@
 
 	case SYM_KEY:
 		//VAL_EVENT_TYPE(value) != EVT_KEY && VAL_EVENT_TYPE(value) != EVT_KEY_UP)
-		VAL_EVENT_MODEL(value) = EVM_GUI;
 		if(!VAL_EVENT_TYPE(value)) VAL_EVENT_TYPE(value) = EVT_KEY;
 		if (IS_CHAR(val)) {
 			VAL_EVENT_DATA(value) = VAL_CHAR(val);
@@ -217,17 +223,19 @@
 		return FALSE;
 
 	case SYM_PORT:
-		// Most events are for the GUI:
-		if (IS_EVENT_MODEL(value, EVM_GUI)) {
-			*val = *Get_System(SYS_PORTS, PORTS_EVENT);
-		}
 		// Event holds a port:
-		else if (IS_EVENT_MODEL(value, EVM_PORT) || IS_EVENT_MODEL(value, EVM_MIDI)) {
+		if (IS_EVENT_MODEL(value, EVM_PORT) || IS_EVENT_MODEL(value, EVM_MIDI)) {
 			SET_PORT(val, VAL_EVENT_SER(value));
 		}
 		// Event holds an object:
 		else if (IS_EVENT_MODEL(value, EVM_OBJECT)) {
 			SET_OBJECT(val, VAL_EVENT_SER(value));
+		}
+		// Event holds a handle - it belongs to no port at all. This case
+		// must be explicit: without it the HOB falls through to the
+		// EVM_DEVICE branch below and is read as a REBREQ.
+		else if (IS_EVENT_MODEL(value, EVM_HANDLE)) {
+			goto is_none;
 		}
 		else if (IS_EVENT_MODEL(value, EVM_CALLBACK)) {
 			*val = *Get_System(SYS_PORTS, PORTS_CALLBACK);
@@ -244,15 +252,15 @@
 		}
 		break;
 
-	case SYM_WINDOW:
-	case SYM_GOB:
-		if (IS_EVENT_MODEL(value, EVM_GUI)) {
-			if (GET_FLAG(VAL_EVENT_FLAGS(value), EVF_HAS_DATA))
-				goto is_none;
-			if (VAL_EVENT_SER(value)) {
-				SET_GOB(val, VAL_EVENT_SER(value));
-				break;
-			}
+	case SYM_HANDLE:
+		if (IS_EVENT_MODEL(value, EVM_HANDLE) && VAL_EVENT_HOB(value)) {
+			REBHOB *hob = VAL_EVENT_HOB(value);
+			// A handle released since the event was made reads as none
+			// rather than handing back a recycled context.
+			if (!IS_USED_HOB(hob)) goto is_none;
+			VAL_HANDLE_FLAGS(val) = 0; // SET_HANDLE ORs into this
+			SET_HANDLE(val, hob, hob->sym, HANDLE_CONTEXT);
+			break;
 		}
 		goto is_none;
 
@@ -305,19 +313,6 @@
 			break;
 		}
 		goto is_none;
-
-	case SYM_DATA:
-		// Event holds a file string:
-		if (!GET_FLAG(VAL_EVENT_FLAGS(value), EVF_HAS_DATA)) goto is_none;
-		if (VAL_EVENT_TYPE(value) != EVT_DROP_FILE) goto is_none;
-		if (!GET_FLAG(VAL_EVENT_FLAGS(value), EVF_COPIED)) {
-			void *str = VAL_EVENT_SER(value);
-			VAL_EVENT_SER(value) = Copy_Bytes(str, UNKNOWN);
-			SET_FLAG(VAL_EVENT_FLAGS(value), EVF_COPIED);
-			OS_Free(str);
-		}
-		Set_Series(REB_FILE, val, VAL_EVENT_SER(value));
-		break;
 
 	default:
 		return FALSE;
@@ -523,8 +518,8 @@ enum rebol_event_fields {
 	REBVAL val;
 	REBCNT field;
 	REBCNT fields[] = {
-		SYM_TYPE, SYM_PORT, SYM_GOB, SYM_OFFSET, SYM_KEY,
-		SYM_FLAGS, SYM_CODE, SYM_DATA, 0
+		SYM_TYPE, SYM_PORT, SYM_HANDLE, SYM_OFFSET, SYM_KEY,
+		SYM_FLAGS, SYM_CODE, 0
 	};
 	REBOOL indented = !GET_MOPT(mold, MOPT_INDENT);
 

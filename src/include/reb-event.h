@@ -34,6 +34,7 @@
 // Forward references:
 #ifndef VALUE_H
 typedef struct Reb_Series   REBSER;
+typedef struct Reb_Handle_Context REBHOB;
 #endif
 #ifndef DEVICE_H
 typedef struct rebol_device REBDEV;
@@ -48,9 +49,10 @@ typedef struct rebol_event {
 	u8  model;		// port, object, gui, callback
 	u32 data;		// an x/y position or keycode (raw/decoded)
 	union {
-		REBREQ *req;	// request (for device events)
-		REBSER *port;   // port
-		void *ser;		// object
+		REBREQ *req;  // request (for device events)
+		REBSER *port; // port
+		REBHOB *hob;  // handle context (widget, window, ...)
+		void   *ser;  // object
 	};
 } REBEVT;
 #pragma pack()
@@ -63,7 +65,7 @@ enum {
 	EVF_DOUBLE,		// double click detected
 	EVF_CONTROL,
 	EVF_SHIFT,
-	EVF_HAS_DATA,   // drop_file event series contains data instead of gob
+	EVF_HAS_DATA,   // reserved: no longer interpreted by the core
 	EVF_HAS_CODE,   // XY value is interpreted as integer instead of pair
 	EVF_ALT,
 };
@@ -75,7 +77,7 @@ enum {
 	EVM_DEVICE,		// I/O request holds the port pointer
 	EVM_PORT,		// event holds port pointer
 	EVM_OBJECT,		// event holds object frame pointer
-	EVM_GUI,		// GUI event uses system/ports/event
+	EVM_HANDLE,		// event holds a context handle (REBHOB)
 	EVM_CALLBACK,	// Callback event uses system/ports/callback port
 	EVM_MIDI,		// event holds midi port pointer
 	EVM_CONSOLE,    // native console events

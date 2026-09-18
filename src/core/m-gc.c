@@ -223,22 +223,23 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 ***********************************************************************/
 {
 	REBREQ *req;
+	REBHOB *hob;
 	
-	if (
-		   IS_EVENT_MODEL(value, EVM_PORT)
-		|| IS_EVENT_MODEL(value, EVM_OBJECT)
-		|| (VAL_EVENT_TYPE(value) == EVT_DROP_FILE && GET_FLAG(VAL_EVENT_FLAGS(value), EVF_COPIED))
-	) {
-		// The ->ser field of the REBEVT is void*, so we must cast
-		// Comment says it is a "port or object"
-		CHECK_MARK((REBSER*)VAL_EVENT_SER(value), depth);
+	if (IS_EVENT_MODEL(value, EVM_PORT) || IS_EVENT_MODEL(value, EVM_OBJECT)) {
+		// The ->ser field of the REBEVT is void*, so we must cast.
+		// Comment says it is a "port or object".
+		if (VAL_EVENT_SER(value))
+			CHECK_MARK((REBSER*)VAL_EVENT_SER(value), depth);
 	}
-
-	if (IS_EVENT_MODEL(value, EVM_GUI)) {
-		Mark_Gob(VAL_EVENT_SER(value), depth);
+	else if (IS_EVENT_MODEL(value, EVM_HANDLE)) {
+		// Same as Mark_Value's REB_HANDLE case: the handle context, and
+		// anything it keeps in its series, must outlive the event.
+		if (NZ(hob = VAL_EVENT_HOB(value)) && IS_USED_HOB(hob)) {
+			MARK_HOB(hob);
+			if (hob->series) Mark_Series(hob->series, depth);
+		}
 	}
-
-	if (IS_EVENT_MODEL(value, EVM_DEVICE)) {
+	else if (IS_EVENT_MODEL(value, EVM_DEVICE)) {
 		// In the case of being an EVM_DEVICE event type, the port! will
 		// not be in VAL_EVENT_SER of the REBEVT structure.  It is held
 		// indirectly by the REBREQ ->req field of the event, which

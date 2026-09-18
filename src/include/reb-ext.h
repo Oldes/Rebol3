@@ -227,6 +227,13 @@ typedef struct rxi_struct_info {
 #define RXA_EVENT_Y(f,n)        ((REBINT)(short)((RXA_EVENT_DATA(f,n) >> 16) & 0xffff))
 #define RXA_SET_EVENT_XY(f,n,x,y) (RXA_EVENT_DATA(f,n) = (((y) << 16) | ((x) & 0xffff)))
 
+// An extension-sourced event refers to one of the extension's own context
+// handles - a widget, a window, a drop-file payload. The handle keeps the
+// state; the event only says which one this happened to.
+#define RXA_EVENT_HANDLE(f,n)   (RXA_ARG(f,n).event.hob)
+#define RXA_SET_EVENT_HANDLE(f,n,h) \
+	(RXA_EVENT_MODEL(f,n) = EVM_HANDLE, RXA_EVENT_HANDLE(f,n) = (h))
+
 // Command function return values:
 enum rxi_return {
 	RXR_UNSET,

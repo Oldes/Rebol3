@@ -96,6 +96,8 @@ commands: [
 	evt0:   ["return the event's type code" e [event!]]
 	evt1:   ["return the event's offset as a pair" e [event!]]
 	evt2:   ["make an event of the given type code at the given offset" code [integer!] xy [pair!]]
+	evt3:   ["make an event carrying the given handle" code [integer!] hnd [handle!]]
+	evt4:   ["return the handle the event carries" e [event!]]
 	xdev:      ["return the id of the device the extension registered"]
 	xdev-poll: ["return how many times that device has been polled"]
 	xdev-err:  ["try to register that device again; returns the RDR_ code" size [integer!] "REBDEV size to claim, 0 = the real one"]
@@ -110,7 +112,7 @@ commands: [
 ;; Module body. Previously a C string literal with escaped newlines - as a
 ;; block it is ordinary Rebol code that an editor can indent and check.
 mezzanine: [
-	a: b: c: e: h: x: y: t: none
+	a: b: c: e: g: h: x: y: t: none
 	i: make image! 2x2
 	s: make struct! [a [uint8!]]
 	;; Nested struct - `n/b` is a VIEW into n's data at a non-zero offset,
@@ -273,6 +275,23 @@ mezzanine: [
 			;; An untyped argument must carry it too, not silently become unset.
 			[event? echo e]
 			[equal? e echo e]
+
+			;; --- events carrying a context handle -------------------------
+			;; The event names one of the extension's own handles; the handle
+			;; keeps the state, so there is one meaning for the payload.
+			[x: hob1 #{0102}  e: evt3 (-1 + index? find system/catalog/event-types 'click) x  event? e]
+			[same? x e/handle]
+			;; The C side must read back the same handle it was given.
+			[same? x evt4 e]
+			;; A handle event belongs to no port - this must be none, not a
+			;; REBREQ read out of the handle context.
+			[none? e/port]
+			;; The event keeps the handle alive across a collection...
+			[recycle  2 = hob2 e/handle]
+			;; ...and the handle is still usable through its own accessors.
+			[recycle  binary? e/handle/data]
+			;; A released handle reads as none rather than a recycled context.
+			[release x  none? e/handle]
 
 			;; --- device registration -------------------------------------
 			;; The extension added a device to the host device table. Any

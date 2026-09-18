@@ -625,3 +625,27 @@ COMMAND cmd_xtest_evt2(RXIFRM *frm, void *ctx) {
 	RXA_TYPE(frm, 1) = RXT_EVENT;
 	return RXR_VALUE;
 }
+
+COMMAND cmd_xtest_evt3(RXIFRM *frm, void *ctx) {
+	REBINT  code = RXA_INT32(frm, 1);
+	REBHOB *hob  = RXA_HANDLE_CONTEXT(frm, 2);
+
+	if (!ARG_Is_XTest(2)) RETURN_ERROR(ERR_INVALID_HANDLE);
+
+	CLEARS(&RXA_EVENT(frm, 1));
+	RXA_EVENT_TYPE(frm, 1) = (u8)code;
+	RXA_SET_EVENT_HANDLE(frm, 1, hob);
+	RXA_TYPE(frm, 1) = RXT_EVENT;
+	return RXR_VALUE;
+}
+
+COMMAND cmd_xtest_evt4(RXIFRM *frm, void *ctx) {
+	REBHOB *hob;
+	if (RXA_EVENT_MODEL(frm, 1) != EVM_HANDLE) return RXR_NONE;
+	hob = RXA_EVENT_HANDLE(frm, 1);
+	RXA_HANDLE(frm, 1)       = hob;
+	RXA_HANDLE_TYPE(frm, 1)  = hob->sym;
+	RXA_HANDLE_FLAGS(frm, 1) = hob->flags;
+	RXA_TYPE(frm, 1) = RXT_HANDLE;
+	return RXR_VALUE;
+}

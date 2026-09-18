@@ -314,6 +314,7 @@ typedef struct rebol_xy_int {
 #define	VAL_EVENT_TIME(v)	((v)->data.event.time)
 #define	VAL_EVENT_REQ(v)	((v)->data.event.req)
 #define	VAL_EVENT_SER(v)	((v)->data.event.ser)
+#define	VAL_EVENT_HOB(v)	((v)->data.event.hob)
 
 #define IS_EVENT_MODEL(v,f)	(VAL_EVENT_MODEL(v) == (f))
 
