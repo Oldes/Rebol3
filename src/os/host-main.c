@@ -86,6 +86,16 @@
 
 #ifdef TO_WINDOWS
 #define MAX_TITLE_LENGTH  1024
+# ifndef WINVER
+#  define WINVER 0x0501        // this is needed to be able use WINDOWINFO struct etc.
+# endif
+
+/* Forces the use of Visual Styles if compiling with VisualStudio */
+# ifdef _MSC_VER
+# pragma comment(linker,"\"/manifestdependency:type='win32' \
+	name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
+	processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
+# endif
 #ifdef REB_VIEW
 extern HWND      Focused_Window;
 #endif

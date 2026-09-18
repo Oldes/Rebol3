@@ -328,9 +328,9 @@ host-files-view: [
 		%os/win32/sys-utils.c
 		%os/win32/sys-codecs.cpp
 		%os/win32/sys-d2d.cpp
-		%os/win32/host-event.c
-		%os/win32/host-window.c
-		%os/win32/host-compositor.c
+	;	%os/win32/host-event.c
+	;	%os/win32/host-window.c
+	;	%os/win32/host-compositor.c
 	]
 ]
 
@@ -904,7 +904,7 @@ include-view: [
 		core-files: %core/n-request-color.c
 	]
 	#if Windows? [
-		define: REB_VIEW
+		;define: REB_VIEW
 		:include-image-os-codec
 		libraries: [
 			%Gdi32
@@ -1091,6 +1091,7 @@ include-rebol-bulk: [
 	:include-ext-sqlite
 	:include-ext-miniaudio
 	:include-ext-triangulate
+	:include-ext-gui
 	;- for tests:
 	:include-ext-xtest
 	;- not recommanded:
@@ -1468,6 +1469,36 @@ include-ext-qoi: [
 	do %make/tools/make-extension.r3 "${NEST_ROOT}/src/extensions/qoi/qoi.reb"
 ]
 
+include-ext-gui: [
+	clean: %extensions/gui/gui.c ;; always recompile (contains Rebol code)
+	host-files: [
+		%extensions/gui/gui.c
+		%extensions/gui/gui-commands.c
+		%extensions/gui/gen-gui.c
+	]
+	#if Windows? [
+		library: %user32
+		library: %gdi32
+		library: %comctl32
+		host-files: %extensions/gui/gui-win.c
+	]
+	#if macOS? [
+		frameworks: [AppKit Foundation]
+		;; Objective-C class names are process-global, so a standalone .rebx
+		;; must not name its classes the same as a copy of these sources
+		;; embedded in the host - the runtime would keep only one set and
+		;; messages would land in the wrong implementation. See the note at
+		;; the top of gui-mac.m.
+		define: "GUI_CLASS_PREFIX=RebolGuiRebx"
+		;; gui-mac.m keeps the window in a plain void* and releases it by hand,
+		;; so it must not be compiled as ARC.
+		cflags: -fno-objc-arc
+		cflags: -Wno-deprecated-declarations
+		host-files: %extensions/gui/gui-mac.m
+	]
+	do %make/tools/make-extension.r3 "${NEST_ROOT}/src/extensions/gui/gui.reb"
+]
+
 ;; standalone libraries
 make-ext-easing:      [ host-files: _ :include-ext-easing      files: only :host-files :make-ext ]
 make-ext-xtest:       [ host-files: _ :include-ext-xtest       files: only :host-files :make-ext ]
@@ -1477,6 +1508,7 @@ make-ext-speak:       [ host-files: _ :include-ext-speak       files: only :host
 make-ext-sqlite:      [ host-files: _ :include-ext-sqlite      files: only :host-files :make-ext ]
 make-ext-triangulate: [ host-files: _ :include-ext-triangulate files: only :host-files :make-ext ]
 make-ext-qoi:         [ host-files: _ :include-ext-qoi         files: only :host-files :make-ext ]
+make-ext-gui:         [ host-files: _ :include-ext-gui         files: only :host-files :make-ext ]
 
 eggs: [
 	#if Windows? [
@@ -1554,7 +1586,6 @@ eggs: [
 			library: %lib-rebol3-bulk-windows-x86
 			:target-windows
 			:make-x86-host
-			define: REB_VIEW
 		]
 
 		"Rebol/Core windows-x64 shared library" [
@@ -1581,7 +1612,6 @@ eggs: [
 			library:  %lib-rebol3-bulk-windows-x64
 			:target-windows
 			:make-x64-host
-			define: REB_VIEW
 		]
 	]
 	#if Linux? [
