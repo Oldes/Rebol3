@@ -1059,7 +1059,7 @@ void* Gui_Menu_Add_Popup(GUIWIN *win, void *parent,
 
 
 void Gui_Menu_Add_Item(GUIWIN *win, void *parent,
-                       const REBYTE *label, REBCNT len, REBCNT id,
+                       const REBYTE *label, REBCNT len, REBCNT item_id,
                        REBCNT key, REBCNT mods)
 {
 	@autoreleasepool {
@@ -1089,7 +1089,7 @@ void Gui_Menu_Add_Item(GUIWIN *win, void *parent,
 			if (mods & GUI_FLAG_ALT)     flags |= NSEventModifierFlagOption;
 			[item setKeyEquivalentModifierMask:flags];
 		}
-		[item setTag:(NSInteger)id];
+		[item setTag:(NSInteger)item_id];
 		[item setTarget:(id)[NSWINDOW_OF(win) contentView]];
 		[item setEnabled:YES];
 
@@ -1158,12 +1158,12 @@ static NSMenuItem* Item_With_Tag(NSMenu *menu, NSInteger tag)
 }
 
 
-void Gui_Menu_Enable(GUIWIN *win, REBCNT id, REBOOL enabled)
+void Gui_Menu_Enable(GUIWIN *win, REBCNT item_id, REBOOL enabled)
 {
 	@autoreleasepool {
 		NSMenuItem *item;
 		if (!win || !win->menu) return;
-		item = Item_With_Tag((NSMenu*)win->menu, (NSInteger)id);
+		item = Item_With_Tag((NSMenu*)win->menu, (NSInteger)item_id);
 		[item setEnabled:(enabled ? YES : NO)];
 	}
 }

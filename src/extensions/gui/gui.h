@@ -215,8 +215,11 @@ REBOOL  Gui_Set_Title(GUIWIN *win, const REBYTE *utf8, REBCNT len);
 REBOOL  Gui_Menu_Begin(GUIWIN *win);
 void*   Gui_Menu_Add_Popup(GUIWIN *win, void *parent,
                            const REBYTE *label, REBCNT len);
+// `item_id` is not called `id` because that is a TYPE in Objective-C: a
+// parameter of that name shadows it, and `(id)expr` inside the macOS
+// backend then parses as a subscript of the parameter.
 void    Gui_Menu_Add_Item(GUIWIN *win, void *parent,
-                          const REBYTE *label, REBCNT len, REBCNT id,
+                          const REBYTE *label, REBCNT len, REBCNT item_id,
                           // `key` is 0 for no shortcut, otherwise the
                           // character; `mods` is GUI_FLAG_* bits ON TOP of
                           // the platform's own menu modifier - Ctrl on
@@ -231,7 +234,7 @@ void    Gui_Menu_Free(GUIWIN *win);
 
 // Greys one item out, or brings it back. The shared layer keeps the flag;
 // this only applies it.
-void    Gui_Menu_Enable(GUIWIN *win, REBCNT id, REBOOL enabled);
+void    Gui_Menu_Enable(GUIWIN *win, REBCNT item_id, REBOOL enabled);
 
 // Called BY a backend when an item is picked - it queues the `menu` event
 // with the item's word, which is the shared layer's business.

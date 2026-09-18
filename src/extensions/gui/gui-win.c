@@ -1709,7 +1709,7 @@ static void Append_Accel_Text(WCHAR *dst, size_t max, REBCNT key, REBCNT mods)
 
 
 void Gui_Menu_Add_Item(GUIWIN *win, void *parent,
-                       const REBYTE *label, REBCNT len, REBCNT id,
+                       const REBYTE *label, REBCNT len, REBCNT item_id,
                        REBCNT key, REBCNT mods)
 {
 	WCHAR  text[256];
@@ -1738,12 +1738,12 @@ void Gui_Menu_Add_Item(GUIWIN *win, void *parent,
 			} else {
 				a->key = (WORD)(VkKeyScanW((WCHAR)key) & 0xFF);
 			}
-			a->cmd = (WORD)id;
+			a->cmd = (WORD)item_id;
 		}
 	}
 
 	AppendMenuW(parent ? (HMENU)parent : (HMENU)win->menu,
-	            MF_STRING, (UINT_PTR)id, text);
+	            MF_STRING, (UINT_PTR)item_id, text);
 }
 
 
@@ -1802,10 +1802,10 @@ void Gui_Menu_Free(GUIWIN *win)
 }
 
 
-void Gui_Menu_Enable(GUIWIN *win, REBCNT id, REBOOL enabled)
+void Gui_Menu_Enable(GUIWIN *win, REBCNT item_id, REBOOL enabled)
 {
 	if (!win || !win->menu) return;
-	EnableMenuItem((HMENU)win->menu, (UINT)id,
+	EnableMenuItem((HMENU)win->menu, (UINT)item_id,
 	               MF_BYCOMMAND | (enabled ? MF_ENABLED : MF_GRAYED));
 	if (win->handle) DrawMenuBar(HWND_OF(win));
 }
