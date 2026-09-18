@@ -63,4 +63,5 @@ module		*	object
 port		*	object
 
 struct		54  struct
+event       *   event
 

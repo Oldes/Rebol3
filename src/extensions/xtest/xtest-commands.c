@@ -582,3 +582,46 @@ COMMAND cmd_xtest_xdev_forbid(RXIFRM *frm, void *ctx) {
 	RXA_TYPE(frm, 1) = RXT_INTEGER;
 	return RXR_VALUE;
 }
+
+// Arm the device to produce `count` read events from its poll callback.
+COMMAND cmd_xtest_xdev_emit(RXIFRM *frm, void *ctx) {
+	Xtest_Dev_Emit = (REBCNT)RXA_INT64(frm, 1);
+	return RXR_UNSET;
+}
+
+//== events ===================================================================
+
+// An event travels whole in the argument slot, so these need no RL_ call at
+// all - they only read and write fields.
+
+COMMAND cmd_xtest_evt0(RXIFRM *frm, void *ctx) {
+	RXA_INT64(frm, 1) = (i64)RXA_EVENT_TYPE(frm, 1);
+	RXA_TYPE(frm, 1) = RXT_INTEGER;
+	return RXR_VALUE;
+}
+
+COMMAND cmd_xtest_evt1(RXIFRM *frm, void *ctx) {
+	if (!GET_FLAG(RXA_EVENT_FLAGS(frm, 1), EVF_HAS_XY)) {
+		RXA_TYPE(frm, 1) = RXT_NONE;
+		return RXR_VALUE;
+	}
+	RXA_PAIR(frm, 1).x = (float)RXA_EVENT_X(frm, 1);
+	RXA_PAIR(frm, 1).y = (float)RXA_EVENT_Y(frm, 1);
+	RXA_TYPE(frm, 1) = RXT_PAIR;
+	return RXR_VALUE;
+}
+
+COMMAND cmd_xtest_evt2(RXIFRM *frm, void *ctx) {
+	REBINT code = RXA_INT32(frm, 1);
+	REBINT x = (REBINT)RXA_PAIR(frm, 2).x;
+	REBINT y = (REBINT)RXA_PAIR(frm, 2).y;
+
+	// Zeroed model (EVM_DEVICE) with no request: the only model an
+	// extension can fill today without owning a pointer the GC follows.
+	CLEARS(&RXA_EVENT(frm, 1));
+	RXA_EVENT_TYPE(frm, 1)  = (u8)code;
+	RXA_EVENT_FLAGS(frm, 1) = (u8)(1 << EVF_HAS_XY);
+	RXA_SET_EVENT_XY(frm, 1, x, y);
+	RXA_TYPE(frm, 1) = RXT_EVENT;
+	return RXR_VALUE;
+}

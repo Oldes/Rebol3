@@ -49,6 +49,7 @@ enum {
 	RXE_TUPLE,  // 3-12 bytes tuple value
 	RXE_STRUCT,	// structure data and fields spec series
 	RXE_VECTOR,
+	RXE_EVENT,	// event (travels whole in the argument slot)
 	RXE_MAX
 };
 
@@ -133,6 +134,9 @@ x*/	RXIARG Value_To_RXI(REBVAL *val)
 		arg.vector.index  = VAL_INDEX(val);
 		arg.vector.info   = VAL_VEC_INFO(val);
 		break;
+	case RXE_EVENT:
+		arg.event = val->data.event;
+		break;
 	case RXE_NULL:
 	default:
 		arg.int64 = 0;
@@ -206,6 +210,9 @@ x*/	void RXI_To_Value(REBVAL *val, RXIARG arg, REBCNT type)
 		VAL_SERIES(val)   = arg.vector.series;
 		VAL_INDEX(val)    = arg.vector.index;
 		VAL_VEC_INFO(val) = arg.vector.info;
+		break;
+	case RXE_EVENT:
+		val->data.event = arg.event;
 		break;
 	case RXE_NULL:
 		VAL_INT64(val) = 0;

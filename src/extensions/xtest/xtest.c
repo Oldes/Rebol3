@@ -35,6 +35,8 @@ REBCNT Handle_XTest = 0;
 
 int    Xtest_Dev_Id   = 0;  // 0 = not registered (a real id is >= RDI_MAX)
 REBCNT Xtest_Dev_Polls = 0; // bumped by Poll_XTest
+REBCNT Xtest_Dev_Emit = 0;          // read events still to produce
+static REBREQ *Xtest_Dev_Port = 0;  // the one port this test device serves
 
 static DEVICE_CMD Init_XTest(REBREQ *dr) {
 	REBDEV *dev = (REBDEV*)dr;
@@ -48,11 +50,13 @@ static DEVICE_CMD Quit_XTest(REBREQ *dr) {
 }
 
 static DEVICE_CMD Open_XTest(REBREQ *req) {
+	Xtest_Dev_Port = req;
 	SET_OPEN(req);
 	return DR_DONE;
 }
 
 static DEVICE_CMD Close_XTest(REBREQ *req) {
+	if (Xtest_Dev_Port == req) Xtest_Dev_Port = 0;
 	SET_CLOSED(req);
 	return DR_DONE;
 }
@@ -65,11 +69,30 @@ static DEVICE_CMD Read_XTest(REBREQ *req) {
 	return DR_DONE;
 }
 
-// Must report DR_DONE, not DR_PEND: a non-zero result counts as a status
-// change, OS_Wait then returns -1 immediately and WAIT would spin instead
-// of sleeping. A real device returns non-zero only when it has something.
+// Called from OS_Poll_Devices on every OS_Wait, because of RDO_AUTO_POLL -
+// the same place a real device notices that the OS has something for it.
+//
+// The event carries the port series (EVM_PORT), not the request: that is
+// what Get_Event_Var resolves for event/port and what Mark_Event marks, so
+// the port cannot be collected while the event is queued.
+//
+// Returns DR_DONE even after posting. A non-zero result counts as a status
+// change and makes OS_Wait return at once; the queued event is what wakes
+// WAIT, via the signal RL_Event sets.
 static DEVICE_CMD Poll_XTest(REBREQ *dr) {
+	REBEVT evt;
+
 	Xtest_Dev_Polls++;
+	if (!Xtest_Dev_Emit || !Xtest_Dev_Port || !Xtest_Dev_Port->port)
+		return DR_DONE;
+
+	Xtest_Dev_Emit--;
+	CLEARS(&evt);
+	evt.type  = EVT_READ;
+	evt.model = EVM_PORT;
+	evt.port  = (REBSER*)Xtest_Dev_Port->port;
+	RL_EVENT(&evt);   // append; Update_Event would collapse repeats
+
 	return DR_DONE;
 }
 

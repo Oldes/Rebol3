@@ -29,6 +29,7 @@ extern REBCNT Handle_XTest;
 extern REBDEV Dev_XTest;
 extern int    Xtest_Dev_Id;
 extern REBCNT Xtest_Dev_Polls;
+extern REBCNT Xtest_Dev_Emit;
 
 typedef struct XTest_Context {
 	REBCNT id;
@@ -92,6 +93,9 @@ commands: [
 	stru:   ["test struct passing" val [struct!] /read "inspect only, do not modify the data"]
 	stru0:  ["make a new struct of the same specification" val [struct!]]
 	strua:  ["sum the elements of an integer array field" val [struct!] field [word!]]
+	evt0:   ["return the event's type code" e [event!]]
+	evt1:   ["return the event's offset as a pair" e [event!]]
+	evt2:   ["make an event of the given type code at the given offset" code [integer!] xy [pair!]]
 	xdev:      ["return the id of the device the extension registered"]
 	xdev-poll: ["return how many times that device has been polled"]
 	xdev-err:  ["try to register that device again; returns the RDR_ code" size [integer!] "REBDEV size to claim, 0 = the real one"]
@@ -99,13 +103,14 @@ commands: [
 	xdev-close:  ["close the test device for a port" port [port!]]
 	xdev-read:   ["read from the test device" port [port!]]
 	xdev-forbid: ["try to drive a built-in device; returns the result code"]
+	xdev-emit:   ["arm the device to produce N read events" count [integer!]]
 ]
 
 ;; ---------------------------------------------------------------------------
 ;; Module body. Previously a C string literal with escaped newlines - as a
 ;; block it is ordinary Rebol code that an editor can indent and check.
 mezzanine: [
-	a: b: c: h: x: y: t: none
+	a: b: c: e: h: x: y: t: none
 	i: make image! 2x2
 	s: make struct! [a [uint8!]]
 	;; Nested struct - `n/b` is a VIEW into n's data at a non-zero offset,
@@ -122,7 +127,7 @@ mezzanine: [
 	v: make struct! [a [int32! [4]] b [uint8!]]
 	w: make struct! [n [word! [2]]]
 	r: make struct! [v [rebval! [3]]]
-	z: dev-id: dev-polls: port: none
+	z: dev-id: dev-polls: port: evt: none
 
 	;; The Rebol-facing half of the port lives here, in the extension's own
 	;; mezzanine - the actor calls commands, and those reach the device
@@ -250,7 +255,25 @@ mezzanine: [
 			[recycle  reduce [same? q first r/v  same? z last r/v]]
 			;; ...and the same through a struct the extension created.
 			[t: stru0 r  t/v: reduce [q 'middle z]  recycle  same? z last t/v]
- 
+
+			;; --- event! as a command argument -----------------------------
+			;; An event fits whole into the argument slot, so it crosses by
+			;; value: no series behind it and nothing for the GC to follow.
+			[e: make event! [type: 'down offset: 10x20]  evt0 e]
+			[(indexz? find system/catalog/event-types 'down) = evt0 e]
+			;; The packed XY field must survive the crossing intact.
+			[10x20 = evt1 e]
+			;; ...and an event built on the C side must come back as an event!,
+			;; which is what the new Reb_To_RXT / RXT_To_Reb entries decide.
+			[event? evt2 (indexz? find system/catalog/event-types 'down) 30x40]
+			[30x40 = evt1 evt2 (indexz? find system/catalog/event-types 'down) 30x40]
+			;; An event with no offset (e.g. built from `key:`) must report none, not
+			;; a stale or zeroed pair.
+			[none? evt1 make event! [type: 'key key: #"a"]]
+			;; An untyped argument must carry it too, not silently become unset.
+			[event? echo e]
+			[equal? e echo e]
+
 			;; --- device registration -------------------------------------
 			;; The extension added a device to the host device table. Any
 			;; positive id means a slot was assigned; a failure would be one
@@ -290,6 +313,23 @@ mezzanine: [
 			;; A built-in device must be refused - its scheme applies the
 			;; security policy, and an extension must not route around it.
 			[-1 = xdev-forbid]
+
+			;; --- port events ---------------------------------------------
+			;; The device posts EVT_READ from its poll callback; WAIT must
+			;; deliver it to this port's own awake, with event/port resolving
+			;; back to the port the request belongs to.
+			[
+				evt: none
+				port: open [scheme: 'xtest]
+				port/awake: func [event] [
+					evt: reduce [event/type same? event/port port]
+					true
+				]
+				xdev-emit 1
+				wait 0.2
+				close port
+				evt
+			]
 		][
 			print [{^/^[[7mtest:^[[0m^[[1;32m} mold blk {^[[0m}]
 			print join {^[[1;33m} [do blk {^[[m}]

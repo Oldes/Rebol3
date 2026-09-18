@@ -113,7 +113,9 @@ typedef union rxi_arg_val {
 		REBCNT index;
 		REBCNT info;
 	} vector;
-
+	// An event is 16 bytes (12 on 32-bit) - it fits whole into the slot,
+	// which is why it needs no series and no spec id like struct/vector.
+	REBEVT event;
 } RXIARG;
 
 // For direct access to arg array:
@@ -211,6 +213,19 @@ typedef struct rxi_struct_info {
 #define RXA_VECTOR_SERIES(f,n)  (RXA_ARG(f,n).vector.series)
 #define RXA_VECTOR_INDEX(f,n)   (RXA_ARG(f,n).vector.index)
 #define RXA_VECTOR_INFO(f,n)    (RXA_ARG(f,n).vector.info)
+
+// Events cross by value, so these just read and write the fields in place.
+// The union member holding a pointer (req/port/ser) is deliberately NOT
+// exposed here - see the EVM_HANDLE patch.
+#define RXA_EVENT(f,n)          (RXA_ARG(f,n).event)
+#define RXA_EVENT_TYPE(f,n)     (RXA_ARG(f,n).event.type)
+#define RXA_EVENT_FLAGS(f,n)    (RXA_ARG(f,n).event.flags)
+#define RXA_EVENT_WIN(f,n)      (RXA_ARG(f,n).event.win)
+#define RXA_EVENT_MODEL(f,n)    (RXA_ARG(f,n).event.model)
+#define RXA_EVENT_DATA(f,n)     (RXA_ARG(f,n).event.data)
+#define RXA_EVENT_X(f,n)        ((REBINT)(short)(RXA_EVENT_DATA(f,n) & 0xffff))
+#define RXA_EVENT_Y(f,n)        ((REBINT)(short)((RXA_EVENT_DATA(f,n) >> 16) & 0xffff))
+#define RXA_SET_EVENT_XY(f,n,x,y) (RXA_EVENT_DATA(f,n) = (((y) << 16) | ((x) & 0xffff)))
 
 // Command function return values:
 enum rxi_return {
