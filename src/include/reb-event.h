@@ -45,7 +45,8 @@ typedef struct rebol_devreq REBREQ;
 typedef struct rebol_event {
 	u8  type;		// event id (mouse-move, mouse-button, etc)
 	u8  flags;		// special flags
-	u8  win;		// window id
+	u8  win;		// reserved (was the View window table index; the
+					// handle now carries that identity)
 	u8  model;		// port, object, gui, callback
 	u32 data;		// an x/y position or keycode (raw/decoded)
 	union {

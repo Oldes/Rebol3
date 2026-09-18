@@ -81,6 +81,15 @@
 	switch (VAL_WORD_CANON(word)) {
 
 	case SYM_TYPE:
+		// An extension defines its own types above the named range, so a
+		// plain code is accepted too - and is what event/type hands back
+		// for one.
+		if (IS_INTEGER(val)) {
+			REBI64 i = VAL_INT64(val);
+			if (i < 0 || i > 255) return FALSE;
+			VAL_EVENT_TYPE(value) = (u8)i;
+			return TRUE;
+		}
 		if (!IS_WORD(val) && !IS_LIT_WORD(val)) return FALSE;
 		arg = Get_System(SYS_CATALOG, CAT_EVENT_TYPES);
 		if (IS_BLOCK(arg)) {
@@ -216,8 +225,16 @@
 	case SYM_TYPE:
 		if (VAL_EVENT_TYPE(value) == 0) goto is_none;
 		arg = Get_System(SYS_CATALOG, CAT_EVENT_TYPES);
-		if (IS_BLOCK(arg) && VAL_TAIL(arg) >= EVT_MAX) {
-			*val = *VAL_BLK_SKIP(arg, VAL_EVENT_TYPE(value));
+		if (IS_BLOCK(arg)) {
+			n = VAL_EVENT_TYPE(value);
+			// A reserved slot holds no word, and an extension-defined type
+			// is past the end of the catalog entirely. Report the raw code
+			// instead of reading whatever happens to sit there - the old
+			// EVT_MAX check did not bound the type itself.
+			if ((REBCNT)n < VAL_TAIL(arg) && IS_WORD(VAL_BLK_SKIP(arg, n)))
+				*val = *VAL_BLK_SKIP(arg, n);
+			else
+				SET_INTEGER(val, n);
 			break;
 		}
 		return FALSE;
@@ -279,7 +296,7 @@
 			SET_CHAR(val, n);
 			break;
 		}
-		else if (VAL_EVENT_TYPE(value) == EVT_CONTROL || VAL_EVENT_TYPE(value) == EVT_CONTROL_UP) {
+		else if (VAL_EVENT_TYPE(value) == EVT_NAMED_KEY || VAL_EVENT_TYPE(value) == EVT_NAMED_KEY_UP) {
 			arg = Get_System(SYS_CATALOG, CAT_EVENT_KEYS);
 			if (IS_BLOCK(arg) && n <= (REBINT)VAL_TAIL(arg)) {
 				*val = *VAL_BLK_SKIP(arg, n-1);

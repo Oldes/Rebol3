@@ -175,16 +175,27 @@ catalog: object [
 		; will be filled on boot from `Init_Crypt` in `n-crypt.c`
 	]
 	event-types: [
-		; Event types. Order dependent for C and REBOL.
-		; Due to fixed C constants, this list cannot be reordered after release!
+		; Event types. The type code indexes this block, so the reserved
+		; slots must stay - see Get_Event_Var. Groups are 32 codes wide;
+		; 192..255 is left to extensions and reported as a plain integer.
+
+		;-- system (0) --
 		ignore			; ignore event (0)
 		interrupt		; user interrupt
-		device			; misc device request
-		callback		; callback event
 		custom			; custom events
 		error
-		init
+		init			; startup finished (not used yet)
+		device			; misc device request
+		callback		; callback event
+		shutdown		; the OS or session is ending - save and quit
+		suspend			; the machine is going to sleep
+		resume
+		theme-change	; system appearance changed (light/dark, colors)
+		_ _ _ _ _ _ _	; 11..31 reserved
+		_ _ _ _ _ _ _
+		_ _ _ _ _ _ _
 
+		;-- port / device (32) --
 		open
 		close
 		connect
@@ -193,46 +204,75 @@ catalog: object [
 		write
 		wrote
 		lookup
-
 		ready
 		done
 		time
+		pending			; the source has queued events - drain it
+		_ _ _ _ _ _ _ _ _ _	; 44..63 reserved
+		_ _ _ _ _ _ _ _ _ _
 
+		;-- window (64) --
 		show
 		hide
-		offset
+		offset			; the window moved (pairs with resize)
 		resize
 		active
-		inactive 
+		inactive
 		minimize
 		maximize
 		restore
+		focus			; also used for widgets
+		unfocus
+		close-request	; the user asked to close it (not a port close)
+		dpi-change		; this window's scale changed (per-monitor DPI)
+		_ _ _ _ _ _ _ _ _ _	; 77..95 reserved
+		_ _ _ _ _ _ _ _ _
 
-		move
+		;-- pointer (96) --
+		move			; the pointer moved
 		down
 		up
-		alt-down 
-		alt-up 
-		aux-down 
-		aux-up 
-		key    ;; Key down event (with a physical key information)
-		key-up ;; Key up event
-
+		alt-down
+		alt-up
+		aux-down
+		aux-up
+		click
+		enter
+		leave
 		scroll-line
 		scroll-page
+		touch-down		; contact id may be carried in the event's `win`
+		touch-up
+		touch-move
+		touch-cancel	; the system took the gesture over
+		_ _ _ _ _ _ _ _	; 112..127 reserved
+		_ _ _ _ _ _ _ _
 
-		drop-file
+		;-- keyboard (128) --
+		key				; character key down
+		key-up
+		named-key		; a key named in event-keys (F1, arrows, ...)
+		named-key-up
+		char
+		_ _ _ _ _ _ _ _ _	; 133..159 reserved
+		_ _ _ _ _ _ _ _ _
+		_ _ _ _ _ _ _ _ _
 
-		click
+		;-- widget / data (160) --
 		change
-		focus
-		unfocus
 		scroll
+		menu-select		; a menu item was chosen; its id is in `code`
+		menu-open		; the menu is about to be shown (populate/enable)
+		menu-close
+		drop-file
+		drop-text
+		_ _ _ _ _		; 167..191 reserved
+		_ _ _ _ _
+		_ _ _ _ _
+		_ _ _ _ _
+		_ _ _ _ _
 
-		control    ;; used to pass control key events to a console port
-		control-up ;; only on Windows?
-
-		char ;; 
+		;-- 192..255 reserved for extension-defined types --
 	]
 	event-keys: [
 		; Event types. Order dependent for C and REBOL.

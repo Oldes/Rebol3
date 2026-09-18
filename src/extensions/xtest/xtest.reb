@@ -293,6 +293,20 @@ mezzanine: [
 			;; A released handle reads as none rather than a recycled context.
 			[release x  none? e/handle]
 
+			;; --- event type codes -----------------------------------------
+			;; A named type round-trips as its word...
+			[e: make event! [type: 'down]  'down = e/type]
+			[e: make event! [type: 'named-key]  'named-key = e/type]
+			;; ...a reserved slot has no name, so the code is reported plainly...
+			[e: make event! [type: 50]  50 = e/type]
+			;; ...and so does a type past the catalog, which is what an
+			;; extension defines its own events in.
+			[e: make event! [type: 200]  200 = e/type]
+			;; The C side sees exactly the code that was set, named or not.
+			[200 = evt0 make event! [type: 200]]
+			;; Out of range is refused rather than truncated into the byte.
+			[error? try [make event! [type: 300]]]
+
 			;; --- device registration -------------------------------------
 			;; The extension added a device to the host device table. Any
 			;; positive id means a slot was assigned; a failure would be one
