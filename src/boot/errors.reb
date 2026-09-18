@@ -137,6 +137,9 @@ Script: [
 	type-mismatch:         [{type mismatch:} :arg2 {must be same type as} :arg1]
 
 	fixed-sized-series:    {cannot change the length of a fixed-size series}
+
+	bad-event-type:        [{incompatible event type:} :arg1 {- the event is} :arg2]
+	no-event-key:          [{not a valid event key:} :arg1]
 ]
 
 Math: [

@@ -35,6 +35,8 @@
 #include "reb-evtypes.h"
 #include "reb-net.h"
 
+#define IS_CHAR_KEY_TYPE(t)   ((t) == EVT_KEY       || (t) == EVT_KEY_UP)
+#define IS_NAMED_KEY_TYPE(t)  ((t) == EVT_NAMED_KEY || (t) == EVT_NAMED_KEY_UP)
 
 /***********************************************************************
 **
@@ -82,27 +84,40 @@
 
 	case SYM_TYPE:
 		// An extension defines its own types above the named range, so a
-		// plain code is accepted too - and is what event/type hands back
-		// for one.
+		// plain code is accepted too - and is what event/type hands back.
 		if (IS_INTEGER(val)) {
-			REBI64 i = VAL_INT64(val);
-			if (i < 0 || i > 255) return FALSE;
-			VAL_EVENT_TYPE(value) = (u8)i;
-			return TRUE;
+			if (VAL_INT64(val) < 0 || VAL_INT64(val) > 255) return FALSE;
+			n = VAL_INT32(val);
 		}
-		if (!IS_WORD(val) && !IS_LIT_WORD(val)) return FALSE;
-		arg = Get_System(SYS_CATALOG, CAT_EVENT_TYPES);
-		if (IS_BLOCK(arg)) {
+		else if (IS_WORD(val) || IS_LIT_WORD(val)) {
+			arg = Get_System(SYS_CATALOG, CAT_EVENT_TYPES);
+			if (!IS_BLOCK(arg)) return FALSE;
 			w = VAL_WORD_CANON(val);
 			for (n = 0, arg = VAL_BLK(arg); NOT_END(arg); arg++, n++) {
-				if (IS_WORD(arg) && VAL_WORD_CANON(arg) == w) {
-					VAL_EVENT_TYPE(value) = n;
-					return TRUE;
-				}
+				if (IS_WORD(arg) && VAL_WORD_CANON(arg) == w) break;
 			}
-			Trap_Arg(val);
+			if (IS_END(arg)) Trap_Arg(val);
 		}
-		return FALSE;
+		else return FALSE;
+
+		// The data field is decoded by the TYPE, so a key event must not be
+		// relabelled as the other kind of key - the stored catalog position
+		// would be read as a codepoint, or the codepoint as a position.
+		if ((IS_CHAR_KEY_TYPE(VAL_EVENT_TYPE(value)) && IS_NAMED_KEY_TYPE(n))
+		|| (IS_NAMED_KEY_TYPE(VAL_EVENT_TYPE(value)) && IS_CHAR_KEY_TYPE(n))) {
+			// Name the type it already is - the conflict is the whole point
+			// of the refusal, so the message has to show both sides.
+			REBVAL current;
+			arg = Get_System(SYS_CATALOG, CAT_EVENT_TYPES);
+			if (IS_BLOCK(arg) && (REBCNT)VAL_EVENT_TYPE(value) < VAL_TAIL(arg))
+				current = *VAL_BLK_SKIP(arg, VAL_EVENT_TYPE(value));
+			else
+				SET_INTEGER(&current, VAL_EVENT_TYPE(value));
+			Trap2(RE_BAD_EVENT_TYPE, val, &current);
+		}
+
+		VAL_EVENT_TYPE(value) = (u8)n;
+		return TRUE;
 
 	case SYM_PORT:
 		if (IS_PORT(val)) {
@@ -148,9 +163,13 @@
 		return FALSE;
 
 	case SYM_KEY:
-		//VAL_EVENT_TYPE(value) != EVT_KEY && VAL_EVENT_TYPE(value) != EVT_KEY_UP)
-		if(!VAL_EVENT_TYPE(value)) VAL_EVENT_TYPE(value) = EVT_KEY;
 		if (IS_CHAR(val)) {
+			// Only EVT_KEY/EVT_KEY_UP decode the data as a character, so
+			// the default type has to follow the kind of key given.
+			if (!IS_CHAR_KEY_TYPE(VAL_EVENT_TYPE(value))
+				&& VAL_EVENT_TYPE(value) != EVT_CUSTOM
+				&& VAL_EVENT_TYPE(value) < EVT_MAX) // extension types are their own
+				VAL_EVENT_TYPE(value) = EVT_KEY;
 			VAL_EVENT_DATA(value) = VAL_CHAR(val);
 			CLR_FLAG(VAL_EVENT_FLAGS(value), EVF_HAS_XY);
 			SET_FLAG(VAL_EVENT_FLAGS(value), EVF_HAS_CODE);
@@ -159,14 +178,28 @@
 		else if (IS_LIT_WORD(val) || IS_WORD(val)) {
 			arg = Get_System(SYS_CATALOG, CAT_EVENT_KEYS);
 			if (IS_BLOCK(arg)) {
-				arg = VAL_BLK_DATA(arg);
-				for (n = VAL_INDEX(arg); NOT_END(arg); n++, arg++) {
+				// Count from the HEAD: Get_Event_Var indexes the catalog
+				// with VAL_BLK_SKIP from the head, so the two must agree.
+				// (The old init read VAL_INDEX of the first ELEMENT, which
+				// aliases a word's frame field - zero only by luck.)
+				arg = VAL_BLK(arg);
+				for (n = 0; NOT_END(arg); n++, arg++) {
 					if (IS_WORD(arg) && VAL_WORD_CANON(arg) == VAL_WORD_CANON(val)) {
-						VAL_EVENT_DATA(value) = (n+1) << 16;
+						if (!IS_NAMED_KEY_TYPE(VAL_EVENT_TYPE(value))
+							&& VAL_EVENT_TYPE(value) != EVT_CUSTOM
+							&& VAL_EVENT_TYPE(value) < EVT_MAX) // extension types are their own
+							VAL_EVENT_TYPE(value) = EVT_NAMED_KEY;
+						// 1-based, unshifted: a character key needs all 32
+						// bits (MAX_CHAR is 21), so the two uses of this
+						// field take turns by event type rather than
+						// splitting it 16/16 as SET_EVENT_KEY assumed.
+						VAL_EVENT_DATA(value) = n + 1;
+						CLR_FLAG(VAL_EVENT_FLAGS(value), EVF_HAS_XY);
+						SET_FLAG(VAL_EVENT_FLAGS(value), EVF_HAS_CODE);
 						break;
 					}
 				}
-				if (IS_END(arg)) return FALSE;
+				if (IS_END(arg)) Trap1(RE_NO_EVENT_KEY, val);
 				break;
 			}
 		}
@@ -293,12 +326,17 @@
 	case SYM_KEY:
 		n = VAL_EVENT_DATA(value);
 		if (VAL_EVENT_TYPE(value) == EVT_KEY || VAL_EVENT_TYPE(value) == EVT_KEY_UP) {
+			// The data may come from an extension - do not build a char!
+			// out of a codepoint the rest of the system cannot encode.
+			if ((REBCNT)n > MAX_CHAR) goto is_none;
 			SET_CHAR(val, n);
 			break;
 		}
 		else if (VAL_EVENT_TYPE(value) == EVT_NAMED_KEY || VAL_EVENT_TYPE(value) == EVT_NAMED_KEY_UP) {
 			arg = Get_System(SYS_CATALOG, CAT_EVENT_KEYS);
-			if (IS_BLOCK(arg) && n <= (REBINT)VAL_TAIL(arg)) {
+			// n is 1-based; n == 0 means no key, and without the lower
+			// bound VAL_BLK_SKIP(arg, -1) reads before the block's data.
+			if (IS_BLOCK(arg) && n > 0 && n <= (REBINT)VAL_TAIL(arg)) {
 				*val = *VAL_BLK_SKIP(arg, n-1);
 				break;
 			}
