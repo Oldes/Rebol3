@@ -1091,7 +1091,9 @@ include-rebol-bulk: [
 	:include-ext-sqlite
 	:include-ext-miniaudio
 	:include-ext-triangulate
-	:include-ext-gui
+	#if (any [Windows? MacOS?]) [
+		:include-ext-gui
+	]
 	;- for tests:
 	:include-ext-xtest
 	;- not recommanded:
