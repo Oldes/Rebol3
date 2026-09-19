@@ -332,9 +332,9 @@ static void Apply_Button_Color(GUIWIDGET *wid);
 // These fire for USER edits only - setStringValue: does not call them, so
 // unlike Win32's EN_CHANGE there is nothing to suppress when Rebol writes
 // to the control.
-- (void)controlTextDidChange:(NSNotification*)note       { [self queue:W_GUI_EVENT_CHANGE]; }
-- (void)controlTextDidBeginEditing:(NSNotification*)note { [self queue:W_GUI_EVENT_FOCUS]; }
-- (void)controlTextDidEndEditing:(NSNotification*)note   { [self queue:W_GUI_EVENT_UNFOCUS]; }
+- (void)controlTextDidChange:(NSNotification*)note       { [self queue:EVT_CHANGE]; }
+- (void)controlTextDidBeginEditing:(NSNotification*)note { [self queue:EVT_FOCUS]; }
+- (void)controlTextDidEndEditing:(NSNotification*)note   { [self queue:EVT_UNFOCUS]; }
 
 @end
 
@@ -480,7 +480,7 @@ static void Apply_Button_Color(GUIWIDGET *wid);
 	NSRect frame;
 	if (!context || !context->hob) return;
 	frame = [self frame];
-	Gui_Queue_Event(context->hob, W_GUI_EVENT_CHANGE,
+	Gui_Queue_Event(context->hob, EVT_CHANGE,
 	                (REBINT)frame.origin.x, (REBINT)frame.origin.y,
 	                Modifier_Bits([NSEvent modifierFlags]));
 }
@@ -497,7 +497,7 @@ static void Apply_Button_Color(GUIWIDGET *wid);
 	NSRect frame;
 	if (!context || !context->hob) return;
 	frame = [self frame];
-	Gui_Queue_Event(context->hob, W_GUI_EVENT_CHANGE,
+	Gui_Queue_Event(context->hob, EVT_CHANGE,
 	                (REBINT)frame.origin.x, (REBINT)frame.origin.y,
 	                Modifier_Bits([NSEvent modifierFlags]));
 }
@@ -521,9 +521,9 @@ static void Apply_Button_Color(GUIWIDGET *wid);
 	                Modifier_Bits([NSEvent modifierFlags]));
 }
 
-- (void)textDidChange:(NSNotification*)note       { [self queue:W_GUI_EVENT_CHANGE]; }
-- (void)textDidBeginEditing:(NSNotification*)note { [self queue:W_GUI_EVENT_FOCUS]; }
-- (void)textDidEndEditing:(NSNotification*)note   { [self queue:W_GUI_EVENT_UNFOCUS]; }
+- (void)textDidChange:(NSNotification*)note       { [self queue:EVT_CHANGE]; }
+- (void)textDidBeginEditing:(NSNotification*)note { [self queue:EVT_FOCUS]; }
+- (void)textDidEndEditing:(NSNotification*)note   { [self queue:EVT_UNFOCUS]; }
 
 @end
 
@@ -631,20 +631,20 @@ static void Apply_Button_Color(GUIWIDGET *wid);
 // A subview covers its part of the window, so the window's own view stops
 // hearing about the mouse there - these report it instead, with the widget
 // as the source and coordinates of its own.
-- (void)mouseMoved:(NSEvent*)evt        { [self queue:W_GUI_EVENT_MOVE from:evt extra:0]; }
-- (void)mouseDragged:(NSEvent*)evt      { [self queue:W_GUI_EVENT_MOVE from:evt extra:0]; }
-- (void)rightMouseDragged:(NSEvent*)evt { [self queue:W_GUI_EVENT_MOVE from:evt extra:0]; }
+- (void)mouseMoved:(NSEvent*)evt        { [self queue:EVT_MOVE from:evt extra:0]; }
+- (void)mouseDragged:(NSEvent*)evt      { [self queue:EVT_MOVE from:evt extra:0]; }
+- (void)rightMouseDragged:(NSEvent*)evt { [self queue:EVT_MOVE from:evt extra:0]; }
 
 - (void)mouseDown:(NSEvent*)evt
 {
-	[self queue:W_GUI_EVENT_DOWN from:evt
+	[self queue:EVT_DOWN from:evt
 	      extra:([evt clickCount] == 2 ? GUI_FLAG_DOUBLE : 0)];
 }
-- (void)mouseUp:(NSEvent*)evt       { [self queue:W_GUI_EVENT_UP from:evt extra:0]; }
-- (void)rightMouseDown:(NSEvent*)evt{ [self queue:W_GUI_EVENT_ALT_DOWN from:evt extra:0]; }
-- (void)rightMouseUp:(NSEvent*)evt  { [self queue:W_GUI_EVENT_ALT_UP from:evt extra:0]; }
-- (void)otherMouseDown:(NSEvent*)evt{ [self queue:W_GUI_EVENT_AUX_DOWN from:evt extra:0]; }
-- (void)otherMouseUp:(NSEvent*)evt  { [self queue:W_GUI_EVENT_AUX_UP from:evt extra:0]; }
+- (void)mouseUp:(NSEvent*)evt       { [self queue:EVT_UP from:evt extra:0]; }
+- (void)rightMouseDown:(NSEvent*)evt{ [self queue:EVT_ALT_DOWN from:evt extra:0]; }
+- (void)rightMouseUp:(NSEvent*)evt  { [self queue:EVT_ALT_UP from:evt extra:0]; }
+- (void)otherMouseDown:(NSEvent*)evt{ [self queue:EVT_AUX_DOWN from:evt extra:0]; }
+- (void)otherMouseUp:(NSEvent*)evt  { [self queue:EVT_AUX_UP from:evt extra:0]; }
 
 @end
 
@@ -704,33 +704,33 @@ static void Apply_Button_Color(GUIWIDGET *wid);
 // Windows makes no such distinction (it captures the mouse instead), so all
 // four are reported here as plain `move` events.
 
-- (void)mouseMoved:(NSEvent*)evt        { [self queue:W_GUI_EVENT_MOVE from:evt extra:0]; }
-- (void)mouseDragged:(NSEvent*)evt      { [self queue:W_GUI_EVENT_MOVE from:evt extra:0]; }
-- (void)rightMouseDragged:(NSEvent*)evt { [self queue:W_GUI_EVENT_MOVE from:evt extra:0]; }
-- (void)otherMouseDragged:(NSEvent*)evt { [self queue:W_GUI_EVENT_MOVE from:evt extra:0]; }
+- (void)mouseMoved:(NSEvent*)evt        { [self queue:EVT_MOVE from:evt extra:0]; }
+- (void)mouseDragged:(NSEvent*)evt      { [self queue:EVT_MOVE from:evt extra:0]; }
+- (void)rightMouseDragged:(NSEvent*)evt { [self queue:EVT_MOVE from:evt extra:0]; }
+- (void)otherMouseDragged:(NSEvent*)evt { [self queue:EVT_MOVE from:evt extra:0]; }
 
 //-- buttons ------------------------------------------------------------------
 
 - (void)mouseDown:(NSEvent*)evt
 {
-	[self queue:W_GUI_EVENT_DOWN from:evt
+	[self queue:EVT_DOWN from:evt
 	      extra:([evt clickCount] == 2 ? GUI_FLAG_DOUBLE : 0)];
 }
-- (void)mouseUp:(NSEvent*)evt           { [self queue:W_GUI_EVENT_UP from:evt extra:0]; }
+- (void)mouseUp:(NSEvent*)evt           { [self queue:EVT_UP from:evt extra:0]; }
 
 - (void)rightMouseDown:(NSEvent*)evt
 {
-	[self queue:W_GUI_EVENT_ALT_DOWN from:evt
+	[self queue:EVT_ALT_DOWN from:evt
 	      extra:([evt clickCount] == 2 ? GUI_FLAG_DOUBLE : 0)];
 }
-- (void)rightMouseUp:(NSEvent*)evt      { [self queue:W_GUI_EVENT_ALT_UP from:evt extra:0]; }
+- (void)rightMouseUp:(NSEvent*)evt      { [self queue:EVT_ALT_UP from:evt extra:0]; }
 
 - (void)otherMouseDown:(NSEvent*)evt
 {
-	[self queue:W_GUI_EVENT_AUX_DOWN from:evt
+	[self queue:EVT_AUX_DOWN from:evt
 	      extra:([evt clickCount] == 2 ? GUI_FLAG_DOUBLE : 0)];
 }
-- (void)otherMouseUp:(NSEvent*)evt      { [self queue:W_GUI_EVENT_AUX_UP from:evt extra:0]; }
+- (void)otherMouseUp:(NSEvent*)evt      { [self queue:EVT_AUX_UP from:evt extra:0]; }
 
 //-- wheel --------------------------------------------------------------------
 
@@ -756,7 +756,7 @@ static void Apply_Button_Color(GUIWIDGET *wid);
 	// every other Mac application does - the sign is not normalised against
 	// [evt isDirectionInvertedFromDevice].
 	pt = [self convertPoint:[evt locationInWindow] fromView:nil];
-	Gui_Queue_Event(context->hob, W_GUI_EVENT_WHEEL,
+	Gui_Queue_Event(context->hob, EVT_SCROLL_LINE,
 	                (REBINT)floor(pt.x), (REBINT)floor(pt.y), lines);
 }
 
@@ -766,7 +766,7 @@ static void Apply_Button_Color(GUIWIDGET *wid);
 - (BOOL)windowShouldClose:(id)sender
 {
 	if (context && context->hob)
-		Gui_Queue_Event(context->hob, W_GUI_EVENT_CLOSE, 0, 0, 0);
+		Gui_Queue_Event(context->hob, EVT_CLOSE, 0, 0, 0);
 	return NO;
 }
 
@@ -797,7 +797,7 @@ static void Apply_Button_Color(GUIWIDGET *wid);
 - (void)quitPicked:(id)sender
 {
 	if (context && context->hob)
-		Gui_Queue_Event(context->hob, W_GUI_EVENT_CLOSE, 0, 0, 0);
+		Gui_Queue_Event(context->hob, EVT_CLOSE, 0, 0, 0);
 }
 
 - (void)windowDidResize:(NSNotification*)note
@@ -805,7 +805,7 @@ static void Apply_Button_Color(GUIWIDGET *wid);
 	NSSize size;
 	if (!context || !context->hob) return;
 	size = [self bounds].size;
-	Gui_Queue_Event(context->hob, W_GUI_EVENT_RESIZE,
+	Gui_Queue_Event(context->hob, EVT_RESIZE,
 	                (REBINT)size.width, (REBINT)size.height, 0);
 }
 

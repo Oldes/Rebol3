@@ -113,9 +113,13 @@ static DEVICE_CMD Read_Gui(REBREQ *req) {
 **  is what Get_Event_Var resolves for event/port and what Mark_Event
 **  marks, so the port cannot be collected while the event is queued.
 **
+**  EVT_PENDING is what this is: "there is something waiting", which is
+**  the whole of what the doorbell says. It is not an EVT_READ - nothing
+**  was read, and the events themselves never travel through this port.
+**
 **  RL_Event appends. RL_Update_Event, which looks the more economical of
 **  the two, addresses the event it replaces by model and type ALONE - so
-**  it would silently overwrite an unhandled EVT_READ belonging to some
+**  it would silently overwrite an unhandled event belonging to some
 **  other port. Flooding is avoided by Gui_Ring_Doorbell() instead, which
 **  says yes once per batch of queued events and not again until
 **  `poll-events` has drained them.
@@ -129,7 +133,7 @@ static void Signal_Gui(void) {
 	if (!Gui_Dev_Port || !Gui_Dev_Port->port) return;
 
 	CLEARS(&evt);
-	evt.type  = EVT_READ;
+	evt.type  = EVT_PENDING;
 	evt.model = EVM_PORT;
 	evt.port  = (REBSER*)Gui_Dev_Port->port;
 

@@ -34,19 +34,21 @@ int GuiWidget_mold(REBHOB *hob, REBSER *str);
 
 typedef struct Gui_Event {
 	REBHOB *source; // handle context which produced it: a window, or a widget
-	REBCNT  type;   // W_GUI_EVENT_* - also the index into Gui_event_words
+	REBCNT  type;   // the core's EVT_* code, straight from reb-evtypes.h
 	REBINT  x, y;   // position in client coordinates
 	REBINT  value;  // modifier bits, or the wheel delta in lines
 } GUIEVT;
 
-// Modifier bits reported in GUIEVT.value; mirrored by `event-flags` in the
-// module's mezzanine, so both sides must be changed together.
+// Modifier bits reported in GUIEVT.value. They are translated into the
+// event!'s own EVF_SHIFT / EVF_CONTROL / EVF_ALT / EVF_DOUBLE when the queue
+// is drained, which is what makes `evt/flags` a block of words.
 enum {
 	GUI_FLAG_SHIFT   = 1,
 	GUI_FLAG_CONTROL = 2,
 	GUI_FLAG_ALT     = 4,
 	GUI_FLAG_DOUBLE  = 8
 };
+
 
 // Never blocks and never allocates - a full queue drops the event and bumps
 // a counter, which `poll-events` reports once instead of failing silently.

@@ -605,48 +605,48 @@ static LRESULT CALLBACK Gui_Window_Proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
 	switch (msg) {
 
 	case WM_MOUSEMOVE:
-		Queue_Mouse(win, W_GUI_EVENT_MOVE, lp, 0);
+		Queue_Mouse(win, EVT_MOVE, lp, 0);
 		return 0;
 
 	case WM_LBUTTONDBLCLK:
-		Queue_Mouse(win, W_GUI_EVENT_DOWN, lp, GUI_FLAG_DOUBLE);
+		Queue_Mouse(win, EVT_DOWN, lp, GUI_FLAG_DOUBLE);
 		SetCapture(hwnd);
 		return 0;
 	case WM_LBUTTONDOWN:
-		Queue_Mouse(win, W_GUI_EVENT_DOWN, lp, 0);
+		Queue_Mouse(win, EVT_DOWN, lp, 0);
 		SetFocus(hwnd);
 		SetCapture(hwnd);
 		return 0;
 	case WM_LBUTTONUP:
-		Queue_Mouse(win, W_GUI_EVENT_UP, lp, 0);
+		Queue_Mouse(win, EVT_UP, lp, 0);
 		ReleaseCapture();
 		return 0;
 
 	case WM_RBUTTONDBLCLK:
-		Queue_Mouse(win, W_GUI_EVENT_ALT_DOWN, lp, GUI_FLAG_DOUBLE);
+		Queue_Mouse(win, EVT_ALT_DOWN, lp, GUI_FLAG_DOUBLE);
 		SetCapture(hwnd);
 		return 0;
 	case WM_RBUTTONDOWN:
-		Queue_Mouse(win, W_GUI_EVENT_ALT_DOWN, lp, 0);
+		Queue_Mouse(win, EVT_ALT_DOWN, lp, 0);
 		SetFocus(hwnd);
 		SetCapture(hwnd);
 		return 0;
 	case WM_RBUTTONUP:
-		Queue_Mouse(win, W_GUI_EVENT_ALT_UP, lp, 0);
+		Queue_Mouse(win, EVT_ALT_UP, lp, 0);
 		ReleaseCapture();
 		return 0;
 
 	case WM_MBUTTONDBLCLK:
-		Queue_Mouse(win, W_GUI_EVENT_AUX_DOWN, lp, GUI_FLAG_DOUBLE);
+		Queue_Mouse(win, EVT_AUX_DOWN, lp, GUI_FLAG_DOUBLE);
 		SetCapture(hwnd);
 		return 0;
 	case WM_MBUTTONDOWN:
-		Queue_Mouse(win, W_GUI_EVENT_AUX_DOWN, lp, 0);
+		Queue_Mouse(win, EVT_AUX_DOWN, lp, 0);
 		SetFocus(hwnd);
 		SetCapture(hwnd);
 		return 0;
 	case WM_MBUTTONUP:
-		Queue_Mouse(win, W_GUI_EVENT_AUX_UP, lp, 0);
+		Queue_Mouse(win, EVT_AUX_UP, lp, 0);
 		ReleaseCapture();
 		return 0;
 
@@ -664,14 +664,14 @@ static LRESULT CALLBACK Gui_Window_Proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
 		ScreenToClient(hwnd, &pt);
 
 		if (win->hob)
-			Gui_Queue_Event(win->hob, W_GUI_EVENT_WHEEL,
+			Gui_Queue_Event(win->hob, EVT_SCROLL_LINE,
 			                To_Logical(pt.x), To_Logical(pt.y),
 			                delta * (REBINT)lines);
 		return 0; }
 
 	case WM_SIZE:
 		if (wp != SIZE_MINIMIZED && win->hob)
-			Gui_Queue_Event(win->hob, W_GUI_EVENT_RESIZE,
+			Gui_Queue_Event(win->hob, EVT_RESIZE,
 			                To_Logical((REBINT)LOWORD(lp)),
 			                To_Logical((REBINT)HIWORD(lp)), 0);
 		return 0;
@@ -680,7 +680,7 @@ static LRESULT CALLBACK Gui_Window_Proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
 		// Only reported - closing is Rebol's decision, and doing it here
 		// would destroy a window whose handle is still in use.
 		if (win->hob)
-			Gui_Queue_Event(win->hob, W_GUI_EVENT_CLOSE, 0, 0, 0);
+			Gui_Queue_Event(win->hob, EVT_CLOSE, 0, 0, 0);
 		return 0;
 
 	case WM_COMMAND: {
@@ -708,9 +708,9 @@ static LRESULT CALLBACK Gui_Window_Proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
 		// read when the control really is one.
 		if (wid && wid->kind == W_GUI_WIDGET_DROP_DOWN) {
 			switch (HIWORD(wp)) {
-			case CBN_SELCHANGE: type = W_GUI_EVENT_CHANGE;  break;
-			case CBN_SETFOCUS:  type = W_GUI_EVENT_FOCUS;   break;
-			case CBN_KILLFOCUS: type = W_GUI_EVENT_UNFOCUS; break;
+			case CBN_SELCHANGE: type = EVT_CHANGE;  break;
+			case CBN_SETFOCUS:  type = EVT_FOCUS;   break;
+			case CBN_KILLFOCUS: type = EVT_UNFOCUS; break;
 			default: goto not_handled;
 			}
 			if (wid->hob) {
@@ -721,14 +721,14 @@ static LRESULT CALLBACK Gui_Window_Proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
 		}
 
 		switch (HIWORD(wp)) {
-		case BN_CLICKED:   type = W_GUI_EVENT_CLICK;   break;
+		case BN_CLICKED:   type = EVT_CLICK;   break;
 		// SetWindowText raises EN_CHANGE as well, and reporting our own
 		// writes back as user edits would turn every `field/text: ...`
 		// into an event.
 		case EN_CHANGE:    if (Setting_Text) return 0;
-		                   type = W_GUI_EVENT_CHANGE;  break;
-		case EN_SETFOCUS:  type = W_GUI_EVENT_FOCUS;   break;
-		case EN_KILLFOCUS: type = W_GUI_EVENT_UNFOCUS; break;
+		                   type = EVT_CHANGE;  break;
+		case EN_SETFOCUS:  type = EVT_FOCUS;   break;
+		case EN_KILLFOCUS: type = EVT_UNFOCUS; break;
 		default: goto not_handled;
 		}
 
@@ -736,7 +736,7 @@ static LRESULT CALLBACK Gui_Window_Proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
 			// The position slot carries the widget's own offset - a
 			// notification has no cursor position of its own.
 			Gui_Widget_Get_Box(wid, &x, &y, &w, &h);
-			if (type == W_GUI_EVENT_CLICK) {
+			if (type == EVT_CLICK) {
 				// Toggles settle their state before the event goes out.
 				Gui_Widget_Activated(wid, x, y, Modifiers());
 			} else {
@@ -760,7 +760,7 @@ static LRESULT CALLBACK Gui_Window_Proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
 		wid = (GUIWIDGET*)GetWindowLongPtrW(child, GWLP_USERDATA);
 		if (wid && wid->hob && wid->kind == W_GUI_WIDGET_SLIDER) {
 			Gui_Widget_Get_Box(wid, &x, &y, &w, &h);
-			Gui_Queue_Event(wid->hob, W_GUI_EVENT_CHANGE, x, y, Modifiers());
+			Gui_Queue_Event(wid->hob, EVT_CHANGE, x, y, Modifiers());
 		}
 		return 0; }
 
@@ -910,34 +910,34 @@ static LRESULT CALLBACK Gui_Image_Proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
 		return 0;
 
 	case WM_MOUSEMOVE:
-		Queue_Widget_Mouse(wid, W_GUI_EVENT_MOVE, lp, 0);
+		Queue_Widget_Mouse(wid, EVT_MOVE, lp, 0);
 		return 0;
 
 	case WM_LBUTTONDBLCLK:
-		Queue_Widget_Mouse(wid, W_GUI_EVENT_DOWN, lp, GUI_FLAG_DOUBLE);
+		Queue_Widget_Mouse(wid, EVT_DOWN, lp, GUI_FLAG_DOUBLE);
 		SetCapture(hwnd);
 		return 0;
 	case WM_LBUTTONDOWN:
-		Queue_Widget_Mouse(wid, W_GUI_EVENT_DOWN, lp, 0);
+		Queue_Widget_Mouse(wid, EVT_DOWN, lp, 0);
 		SetCapture(hwnd);
 		return 0;
 	case WM_LBUTTONUP:
-		Queue_Widget_Mouse(wid, W_GUI_EVENT_UP, lp, 0);
+		Queue_Widget_Mouse(wid, EVT_UP, lp, 0);
 		ReleaseCapture();
 		return 0;
 
 	case WM_RBUTTONDOWN:
-		Queue_Widget_Mouse(wid, W_GUI_EVENT_ALT_DOWN, lp, 0);
+		Queue_Widget_Mouse(wid, EVT_ALT_DOWN, lp, 0);
 		return 0;
 	case WM_RBUTTONUP:
-		Queue_Widget_Mouse(wid, W_GUI_EVENT_ALT_UP, lp, 0);
+		Queue_Widget_Mouse(wid, EVT_ALT_UP, lp, 0);
 		return 0;
 
 	case WM_MBUTTONDOWN:
-		Queue_Widget_Mouse(wid, W_GUI_EVENT_AUX_DOWN, lp, 0);
+		Queue_Widget_Mouse(wid, EVT_AUX_DOWN, lp, 0);
 		return 0;
 	case WM_MBUTTONUP:
-		Queue_Widget_Mouse(wid, W_GUI_EVENT_AUX_UP, lp, 0);
+		Queue_Widget_Mouse(wid, EVT_AUX_UP, lp, 0);
 		return 0;
 	}
 

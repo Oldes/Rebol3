@@ -1,8 +1,8 @@
 REBOL [
 	Title:   "Rebol GUI extension"
 	Name:    gui
-	Version: 0.2.0
-	Needs:   3.22.7
+	Version: 0.3.0
+	Needs:   3.22.8
 	Author:  @Oldes
 	License: Apache-2.0
 	Options: [delay]
@@ -13,7 +13,7 @@ REBOL [
 		remove-widget redraw
 		gui-device gui-device-polls gui-device-events
 		gui-device-pumps gui-device-messages
-		poll-events do-events event-flags
+		poll-events do-events
 	]
 	Purpose: {
 		A minimal, GOB-free windowing extension.
@@ -25,9 +25,11 @@ REBOL [
 		to arrive later as an image! blitted into the window.
 
 		GUI events are NOT posted to system/ports/event: the extension
-		keeps its own queue and `poll-events` drains it, so no REBGOB
-		ever crosses the extension boundary and no scheme in the host has
-		to make sense of one.
+		keeps its own queue and `poll-events` drains it into a block of
+		event! values. Each one names its window or widget through the
+		EVM_HANDLE model, so a context handle crosses the boundary where
+		a REBGOB used to have to, and nothing in the host has to make
+		sense of a gob.
 
 		What IS posted is a single wake event, on a port of this
 		extension's own (the `gui` scheme), whenever the OS pump has put
@@ -200,27 +202,18 @@ typedef struct Gui_Widget_Context {
 ;; ---------------------------------------------------------------------------
 ;; Words resolved at init time through RL_MAP_WORDS.
 ;;
-;; ORDER IS SIGNIFICANT: the generated W_GUI_EVENT_* enum starts at 1 (after
-;; the _0 sentinel) and `Gui_event_words` is the very same 1-based array, so
-;; the C side can emit an event word with a plain `Gui_event_words[type]`.
+;; ORDER IS SIGNIFICANT: each generated W_GUI_<LIST>_* enum starts at 1 (after
+;; the _0 sentinel) and `Gui_<list>_words` is the very same 1-based array, so
+;; the C side can emit a word with a plain `Gui_<list>_words[n]`.
+;;
+;; There is no `event:` list: an event reports its type with the core's own
+;; EVT_* code, from system/catalog/event-types, so the backends name those
+;; directly and this extension defines no event words of its own.
 ;;
 ;; The `arg:` list is not written here - the generator collects it from the
 ;; `handles:` field below.
 ;; NOTE: append to these lists, never insert - the enum values are positions.
 words: [
-	event: [
-		move            ;; mouse moved over the client area
-		down up         ;; left button
-		alt-down alt-up ;; right button
-		aux-down aux-up ;; middle button
-		wheel           ;; value = signed number of lines
-		close           ;; the user asked to close it; the window is still open
-		resize          ;; position = the new client size
-		click           ;; a widget was activated; source = the widget
-		change          ;; the user edited a field or an area
-		focus unfocus   ;; keyboard focus entered or left a widget
-		menu            ;; a menu item was picked; value = its word, not a number
-	]
 	;; Words the menu dialect understands beyond the labels and the item
 	;; ids themselves. The separator `---` is NOT here: it would generate
 	;; `W_GUI_MENU____`, so it is mapped by name in Gui_Init() instead.
@@ -430,16 +423,6 @@ commands: [
 ;; ---------------------------------------------------------------------------
 ;; Module body.
 mezzanine: [
-	;; Bits carried by the fourth value of a mouse event. A `wheel` event
-	;; uses that slot for the signed number of lines instead, and `close`
-	;; and `resize` leave it at zero.
-	event-flags: object [
-		shift:   1
-		control: 2
-		alt:     4
-		double:  8
-	]
-
 	;; -----------------------------------------------------------------------
 	;; The event port - a doorbell, not a channel.
 	;;
@@ -476,17 +459,27 @@ mezzanine: [
 	;; sleep out its full timeout.
 	if port? event-port [event-port/awake: func [event] [true]]
 
-	;; `poll-events` always returns a block, so the four values of every
-	;; event can be taken apart directly:
+	;; `poll-events` returns a block of event! values, so a handler takes
+	;; ONE argument and reads what it needs by name:
 	;;
-	;;     foreach [type source position value] poll-events [...]
+	;;     foreach evt poll-events [
+	;;         switch evt/type [
+	;;             click  [print [evt/source "at" evt/offset]]
+	;;             change [...]
+	;;         ]
+	;;     ]
 	;;
-	;; `source` is the window for window events, and the widget itself for a
-	;; `click` - use `source/parent` to get back to the window.
+	;; `source` is the window for window events and the WIDGET itself for a
+	;; click, a change and a focus change - use `evt/source/window` to get
+	;; back to the window it is in.
+	;;
+	;; The type words are the core's own: this extension defines no event
+	;; vocabulary of its own, so they are the ones in
+	;; system/catalog/event-types that every other event source reports.
 	do-events: function [
 		"Pumps window events until the given window is closed"
 		window  [handle!]
-		handler [any-function!] "Called as: handler type source position value"
+		handler [any-function!] "Called with one event! for each event"
 		/rate delay [number!] {Longest it may sleep with nothing to do (default: 0.05)}
 	][
 		;; `wait` does the sleeping, and that is the whole point: the
@@ -503,10 +496,10 @@ mezzanine: [
 		wake:  either port? event-port [reduce [event-port delay]][delay]
 
 		forever [
-			foreach [type source pos val] poll-events [
-				handler type source pos val
+			foreach evt poll-events [
+				handler evt
 				;; `close` only reports the request - closing is ours to do
-				if all [type = 'close  source = window] [
+				if all [evt/type = 'close  evt/source = window] [
 					close-window window
 				]
 				;; the handler is allowed to close it as well, and the rest

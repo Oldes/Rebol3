@@ -73,9 +73,9 @@ void Gui_Queue_Event(REBHOB *source, REBCNT type, REBINT x, REBINT y, REBINT val
 {
 	GUIEVT *evt;
 
-	if (type == W_GUI_EVENT_MOVE && QUEUE_COUNT() > 0) {
+	if (type == EVT_MOVE && QUEUE_COUNT() > 0) {
 		evt = QUEUE_AT(QUEUE_COUNT() - 1);
-		if (evt->type == W_GUI_EVENT_MOVE && evt->source == source) {
+		if (evt->type == EVT_MOVE && evt->source == source) {
 			evt->x = x;
 			evt->y = y;
 			evt->value = value;
@@ -263,7 +263,7 @@ void Gui_Widget_Activated(GUIWIDGET *widget, REBINT x, REBINT y, REBINT flags)
 		break;
 	}
 
-	Gui_Queue_Event(widget->hob, W_GUI_EVENT_CLICK, x, y, flags);
+	Gui_Queue_Event(widget->hob, EVT_CLICK, x, y, flags);
 }
 
 
@@ -861,7 +861,7 @@ void Gui_Menu_Picked(GUIWIN *win, REBCNT id)
 	if (id == 0 || id > win->menu_count) return;
 	if (win->menu_ids[id - 1] == 0) return; // a label with no id of its own
 
-	Gui_Queue_Event(win->hob, W_GUI_EVENT_MENU, 0, 0,
+	Gui_Queue_Event(win->hob, EVT_MENU_SELECT, 0, 0,
 	                (REBINT)win->menu_ids[id - 1]);
 }
 
@@ -1349,22 +1349,68 @@ COMMAND cmd_gui_hide_window(RXIFRM *frm, void *ctx)
 
 
 /***********************************************************************
+**  The modifiers of a queued event, as the event!'s own flag bits.
+**
+**  GUI_FLAG_* is what the backends report; EVF_* is what `evt/flags`
+**  reads back as a block of words. They are separate enums on purpose -
+**  the backends must not have to know the core's bit numbering.
+***********************************************************************/
+static REBYTE Event_Modifier_Bits(REBINT value)
+{
+	REBYTE bits = 0;
+	if (value & GUI_FLAG_SHIFT)   bits |= (1 << EVF_SHIFT);
+	if (value & GUI_FLAG_CONTROL) bits |= (1 << EVF_CONTROL);
+	if (value & GUI_FLAG_ALT)     bits |= (1 << EVF_ALT);
+	if (value & GUI_FLAG_DOUBLE)  bits |= (1 << EVF_DOUBLE);
+	return bits;
+}
+
+
+/***********************************************************************
 **  poll-events
 **
 **  Dispatches everything the OS has waiting - which is what fills the
-**  queue - and returns the collected events as one flat block of
-**  four-value records:
+**  queue - and returns the collected events as a block of event!
+**  values:
 **
-**      foreach [type window position value] poll-events [...]
+**      foreach evt poll-events [switch evt/type [...]]
 **
 **  Always returns a block, empty when nothing happened, so the caller
 **  never has to test before iterating.
+**
+**  WHY event! rather than the flat four-value records this used to
+**  return: the arity was fixed at the call site, so the day a GUI event
+**  needed a fifth piece of information every `foreach [type source
+**  position value]` in existence would have started reading the next
+**  event's type as its own value - silently. An event! grows a field
+**  instead. It also costs one REBVAL per event rather than four, and it
+**  is what every other event source in Rebol already speaks, so one
+**  handler can take a GUI event and a port event through one path.
+**
+**  The types are the core's own EVT_* codes, so a script switches on
+**  the same words every other event source in Rebol reports - there is
+**  no event vocabulary of this extension's own to learn.
+**
+**  What each field carries:
+**
+**      type     `click`, `change`, `scroll-line`, `menu-select`, ...
+**      source   what produced it: a window, or the widget itself for
+**               `click`, `change`, `focus` and `unfocus`
+**      offset   client coordinates; the new client SIZE for `resize`
+**      flags    shift / control / alt / double, where they apply
+**      code     the wheel delta in lines, or a menu item's WORD
+**
+**  `offset` and `code` are the two readings of the event's one payload
+**  word, so an event has one or the other and never both - which is why
+**  a wheel event reports no position. The widget it happened to is in
+**  `source`, which is the part anyone actually switches on.
 ***********************************************************************/
 COMMAND cmd_gui_poll_events(RXIFRM *frm, void *ctx)
 {
 	REBSER *blk;
 	REBCNT  count, n;
 	RXIARG  val;
+	REBEVT  ev;
 
 	/*******************************************************************
 	**  Pumps and drains, and never sleeps.
@@ -1382,7 +1428,7 @@ COMMAND cmd_gui_poll_events(RXIFRM *frm, void *ctx)
 	}
 
 	count = QUEUE_COUNT();
-	blk = (REBSER*)RL_MAKE_BLOCK(count * 4);
+	blk = (REBSER*)RL_MAKE_BLOCK(count);
 	if (!blk) RETURN_ERROR(ERR_NO_HANDLE);
 
 	// RL_Set_Value may expand the block, and an expansion can collect - so
@@ -1391,35 +1437,46 @@ COMMAND cmd_gui_poll_events(RXIFRM *frm, void *ctx)
 
 	for (n = 0; n < count; n++) {
 		GUIEVT *evt = QUEUE_AT(n);
-		REBCNT  i = n * 4;
 
-		// 1. event type, as a word: `move`, `down`, `wheel`, ...
-		CLEARS(&val);
-		val.int32a = (i32)Gui_event_words[evt->type];
-		RL_SET_VALUE(blk, i, val, RXT_WORD);
+		CLEARS(&ev);
+		ev.type  = (u8)evt->type;
 
-		// 2. what produced it - a window, or a widget for `click`
-		Set_Handle_Arg(&val, evt->source);
-		RL_SET_VALUE(blk, i + 1, val, RXT_HANDLE);
+		// EVM_HANDLE is what lets the source be one of this extension's own
+		// handles rather than a gob - and it is what the GC follows, so an
+		// event still queued keeps its window or widget alive.
+		ev.model = EVM_HANDLE;
+		ev.hob   = evt->source;
 
-		// 3. position in client coordinates (the new size for `resize`)
-		CLEARS(&val);
-		val.pair.x = (float)evt->x;
-		val.pair.y = (float)evt->y;
-		RL_SET_VALUE(blk, i + 2, val, RXT_PAIR);
+		switch (evt->type) {
+		case EVT_SCROLL_LINE:
+			// The signed number of lines. There is no room for a position
+			// as well - see the note above.
+			ev.flags = (1 << EVF_HAS_CODE);
+			ev.data  = (u32)evt->value;
+			break;
 
-		// 4. modifier bits, or the wheel delta in lines - except for a
-		//    `menu` event, where the slot carries the item's WORD. It is
-		//    the one slot with no fixed type, and a word is what makes a
-		//    menu handler a `switch` rather than a table of numbers.
-		CLEARS(&val);
-		if (evt->type == W_GUI_EVENT_MENU) {
-			val.int32a = (i32)evt->value;
-			RL_SET_VALUE(blk, i + 3, val, RXT_WORD);
-		} else {
-			val.int64 = (i64)evt->value;
-			RL_SET_VALUE(blk, i + 3, val, RXT_INTEGER);
+		case EVT_MENU_SELECT:
+			// The item's WORD, as a canon symbol id. EVF_HAS_SYM is what
+			// makes `evt/code` read it back as a word instead of a number,
+			// which is what keeps a menu handler a plain `switch`.
+			ev.flags = (1 << EVF_HAS_SYM) | (1 << EVF_HAS_CODE);
+			ev.data  = (u32)evt->value;
+			break;
+
+		default:
+			// Everything else is positional: the pointer, or the new client
+			// size for `resize`.
+			ev.flags = (1 << EVF_HAS_XY) | Event_Modifier_Bits(evt->value);
+			ev.data  = (((u32)(evt->y & 0xffff)) << 16) | ((u32)evt->x & 0xffff);
+			break;
 		}
+
+		// An event fits whole into the value slot, so it crosses by value -
+		// there is no series behind it. Copied rather than assigned through
+		// the union member so that this does not depend on its spelling.
+		CLEARS(&val);
+		COPY_MEM(&val, &ev, sizeof(ev));
+		RL_SET_VALUE(blk, n, val, RXT_EVENT);
 	}
 
 	RL_PROTECT_GC(blk, 0);
