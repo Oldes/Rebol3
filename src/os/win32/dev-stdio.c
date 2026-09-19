@@ -711,14 +711,14 @@ error:
 					if (GetKeyState(VK_CONTROL) < 0) SET_FLAG(evt.flags, EVF_CONTROL);
 
 					if (evt.data == 0) {
-						evt.type = ker.bKeyDown ? EVT_CONTROL : EVT_CONTROL_UP;
+						evt.type = ker.bKeyDown ? EVT_NAMED_KEY : EVT_NAMED_KEY_UP;
 						// Map the virtual key code to a supported Rebol control key event code
 						int vk = Normalize_Virtual_Key(ker.wVirtualKeyCode);
 						if (vk) evt.data = vk;
 						else continue; // ignore not supported keys
 					}
 					else if (evt.data == 3 || evt.data == 27) {
-						evt.type = EVT_CONTROL;
+						evt.type = EVT_NAMED_KEY;
 						evt.data = EVK_ESCAPE;
 					} else {
 						evt.type = ker.bKeyDown ? EVT_KEY : EVT_KEY_UP;

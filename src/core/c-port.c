@@ -399,6 +399,27 @@ xx*/	REBINT Wait_Device(REBREQ *req, REBCNT timeout)
 
 /***********************************************************************
 **
+*/	REBFLG Is_Port_Frame(REBSER *port)
+/*
+**		TRUE when the series can be used as a port frame - that is, when
+**		it holds values and the fixed STD_PORT_* indices are in range.
+**
+**		Split out of Validate_Port_Value so that callers which must not
+**		throw (RL_Port_State) can ask the same question.
+**
+***********************************************************************/
+{
+	return (
+		port != 0
+		&& IS_BLOCK_SERIES(port)               // values, not bytes
+		&& SERIES_TAIL(port) == STD_PORT_MAX   // every STD_PORT_* in range
+		&& IS_OBJECT(OFV(port, STD_PORT_SPEC))
+	);
+}
+
+
+/***********************************************************************
+**
 */	REBSER *Validate_Port_Value(REBVAL *value)
 /*
 **		Because port actors are exposed to the user level, we must
@@ -407,17 +428,9 @@ xx*/	REBINT Wait_Device(REBREQ *req, REBCNT timeout)
 **
 ***********************************************************************/
 {
-	REBSER *port = VAL_PORT(value);
-	if (
-		VAL_TYPE(value) != REB_PORT
-		|| SERIES_TAIL(port) > STD_PORT_MAX
-//		|| SERIES_WIDE(port) != sizeof(REBVAL)
-//		|| !IS_FRAME(BLK_HEAD(port))
-		|| !IS_OBJECT(OFV(port, STD_PORT_SPEC))
-		)
-		Trap0(RE_INVALID_PORT);
-	// else..
-	return port;
+	if (VAL_TYPE(value) != REB_PORT) Trap0(RE_INVALID_PORT);
+	if (!Is_Port_Frame(VAL_PORT(value))) Trap0(RE_INVALID_PORT);
+	return VAL_PORT(value);
 }
 
 /***********************************************************************
