@@ -1367,7 +1367,7 @@ REBCNT Get_Vector_Type_From_Symbol(REBCNT sym) {
 			if (len == 0 && VAL_LEN(bp) > 0)
 				return 0;   // or Trap1(RE_INVALID_DATA, bp) in Make_Vector_Spec
 		}
-		if (len > cols && cols == 0) cols = len;
+		if (len > (REBCNT)cols && cols == 0) cols = len;
 		iblk = bp;
 		bp++;
 	}
@@ -1628,7 +1628,7 @@ size_spec:
 			if (len == 0 && VAL_LEN(bp) > 0)
 				return 0;   // or Trap1(RE_INVALID_DATA, bp) in Make_Vector_Spec
 		}
-		if (len > cols && cols == 0) cols = len;
+		if (len > (REBCNT)cols && cols == 0) cols = len;
 		iblk = val;
 		val = ++bp;
 		if (IS_GET_WORD(val))

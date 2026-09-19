@@ -1104,7 +1104,7 @@ pick_it:
 				// special case for Unicode when taking from the tail
 				REBINT range;
 				if (IS_INTEGER(part) || IS_DECIMAL(part)) {
-					range = MIN(UTF8_Index_To_Position(BIN_SKIP(ser, VAL_INDEX(value)), tail), Int32(part));
+					range = MIN((int)UTF8_Index_To_Position(BIN_SKIP(ser, VAL_INDEX(value)), tail), Int32(part));
 				}
 				else {
 					// part provided as a series position
