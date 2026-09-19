@@ -206,10 +206,16 @@
 		return FALSE;
 
 	case SYM_CODE:
-		//if (GET_FLAG(VAL_EVENT_FLAGS(value), EVF_HAS_XY)) return FALSE;
 		if (IS_INTEGER(val)) {
 			VAL_EVENT_DATA(value) = VAL_INT64(val);
+			CLR_FLAGS(VAL_EVENT_FLAGS(value), EVF_HAS_XY, EVF_HAS_SYM);
+			SET_FLAG(VAL_EVENT_FLAGS(value), EVF_HAS_CODE);
+			break;
+		}
+		if (IS_WORD(val) || IS_LIT_WORD(val)) {
+			VAL_EVENT_DATA(value) = VAL_WORD_CANON(val);
 			CLR_FLAG(VAL_EVENT_FLAGS(value), EVF_HAS_XY);
+			SET_FLAG(VAL_EVENT_FLAGS(value), EVF_HAS_SYM);
 			SET_FLAG(VAL_EVENT_FLAGS(value), EVF_HAS_CODE);
 			break;
 		}
@@ -363,8 +369,15 @@
 		break;
 
 	case SYM_CODE:
+		// A symbol id reads back as the word it names. This is what lets an
+		// extension report WHICH item, menu entry or command an event is
+		// about, in the one payload slot an event has.
+		if (GET_FLAG(VAL_EVENT_FLAGS(value), EVF_HAS_SYM)) {
+			Init_Word(val, VAL_EVENT_DATA(value));
+			break;
+		}
 		if (GET_FLAG(VAL_EVENT_FLAGS(value), EVF_HAS_CODE)) {
-			SET_INTEGER(val, VAL_EVENT_DATA(value)); // key-words in top 16, chars in lower 16
+			SET_INTEGER(val, VAL_EVENT_DATA(value));
 			break;
 		}
 		goto is_none;

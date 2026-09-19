@@ -66,7 +66,7 @@ enum {
 	EVF_DOUBLE,		// double click detected
 	EVF_CONTROL,
 	EVF_SHIFT,
-	EVF_HAS_DATA,   // reserved: no longer interpreted by the core
+	EVF_HAS_SYM,    // `data` is a canon symbol id; `code` reads as a word
 	EVF_HAS_CODE,   // XY value is interpreted as integer instead of pair
 	EVF_ALT,
 };

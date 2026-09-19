@@ -307,6 +307,16 @@ mezzanine: [
 			;; Out of range is refused rather than truncated into the byte.
 			[error? try [make event! [type: 300]]]
 
+			;; A word in the code slot round-trips as that word...
+			[e: make event! [type: 'menu-select code: 'quit]  'quit = e/code]
+			;; ...an integer still reads as an integer...
+			[e: make event! [type: 'change code: 42]  42 = e/code]
+			;; ...and setting one replaces the other rather than being read as both.
+			[e/code: 'reset  'reset = e/code]
+			[e/code: 7       7 = e/code]
+			;; A symbol in `data` is not an offset.
+			[none? evt1 make event! [type: 'menu-select code: 'quit]]
+
 			;; --- device registration -------------------------------------
 			;; The extension added a device to the host device table. Any
 			;; positive id means a slot was assigned; a failure would be one
