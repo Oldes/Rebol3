@@ -18,10 +18,15 @@
 #include <windows.h>
 #include <windowsx.h> // GET_X_LPARAM
 #include <commctrl.h> // trackbar and progress bar
+#include <shellapi.h> // DragQueryFile and friends
+#define  COBJMACROS   // so the IDropTarget vtable can be used from plain C
+#include <ole2.h>     // OLE drag and drop
 // MAKE_MEM / FREE_MEM are malloc and free behind a macro, and neither
 // rebol-extension.h nor windows.h is required to declare them - the wide
 // string conversions and the font cache here both allocate.
 #include <stdlib.h>
+// The drag and drop trace prints; MSVC does not get stdio from windows.h.
+#include <stdio.h>
 
 // Windows uses this macro name too, and we want Rebol's meaning of it.
 #undef IS_ERROR
@@ -87,6 +92,15 @@ static REBOOL Setting_Text = FALSE;
 #define HWND_OF(win)      ((HWND)((win)->handle))
 #define HWND_OF_WID(wid)  ((HWND)((wid)->handle))
 #define GUIWIN_OF(hwnd)   ((GUIWIN*)GetWindowLongPtrW((hwnd), GWLP_USERDATA))
+
+// Defined with the drop target, far below, but needed by WM_NCDESTROY: a
+// registered target must go while its HWND is still valid.
+static void Gui_Window_Revoke_Drop(GUIWIN *win);
+
+// Whether OLE came up on this thread, decided once in Gui_Init_Platform,
+// and whether it was us who started it - see the note there.
+static REBOOL Ole_Ready = FALSE;
+static REBOOL Ole_Ours  = FALSE;
 
 
 //== string conversion ========================================================
@@ -683,6 +697,61 @@ static LRESULT CALLBACK Gui_Window_Proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
 			Gui_Queue_Event(win->hob, EVT_CLOSE, 0, 0, 0);
 		return 0;
 
+	case WM_DROPFILES: {
+		/***************************************************************
+		**  Dropped files.
+		**
+		**  WM_DROPFILES is the simple half of Win32 drag and drop: the
+		**  shell has already done the dragging, and this arrives as an
+		**  ordinary posted message - so it is dispatched by our own pump
+		**  and there is no modal loop to be careful of. Dropped TEXT is
+		**  the other half and needs a registered IDropTarget, which is
+		**  not implemented: `drop-text` exists all the way through this
+		**  extension, but only macOS produces one today.
+		**
+		**  The paths are copied out here and converted to file! values
+		**  later, in `poll-events` - the window procedure must not
+		**  allocate a Rebol series, which is the rule the whole event
+		**  queue is built around.
+		***************************************************************/
+		HDROP  hdrop = (HDROP)wp;
+		UINT   count = DragQueryFileW(hdrop, 0xFFFFFFFF, NULL, 0);
+		POINT  pt;
+		GUIDROPDATA *data;
+		REBHOB *target = win->hob;
+		HWND    child;
+		UINT    n;
+
+		DragQueryPoint(hdrop, &pt);   // client coordinates of this window
+
+		// A drop lands on whatever is under the pointer, so a file dropped
+		// on a widget reports the widget - the same rule a click follows.
+		child = ChildWindowFromPointEx(hwnd, pt, CWP_SKIPINVISIBLE | CWP_SKIPDISABLED);
+		if (child && child != hwnd) {
+			GUIWIDGET *wid = (GUIWIDGET*)GetWindowLongPtrW(child, GWLP_USERDATA);
+			if (wid && wid->hob) target = wid->hob;
+		}
+
+		data = Gui_Drop_Payload(GUI_DROP_FILES, count * 160);
+		if (data) {
+			for (n = 0; n < count; n++) {
+				WCHAR  wide[MAX_PATH * 2];
+				REBYTE utf8[MAX_PATH * 6];
+				REBCNT len;
+				int    bytes;
+
+				len = DragQueryFileW(hdrop, n, wide, (UINT)(sizeof(wide) / sizeof(WCHAR)));
+				if (!len) continue;
+				bytes = WideCharToMultiByte(CP_UTF8, 0, wide, (int)len,
+				                            (char*)utf8, (int)sizeof(utf8), NULL, NULL);
+				if (bytes > 0) Gui_Drop_Append(data, utf8, (REBCNT)bytes);
+			}
+			Gui_Queue_Drop(target, data, To_Logical(pt.x), To_Logical(pt.y));
+		}
+
+		DragFinish(hdrop);
+		return 0; }
+
 	case WM_COMMAND: {
 		// Child controls report through their parent, and the child's HWND
 		// arrives in lParam - which is why the control does not need an id.
@@ -797,6 +866,11 @@ static LRESULT CALLBACK Gui_Window_Proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
 		// The window is gone for good - whether we destroyed it or the
 		// system did. Drop the queued events which point at the handle and
 		// release the lock that kept it alive.
+		//
+		// The drop target goes FIRST, while the HWND is still valid: it
+		// holds the GUIWIN this is about to finish with, and a registration
+		// outliving its window is a dangling one.
+		Gui_Window_Revoke_Drop(win);
 		win->handle = NULL;
 		win->flags &= ~GUIW_VISIBLE;
 		SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
@@ -1221,6 +1295,41 @@ void Gui_Init_Platform(void)
 	controls.dwICC  = ICC_BAR_CLASSES | ICC_PROGRESS_CLASS | ICC_STANDARD_CLASSES;
 	InitCommonControlsEx(&controls);
 
+	/*******************************************************************
+	**  OLE, for drag and drop.
+	**
+	**  RegisterDragDrop needs an initialised single-threaded apartment
+	**  on the thread which owns the window. The interpreter may already
+	**  have COM up: S_FALSE means it was already initialised compatibly
+	**  and is not ours to shut down, and RPC_E_CHANGED_MODE means it is
+	**  up as multi-threaded, where drag and drop cannot be registered at
+	**  all - so drops fall back to WM_DROPFILES rather than failing the
+	**  window.
+	*******************************************************************/
+	{
+		HRESULT hr = OleInitialize(NULL);
+		Ole_Ready = (hr == S_OK || hr == S_FALSE) ? TRUE : FALSE;
+		Ole_Ours  = (hr == S_OK) ? TRUE : FALSE;
+		if (!Ole_Ready) {
+			// Said out loud rather than degraded quietly: a window which
+			// then takes drops from Explorer and from nothing else looks
+			// like a bug in the drop code, which is where the time goes.
+			if (hr == RPC_E_CHANGED_MODE) {
+				printf("GUI: COM is already initialised on this thread as "
+				       "MULTI-THREADED, so OLE drag and drop cannot be "
+				       "registered.\n"
+				       "GUI: Drops fall back to WM_DROPFILES, which only "
+				       "Explorer sends. The host should start COM on its GUI "
+				       "thread with COINIT_APARTMENTTHREADED.\n");
+			} else {
+				printf("GUI: OleInitialize failed (0x%08lx) - drops fall back "
+				       "to WM_DROPFILES, which only Explorer sends\n",
+				       (unsigned long)hr);
+			}
+			fflush(stdout);
+		}
+	}
+
 	shcore = LoadLibraryW(L"shcore.dll");
 	if (shcore) {
 		SETPROCESSDPIAWARENESS_T fn =
@@ -1256,6 +1365,12 @@ void Gui_Quit_Platform(void)
 	if (Image_Class_Registered) {
 		UnregisterClassW(Class_Name_Image, App_Instance);
 		Image_Class_Registered = FALSE;
+	}
+	// Only if it was ours - the interpreter's own COM is not to be shut
+	// down by an extension being unloaded.
+	if (Ole_Ours) {
+		OleUninitialize();
+		Ole_Ours = Ole_Ready = FALSE;
 	}
 	if (Panel_Class_Registered) {
 		UnregisterClassW(Class_Name_Panel, App_Instance);
@@ -1341,6 +1456,313 @@ REBOOL Gui_Open_Window(GUIWIN *win, REBINT x, REBINT y, REBINT w, REBINT h,
 /***********************************************************************
 **  win->background, applied.
 ***********************************************************************/
+
+//== drag and drop ============================================================
+//
+// Two protocols, and this implements the real one.
+//
+// DragAcceptFiles() only sets WS_EX_ACCEPTFILES, and WM_DROPFILES is then a
+// COURTESY OF THE DRAG SOURCE: an application dragging files is expected to
+// notice that style and post the message itself, with a DROPFILES structure
+// in shared memory. Explorer still does, for compatibility going back to
+// Windows 3.1. Anything written against OLE drag and drop - which is the
+// documented way since Win32, and includes Total Commander, most archivers
+// and every browser - calls DoDragDrop and talks only to an IDropTarget
+// registered with RegisterDragDrop. With no such target the drop is simply
+// refused and no message is sent, which is why the legacy path looked like
+// it worked: it was being tested from the one source which still supports it.
+//
+// So a real IDropTarget is registered per window. It also gets three things
+// the legacy protocol cannot express at all: CF_UNICODETEXT (so `drop-text`
+// is not macOS-only), the drag-OVER feedback which tells the user whether a
+// drop will be taken, and the position DURING the drag rather than after it.
+//
+// WM_DROPFILES is kept as a fallback: if OLE cannot be initialised on this
+// thread the window falls back to DragAcceptFiles, and Explorer still works.
+
+typedef struct Gui_Drop_Target {
+	IDropTarget iface;   // FIRST: an IDropTarget* is a GUIDROPTARGET*
+	LONG        refs;
+	GUIWIN     *win;
+	DWORD       effect;  // what the current drag would do; 0 when we take nothing
+} GUIDROPTARGET;
+
+
+/***********************************************************************
+**  Does this data object carry something we take?
+**
+**  Files first: a drop which has both is a file drop, because that is
+**  what the user thinks they are dragging.
+***********************************************************************/
+static REBCNT Drop_Format_Of(IDataObject *obj)
+{
+	FORMATETC fmt;
+
+	fmt.ptd      = NULL;
+	fmt.dwAspect = DVASPECT_CONTENT;
+	fmt.lindex   = -1;
+	fmt.tymed    = TYMED_HGLOBAL;
+
+	fmt.cfFormat = CF_HDROP;
+	if (IDataObject_QueryGetData(obj, &fmt) == S_OK) return GUI_DROP_FILES;
+
+	fmt.cfFormat = CF_UNICODETEXT;
+	if (IDataObject_QueryGetData(obj, &fmt) == S_OK) return GUI_DROP_TEXT;
+
+	return 0;
+}
+
+
+// One UTF-16 string into the payload, as UTF-8.
+static void Drop_Append_Wide(GUIDROPDATA *data, const WCHAR *wide, int len)
+{
+	int     bytes;
+	REBYTE *utf8;
+
+	if (len <= 0) return;
+	bytes = WideCharToMultiByte(CP_UTF8, 0, wide, len, NULL, 0, NULL, NULL);
+	if (bytes <= 0) return;
+
+	utf8 = (REBYTE*)MAKE_MEM((size_t)bytes);
+	if (!utf8) return;
+	WideCharToMultiByte(CP_UTF8, 0, wide, len, (char*)utf8, bytes, NULL, NULL);
+	Gui_Drop_Append(data, utf8, (REBCNT)bytes);
+	FREE_MEM(utf8);
+}
+
+
+/***********************************************************************
+**  Reads the content out of the data object into a payload.
+**
+**  Returns NULL when there is nothing to take, and the caller then
+**  reports DROPEFFECT_NONE rather than pretending the drop succeeded.
+***********************************************************************/
+static GUIDROPDATA *Drop_Payload_Of(IDataObject *obj, REBCNT kind)
+{
+	FORMATETC    fmt;
+	STGMEDIUM    med;
+	GUIDROPDATA *data = NULL;
+
+	fmt.ptd      = NULL;
+	fmt.dwAspect = DVASPECT_CONTENT;
+	fmt.lindex   = -1;
+	fmt.tymed    = TYMED_HGLOBAL;
+	fmt.cfFormat = (kind == GUI_DROP_TEXT) ? CF_UNICODETEXT : CF_HDROP;
+
+	if (IDataObject_GetData(obj, &fmt, &med) != S_OK) return NULL;
+
+	if (kind == GUI_DROP_TEXT) {
+		const WCHAR *text = (const WCHAR*)GlobalLock(med.hGlobal);
+		if (text) {
+			data = Gui_Drop_Payload(GUI_DROP_TEXT, 0);
+			if (data) Drop_Append_Wide(data, text, (int)wcslen(text));
+			GlobalUnlock(med.hGlobal);
+		}
+	} else {
+		HDROP hdrop = (HDROP)GlobalLock(med.hGlobal);
+		if (hdrop) {
+			UINT count = DragQueryFileW(hdrop, 0xFFFFFFFF, NULL, 0);
+			UINT n;
+			data = Gui_Drop_Payload(GUI_DROP_FILES, count * 160);
+			if (data) {
+				for (n = 0; n < count; n++) {
+					WCHAR wide[MAX_PATH * 2];
+					UINT  len = DragQueryFileW(hdrop, n, wide,
+					                           (UINT)(sizeof(wide) / sizeof(WCHAR)));
+					Drop_Append_Wide(data, wide, (int)len);
+				}
+			}
+			GlobalUnlock(med.hGlobal);
+		}
+	}
+
+	ReleaseStgMedium(&med);
+	return data;
+}
+
+
+// The handle a drop on this window should be reported against: the widget
+// under the pointer, or the window itself. `pt` is in SCREEN coordinates,
+// which is what IDropTarget is given.
+static REBHOB *Drop_Target_At(GUIWIN *win, POINTL pt, POINT *client)
+{
+	HWND  hwnd = HWND_OF(win);
+	HWND  child;
+	POINT p;
+
+	p.x = pt.x;
+	p.y = pt.y;
+	ScreenToClient(hwnd, &p);
+	*client = p;
+
+	child = ChildWindowFromPointEx(hwnd, p, CWP_SKIPINVISIBLE | CWP_SKIPDISABLED);
+	if (child && child != hwnd) {
+		GUIWIDGET *wid = (GUIWIDGET*)GetWindowLongPtrW(child, GWLP_USERDATA);
+		if (wid && wid->hob) return wid->hob;
+	}
+	return win->hob;
+}
+
+
+//-- IUnknown -----------------------------------------------------------------
+
+static HRESULT STDMETHODCALLTYPE Drop_QueryInterface(IDropTarget *self,
+                                                     REFIID riid, void **out)
+{
+	if (!out) return E_POINTER;
+	if (IsEqualIID(riid, &IID_IUnknown) || IsEqualIID(riid, &IID_IDropTarget)) {
+		*out = self;
+		IDropTarget_AddRef(self);
+		return S_OK;
+	}
+	*out = NULL;
+	return E_NOINTERFACE;
+}
+
+static ULONG STDMETHODCALLTYPE Drop_AddRef(IDropTarget *self)
+{
+	return (ULONG)InterlockedIncrement(&((GUIDROPTARGET*)self)->refs);
+}
+
+static ULONG STDMETHODCALLTYPE Drop_Release(IDropTarget *self)
+{
+	GUIDROPTARGET *t = (GUIDROPTARGET*)self;
+	LONG refs = InterlockedDecrement(&t->refs);
+	if (refs == 0) FREE_MEM(t);
+	return (ULONG)refs;
+}
+
+//-- IDropTarget --------------------------------------------------------------
+
+static HRESULT STDMETHODCALLTYPE Drop_DragEnter(IDropTarget *self,
+                                                IDataObject *obj, DWORD keys,
+                                                POINTL pt, DWORD *effect)
+{
+	GUIDROPTARGET *t = (GUIDROPTARGET*)self;
+
+	// Decided once per drag and remembered: DragOver runs on every mouse
+	// move, and asking the data object each time is needless traffic across
+	// the process boundary.
+	t->effect = (obj && Drop_Format_Of(obj)) ? DROPEFFECT_COPY : DROPEFFECT_NONE;
+	if (effect) *effect = t->effect;
+	return S_OK;
+}
+
+static HRESULT STDMETHODCALLTYPE Drop_DragOver(IDropTarget *self, DWORD keys,
+                                               POINTL pt, DWORD *effect)
+{
+	if (effect) *effect = ((GUIDROPTARGET*)self)->effect;
+	return S_OK;
+}
+
+static HRESULT STDMETHODCALLTYPE Drop_DragLeave(IDropTarget *self)
+{
+	((GUIDROPTARGET*)self)->effect = DROPEFFECT_NONE;
+	return S_OK;
+}
+
+static HRESULT STDMETHODCALLTYPE Drop_Drop(IDropTarget *self, IDataObject *obj,
+                                           DWORD keys, POINTL pt, DWORD *effect)
+{
+	GUIDROPTARGET *t = (GUIDROPTARGET*)self;
+	GUIDROPDATA   *data;
+	REBCNT         kind;
+	REBHOB        *target;
+	POINT          client;
+
+	t->effect = DROPEFFECT_NONE;
+	if (effect) *effect = DROPEFFECT_NONE;
+
+	if (!obj || !t->win || !t->win->hob) return S_OK;
+	if (!(kind = Drop_Format_Of(obj))) return S_OK;
+	if (!(data = Drop_Payload_Of(obj, kind))) return S_OK;
+
+	target = Drop_Target_At(t->win, pt, &client);
+	Gui_Queue_Drop(target, data, To_Logical(client.x), To_Logical(client.y));
+
+	if (effect) *effect = DROPEFFECT_COPY;
+	return S_OK;
+}
+
+static IDropTargetVtbl Drop_Vtbl = {
+	Drop_QueryInterface,
+	Drop_AddRef,
+	Drop_Release,
+	Drop_DragEnter,
+	Drop_DragOver,
+	Drop_DragLeave,
+	Drop_Drop
+};
+
+/***********************************************************************
+**  Whether the window accepts drops.
+**
+**  The OLE path is the real one - see the note above the drop target.
+**  DragAcceptFiles stays as a fallback for the case where OLE could not
+**  be initialised on this thread: Explorer still works then, and a
+**  window is never left looking as though it accepts drops when it
+**  cannot, because both paths are turned on and off together.
+**
+**  RegisterDragDrop takes its own reference, so the one this function
+**  creates is released here and the target is freed when the OS lets go
+**  of it - which RevokeDragDrop is what triggers.
+***********************************************************************/
+void Gui_Window_Set_Drop(GUIWIN *win, REBOOL accept)
+{
+	if (!win) return;
+
+	if (accept) {
+		if (win->handle && Ole_Ready && !win->droptarget) {
+			GUIDROPTARGET *t = (GUIDROPTARGET*)MAKE_CLEAR_MEM(sizeof(GUIDROPTARGET));
+			if (t) {
+				HRESULT hr;
+				t->iface.lpVtbl = &Drop_Vtbl;
+				t->refs = 1;
+				t->win  = win;
+				hr = RegisterDragDrop(HWND_OF(win), &t->iface);
+				if (hr == S_OK) {
+					win->droptarget = t;
+				} else {
+					printf("GUI: RegisterDragDrop failed (0x%08lx)\n",
+					       (unsigned long)hr);
+					fflush(stdout);
+					IDropTarget_Release(&t->iface);
+				}
+			}
+		}
+		// Belt and braces: a source which only speaks the legacy protocol
+		// still finds the style, whether or not the OLE target is up.
+		if (win->handle) DragAcceptFiles(HWND_OF(win), TRUE);
+		win->flags |= GUIW_ACCEPTS_DROP;
+	}
+	else {
+		Gui_Window_Revoke_Drop(win);
+		if (win->handle) DragAcceptFiles(HWND_OF(win), FALSE);
+		win->flags &= ~GUIW_ACCEPTS_DROP;
+	}
+}
+
+
+/***********************************************************************
+**  Takes the drop target off a window, without changing what the
+**  window says it accepts.
+**
+**  Separate because closing has to do it too: a registered target
+**  outliving its HWND is a dangling registration, and the target holds
+**  a GUIWIN pointer which is about to be freed.
+***********************************************************************/
+static void Gui_Window_Revoke_Drop(GUIWIN *win)
+{
+	GUIDROPTARGET *t;
+
+	if (!win || !(t = (GUIDROPTARGET*)win->droptarget)) return;
+	win->droptarget = NULL;
+
+	if (win->handle) RevokeDragDrop(HWND_OF(win));
+	IDropTarget_Release(&t->iface);
+}
+
+
 void Gui_Window_Set_Background(GUIWIN *win)
 {
 	HWND  hwnd;

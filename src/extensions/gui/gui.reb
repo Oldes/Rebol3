@@ -55,6 +55,7 @@ c-prefix: GUI
 c-header: {
 extern REBCNT Handle_GuiWindow;
 extern REBCNT Handle_GuiWidget;
+extern REBCNT Handle_GuiDrop;
 extern REBCNT Word_Separator; // the menu dialect's `---`
 
 // The device this extension registers so that WAIT pumps the OS message
@@ -65,6 +66,7 @@ extern REBCNT Gui_Dev_Polls;
 extern REBCNT Gui_Dev_Events;
 extern REBCNT Gui_Dev_Pumps;
 extern REBCNT Gui_Dev_Msgs;
+
 
 // How this extension describes a font when it is not inside a control.
 //
@@ -115,6 +117,12 @@ typedef struct Gui_Window_Context {
 	REBCNT *menu_ids;   // item id N (1-based) is the word menu_ids[N-1]
 	REBYTE *menu_on;    // ... and menu_on[N-1] is whether it is enabled
 	REBCNT  menu_count;
+
+	// The OLE drop target registered for this window, while it accepts
+	// drops. Opaque here for the same reason `handle` is - gen-gui.h must
+	// stay free of windows.h, and macOS has no counterpart: AppKit
+	// registers the content view itself and keeps nothing of its own.
+	void   *droptarget;
 } GUIWIN;
 
 // An image widget holds no pixels of its own: the image! it was given lives in
@@ -166,7 +174,8 @@ typedef struct Gui_Widget_Context {
 	                 // is about to paint
 } GUIWIDGET;
 
-#define GUIW_VISIBLE  1
+#define GUIW_VISIBLE       1
+#define GUIW_ACCEPTS_DROP  2
 
 // Passed to Gui_Open_Window(). Everything a window's frame can be is
 // decided at creation and changeable afterwards through `resizable?` and
@@ -197,6 +206,38 @@ typedef struct Gui_Widget_Context {
 // 0 is still "the platform's own".
 #define GUI_BG_CLEAR         1
 #define GUI_BG_IS_CLEAR(b)   ((b) == GUI_BG_CLEAR)
+
+// What was dropped. The words are in the `drop:` list below, so the codes
+// are W_GUI_DROP_FILES and W_GUI_DROP_TEXT - this only names them for the
+// backends, which must not have to know about the generated enum.
+#define GUI_DROP_FILES  W_GUI_DROP_FILES
+#define GUI_DROP_TEXT   W_GUI_DROP_TEXT
+
+// A drop, between the window procedure which received it and `poll-events`
+// which turns it into Rebol values.
+//
+// This is plain C memory, NOT a Rebol series: the producer side of the event
+// queue must not allocate (see the note above Gui_Queue_Event), so the paths
+// are copied out of the OS structure as UTF-8 and converted later, on the
+// interpreter's own thread of control. Whoever drains or purges the event
+// owns the payload and frees it.
+typedef struct Gui_Drop_Payload {
+	REBCNT  kind;      // GUI_DROP_*
+	REBCNT  count;     // how many strings
+	REBCNT  size;      // bytes used in `text`, terminators included
+	REBCNT  capacity;  // bytes allocated
+	REBYTE *text;      // `count` NUL-terminated UTF-8 strings, back to back
+} GUIDROPDATA;
+
+// The handle a drop event carries as its source. Everything a script reads
+// from it - the content and the target - lives in the shared hob->series
+// slot, so the block of files and the target handle are both marked by the
+// collector and nothing here can dangle after a window closes.
+typedef struct Gui_Drop_Context {
+	REBHOB *hob;    // back reference
+	REBCNT  kind;   // GUI_DROP_*
+	REBCNT  count;  // how many items, without walking the block
+} GUIDROP;
 }
 
 ;; ---------------------------------------------------------------------------
@@ -219,6 +260,10 @@ words: [
 	;; `W_GUI_MENU____`, so it is mapped by name in Gui_Init() instead.
 	menu: [
 		shift control alt  ;; extra modifiers in a shortcut block
+	]
+	;; What a drop carried. `files` is a block of file!, `text` a string!.
+	drop: [
+		files text
 	]
 	;; What `area/scroll:` accepts instead of a percent. `end` is `bottom`
 	;; under another name, because both read well in different sentences.
@@ -256,6 +301,7 @@ handles: [
 		border?    logic!  logic!    "Whether it has a title bar and a frame; a borderless window cannot be moved or closed by the user"
 		background tuple!  [tuple! none!] "Colour of the client area; none for the system window colour"
 		transparent? logic! logic!   "Whether the client area is see-through to whatever is behind the window"
+		drop?     logic!   logic!    "Whether files dropped on it are accepted; off until asked for"
 		;; Defaults for widgets created AFTERWARDS - see the note in the README.
 		font      string!  [string! none!] "Font family widgets are created with; none for the system font"
 		font-size integer! [integer! none!] "Point size widgets are created with; none for the system size"
@@ -264,6 +310,15 @@ handles: [
 		children  block!   none      "Widgets the window holds directly, in the order they were added"
 		menu      block!   [block! none!] "The menu bar, as the dialect described in the README; none removes it"
 		menu-enabled? block! block!  "Which items are greyed out, as word/logic pairs; setting merges, it does not replace"
+	]
+	drop: [
+		"GUI drop handle - what a drop-file or drop-text event carries"
+		;NAME    GET             SET   DESCRIPTION
+		kind     word!           none  "What was dropped: files or text"
+		data    [block! string!] none  "A block of file! for a file drop, the string for a text drop"
+		count    integer!        none  "How many items - 1 for a text drop"
+		target   handle!         none  "The window or widget it was dropped on"
+		window   handle!         none  "The window it ended up in, however deeply nested"
 	]
 	widget: [
 		"GUI widget handle - a native control inside a window"
@@ -418,6 +473,7 @@ commands: [
 	;; queue before we looked".
 	gui-device-pumps:    ["Returns how many polls reached the OS pump"]
 	gui-device-messages: ["Returns how many OS messages those pumps dispatched"]
+
 ]
 
 ;; ---------------------------------------------------------------------------

@@ -89,11 +89,97 @@ void Gui_Queue_Event(REBHOB *source, REBCNT type, REBINT x, REBINT y, REBINT val
 	}
 
 	evt = &Event_Queue[Event_Head & GUI_QUEUE_MASK];
+	CLEARS(evt);           // `drop` is NULL for everything but a drop event
 	evt->source = source;
 	evt->type   = type;
 	evt->x      = x;
 	evt->y      = y;
 	evt->value  = value;
+	Event_Head++;
+}
+
+
+/***********************************************************************
+**  A drop payload: plain C memory, grown one string at a time.
+**
+**  Neither OS hands its strings over in one block - Win32 asks for them
+**  by index and AppKit has an array of NSStrings - so this appends, and
+**  keeps them NUL separated in one buffer rather than as an array of
+**  pointers. One allocation to free, and `poll-events` walks it once.
+***********************************************************************/
+GUIDROPDATA *Gui_Drop_Payload(REBCNT kind, REBCNT size)
+{
+	GUIDROPDATA *data = (GUIDROPDATA*)MAKE_CLEAR_MEM(sizeof(GUIDROPDATA));
+	if (!data) return NULL;
+
+	if (size < 256) size = 256;
+	data->text = (REBYTE*)MAKE_MEM(size);
+	if (!data->text) {
+		FREE_MEM(data);
+		return NULL;
+	}
+	data->kind     = kind;
+	data->capacity = size;
+	data->text[0]  = 0;    // size and count are already zero
+	return data;
+}
+
+
+REBOOL Gui_Drop_Append(GUIDROPDATA *data, const REBYTE *utf8, REBCNT len)
+{
+	if (!data || !utf8) return FALSE;
+
+	if (data->size + len + 1 > data->capacity) {
+		REBCNT want = (data->size + len + 1) * 2;
+		REBYTE *grown = (REBYTE*)MAKE_MEM(want);
+		if (!grown) return FALSE;
+		COPY_MEM(grown, data->text, data->size);
+		FREE_MEM(data->text);
+		data->text = grown;
+		data->capacity = want;
+	}
+
+	COPY_MEM(data->text + data->size, utf8, len);
+	data->size += len;
+	data->text[data->size++] = 0;
+	data->count++;
+	return TRUE;
+}
+
+
+void Gui_Drop_Free(GUIDROPDATA *data)
+{
+	if (!data) return;
+	if (data->text) FREE_MEM(data->text);
+	FREE_MEM(data);
+}
+
+
+/***********************************************************************
+**  Queues a drop.
+**
+**  The queue takes the payload whether the event fits or not, which is
+**  the only way a full queue cannot leak it - the backend has already
+**  told the OS the drop was accepted by the time it gets here.
+***********************************************************************/
+void Gui_Queue_Drop(REBHOB *target, GUIDROPDATA *data, REBINT x, REBINT y)
+{
+	GUIEVT *evt;
+
+	if (!data) return;
+	if (!target || QUEUE_COUNT() >= GUI_QUEUE_SIZE) {
+		Event_Dropped++;
+		Gui_Drop_Free(data);
+		return;
+	}
+
+	evt = &Event_Queue[Event_Head & GUI_QUEUE_MASK];
+	CLEARS(evt);
+	evt->source = target;
+	evt->type   = (data->kind == GUI_DROP_TEXT) ? EVT_DROP_TEXT : EVT_DROP_FILE;
+	evt->x      = x;
+	evt->y      = y;
+	evt->drop   = data;
 	Event_Head++;
 }
 
@@ -113,7 +199,12 @@ static void Purge_Events(REBHOB *source)
 
 	for (n = 0; n < count; n++) {
 		GUIEVT *evt = QUEUE_AT(n);
-		if (evt->source == source) continue;
+		if (evt->source == source) {
+			// The payload is the queue's to free - nothing else holds it
+			// until `poll-events` turns it into Rebol values.
+			Gui_Drop_Free(evt->drop);
+			continue;
+		}
 		if (kept != n) *QUEUE_AT(kept) = *evt;
 		kept++;
 	}
@@ -1349,6 +1440,100 @@ COMMAND cmd_gui_hide_window(RXIFRM *frm, void *ctx)
 
 
 /***********************************************************************
+**  Turns a queued drop payload into a drop HANDLE.
+**
+**  Called only from `poll-events`, which is on the interpreter's own
+**  thread of control - the producer side must not allocate, which is
+**  the whole reason the payload is plain C memory until here.
+**
+**  Everything the handle reports lives in its shared hob->series slot:
+**
+**      [0] the content - a block of file! for files, a string! for text
+**      [1] the target  - the window or widget handle it was dropped on
+**
+**  Both are therefore marked by the collector, so a drop handle kept by
+**  a script stays valid however long it is held, and the target cannot
+**  dangle after its window closes - it reports itself as closed, the
+**  same as any other widget handle would.
+**
+**  Returns NULL if anything could not be allocated; the caller then
+**  reports the event with its target as the source rather than dropping
+**  it, so a drop is never silently lost.
+***********************************************************************/
+static REBHOB *Make_Drop_Handle(REBHOB *target, GUIDROPDATA *data)
+{
+	REBHOB  *hob;
+	GUIDROP *drop;
+	REBSER  *slots;
+	REBSER  *content;
+	RXIARG   val;
+	REBCNT   n;
+	REBYTE  *at;
+
+	hob = RL_MAKE_HANDLE_CONTEXT(Handle_GuiDrop);
+	if (!hob) return NULL;
+
+	// The slot block first, and attached to the handle BEFORE it is filled:
+	// anything allocated after this point is reachable from the handle, so a
+	// collection in the middle of filling it cannot take half of it away.
+	slots = (REBSER*)RL_MAKE_BLOCK(2);
+	if (!slots) return NULL;
+	hob->series = slots;
+	CLEARS(&val);
+	RL_SET_VALUE(slots, 0, val, RXT_NONE);
+	RL_SET_VALUE(slots, 1, val, RXT_NONE);
+
+	drop = (GUIDROP*)hob->data;
+	drop->hob   = hob;
+	drop->kind  = data->kind;
+	drop->count = data->count;
+
+	if (data->kind == GUI_DROP_TEXT) {
+		// One string, however many NULs the payload happens to hold.
+		content = RL_DECODE_UTF_STRING(data->text, data->size ? data->size - 1 : 0,
+		                               8, FALSE, FALSE);
+		if (!content) return NULL;
+		CLEARS(&val);
+		val.series = content;
+		val.index  = 0;
+		RL_SET_VALUE(slots, 0, val, RXT_STRING);
+	}
+	else {
+		// A block of file!, converted from the local path form. The block is
+		// stored EMPTY first, for the same reason the slot block is attached
+		// early: RL_TO_REBOL_PATH allocates, and the block has to be
+		// reachable before it does.
+		content = (REBSER*)RL_MAKE_BLOCK(data->count);
+		if (!content) return NULL;
+		CLEARS(&val);
+		val.series = content;
+		val.index  = 0;
+		RL_SET_VALUE(slots, 0, val, RXT_BLOCK);
+
+		at = data->text;
+		for (n = 0; n < data->count; n++) {
+			REBCNT len = (REBCNT)LEN_BYTES(at);
+			REBSER *path = RL_TO_REBOL_PATH(at, len, 0);
+			if (path) {
+				CLEARS(&val);
+				val.series = path;
+				val.index  = 0;
+				RL_SET_VALUE(content, n, val, RXT_FILE);
+			}
+			at += len + 1;
+		}
+	}
+
+	// The target, so that a handler knows what it was dropped ON without
+	// having to remember what it was hovering over.
+	Set_Handle_Arg(&val, target);
+	RL_SET_VALUE(slots, 1, val, RXT_HANDLE);
+
+	return hob;
+}
+
+
+/***********************************************************************
 **  The modifiers of a queued event, as the event!'s own flag bits.
 **
 **  GUI_FLAG_* is what the backends report; EVF_* is what `evt/flags`
@@ -1462,6 +1647,20 @@ COMMAND cmd_gui_poll_events(RXIFRM *frm, void *ctx)
 			ev.flags = (1 << EVF_HAS_SYM) | (1 << EVF_HAS_CODE);
 			ev.data  = (u32)evt->value;
 			break;
+
+		case EVT_DROP_FILE:
+		case EVT_DROP_TEXT: {
+			// The source is a DROP handle rather than the target: it is what
+			// carries the content, and it is made here because building it
+			// allocates - see the note above Make_Drop_Handle.
+			REBHOB *drop = Make_Drop_Handle(evt->source, evt->drop);
+			if (drop) ev.hob = drop;
+			ev.flags = (1 << EVF_HAS_XY);
+			ev.data  = (((u32)(evt->y & 0xffff)) << 16) | ((u32)evt->x & 0xffff);
+			Gui_Drop_Free(evt->drop);
+			evt->drop = NULL;
+			break;
+		}
 
 		default:
 			// Everything else is positional: the pointer, or the new client
@@ -2050,6 +2249,11 @@ int GuiWindow_get_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg)
 		arg->int32a = GUI_BG_IS_CLEAR(win->background) ? 1 : 0;
 		break;
 
+	case W_GUI_ARG_DROPQ:
+		*type = RXT_LOGIC;
+		arg->int32a = (win->flags & GUIW_ACCEPTS_DROP) ? 1 : 0;
+		break;
+
 	/*******************************************************************
 	**  What the NEXT widget will be created with - not a description of
 	**  anything currently on screen. Unlike a widget's font, which is
@@ -2241,6 +2445,13 @@ int GuiWindow_set_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg)
 		if (*type != RXT_LOGIC) return PE_BAD_SET_TYPE;
 		win->background = arg->int32a ? GUI_BG_CLEAR : 0;
 		Gui_Window_Set_Background(win);
+		break;
+
+	case W_GUI_ARG_DROPQ:
+		// Off by default: a window which silently swallows a drop is worse
+		// than one which visibly refuses it, so accepting is asked for.
+		if (*type != RXT_LOGIC) return PE_BAD_SET_TYPE;
+		Gui_Window_Set_Drop(win, arg->int32a ? TRUE : FALSE);
 		break;
 
 	case W_GUI_ARG_MENU:
@@ -2897,5 +3108,95 @@ int GuiWidget_mold(REBHOB *hob, REBSER *str)
 	} else {
 		APPEND_STRING(str, "%s", "removed");
 	}
+	return len;
+}
+
+
+//== drop handle ==============================================================
+//
+// What a `drop-file` or a `drop-text` event carries as its source. It owns
+// nothing outside hob->series, and nothing about it can be set - a drop is
+// something that happened, not something to configure - so there is no
+// set_path and the free callback has nothing to release.
+
+int GuiDrop_free(void *hndl)
+{
+	REBHOB  *hob  = (REBHOB*)hndl;
+	GUIDROP *drop = hob ? (GUIDROP*)hob->data : NULL;
+
+	// The content and the target are Rebol values in hob->series, which the
+	// collector handles on its own. Clearing is only tidiness.
+	if (drop) CLEARS(drop);
+	if (hob) UNMARK_HOB(hob);
+	return 0;
+}
+
+
+int GuiDrop_get_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg)
+{
+	GUIDROP *drop = (GUIDROP*)hob->data;
+	REBSER  *slots = hob->series;
+
+	if (!drop || !slots) return PE_BAD_SELECT;
+
+	switch (RL_FIND_WORD(Gui_arg_words, word)) {
+
+	case W_GUI_ARG_KIND:
+		*type = RXT_WORD;
+		arg->int32a = (i32)Gui_drop_words[drop->kind];
+		break;
+
+	case W_GUI_ARG_DATA:
+		// Whatever was put in slot 0 - a block of file!, or a string.
+		*type = RL_GET_VALUE(slots, SLOT_PAYLOAD, arg);
+		break;
+
+	case W_GUI_ARG_COUNT:
+		*type = RXT_INTEGER;
+		arg->int64 = (i64)drop->count;
+		break;
+
+	case W_GUI_ARG_TARGET:
+		*type = RL_GET_VALUE(slots, SLOT_CHILDREN, arg);
+		break;
+
+	case W_GUI_ARG_WINDOW: {
+		// The target's own window, asked of the target - a drop on a widget
+		// reports the widget, and this is how to get from it to the window.
+		RXIARG   val;
+		REBCNT   t = RL_GET_VALUE(slots, SLOT_CHILDREN, &val);
+		REBHOB  *target;
+
+		if (t != RXT_HANDLE || !(target = val.handle.hob)) { *type = RXT_NONE; break; }
+		if (target->sym == Handle_GuiWindow) { *arg = val; *type = RXT_HANDLE; break; }
+		if (target->sym == Handle_GuiWidget) {
+			GUIWIDGET *wid = (GUIWIDGET*)target->data;
+			if (wid && wid->owner && wid->owner->hob) {
+				Set_Handle_Arg(arg, wid->owner->hob);
+				*type = RXT_HANDLE;
+				break;
+			}
+		}
+		*type = RXT_NONE;
+		break;
+	}
+
+	default:
+		return PE_BAD_SELECT;
+	}
+	return PE_USE;
+}
+
+
+int GuiDrop_mold(REBHOB *hob, REBSER *str)
+{
+	int len;
+	GUIDROP *drop;
+
+	if (!str || !hob || !(drop = (GUIDROP*)hob->data)) return 0;
+
+	SERIES_TAIL(str) = 0;
+	APPEND_STRING(str, "%s %u",
+		(drop->kind == GUI_DROP_TEXT) ? "text" : "files", drop->count);
 	return len;
 }

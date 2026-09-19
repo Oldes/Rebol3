@@ -27,6 +27,13 @@ int GuiWidget_get_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg);
 int GuiWidget_set_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg);
 int GuiWidget_mold(REBHOB *hob, REBSER *str);
 
+// A drop handle is read-only and holds nothing the collector does not
+// already reach through hob->series, so it needs no set_path and its free
+// callback has nothing of its own to release.
+int GuiDrop_free(void *hndl);
+int GuiDrop_get_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg);
+int GuiDrop_mold(REBHOB *hob, REBSER *str);
+
 
 //== event queue ==============================================================
 // Filled by the platform's window procedure, drained by `poll-events`.
@@ -37,6 +44,12 @@ typedef struct Gui_Event {
 	REBCNT  type;   // the core's EVT_* code, straight from reb-evtypes.h
 	REBINT  x, y;   // position in client coordinates
 	REBINT  value;  // modifier bits, or the wheel delta in lines
+
+	// What was dropped, for EVT_DROP_FILE and EVT_DROP_TEXT; NULL for every
+	// other type. Plain C memory owned by the QUEUE: whoever drains or
+	// purges the event frees it, which is what lets the window procedure
+	// record a drop without allocating a Rebol series.
+	GUIDROPDATA *drop;
 } GUIEVT;
 
 // Modifier bits reported in GUIEVT.value. They are translated into the
@@ -53,6 +66,33 @@ enum {
 // Never blocks and never allocates - a full queue drops the event and bumps
 // a counter, which `poll-events` reports once instead of failing silently.
 void   Gui_Queue_Event(REBHOB *source, REBCNT type, REBINT x, REBINT y, REBINT value);
+
+/***********************************************************************
+**  Queues a drop on `target` - a window or a widget handle.
+**
+**  `data` is a payload the BACKEND allocated with Gui_Drop_Payload(),
+**  and the queue takes ownership of it whether the event fits or not,
+**  so a full queue cannot leak it. The event's own type follows
+**  data->kind: EVT_DROP_FILE for files, EVT_DROP_TEXT for text.
+**
+**  x and y are in the target's client coordinates.
+***********************************************************************/
+void   Gui_Queue_Drop(REBHOB *target, GUIDROPDATA *data, REBINT x, REBINT y);
+
+/***********************************************************************
+**  Allocates a payload, and appends one UTF-8 string to it.
+**
+**  Written this way because neither OS hands over its strings in one
+**  block: Win32 asks for them one at a time by index, and AppKit has an
+**  array of NSStrings. `size` is a hint for the first allocation and may
+**  be 0.
+**
+**  Gui_Drop_Free() releases one - the queue calls it, and a backend
+**  which decides not to queue after all must call it too.
+***********************************************************************/
+GUIDROPDATA *Gui_Drop_Payload(REBCNT kind, REBCNT size);
+REBOOL       Gui_Drop_Append(GUIDROPDATA *data, const REBYTE *utf8, REBCNT len);
+void         Gui_Drop_Free(GUIDROPDATA *data);
 
 /***********************************************************************
 **  What the device poll asks before doing anything - see Poll_Gui() in
@@ -126,6 +166,12 @@ REBOOL  Gui_Open_Window(GUIWIN *win, REBINT x, REBINT y, REBINT w, REBINT h,
                         REBCNT flags); // GUI_WIN_* bits
 void    Gui_Close_Window(GUIWIN *win);
 void    Gui_Show_Window(GUIWIN *win, REBOOL show);
+
+// Whether the window accepts dropped files. Off until a script asks for it,
+// because a window which silently swallows a drop is worse than one which
+// visibly refuses it. The backend registers or unregisters with the OS and
+// keeps GUIW_ACCEPTS_DROP in step.
+void    Gui_Window_Set_Drop(GUIWIN *win, REBOOL accept);
 
 // Dispatches everything waiting in the OS queue, which is what turns
 // messages into Gui_Queue_Event() calls.

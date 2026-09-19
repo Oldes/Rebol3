@@ -186,7 +186,7 @@ static void Apply_Button_Color(GUIWIDGET *wid);
 // together means a single back pointer to the GUIWIN, and one object to
 // tear down.
 
-@interface RebolGuiView : NSView <NSWindowDelegate>
+@interface RebolGuiView : NSView <NSWindowDelegate, NSDraggingDestination>
 {
 	GUIWIN *context;
 	NSTrackingArea *tracking;
@@ -649,6 +649,32 @@ static void Apply_Button_Color(GUIWIDGET *wid);
 @end
 
 
+/***********************************************************************
+**  Which widget a view belongs to.
+**
+**  AppKit has no user-data slot on a view, and the controls' own
+**  `context` ivars are declared on several unrelated classes - so this
+**  walks the window's flat widget list instead, which is the one place
+**  that already knows every control it owns.
+**
+**  The superview chain is followed because a view under the pointer is
+**  not always the widget's own: an area's control is a scroll view with
+**  a text view inside it, and hitTest: finds the inner one.
+***********************************************************************/
+static GUIWIDGET *Widget_Of_View(GUIWIN *win, NSView *view)
+{
+	while (view) {
+		GUIWIDGET *wid = (GUIWIDGET*)win->widgets;
+		while (wid) {
+			if ((NSView*)wid->handle == view) return wid;
+			wid = (GUIWIDGET*)wid->next;
+		}
+		view = [view superview];
+	}
+	return NULL;
+}
+
+
 @implementation RebolGuiView
 
 - (void)setWindowContext:(GUIWIN*)ctx { context = ctx; }
@@ -807,6 +833,79 @@ static void Apply_Button_Color(GUIWIDGET *wid);
 	size = [self bounds].size;
 	Gui_Queue_Event(context->hob, EVT_RESIZE,
 	                (REBINT)size.width, (REBINT)size.height, 0);
+}
+
+
+/***********************************************************************
+**  Drag and drop.
+**
+**  Registered only once a script asks for it - see Gui_Window_Set_Drop.
+**  AppKit hands over a pasteboard, so files and text cost the same here,
+**  which is why macOS produces `drop-text` and Win32 does not.
+**
+**  The strings are copied out as UTF-8 and turned into Rebol values
+**  later, in `poll-events`: this runs from the OS while it is tracking a
+**  drag, which is exactly the kind of place the event queue's no-Rebol-
+**  allocation rule exists for.
+***********************************************************************/
+- (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)sender
+{
+	if (!context) return NSDragOperationNone;
+	return NSDragOperationCopy;
+}
+
+- (BOOL)prepareForDragOperation:(id<NSDraggingInfo>)sender
+{
+	return context ? YES : NO;
+}
+
+- (BOOL)performDragOperation:(id<NSDraggingInfo>)sender
+{
+	NSPasteboard *board;
+	NSArray      *urls;
+	NSString     *text;
+	GUIDROPDATA  *data = NULL;
+	NSPoint       where;
+	REBHOB       *target;
+	NSView       *hit;
+
+	if (!context || !context->hob) return NO;
+	board = [sender draggingPasteboard];
+
+	// Where, in the content view's own coordinates - and on WHAT, because a
+	// drop lands on whatever is under the pointer, the same rule a click
+	// follows. hitTest: gives the deepest view, which is the control.
+	where  = [self convertPoint:[sender draggingLocation] fromView:nil];
+	target = context->hob;
+	hit    = [self hitTest:where];
+	if (hit && hit != self) {
+		GUIWIDGET *wid = Widget_Of_View(context, hit);
+		if (wid && wid->hob) target = wid->hob;
+	}
+
+	urls = [board readObjectsForClasses:@[[NSURL class]]
+	                            options:@{NSPasteboardURLReadingFileURLsOnlyKey: @YES}];
+	if (urls && [urls count] > 0) {
+		data = Gui_Drop_Payload(GUI_DROP_FILES, (REBCNT)([urls count] * 160));
+		if (!data) return NO;
+		for (NSURL *url in urls) {
+			const char *path = [[url path] UTF8String];
+			if (path) Gui_Drop_Append(data, (const REBYTE*)path, (REBCNT)strlen(path));
+		}
+	}
+	else if ((text = [board stringForType:NSPasteboardTypeString])) {
+		const char *utf8 = [text UTF8String];
+		if (!utf8) return NO;
+		data = Gui_Drop_Payload(GUI_DROP_TEXT, (REBCNT)strlen(utf8) + 1);
+		if (!data) return NO;
+		Gui_Drop_Append(data, (const REBYTE*)utf8, (REBCNT)strlen(utf8));
+	}
+	else return NO;
+
+	// The content view is flipped, so the converted point already has a
+	// top-left origin - the same coordinates every other event reports.
+	Gui_Queue_Drop(target, data, (REBINT)floor(where.x), (REBINT)floor(where.y));
+	return YES;
 }
 
 @end
@@ -2109,6 +2208,39 @@ void Gui_Widget_Set_Background(GUIWIDGET *wid)
 **  alpha, which is the one place this backend has less to do than the
 **  Win32 one rather than more.
 ***********************************************************************/
+/***********************************************************************
+**  Whether the window accepts drops.
+**
+**  Registering is per view, and only the content view is registered:
+**  the controls are not dragging destinations, so a drop anywhere over
+**  the window arrives here and performDragOperation: works out which
+**  widget was under the pointer.
+**
+**  Both file URLs and plain text are asked for, which is why macOS
+**  reports `drop-text` as well as `drop-file` - on Win32 that would
+**  need a registered IDropTarget and is not implemented.
+***********************************************************************/
+void Gui_Window_Set_Drop(GUIWIN *win, REBOOL accept)
+{
+	@autoreleasepool {
+		if (!win) return;
+		if (win->handle) {
+			NSView *view = [NSWINDOW_OF(win) contentView];
+			if (accept) {
+				[view registerForDraggedTypes:@[
+					NSPasteboardTypeFileURL,
+					NSPasteboardTypeString
+				]];
+			} else {
+				[view unregisterDraggedTypes];
+			}
+		}
+		if (accept) win->flags |=  GUIW_ACCEPTS_DROP;
+		else        win->flags &= ~GUIW_ACCEPTS_DROP;
+	}
+}
+
+
 void Gui_Window_Set_Background(GUIWIN *win)
 {
 	@autoreleasepool {

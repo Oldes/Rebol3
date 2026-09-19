@@ -27,6 +27,7 @@ static char *init_block = GUI_EXT_INIT_CODE;
 // (from the spec's `c-header:`), defined here.
 REBCNT Handle_GuiWindow = 0;
 REBCNT Handle_GuiWidget = 0;
+REBCNT Handle_GuiDrop   = 0;
 
 
 /***********************************************************************
@@ -222,6 +223,19 @@ int Gui_Init(void) {
 
 	Handle_GuiWidget = RL_REGISTER_HANDLE_SPEC(cb_cast("GUI-WIDGET"), &spec);
 	if (Handle_GuiWidget == 0) return FALSE;
+
+	// A drop is read-only - it describes something which already happened -
+	// so it has no set_path, and it needs no lock of its own: nothing on the
+	// C side keeps a pointer to it once `poll-events` has handed it over.
+	spec.size     = sizeof(GUIDROP);
+	spec.flags    = HANDLE_REQUIRES_HOB_ON_FREE;
+	spec.free     = GuiDrop_free;
+	spec.get_path = GuiDrop_get_path;
+	spec.set_path = NULL;
+	spec.mold     = GuiDrop_mold;
+
+	Handle_GuiDrop = RL_REGISTER_HANDLE_SPEC(cb_cast("GUI-DROP"), &spec);
+	if (Handle_GuiDrop == 0) return FALSE;
 
 	// The menu dialect's separator. Every other word it knows comes from a
 	// `words:` list in the specification; this one is mapped by name
