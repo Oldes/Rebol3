@@ -45,7 +45,7 @@ static DEVICE_CMD Init_XTest(REBREQ *dr) {
 }
 
 static DEVICE_CMD Quit_XTest(REBREQ *dr) {
-	puts("XTest device quit.");
+	//puts("XTest device quit.");
 	return DR_DONE;
 }
 
