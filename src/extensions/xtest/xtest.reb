@@ -280,18 +280,18 @@ mezzanine: [
 			;; The event names one of the extension's own handles; the handle
 			;; keeps the state, so there is one meaning for the payload.
 			[x: hob1 #{0102}  e: evt3 (-1 + index? find system/catalog/event-types 'click) x  event? e]
-			[same? x e/handle]
+			[same? x e/source]
 			;; The C side must read back the same handle it was given.
 			[same? x evt4 e]
 			;; A handle event belongs to no port - this must be none, not a
 			;; REBREQ read out of the handle context.
 			[none? e/port]
 			;; The event keeps the handle alive across a collection...
-			[recycle  2 = hob2 e/handle]
+			[recycle  2 = hob2 e/source]
 			;; ...and the handle is still usable through its own accessors.
-			[recycle  binary? e/handle/data]
+			[recycle  binary? e/source/data]
 			;; A released handle reads as none rather than a recycled context.
-			[release x  none? e/handle]
+			[release x  none? e/source]
 
 			;; --- event type codes -----------------------------------------
 			;; A named type round-trips as its word...

@@ -119,7 +119,17 @@
 		VAL_EVENT_TYPE(value) = (u8)n;
 		return TRUE;
 
-	case SYM_PORT:
+	case SYM_SOURCE:
+		if (IS_HANDLE(val)) {
+			// Only a CONTEXT handle: it is the only kind with a REBHOB the
+			// GC can mark and whose lifetime outlives the value.
+			if (!IS_CONTEXT_HANDLE(val)) return FALSE;
+			VAL_EVENT_MODEL(value) = EVM_HANDLE;
+			VAL_EVENT_HOB(value) = VAL_HANDLE_CTX(val);
+			break;
+		}
+		// fall through - a port, object or none means what PORT means
+ 	case SYM_PORT:
 		if (IS_PORT(val)) {
 			VAL_EVENT_MODEL(value) = EVM_PORT;
 			VAL_EVENT_SER(value) = VAL_PORT(val);
@@ -133,21 +143,6 @@
 			VAL_EVENT_SER(value) = 0;
 		} else return FALSE;
 		break;
-
-	case SYM_HANDLE:
-		// Only a CONTEXT handle: it is the only kind with a REBHOB the
-		// GC can mark and whose lifetime outlives the value.
-		if (IS_HANDLE(val) && IS_CONTEXT_HANDLE(val)) {
-			VAL_EVENT_MODEL(value) = EVM_HANDLE;
-			VAL_EVENT_HOB(value) = VAL_HANDLE_CTX(val);
-			break;
-		}
-		else if (IS_NONE(val)) {
-			VAL_EVENT_MODEL(value) = EVM_DEVICE;
-			VAL_EVENT_SER(value) = 0;
-			break;
-		}
-		return FALSE;
 
 	case SYM_OFFSET:
 		if (IS_PAIR(val)) {
@@ -278,6 +273,19 @@
 		}
 		return FALSE;
 
+	case SYM_SOURCE:
+		// Whatever produced this event, whichever model carries it. Every
+		// model other than EVM_HANDLE keeps its origin where PORT finds it.
+		if (IS_EVENT_MODEL(value, EVM_HANDLE)) {
+			REBHOB *hob = VAL_EVENT_HOB(value);
+			// A handle released since the event was made reads as none
+			// rather than handing back a recycled context.
+			if (!hob || !IS_USED_HOB(hob)) goto is_none;
+			VAL_HANDLE_FLAGS(val) = 0; // SET_HANDLE ORs into this
+			SET_HANDLE(val, hob, hob->sym, HANDLE_CONTEXT);
+			break;
+		}
+		// fall through
 	case SYM_PORT:
 		// Event holds a port:
 		if (IS_EVENT_MODEL(value, EVM_PORT) || IS_EVENT_MODEL(value, EVM_MIDI)) {
@@ -307,18 +315,6 @@
 			SET_PORT(val, (REBSER*)(req->port));
 		}
 		break;
-
-	case SYM_HANDLE:
-		if (IS_EVENT_MODEL(value, EVM_HANDLE) && VAL_EVENT_HOB(value)) {
-			REBHOB *hob = VAL_EVENT_HOB(value);
-			// A handle released since the event was made reads as none
-			// rather than handing back a recycled context.
-			if (!IS_USED_HOB(hob)) goto is_none;
-			VAL_HANDLE_FLAGS(val) = 0; // SET_HANDLE ORs into this
-			SET_HANDLE(val, hob, hob->sym, HANDLE_CONTEXT);
-			break;
-		}
-		goto is_none;
 
 	case SYM_OFFSET:
 		if (GET_FLAG(VAL_EVENT_FLAGS(value), EVF_HAS_XY)) {
@@ -471,7 +467,7 @@ is_arg_error:
 	REBVAL val;
 	REBCNT field;
 	REBCNT fields[] = {
-		SYM_TYPE, SYM_PORT, SYM_HANDLE, SYM_OFFSET, SYM_KEY,
+		SYM_TYPE, SYM_SOURCE, SYM_OFFSET, SYM_KEY,
 		SYM_FLAGS, SYM_CODE, 0
 	};
 	REBOOL indented = !GET_MOPT(mold, MOPT_INDENT);
