@@ -329,7 +329,7 @@ int main(int argc, char **argv) {
 	LoadStringW(hInstance, 101, App_Title, MAX_TITLE_LENGTH);
 #if defined(INCLUDE_IMAGE_OS_CODEC) || defined(INCLUDE_AUDIO_DEVICE) 
 	//CoInitialize(0);
-	HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
+	HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
 #endif
 
 #else //non Windows platforms
