@@ -35,11 +35,6 @@
 #include "sys-core.h"
 #include <wchar.h>
 
-#define UNI_SUR_HIGH_START  (REBU32)0xD800
-#define UNI_SUR_HIGH_END    (REBU32)0xDBFF
-#define UNI_SUR_LOW_START   (REBU32)0xDC00
-#define UNI_SUR_LOW_END     (REBU32)0xDFFF
-
 // Copyright (c) 2008-2010 Bjoern Hoehrmann <bjoern@hoehrmann.de>
 // See http://bjoern.hoehrmann.de/utf-8/decoder/dfa/ for details.
 
@@ -938,7 +933,7 @@ static const struct utf8range_u32 unicode_wide_u32[] = {
 			// UTF-32: each unit is a codepoint
 			codepoint = read_u32(bp, is_little_endian);
 			// Validate data input
-			if (codepoint > 0x10FFFF || (codepoint >= UNI_SUR_HIGH_START && codepoint <= UNI_SUR_LOW_END)) {
+			if (codepoint > 0x10FFFF || (codepoint >= 0xD800 && codepoint <= 0xDFFF)) {
 				if (err) *err = AS_REBLEN(bp - start);
 				return NULL;
 			}
