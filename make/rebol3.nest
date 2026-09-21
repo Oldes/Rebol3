@@ -1094,6 +1094,9 @@ include-rebol-bulk: [
 	#if (any [Windows? MacOS?]) [
 		:include-ext-gui
 	]
+	#if (exists? %$SISKIN_INSTALL/$SISKIN_ARCH/include/blend2d) [
+		:include-ext-blend2d
+	]
 	;- for tests:
 	:include-ext-xtest
 	;- not recommanded:
@@ -1472,6 +1475,35 @@ include-ext-qoi: [
 	do %make/tools/make-extension.r3 "${NEST_ROOT}/src/extensions/qoi/qoi.reb"
 ]
 
+include-ext-blend2d: [
+	clean: %extensions/blend2d/blend2d.c ;; always recompile (contains Rebol code)
+	host-files: [
+		%extensions/blend2d/blend2d.c
+		%extensions/blend2d/gen-blend2d.c
+		%extensions/blend2d/blend2d-command.c
+		%extensions/blend2d/blend2d-command-draw.c
+		%extensions/blend2d/blend2d-command-path.c
+		%extensions/blend2d/blend2d-command-font.c
+		%extensions/blend2d/blend2d-command-image.c
+		%extensions/blend2d/blend2d-command-info.c
+		%extensions/blend2d/blend2d-command-set-threads.c
+	]
+	define: BL_STATIC
+	define: BLEND2D_BUILD_NO_CXX_LIB=1
+
+	include: %$SISKIN_INSTALL/$SISKIN_ARCH/include/
+	#if Posix? [
+		lflag: "-Wl,-search_paths_first"
+		libraries: [%c %m %stdc++]
+		libraries: [%$SISKIN_INSTALL/$SISKIN_ARCH/lib/ %blend2d]
+	]
+	#if Windows? [
+		libraries: [%$SISKIN_INSTALL/$SISKIN_ARCH/lib/blend2d]
+	]
+
+	do %make/tools/make-extension.r3 "${NEST_ROOT}/src/extensions/blend2d/blend2d.reb"
+]
+
 include-ext-gui: [
 	clean: %extensions/gui/gui.c ;; always recompile (contains Rebol code)
 	host-files: [
@@ -1512,6 +1544,7 @@ make-ext-sqlite:      [ host-files: _ :include-ext-sqlite      files: only :host
 make-ext-triangulate: [ host-files: _ :include-ext-triangulate files: only :host-files :make-ext ]
 make-ext-qoi:         [ host-files: _ :include-ext-qoi         files: only :host-files :make-ext ]
 make-ext-gui:         [ host-files: _ :include-ext-gui         files: only :host-files :make-ext ]
+make-ext-blend2d:     [ host-files: _ :include-ext-blend2d     files: only :host-files :make-ext ]
 
 eggs: [
 	#if Windows? [
@@ -2300,6 +2333,10 @@ eggs: [
 	"Triangulate extension 32bit"     [ name: %triangulate-x86.rebx   :arch-x86   :make-ext-triangulate ]
 	"Triangulate extension 64bit"     [ name: %triangulate-x64.rebx   :arch-x64   :make-ext-triangulate ]
 	"Triangulate extension ARM 64bit" [ name: %triangulate-arm64.rebx :arch-arm64 :make-ext-triangulate ]
+
+	"Blend2D extension 32bit"     [ name: %blend2d-x86.rebx   :arch-x86   :make-ext-blend2d ]
+	"Blend2D extension 64bit"     [ name: %blend2d-x64.rebx   :arch-x64   :make-ext-blend2d ]
+	"Blend2D extension ARM 64bit" [ name: %blend2d-arm64.rebx :arch-arm64 :make-ext-blend2d ]
 
 	"Amalgamate extension include file" [
 		name: %rebol-extension.h
