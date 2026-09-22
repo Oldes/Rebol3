@@ -85,6 +85,7 @@ x*/	RXIARG Value_To_RXI(REBVAL *val)
 ***********************************************************************/
 {
 	RXIARG arg;
+	CLEARS(&arg);
 
 	switch (RXT_Eval_Class[Reb_To_RXT[VAL_TYPE(val)]]) {
 	case RXE_64:
@@ -104,15 +105,12 @@ x*/	RXIARG Value_To_RXI(REBVAL *val)
 		break;
 	case RXE_32:
 		arg.int32a = VAL_I32(val);
-		arg.int32b = 0;
 		break;
 	case RXE_DATE:
 		arg.int32a = VAL_ALL_BITS(val)[2];
-		arg.int32b = 0;
 		break;
 	case RXE_SYM:
 		arg.int32a = VAL_WORD_CANON(val);
-		arg.int32b = 0;
 		break;
 	case RXE_IMAGE:
 		arg.series = VAL_SERIES(val);
@@ -139,7 +137,6 @@ x*/	RXIARG Value_To_RXI(REBVAL *val)
 		break;
 	case RXE_NULL:
 	default:
-		arg.int64 = 0;
 		break;
 	}
 	return arg;
