@@ -43,6 +43,7 @@ REBSER* b2d_target_image(RXIFRM *frm, REBINT *width, REBINT *height) {
 	RXA_ARG(frm, 1).image  = reb_img;
 	RXA_ARG(frm, 1).width  = w;
 	RXA_ARG(frm, 1).height = h;
+	RXA_ARG(frm, 1).image_index = 0;
 
 	*width  = w;
 	*height = h;
@@ -82,26 +83,26 @@ COMMAND cmd_blend2d_draw(RXIFRM *frm, void *reb_ctx) {
 	REBDEC doubles[DOUBLE_BUFFER_SIZE];
 	RXIARG arg[ARG_BUFFER_SIZE];
 
-	blPathInit(&path);
-	blImageInit(&img_target);
-	blImageInit(&img_pattern);
-	blImageInit(&img);
-	blFontInit(&font);
-	blFontFaceInit(&font_face);
+	bl_path_init(&path);
+	bl_image_init(&img_target);
+	bl_image_init(&img_pattern);
+	bl_image_init(&img);
+	bl_font_init(&font);
+	bl_font_face_init(&font_face);
 
 	reb_img = b2d_target_image(frm, &w, &h);
 	if (reb_img == NULL) RETURN_ERROR(ERR_TARGET);
 
-	r = blImageCreateFromData(&img_target, w, h, BL_FORMAT_PRGB32,
+	r = bl_image_create_from_data(&img_target, w, h, BL_FORMAT_PRGB32,
 		SERIES_DATA(reb_img), (intptr_t)w * 4, BL_DATA_ACCESS_WRITE, NULL, NULL);
 	if (r != BL_SUCCESS) RETURN_ERROR(ERR_TARGET);
 
 	memset(&cci, 0, sizeof(cci));
-	cci.threadCount = Blend2D_thread_count;
+	cci.thread_count = Blend2D_thread_count;
 
-	r = blContextInitAs(&ctx, &img_target, &cci);
+	r = bl_context_init_as(&ctx, &img_target, &cci);
 	if (r != BL_SUCCESS) {
-		blImageReset(&img_target);
+		bl_image_reset(&img_target);
 		RETURN_ERROR(ERR_CONTEXT);
 	}
 
@@ -124,7 +125,7 @@ COMMAND cmd_blend2d_draw(RXIFRM *frm, void *reb_ctx) {
 
 			RESOLVE_ARG(0)
 			if (RXT_TUPLE == type) {
-				blContextSetFillStyleRgba32(&ctx, TUPLE_TO_COLOR(arg[0]));
+				bl_context_set_fill_style_rgba32(&ctx, TUPLE_TO_COLOR(arg[0]));
 				has_fill = TRUE;
 			}
 			else if (type == RXT_LOGIC) {
@@ -136,8 +137,8 @@ COMMAND cmd_blend2d_draw(RXIFRM *frm, void *reb_ctx) {
 				goto pattern_mode;
 			}
 			else if (type == RXT_IMAGE) {
-				blImageReset(&img_pattern);
-				r = blImageCreateFromData(&img_pattern, arg[0].width, arg[0].height, BL_FORMAT_PRGB32,
+				bl_image_reset(&img_pattern);
+				r = bl_image_create_from_data(&img_pattern, arg[0].width, arg[0].height, BL_FORMAT_PRGB32,
 					SERIES_DATA((REBSER*)arg[0].image), (intptr_t)arg[0].width * 4, BL_DATA_ACCESS_READ, NULL, NULL);
 				if (r != BL_SUCCESS) goto error;
 				current_img = &img_pattern;
@@ -147,21 +148,21 @@ COMMAND cmd_blend2d_draw(RXIFRM *frm, void *reb_ctx) {
 				} else {
 					mode = BL_EXTEND_MODE_REPEAT;
 				}
-				blPatternInitAs(&pattern, current_img, NULL, mode, NULL);
-				blContextSetFillStyle(&ctx, &pattern);
+				bl_pattern_init_as(&pattern, current_img, NULL, mode, NULL);
+				bl_context_set_fill_style(&ctx, &pattern);
 				has_fill = TRUE;
-				blPatternReset(&pattern);
+				bl_pattern_reset(&pattern);
 			}
 			else if (RXT_UNSET == type && fetch_mode(cmds, index - 1, &mode, W_BLEND2D_ARG_LINEAR, BL_GRADIENT_TYPE_MAX_VALUE)) {
 				// gradient fill
-				blGradientInit(&gradient);
-				blGradientCreate(&gradient, mode, doubles, 0, NULL, 0, NULL);
+				bl_gradient_init(&gradient);
+				bl_gradient_create(&gradient, mode, doubles, 0, NULL, 0, NULL);
 
 				RESOLVE_ARG(0)
 				while (type == RXT_TUPLE) {
 					RESOLVE_NUMBER_ARG(2, 1);
 					offset = doubles[1];
-					blGradientAddStopRgba32(&gradient, offset, TUPLE_TO_COLOR(arg[0]));
+					bl_gradient_add_stop_rgba32(&gradient, offset, TUPLE_TO_COLOR(arg[0]));
 					RESOLVE_ARG(0)
 				}
 				index--;
@@ -170,21 +171,21 @@ COMMAND cmd_blend2d_draw(RXIFRM *frm, void *reb_ctx) {
 				if (mode == BL_GRADIENT_TYPE_RADIAL) {
 					RESOLVE_PAIR_ARG(0, 2);
 					RESOLVE_NUMBER_ARG(3, 4);
-					blGradientSetValues(&gradient, 0, doubles, 5);
+					bl_gradient_set_values(&gradient, 0, doubles, 5);
 				}
 				else if (mode == BL_GRADIENT_TYPE_LINEAR) {
 					RESOLVE_PAIR_ARG(0, 2);
-					blGradientSetValues(&gradient, 0, doubles, 4);
+					bl_gradient_set_values(&gradient, 0, doubles, 4);
 				}
 				else { // conical
 					doubles[2] = 0; RESOLVE_NUMBER_ARG_OPTIONAL(0, 2)
 					doubles[3] = 1; RESOLVE_NUMBER_ARG_OPTIONAL(1, 3)
-					blGradientSetExtendMode(&gradient, BL_EXTEND_MODE_REPEAT);
-					blGradientSetValues(&gradient, 0, doubles, 4);
+					bl_gradient_set_extend_mode(&gradient, BL_EXTEND_MODE_REPEAT);
+					bl_gradient_set_values(&gradient, 0, doubles, 4);
 				}
-				blContextSetFillStyle(&ctx, &gradient);
+				bl_context_set_fill_style(&ctx, &gradient);
 				has_fill = TRUE;
-				blGradientReset(&gradient);
+				bl_gradient_reset(&gradient);
 			}
 			else goto error;
 			break;
@@ -194,7 +195,7 @@ COMMAND cmd_blend2d_draw(RXIFRM *frm, void *reb_ctx) {
 
 			RESOLVE_ARG(0)
 			if (RXT_TUPLE == type) {
-				blContextSetStrokeStyleRgba32(&ctx, TUPLE_TO_COLOR(arg[0]));
+				bl_context_set_stroke_style_rgba32(&ctx, TUPLE_TO_COLOR(arg[0]));
 				has_stroke = TRUE;
 			}
 			else if (type == RXT_LOGIC) {
@@ -208,8 +209,8 @@ COMMAND cmd_blend2d_draw(RXIFRM *frm, void *reb_ctx) {
 			else if (type == RXT_IMAGE) {
 				// NOTE: reset first - the previous pattern image, if any, is
 				// still held here (the old code initialized it a second time).
-				blImageReset(&img_pattern);
-				r = blImageCreateFromData(&img_pattern, arg[0].width, arg[0].height, BL_FORMAT_PRGB32,
+				bl_image_reset(&img_pattern);
+				r = bl_image_create_from_data(&img_pattern, arg[0].width, arg[0].height, BL_FORMAT_PRGB32,
 					SERIES_DATA((REBSER*)arg[0].image), (intptr_t)arg[0].width * 4, BL_DATA_ACCESS_READ, NULL, NULL);
 				if (r != BL_SUCCESS) {
 					trace("failed to init pattern image!");
@@ -222,12 +223,12 @@ COMMAND cmd_blend2d_draw(RXIFRM *frm, void *reb_ctx) {
 				} else {
 					mode = BL_EXTEND_MODE_REPEAT;
 				}
-				blPatternInitAs(&pattern, current_img, NULL, mode, NULL);
+				bl_pattern_init_as(&pattern, current_img, NULL, mode, NULL);
 				// NOTE: this used to set the FILL style, so a pattern pen
 				// silently replaced the fill and never stroked anything.
-				blContextSetStrokeStyle(&ctx, &pattern);
+				bl_context_set_stroke_style(&ctx, &pattern);
 				has_stroke = TRUE;
-				blPatternReset(&pattern);
+				bl_pattern_reset(&pattern);
 			}
 			else goto error;
 			break;
@@ -237,10 +238,10 @@ COMMAND cmd_blend2d_draw(RXIFRM *frm, void *reb_ctx) {
 			if (has_stroke) {
 				RESOLVE_ARG(0)
 				if (RXT_PAIR == type) {
-					blPathMoveTo(&path, (double)arg[0].pair.x, (double)arg[0].pair.y);
+					bl_path_move_to(&path, (double)arg[0].pair.x, (double)arg[0].pair.y);
 					type = RL_GET_VALUE(cmds, index, &arg[0]);
 					while (RXT_PAIR == type) {
-						blPathLineTo(&path, (double)arg[0].pair.x, (double)arg[0].pair.y);
+						bl_path_line_to(&path, (double)arg[0].pair.x, (double)arg[0].pair.y);
 						type = RL_GET_VALUE(cmds, ++index, &arg[0]);
 					}
 				}
@@ -249,10 +250,10 @@ COMMAND cmd_blend2d_draw(RXIFRM *frm, void *reb_ctx) {
 					REBCNT  n   = arg[0].index;
 					type = RL_GET_VALUE(blk, n, &arg[0]);
 					if (RXT_PAIR != type) goto error;
-					blPathMoveTo(&path, (double)arg[0].pair.x, (double)arg[0].pair.y);
+					bl_path_move_to(&path, (double)arg[0].pair.x, (double)arg[0].pair.y);
 					type = RL_GET_VALUE(blk, ++n, &arg[0]);
 					while (RXT_PAIR == type) {
-						blPathLineTo(&path, (double)arg[0].pair.x, (double)arg[0].pair.y);
+						bl_path_line_to(&path, (double)arg[0].pair.x, (double)arg[0].pair.y);
 						type = RL_GET_VALUE(blk, ++n, &arg[0]);
 					}
 				}
@@ -285,20 +286,20 @@ COMMAND cmd_blend2d_draw(RXIFRM *frm, void *reb_ctx) {
 						REBINT p2 = edges[i + 1] * 2;
 						if (p1 >= 0 && p1 + 1 < cnt_points && p2 >= 0 && p2 + 1 < cnt_points) {
 							if (i == 0 || prev != p1) {
-								blPathMoveTo(&path, points[p1], points[p1 + 1]);
-								blPathLineTo(&path, points[p2], points[p2 + 1]);
+								bl_path_move_to(&path, points[p1], points[p1 + 1]);
+								bl_path_line_to(&path, points[p2], points[p2 + 1]);
 							}
 							else {
-								blPathLineTo(&path, points[p1], points[p1 + 1]);
-								blPathLineTo(&path, points[p2], points[p2 + 1]);
+								bl_path_line_to(&path, points[p1], points[p1 + 1]);
+								bl_path_line_to(&path, points[p2], points[p2 + 1]);
 							}
 							prev = p2;
 						}
 					}
 				}
 				else goto error;
-				blContextStrokePathD(&ctx, &origin, &path);
-				blPathReset(&path);
+				bl_context_stroke_path_d(&ctx, &origin, &path);
+				bl_path_reset(&path);
 			}
 			break;
 
@@ -313,7 +314,7 @@ COMMAND cmd_blend2d_draw(RXIFRM *frm, void *reb_ctx) {
 			}
 			else {
 				has_stroke = TRUE;
-				blContextSetStrokeWidth(&ctx, width);
+				bl_context_set_stroke_width(&ctx, width);
 			}
 			break;
 
@@ -336,7 +337,7 @@ COMMAND cmd_blend2d_draw(RXIFRM *frm, void *reb_ctx) {
 				}
 			}
 			else goto error;
-			blContextSetStrokeJoin(&ctx, type);
+			bl_context_set_stroke_join(&ctx, type);
 			break;
 
 
@@ -349,13 +350,13 @@ COMMAND cmd_blend2d_draw(RXIFRM *frm, void *reb_ctx) {
 
 			RESOLVE_INT_ARG_OPTIONAL(1); // end cap
 			if (RXT_INTEGER == type) {
-				blContextSetStrokeCap(&ctx, BL_STROKE_CAP_POSITION_START, (uint32_t)cap);
+				bl_context_set_stroke_cap(&ctx, BL_STROKE_CAP_POSITION_START, (uint32_t)cap);
 				cap = arg[1].int64;
 				if (cap < 0 || cap > BL_STROKE_CAP_MAX_VALUE) goto error; // invalid cap value
-				blContextSetStrokeCap(&ctx, BL_STROKE_CAP_POSITION_END, (uint32_t)cap);
+				bl_context_set_stroke_cap(&ctx, BL_STROKE_CAP_POSITION_END, (uint32_t)cap);
 			}
 			else {
-				blContextSetStrokeCaps(&ctx, (uint32_t)cap);
+				bl_context_set_stroke_caps(&ctx, (uint32_t)cap);
 			}
 			break;
 
@@ -364,27 +365,27 @@ COMMAND cmd_blend2d_draw(RXIFRM *frm, void *reb_ctx) {
 
 			type = RL_GET_VALUE(cmds, index++, &arg[0]);
 			if (RXT_PAIR == type) {
-				blPathMoveTo(&path, (double)arg[0].pair.x, (double)arg[0].pair.y);
+				bl_path_move_to(&path, (double)arg[0].pair.x, (double)arg[0].pair.y);
 			} else goto error;
 			while (FETCH_3_PAIRS(cmds, index, arg[1], arg[2], arg[3])) {
-				blPathCubicTo(&path,
+				bl_path_cubic_to(&path,
 					(double)arg[1].pair.x, (double)arg[1].pair.y,
 					(double)arg[2].pair.x, (double)arg[2].pair.y,
 					(double)arg[3].pair.x, (double)arg[3].pair.y
 				);
 				index += 3;
 			}
-			if (has_fill  ) blContextFillPathD  (&ctx, &origin, &path);
-			if (has_stroke) blContextStrokePathD(&ctx, &origin, &path);
+			if (has_fill  ) bl_context_fill_path_d  (&ctx, &origin, &path);
+			if (has_stroke) bl_context_stroke_path_d(&ctx, &origin, &path);
 
-			blPathReset(&path);
+			bl_path_reset(&path);
 			break;
 
 
 		case W_BLEND2D_CMD_POLYGON:
 
 			RESOLVE_PAIR_ARG(0, 0)
-			blPathMoveTo(&path, doubles[0], doubles[1]);
+			bl_path_move_to(&path, doubles[0], doubles[1]);
 			count = 0; i = 0;
 			while (RXT_PAIR == RL_GET_VALUE(cmds, index, &arg[0])) {
 				index++;
@@ -394,15 +395,15 @@ COMMAND cmd_blend2d_draw(RXIFRM *frm, void *reb_ctx) {
 				if (i >= DOUBLE_BUFFER_SIZE) {
 					// the buffer could be extended here; processing in
 					// batches instead keeps the memory use flat.
-					blPathPolyTo(&path, (BLPoint*)doubles, count);
+					bl_path_poly_to(&path, (BLPoint*)doubles, count);
 					count = 0; i = 0;
 				}
 			}
-			if (count > 0) blPathPolyTo(&path, (BLPoint*)doubles, count);
-			blPathClose(&path);
+			if (count > 0) bl_path_poly_to(&path, (BLPoint*)doubles, count);
+			bl_path_close(&path);
 
 			DRAW_GEOMETRY(ctx, BL_GEOMETRY_TYPE_PATH, &path)
-			blPathReset(&path);
+			bl_path_reset(&path);
 			break;
 
 
@@ -587,7 +588,7 @@ COMMAND cmd_blend2d_draw(RXIFRM *frm, void *reb_ctx) {
 				current_img = &img;
 			}
 
-			blImageGetData(current_img, &imgData);
+			bl_image_get_data(current_img, &imgData);
 			rectI.w = imgData.size.w;
 			rectI.h = imgData.size.h;
 
@@ -608,17 +609,17 @@ COMMAND cmd_blend2d_draw(RXIFRM *frm, void *reb_ctx) {
 			}
 			debug_print("blitImage size: %i %i at: %f %f\n", rectI.w, rectI.h, pt.x, pt.y);
 			if (scaledImage) {
-				blContextBlitScaledImageD(&ctx, &rect, current_img, &rectI);
+				bl_context_blit_scaled_image_d(&ctx, &rect, current_img, &rectI);
 			}
 			else {
-				blContextBlitImageD(&ctx, &pt, current_img, &rectI);
+				bl_context_blit_image_d(&ctx, &pt, current_img, &rectI);
 			}
 			break;
 		}
 
 
 		case W_BLEND2D_CMD_FONT:
-			blFontReset(&font);
+			bl_font_reset(&font);
 			type = RL_GET_VALUE_RESOLVED(cmds, index++, &arg[0]);
 			if (type == RXT_HANDLE) {
 				if (!VAL_IS_HANDLE(arg[0], Handle_BLFontFace)) {
@@ -628,19 +629,19 @@ COMMAND cmd_blend2d_draw(RXIFRM *frm, void *reb_ctx) {
 				}
 				font_face_ext = (BLFontFaceCore*)arg[0].handle.hob->data;
 				debug_print("Font handle: %p\n", (void*)font_face_ext);
-				blFontCreateFromFace(&font, font_face_ext, font_size);
+				bl_font_create_from_face(&font, font_face_ext, font_size);
 			}
 			else if (type == RXT_FILE || type == RXT_STRING) {
 				REBSER *file = b2d_file_arg(&arg[0], type);
 				font_face_ext = NULL;
 				if (file == NULL) goto error;
-				blFontFaceReset(&font_face);
-				r = blFontFaceCreateFromFile(&font_face, SERIES_TEXT(file), BL_FILE_READ_MMAP_ENABLED | BL_FILE_READ_MMAP_AVOID_SMALL);
+				bl_font_face_reset(&font_face);
+				r = bl_font_face_create_from_file(&font_face, SERIES_TEXT(file), BL_FILE_READ_MMAP_ENABLED | BL_FILE_READ_MMAP_AVOID_SMALL);
 				if (BL_SUCCESS != r) {
 					debug_print("Failed to load font! (%s) %i\n", SERIES_TEXT(file), r);
 					goto error;
 				}
-				blFontCreateFromFace(&font, &font_face, font_size);
+				bl_font_create_from_face(&font, &font_face, font_size);
 			}
 			else goto error;
 			break;
@@ -664,8 +665,8 @@ COMMAND cmd_blend2d_draw(RXIFRM *frm, void *reb_ctx) {
 			}
 			if (sz != font_size && sz > 0.0) {
 				font_size = sz;
-				blFontReset(&font);
-				blFontCreateFromFace(&font, (font_face_ext == NULL ? &font_face : font_face_ext), font_size);
+				bl_font_reset(&font);
+				bl_font_create_from_face(&font, (font_face_ext == NULL ? &font_face : font_face_ext), font_size);
 				debug_print("font_size: %f\n", font_size);
 			}
 
@@ -674,9 +675,9 @@ COMMAND cmd_blend2d_draw(RXIFRM *frm, void *reb_ctx) {
 			str = (REBSER*)arg[3].series;
 			if (BYTE_SIZE(str)) {
 				// all Rebol strings are UTF-8 encoded now
-				blContextFillUtf8TextD(&ctx, &pt, &font, SERIES_TEXT(str), SERIES_TAIL(str));
+				bl_context_fill_utf8_text_d(&ctx, &pt, &font, SERIES_TEXT(str), SERIES_TAIL(str));
 			} else {
-				blContextFillUtf16TextD(&ctx, &pt, &font, (uint16_t*)SERIES_DATA(str), SERIES_TAIL(str));
+				bl_context_fill_utf16_text_d(&ctx, &pt, &font, (uint16_t*)SERIES_DATA(str), SERIES_TAIL(str));
 			}
 			break;
 		}
@@ -684,7 +685,7 @@ COMMAND cmd_blend2d_draw(RXIFRM *frm, void *reb_ctx) {
 
 		case W_BLEND2D_CMD_SCALE:
 			RESOLVE_NUMBER_OR_PAIR_ARG(0, 0);
-			blContextApplyTransformOp(&ctx, BL_TRANSFORM_OP_POST_SCALE, doubles);
+			bl_context_apply_transform_op(&ctx, BL_TRANSFORM_OP_POST_SCALE, doubles);
 			break;
 
 
@@ -692,24 +693,24 @@ COMMAND cmd_blend2d_draw(RXIFRM *frm, void *reb_ctx) {
 			RESOLVE_NUMBER_ARG(0, 0);
 			TO_RADIANS(doubles[0]);
 			RESOLVE_PAIR_ARG_OPTIONAL(1, 1);
-			blContextApplyTransformOp(&ctx, type ? BL_TRANSFORM_OP_POST_ROTATE_PT : BL_TRANSFORM_OP_POST_ROTATE, doubles);
+			bl_context_apply_transform_op(&ctx, type ? BL_TRANSFORM_OP_POST_ROTATE_PT : BL_TRANSFORM_OP_POST_ROTATE, doubles);
 			break;
 
 
 		case W_BLEND2D_CMD_TRANSLATE:
 			RESOLVE_PAIR_ARG(0, 0);
-			blContextApplyTransformOp(&ctx, BL_TRANSFORM_OP_POST_TRANSLATE, doubles);
+			bl_context_apply_transform_op(&ctx, BL_TRANSFORM_OP_POST_TRANSLATE, doubles);
 			break;
 
 
 		case W_BLEND2D_CMD_RESET_MATRIX:
-			blContextApplyTransformOp(&ctx, BL_TRANSFORM_OP_RESET, NULL);
+			bl_context_apply_transform_op(&ctx, BL_TRANSFORM_OP_RESET, NULL);
 			break;
 
 
 		case W_BLEND2D_CMD_ALPHA:
 			RESOLVE_NUMBER_ARG(0, 0);
-			blContextSetGlobalAlpha(&ctx, doubles[0]);
+			bl_context_set_global_alpha(&ctx, doubles[0]);
 			break;
 
 
@@ -718,22 +719,22 @@ COMMAND cmd_blend2d_draw(RXIFRM *frm, void *reb_ctx) {
 			type = RL_GET_VALUE_RESOLVED(cmds, index++, &arg[0]);
 			if (fetch_mode(cmds, index - 1, &mode, W_BLEND2D_ARG_SOURCE_OVER, BL_COMP_OP_MAX_VALUE)) {
 				debug_print("mode: %i\n", mode);
-				blContextSetCompOp(&ctx, mode);
+				bl_context_set_comp_op(&ctx, mode);
 			}
 			else if (RXT_NONE == type || (RXT_LOGIC == type && !arg[0].int32a)) { // blend none or blend off
-				blContextSetCompOp(&ctx, BL_COMP_OP_SRC_OVER);
+				bl_context_set_comp_op(&ctx, BL_COMP_OP_SRC_OVER);
 			}
 			else goto error;
 			break;
 
 
 		case W_BLEND2D_CMD_FILL_ALL:
-			blContextFillAll(&ctx);
+			bl_context_fill_all(&ctx);
 			break;
 
 
 		case W_BLEND2D_CMD_CLEAR_ALL:
-			blContextClearAll(&ctx);
+			bl_context_clear_all(&ctx);
 			break;
 
 
@@ -744,14 +745,14 @@ COMMAND cmd_blend2d_draw(RXIFRM *frm, void *reb_ctx) {
 			rect.y = doubles[1];
 			rect.w = doubles[2] - doubles[0];
 			rect.h = doubles[3] - doubles[1];
-			blContextClearRectD(&ctx, &rect);
+			bl_context_clear_rect_d(&ctx, &rect);
 			break;
 
 
 		case W_BLEND2D_CMD_CLIP:
 			type = RL_GET_VALUE_RESOLVED(cmds, index, &arg[0]);
 			if (RXT_NONE == type || (RXT_LOGIC == type && !arg[0].int32a)) {
-				blContextRestoreClipping(&ctx);
+				bl_context_restore_clipping(&ctx);
 				index++;
 			}
 			else {
@@ -761,7 +762,7 @@ COMMAND cmd_blend2d_draw(RXIFRM *frm, void *reb_ctx) {
 				rect.y = doubles[1];
 				rect.w = doubles[2] - doubles[0];
 				rect.h = doubles[3] - doubles[1];
-				blContextClipToRectD(&ctx, &rect);
+				bl_context_clip_to_rect_d(&ctx, &rect);
 			}
 			break;
 
@@ -775,7 +776,7 @@ COMMAND cmd_blend2d_draw(RXIFRM *frm, void *reb_ctx) {
 			else if (type == RXT_BLOCK) {
 				b2d_init_path_from_block(&path, (REBSER*)arg[0].series, arg[0].index);
 				DRAW_GEOMETRY(ctx, BL_GEOMETRY_TYPE_PATH, &path);
-				blPathReset(&path);
+				bl_path_reset(&path);
 			}
 			else goto error;
 			break;
@@ -804,14 +805,14 @@ COMMAND cmd_blend2d_draw(RXIFRM *frm, void *reb_ctx) {
 
 end_ctx:
 	trace("Cleaning...");
-	blContextEnd(&ctx);
-	blContextReset(&ctx);
-	blImageReset(&img_target);
-	blImageReset(&img_pattern);
-	blImageReset(&img);
-	blFontReset(&font);
-	blFontFaceReset(&font_face);
-	blPathReset(&path);
+	bl_context_end(&ctx);
+	bl_context_reset(&ctx);
+	bl_image_reset(&img_target);
+	bl_image_reset(&img_pattern);
+	bl_image_reset(&img);
+	bl_font_reset(&font);
+	bl_font_face_reset(&font_face);
+	bl_path_reset(&path);
 
 	if (err == BL_SUCCESS) return RXR_VALUE;
 

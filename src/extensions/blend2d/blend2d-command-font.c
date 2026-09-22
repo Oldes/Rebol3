@@ -32,9 +32,9 @@ COMMAND cmd_blend2d_font(RXIFRM *frm, void *ctx) {
 	if (hob == NULL) RETURN_ERROR(ERR_NO_HANDLE);
 
 	face = (BLFontFaceCore*)hob->data;
-	blFontFaceInit(face);
+	bl_font_face_init(face);
 
-	r = blFontFaceCreateFromFile(face, SERIES_TEXT(file), BL_FILE_READ_MMAP_ENABLED | BL_FILE_READ_MMAP_AVOID_SMALL);
+	r = bl_font_face_create_from_file(face, SERIES_TEXT(file), BL_FILE_READ_MMAP_ENABLED | BL_FILE_READ_MMAP_AVOID_SMALL);
 	if (r != BL_SUCCESS) {
 		debug_print("Failed to load font: %s, reason: %i\n", SERIES_TEXT(file), r);
 		RETURN_ERROR(ERR_BAD_FILE);
@@ -47,23 +47,23 @@ COMMAND cmd_blend2d_font(RXIFRM *frm, void *ctx) {
 
 int BLFontFace_free(void *data) {
 	debug_print("releasing font face: %p\n", data);
-	if (data) blFontFaceDestroy((BLFontFaceCore*)data);
+	if (data) bl_font_face_destroy((BLFontFaceCore*)data);
 	return 0;
 }
 
 int BLFontFace_get_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg) {
 	BLFontFaceInfo info;
-	blFontFaceGetFaceInfo((BLFontFaceCore*)hob->data, &info);
+	bl_font_face_get_face_info((BLFontFaceCore*)hob->data, &info);
 
 	*type = RXT_INTEGER;
 	switch (RL_FIND_WORD(Blend2d_arg_words, word)) {
-	case W_BLEND2D_ARG_GLYPHS:       arg->int64 = (i64)info.glyphCount;  break;
-	case W_BLEND2D_ARG_FACE_TYPE:    arg->int64 = (i64)info.faceType;    break;
-	case W_BLEND2D_ARG_OUTLINE_TYPE: arg->int64 = (i64)info.outlineType; break;
+	case W_BLEND2D_ARG_GLYPHS:       arg->int64 = (i64)info.glyph_count;  break;
+	case W_BLEND2D_ARG_FACE_TYPE:    arg->int64 = (i64)info.face_type;    break;
+	case W_BLEND2D_ARG_OUTLINE_TYPE: arg->int64 = (i64)info.outline_type; break;
 	case W_BLEND2D_ARG_REVISION:     arg->int64 = (i64)info.revision;    break;
-	case W_BLEND2D_ARG_FACE_INDEX:   arg->int64 = (i64)info.faceIndex;   break;
-	case W_BLEND2D_ARG_FACE_FLAGS:   arg->int64 = (i64)info.faceFlags;   break;
-	case W_BLEND2D_ARG_DIAG_FLAGS:   arg->int64 = (i64)info.diagFlags;   break;
+	case W_BLEND2D_ARG_FACE_INDEX:   arg->int64 = (i64)info.face_index;   break;
+	case W_BLEND2D_ARG_FACE_FLAGS:   arg->int64 = (i64)info.face_flags;   break;
+	case W_BLEND2D_ARG_DIAG_FLAGS:   arg->int64 = (i64)info.diag_flags;   break;
 	default:
 		return PE_BAD_SELECT;
 	}
@@ -76,9 +76,9 @@ int BLFontFace_mold(REBHOB *hob, REBSER *str) {
 
 	if (!str || !hob || !hob->data) return 0;
 	SERIES_TAIL(str) = 0;
-	blFontFaceGetFaceInfo((BLFontFaceCore*)hob->data, &info);
+	bl_font_face_get_face_info((BLFontFaceCore*)hob->data, &info);
 
 	APPEND_STRING(str, "0#%lx glyphs: %i",
-		(unsigned long)(uintptr_t)hob->data, (int)info.glyphCount);
+		(unsigned long)(uintptr_t)hob->data, (int)info.glyph_count);
 	return len;
 }

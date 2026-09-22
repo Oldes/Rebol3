@@ -1094,7 +1094,7 @@ include-rebol-bulk: [
 	#if (any [Windows? MacOS?]) [
 		:include-ext-gui
 	]
-	#if (exists? %$SISKIN_INSTALL/$SISKIN_ARCH/include/blend2d) [
+	#if (exists? expand-env %$SISKIN_INSTALL/$SISKIN_ARCH/include/blend2d) [
 		:include-ext-blend2d
 	]
 	;- for tests:

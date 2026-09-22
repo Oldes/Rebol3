@@ -40,15 +40,15 @@ REBCNT b2d_init_path_from_block(BLPathCore *path, REBSER *cmds, REBCNT index) {
 
 		case W_BLEND2D_CMD_MOVE:
 			RESOLVE_PAIR_ARG(0, 0);
-			blPathMoveTo(path, doubles[0], doubles[1]);
+			bl_path_move_to(path, doubles[0], doubles[1]);
 			break;
 
 		case W_BLEND2D_CMD_LINE:
 			RESOLVE_PAIR_ARG(0, 0);
-			blPathLineTo(path, doubles[0], doubles[1]);
+			bl_path_line_to(path, doubles[0], doubles[1]);
 			while (RXT_PAIR == RL_GET_VALUE(cmds, index, &arg[0])) {
 				index++;
-				blPathLineTo(path, (double)arg[0].pair.x, (double)arg[0].pair.y);
+				bl_path_line_to(path, (double)arg[0].pair.x, (double)arg[0].pair.y);
 			}
 			break;
 
@@ -65,7 +65,7 @@ REBCNT b2d_init_path_from_block(BLPathCore *path, REBSER *cmds, REBCNT index) {
 			OPT_WORD_FLAG(sweepFlag, W_BLEND2D_ARG_SWEEP);
 			OPT_WORD_FLAG(largeFlag, W_BLEND2D_ARG_LARGE);
 
-			blPathEllipticArcTo(path, doubles[0], doubles[1], doubles[2], largeFlag, sweepFlag, doubles[3], doubles[4]);
+			bl_path_elliptic_arc_to(path, doubles[0], doubles[1], doubles[2], largeFlag, sweepFlag, doubles[3], doubles[4]);
 			break;
 
 		case W_BLEND2D_CMD_CURVE:
@@ -77,7 +77,7 @@ REBCNT b2d_init_path_from_block(BLPathCore *path, REBSER *cmds, REBCNT index) {
 				RXT_PAIR == RL_GET_VALUE(cmds, index + 2, &arg[2])
 			) {
 				index += 3;
-				blPathCubicTo(path, ARG_X(0), ARG_Y(0), ARG_X(1), ARG_Y(1), ARG_X(2), ARG_Y(2));
+				bl_path_cubic_to(path, ARG_X(0), ARG_Y(0), ARG_X(1), ARG_Y(1), ARG_X(2), ARG_Y(2));
 			}
 			break;
 
@@ -87,7 +87,7 @@ REBCNT b2d_init_path_from_block(BLPathCore *path, REBSER *cmds, REBCNT index) {
 				RXT_PAIR == RL_GET_VALUE(cmds, index + 1, &arg[1])
 			) {
 				index += 2;
-				blPathSmoothCubicTo(path, ARG_X(0), ARG_Y(0), ARG_X(1), ARG_Y(1));
+				bl_path_smooth_cubic_to(path, ARG_X(0), ARG_Y(0), ARG_X(1), ARG_Y(1));
 			}
 			break;
 
@@ -99,31 +99,31 @@ REBCNT b2d_init_path_from_block(BLPathCore *path, REBSER *cmds, REBCNT index) {
 				RXT_PAIR == RL_GET_VALUE(cmds, index + 1, &arg[1])
 			) {
 				index += 2;
-				blPathQuadTo(path, ARG_X(0), ARG_Y(0), ARG_X(1), ARG_Y(1));
+				bl_path_quad_to(path, ARG_X(0), ARG_Y(0), ARG_X(1), ARG_Y(1));
 			}
 			break;
 
 		case W_BLEND2D_CMD_QCURV:
 			while (RXT_PAIR == RL_GET_VALUE(cmds, index, &arg[0])) {
 				index += 1;
-				blPathSmoothQuadTo(path, ARG_X(0), ARG_Y(0));
+				bl_path_smooth_quad_to(path, ARG_X(0), ARG_Y(0));
 			}
 			break;
 
 		case W_BLEND2D_CMD_HLINE:
 			RESOLVE_NUMBER_ARG(0, 0);
-			blPathGetLastVertex(path, &pos);
-			blPathLineTo(path, doubles[0], pos.y);
+			bl_path_get_last_vertex(path, &pos);
+			bl_path_line_to(path, doubles[0], pos.y);
 			break;
 
 		case W_BLEND2D_CMD_VLINE:
 			RESOLVE_NUMBER_ARG(0, 0);
-			blPathGetLastVertex(path, &pos);
-			blPathLineTo(path, pos.x, doubles[0]);
+			bl_path_get_last_vertex(path, &pos);
+			bl_path_line_to(path, pos.x, doubles[0]);
 			break;
 
 		case W_BLEND2D_CMD_CLOSE:
-			blPathClose(path);
+			bl_path_close(path);
 			break;
 
 		default:
@@ -156,7 +156,7 @@ COMMAND cmd_blend2d_path(RXIFRM *frm, void *ctx) {
 
 	path = (BLPathCore*)hob->data;
 	debug_print("New path handle: %u data: %p\n", hob->sym, (void*)hob->data);
-	blPathInit(path);
+	bl_path_init(path);
 
 	b2d_init_path_from_block(path, RXA_SERIES(frm, 1), RXA_INDEX(frm, 1));
 
@@ -168,7 +168,7 @@ COMMAND cmd_blend2d_path(RXIFRM *frm, void *ctx) {
 
 int BLPath_free(void *data) {
 	debug_print("releasing path: %p\n", data);
-	if (data) blPathDestroy((BLPathCore*)data);
+	if (data) bl_path_destroy((BLPathCore*)data);
 	return 0;
 }
 
@@ -178,11 +178,11 @@ int BLPath_get_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg) {
 	switch (RL_FIND_WORD(Blend2d_arg_words, word)) {
 	case W_BLEND2D_ARG_SIZE:
 		*type = RXT_INTEGER;
-		arg->int64 = (i64)blPathGetSize(path);
+		arg->int64 = (i64)bl_path_get_size(path);
 		break;
 	case W_BLEND2D_ARG_CAPACITY:
 		*type = RXT_INTEGER;
-		arg->int64 = (i64)blPathGetCapacity(path);
+		arg->int64 = (i64)bl_path_get_capacity(path);
 		break;
 	default:
 		return PE_BAD_SELECT;
@@ -197,6 +197,6 @@ int BLPath_mold(REBHOB *hob, REBSER *str) {
 	SERIES_TAIL(str) = 0;
 	APPEND_STRING(str, "0#%lx size: %i",
 		(unsigned long)(uintptr_t)hob->data,
-		(int)blPathGetSize((BLPathCore*)hob->data));
+		(int)bl_path_get_size((BLPathCore*)hob->data));
 	return len;
 }

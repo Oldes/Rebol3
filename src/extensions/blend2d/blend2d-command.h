@@ -158,7 +158,7 @@ int BLFontFace_mold(REBHOB *hob, REBSER *str);
 	if (fetch_word(cmds, index, Blend2d_arg_words, &cmd) && cmd == name) { flag = TRUE; index++; }
 
 #define DRAW_GEOMETRY(ctx, mode, data) \
-	if (has_fill  ) blContextFillGeometry  (&ctx, mode, data); \
-	if (has_stroke) blContextStrokeGeometry(&ctx, mode, data);
+	if (has_fill  ) bl_context_fill_geometry  (&ctx, mode, data); \
+	if (has_stroke) bl_context_stroke_geometry(&ctx, mode, data);
 
 #endif // BLEND2D_COMMAND_H

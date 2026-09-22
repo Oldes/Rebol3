@@ -20,9 +20,9 @@ static const REBYTE *ERR_BAD_IMAGE = (const REBYTE*)"Blend2D failed to initializ
 BLResult b2d_init_image_from_file(BLImageCore *image, REBSER *file_name) {
 	BLArrayCore codecs;
 	BLResult r;
-	blImageCodecArrayInitBuiltInCodecs(&codecs);
-	r = blImageReadFromFile(image, SERIES_TEXT(file_name), &codecs);
-	blArrayReset(&codecs);
+	bl_image_codec_array_init_built_in_codecs(&codecs);
+	r = bl_image_read_from_file(image, SERIES_TEXT(file_name), &codecs);
+	bl_array_reset(&codecs);
 	return r;
 }
 
@@ -33,19 +33,19 @@ BLResult b2d_init_image_from_arg(BLImageCore *image, RXIARG *arg, REBCNT type) {
 	REBSER *file;
 	switch (type) {
 	case RXT_IMAGE:
-		blImageReset(image);
-		return blImageCreateFromData(image, arg->width, arg->height, BL_FORMAT_PRGB32,
+		bl_image_reset(image);
+		return bl_image_create_from_data(image, arg->width, arg->height, BL_FORMAT_PRGB32,
 			SERIES_DATA((REBSER*)arg->image), (intptr_t)arg->width * 4, BL_DATA_ACCESS_RW, NULL, NULL);
 	case RXT_FILE:
 		file = b2d_file_arg(arg, type);
 		if (file == NULL) return BL_ERROR_INVALID_VALUE;
-		blImageReset(image);
+		bl_image_reset(image);
 		return b2d_init_image_from_file(image, file);
 	case RXT_PAIR:
 		// NOTE: the size of a pair! is in `pair.x`/`pair.y`; the `width` and
 		// `height` fields of the union belong to the image! layout only.
-		blImageReset(image);
-		return blImageCreate(image, ROUND_TO_INT(arg->pair.x), ROUND_TO_INT(arg->pair.y), BL_FORMAT_PRGB32);
+		bl_image_reset(image);
+		return bl_image_create(image, ROUND_TO_INT(arg->pair.x), ROUND_TO_INT(arg->pair.y), BL_FORMAT_PRGB32);
 	}
 	return BL_ERROR_INVALID_VALUE;
 }
@@ -60,7 +60,7 @@ COMMAND cmd_blend2d_image(RXIFRM *frm, void *ctx) {
 
 	image = (BLImageCore*)hob->data;
 	debug_print("New image handle: %u data: %p\n", hob->sym, (void*)hob->data);
-	blImageInit(image);
+	bl_image_init(image);
 
 	r = b2d_init_image_from_arg(image, &RXA_ARG(frm, 1), RXA_TYPE(frm, 1));
 	if (r != BL_SUCCESS) RETURN_ERROR(ERR_BAD_IMAGE);
@@ -78,13 +78,13 @@ COMMAND cmd_blend2d_image(RXIFRM *frm, void *ctx) {
 
 int BLImage_free(void *data) {
 	debug_print("releasing image: %p\n", data);
-	if (data) blImageDestroy((BLImageCore*)data);
+	if (data) bl_image_destroy((BLImageCore*)data);
 	return 0;
 }
 
 int BLImage_get_path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg) {
 	BLImageData data;
-	if (blImageGetData((BLImageCore*)hob->data, &data) != BL_SUCCESS) return PE_BAD_SELECT;
+	if (bl_image_get_data((BLImageCore*)hob->data, &data) != BL_SUCCESS) return PE_BAD_SELECT;
 
 	switch (RL_FIND_WORD(Blend2d_arg_words, word)) {
 	case W_BLEND2D_ARG_SIZE:
@@ -120,7 +120,7 @@ int BLImage_mold(REBHOB *hob, REBSER *str) {
 
 	if (!str || !hob || !hob->data) return 0;
 	SERIES_TAIL(str) = 0;
-	if (blImageGetData((BLImageCore*)hob->data, &data) != BL_SUCCESS) return 0;
+	if (bl_image_get_data((BLImageCore*)hob->data, &data) != BL_SUCCESS) return 0;
 
 	APPEND_STRING(str, "0#%lx %ix%i", (unsigned long)(uintptr_t)hob->data, (int)data.size.w, (int)data.size.h);
 	return len;

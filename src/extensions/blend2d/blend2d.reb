@@ -1,7 +1,7 @@
 REBOL [
 	Title:   "Rebol Blend2D Extension"
 	Name:    blend2d
-	Version: 0.12.0
+	Version: 0.21.3
 	Needs:   3.22.5
 	Author:  @Oldes
 	License: Apache-2.0
@@ -45,7 +45,7 @@ logo: {//   ____  __   __        ______        __
 c-header: {
 #include <math.h>   // floor() - used by ROUND_TO_INT
 #include <stdio.h>  // snprintf() - used by the `info` command and the molds
-#include "blend2d.h"
+#include "blend2d/blend2d.h"
 
 // Symbols of the registered handle types; defined in blend2d.c
 extern REBCNT Handle_BLPath;
@@ -227,7 +227,7 @@ handles: [
 ]
 
 ;; ---------------------------------------------------------------------------
-;; Commands. Order is significant - it fixes the command indices.
+;; Commands.
 ;; The `_init` command is injected as the first one by the generator.
 commands: [
 	draw: [

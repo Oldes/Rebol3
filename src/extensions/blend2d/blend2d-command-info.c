@@ -43,7 +43,7 @@ COMMAND cmd_blend2d_info(RXIFRM *frm, void *ctx) {
 
 		if (hob->sym == Handle_BLFontFace) {
 			BLFontFaceInfo info;
-			blFontFaceGetFaceInfo((BLFontFaceCore*)hob->data, &info);
+			bl_font_face_get_face_info((BLFontFaceCore*)hob->data, &info);
 			APPEND_STRING(str,
 				"faceType:    %u\n"
 				"outlineType: %u\n"
@@ -52,13 +52,13 @@ COMMAND cmd_blend2d_info(RXIFRM *frm, void *ctx) {
 				"faceIndex:   %u\n"
 				"faceFlags:   %u\n"
 				"diagFlags:   %u\n",
-				(unsigned)info.faceType,
-				(unsigned)info.outlineType,
-				(unsigned)info.glyphCount,
+				(unsigned)info.face_type,
+				(unsigned)info.outline_type,
+				(unsigned)info.glyph_count,
 				(unsigned)info.revision,
-				(unsigned)info.faceIndex,
-				(unsigned)info.faceFlags,
-				(unsigned)info.diagFlags
+				(unsigned)info.face_index,
+				(unsigned)info.face_flags,
+				(unsigned)info.diag_flags
 			);
 		}
 		else if (hob->sym == Handle_BLPath) {
@@ -66,13 +66,13 @@ COMMAND cmd_blend2d_info(RXIFRM *frm, void *ctx) {
 			APPEND_STRING(str,
 				"size:     %llu\n"
 				"capacity: %llu\n",
-				(unsigned long long)blPathGetSize(path),
-				(unsigned long long)blPathGetCapacity(path)
+				(unsigned long long)bl_path_get_size(path),
+				(unsigned long long)bl_path_get_capacity(path)
 			);
 		}
 		else if (hob->sym == Handle_BLImage) {
 			BLImageData data;
-			if (blImageGetData((BLImageCore*)hob->data, &data) != BL_SUCCESS) {
+			if (bl_image_get_data((BLImageCore*)hob->data, &data) != BL_SUCCESS) {
 				RETURN_ERROR(ERR_BAD_HANDLE);
 			}
 			APPEND_STRING(str,
@@ -97,18 +97,18 @@ COMMAND cmd_blend2d_info(RXIFRM *frm, void *ctx) {
 		BLRuntimeResourceInfo resourceInfo;
 		BLRuntimeSystemInfo systemInfo;
 
-		blRuntimeQueryInfo(BL_RUNTIME_INFO_TYPE_BUILD, &buildInfo);
-		blRuntimeQueryInfo(BL_RUNTIME_INFO_TYPE_SYSTEM, &systemInfo);
-		blRuntimeQueryInfo(BL_RUNTIME_INFO_TYPE_RESOURCE, &resourceInfo);
+		bl_runtime_query_info(BL_RUNTIME_INFO_TYPE_BUILD, &buildInfo);
+		bl_runtime_query_info(BL_RUNTIME_INFO_TYPE_SYSTEM, &systemInfo);
+		bl_runtime_query_info(BL_RUNTIME_INFO_TYPE_RESOURCE, &resourceInfo);
 
 		APPEND_STRING(str,
 			"Version:     %u.%u.%u\n"
 			"Build-type:  %s\n"
 			"Compiled-by: %s\n"
 			"Threads:     %u\n\n",
-			(unsigned)buildInfo.majorVersion, (unsigned)buildInfo.minorVersion, (unsigned)buildInfo.patchVersion,
-			buildInfo.buildType == BL_RUNTIME_BUILD_TYPE_DEBUG ? "Debug" : "Release",
-			buildInfo.compilerInfo,
+			(unsigned)buildInfo.major_version, (unsigned)buildInfo.minor_version, (unsigned)buildInfo.patch_version,
+			buildInfo.build_type == BL_RUNTIME_BUILD_TYPE_DEBUG ? "Debug" : "Release",
+			buildInfo.compiler_info,
 			(unsigned)Blend2D_thread_count
 		);
 		APPEND_STRING(str,
@@ -120,12 +120,12 @@ COMMAND cmd_blend2d_info(RXIFRM *frm, void *ctx) {
 			"  threadStackSize:       %u\n" //! Minimum stack size of a worker thread used by Blend2D.
 			"  allocationGranularity: %u\n" //! Allocation granularity of virtual memory (includes thread's stack).
 			"]\n\n",
-			RuntimeCpuArchString(systemInfo.cpuArch),
-			(unsigned)systemInfo.cpuFeatures,
-			(unsigned)systemInfo.coreCount,
-			(unsigned)systemInfo.threadCount,
-			(unsigned)systemInfo.threadStackSize,
-			(unsigned)systemInfo.allocationGranularity
+			RuntimeCpuArchString(systemInfo.cpu_arch),
+			(unsigned)systemInfo.cpu_features,
+			(unsigned)systemInfo.core_count,
+			(unsigned)systemInfo.thread_count,
+			(unsigned)systemInfo.thread_stack_size,
+			(unsigned)systemInfo.allocation_granularity
 		);
 		APPEND_STRING(str,
 			"Resource: [\n"
@@ -139,15 +139,15 @@ COMMAND cmd_blend2d_info(RXIFRM *frm, void *ctx) {
 			"  zmBlockCount: %llu\n"
 			"  dynamicPipelineCount: %llu\n"
 			"]\n",
-			(unsigned long long)resourceInfo.vmUsed,
-			(unsigned long long)resourceInfo.vmReserved,
-			(unsigned long long)resourceInfo.vmOverhead,
-			(unsigned long long)resourceInfo.vmBlockCount,
-			(unsigned long long)resourceInfo.zmUsed,
-			(unsigned long long)resourceInfo.zmReserved,
-			(unsigned long long)resourceInfo.zmOverhead,
-			(unsigned long long)resourceInfo.zmBlockCount,
-			(unsigned long long)resourceInfo.dynamicPipelineCount
+			(unsigned long long)resourceInfo.vm_used,
+			(unsigned long long)resourceInfo.vm_reserved,
+			(unsigned long long)resourceInfo.vm_overhead,
+			(unsigned long long)resourceInfo.vm_block_count,
+			(unsigned long long)resourceInfo.zm_used,
+			(unsigned long long)resourceInfo.zm_reserved,
+			(unsigned long long)resourceInfo.zm_overhead,
+			(unsigned long long)resourceInfo.zm_block_count,
+			(unsigned long long)resourceInfo.dynamic_pipeline_count
 		);
 	}
 
