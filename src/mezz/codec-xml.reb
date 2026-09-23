@@ -7,10 +7,10 @@ REBOL [
 	Name:  xml
 	Type:  module
 	Options: [delay]
-	Version: 0.9.0
+	Version: 0.9.1
 	Title: "Codec: XML"
 	File:  https://raw.githubusercontent.com/Oldes/Rebol3/master/src/mezz/codec-xml.reb
-	Date:  22-Oct-2025
+	Date:  23-Sep-2026
 	Author: ["Gavin F. McKenzie" "Oldes"]
 	Email:  %brianwisti--yahoo--com
 	Needs:  [html-entities]
@@ -187,15 +187,15 @@ register-codec [
 		/trim "Removes whitespaces (from head of strings)"
 	][
 		if binary? data [data: to string! data]
-		parser/xmlTrimSpace: any [
+		trim: any [
 			trim
 			select options 'trim
 		]
-		parser/parse-xml data
+		parser/parse-xml/:trim data
 	]
 
 	verbose: 0 ;not used so far, but could be later
-	options: object [trim: false]
+	options: #[trim: #(false)]
 
 	decode-entities: :system/codecs/html-entities/decode
 
@@ -937,11 +937,12 @@ register-codec [
 			This is a more XML 1.0 compliant parse than the built-in
 			REBOL parse-xml function.
 		}
-			xml-string [string!] 
+			xml-string [string!]
+			/trim "Removes whitespaces (from head of strings)"
 			/local parse-result
 		][
 
-			if true? xmlTrimSpace [xmlTrimSpace: [any xmlSpace]]
+			xmlTrimSpace: if/only trim [any xmlSpace]
 
 			;
 			; Parse the document and capture the return code from the REBOL
