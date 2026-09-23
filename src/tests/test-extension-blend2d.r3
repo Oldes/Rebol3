@@ -162,10 +162,11 @@ set-threads: :b2d/set-threads
 ;; interpreter), so the alpha is always there.
 px: func ["Returns the RGB of one pixel" img [image!] x [integer!] y [integer!] /local t][
 	t: img/(1 + x + (y * img/width))
-	to tuple! reduce [t/1 t/2 t/3]
+	t/4: none ;; removes alpha
+	t
 ]
 pa: func ["Returns the alpha of one pixel" img [image!] x [integer!] y [integer!]][
-	pick img/(1 + x + (y * img/width)) 4
+	img/(1 + x + (y * img/width))/4
 ]
 
 ;; Colors which come out of a gradient are sampled at the pixel's center, so
@@ -177,7 +178,7 @@ near?: func [
 	/local n
 ][
 	n: 0
-	repeat i 3 [n: max n absolute (pick color i) - (pick expected i)]
+	repeat i 3 [n: max n absolute color/:i - expected/:i]
 	any [
 		n <= any [diff 6]
 		ajoin ["got " mold color " instead of " mold expected]
@@ -187,28 +188,33 @@ near?: func [
 ;; A 4x4 fully opaque green image, used as a pattern and as a blit source.
 src: draw 4x4 [fill 0.255.0 fill-all]
 
-;; The first system font which can be found; the text tests need one.
-font-file: none
-foreach dir [
-	%/usr/share/fonts/truetype/dejavu/
-	%/usr/share/fonts/truetype/liberation/
-	%/usr/share/fonts/truetype/freefont/
-	%/usr/share/fonts/TTF/
-	%/usr/share/fonts/
-	%/usr/share/fonts/noto/
-	%/Library/Fonts/
-	%/System/Library/Fonts/
-	%/C/Windows/Fonts/
-	%/D/Windows/Fonts/
-][
-	unless font-file [
+;; Try to locate NotoSans-Regular font for the text tests.
+font-file: any [
+	to-real-file %test/assets/NotoSans-Regular.ttf
+	to-real-file %units/files/NotoSans-Regular.ttf
+]
+;; Else the first system font which can be found...
+unless font-file [
+	foreach dir either system/platform = 'Windows [
+		%/C/Windows/Fonts/
+		%/D/Windows/Fonts/
+	][
+		%/usr/share/fonts/truetype/dejavu/
+		%/usr/share/fonts/truetype/liberation/
+		%/usr/share/fonts/truetype/freefont/
+		%/usr/share/fonts/TTF/
+		%/usr/share/fonts/
+		%/usr/share/fonts/noto/
+		%/Library/Fonts/
+		%/System/Library/Fonts/
+	][
 		if block? files: attempt [read dir][
 			foreach file files [
 				if all [
 					not font-file
 					find [%.ttf %.otf %.ttc] suffix? file
 				][
-					font-file: join dir file
+					font-file: dir/:file
 				]
 			]
 		]
@@ -220,12 +226,12 @@ print ["Font used for the text tests:" mold font-file]
 group "Module surface"
 ;;=============================================================================
 
---test-- "module imported"                       [module? b2d]
---test-- "draw is exported into the user context" [command? :draw]
+--test-- "module imported"                           [module? b2d]
+--test-- "draw is exported into the user context"    [command? :draw]
 --test-- "draw is also reachable through the module" [same? :draw :b2d/draw]
 
 foreach name [draw path font image info set-threads][
-	--test-- ajoin ["command " name] compose [command? get in b2d (to lit-word! name)]
+	--test-- ajoin ["command " name] compose [command? get in b2d name]
 ]
 
 ;; `draw-test` is a scratch pad for native experiments and is commented out in
@@ -260,10 +266,10 @@ foreach name [draw path font image info set-threads][
 group "draw: the target image"
 ;;=============================================================================
 
---test-- "a pair! makes a new image"      [image? img: draw 8x8 [fill 255.0.0 fill-all]]
+--test-- "a pair! makes a new image"        [image? img: draw 8x8 [fill 255.0.0 fill-all]]
 --test-- "the new image has the size given" [is? img/size 8x8]
---test-- "the new image is filled"        [is? (px img 0 0) 255.0.0]
---test-- "the fill is fully opaque"       [is? (pa img 0 0) 255]
+--test-- "the new image is filled"          [is? (px img 0 0) 255.0.0]
+--test-- "the fill is fully opaque"         [is? (pa img 0 0) 255]
 
 --test-- "an image! is drawn into in place" [
 	im: make image! 8x8
@@ -320,7 +326,7 @@ group "draw: geometry"
 	d: draw 16x16 [clear-all fill 255.0.0 point-size 4 point [4x4 12x12]]
 	all [(px d 4 4) == 255.0.0  (px d 12 12) == 255.0.0]
 ]
---test-- "arc"        [image? draw 16x16 [pen 255.0.0 arc 8x8 6x6 0 90]]
+--test-- "arc"        [image? draw 16x16 [pen  255.0.0 arc 8x8 6x6 0 90]]
 --test-- "pie"        [image? draw 16x16 [fill 255.0.0 arc 8x8 6x6 0 90 pie]]
 --test-- "chord"      [image? draw 16x16 [fill 255.0.0 arc 8x8 6x6 0 90 chord]]
 --test-- "cubic"      [image? draw 16x16 [pen 255.0.0 cubic 0x0 4x12 12x4 16x16]]
@@ -362,7 +368,7 @@ group "draw: styles"
 		reform ["left" mold l "right" mold r]
 	]
 ]
---test-- "a radial gradient is accepted"  [image? draw 16x16 [fill radial 255.0.0 0.0 0.0.255 1.0 8x8 8x8 8 fill-all]]
+--test-- "a radial gradient is accepted"  [image? draw 16x16 [fill radial  255.0.0 0.0 0.0.255 1.0 8x8 8x8 8 fill-all]]
 --test-- "a conical gradient is accepted" [image? draw 16x16 [fill conical 255.0.0 0.0 0.0.255 1.0 8x8 fill-all]]
 
 --test-- "an image! is used as a fill pattern" [
@@ -387,7 +393,7 @@ group "draw: styles"
 	a: pa d 0 0
 	any [all [a > 50  a < 210]  reform ["alpha" a]]
 ]
---test-- "blend accepts a mode word" [image? draw 8x8 [blend multiply fill 128.128.128 fill-all]]
+--test-- "blend accepts a mode word"       [image? draw 8x8 [blend multiply fill 128.128.128 fill-all]]
 --test-- "blend none restores the default" [image? draw 8x8 [blend multiply blend none fill 255.0.0 fill-all]]
 
 ;;=============================================================================
@@ -573,14 +579,16 @@ either font-file [
 
 	--test-- "text drawn with a font handle marks the image" [
 		d: draw 64x32 [clear-all fill 255.255.255 font f text 2x24 20 "R"]
-		found: false
-		repeat y 32 [repeat x 64 [if 0 < pa d (x - 1) (y - 1) [found: true]]]
+		found: catch [
+			repeat y 32 [repeat x 64 [if 0 < pa d (x - 1) (y - 1) [throw true]]]
+		]
 		any [found "nothing was drawn"]
 	]
 	--test-- "text drawn with a font file marks the image" [
 		d: draw 64x32 compose [clear-all fill 255.255.255 font (font-file) text 2x24 20 "R"]
-		found: false
-		repeat y 32 [repeat x 64 [if 0 < pa d (x - 1) (y - 1) [found: true]]]
+		found: catch [
+			repeat y 32 [repeat x 64 [if 0 < pa d (x - 1) (y - 1) [throw true]]]
+		]
 		any [found "nothing was drawn"]
 	]
 	--test-- "a font handle survives being used twice" [
@@ -599,10 +607,10 @@ either font-file [
 group "info"
 ;;=============================================================================
 
---test-- "info returns a string"         [string? txt: info]
---test-- "info reports the version"      [did find txt "Version:"]
---test-- "info reports the system"       [did find txt "System: ["]
---test-- "info reports the resources"    [did find txt "Resource: ["]
+--test-- "info returns a string"        [string? txt: info]
+--test-- "info reports the version"     [did find txt "Version:"]
+--test-- "info reports the system"      [did find txt "System: ["]
+--test-- "info reports the resources"   [did find txt "Resource: ["]
 --test-- "info reports the thread count" [did find txt "Threads:"]
 
 --test-- "info/of an image handle"  [did find info/of i "width:"]
