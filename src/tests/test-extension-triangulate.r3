@@ -442,24 +442,5 @@ either quick? [
 	]
 ]
 
-;;=============================================================================
-group "Drawing scripts"
-;;=============================================================================
-
-;; These need the Blend2D extension, which is not available on all platforms.
-case [
-	quick? [
-		--skip-- "test/triangulate-image.r3 (--quick)"
-		--skip-- "test/triangulate-spiral.r3 (--quick)"
-	]
-	error? try [import 'blend2d][
-		--skip-- "test/triangulate-image.r3 (no Blend2D extension)"
-		--skip-- "test/triangulate-spiral.r3 (no Blend2D extension)"
-	]
-	true [
-		--test-- "test/triangulate-image.r3"  [do %test/triangulate-image.r3  true]
-		--test-- "test/triangulate-spiral.r3" [do %test/triangulate-spiral.r3 true]
-	]
-]
 
 summary
