@@ -87,7 +87,7 @@ register-codec [
 				flags:    BITSET16       ; general purpose bit flag
 				method:   UI16LE         ; compression method
 				modified: MSDOS-DATETIME ; last modified
-				crc:      SI32LE         ; crc-32
+				crc:      UI32LE         ; crc-32
 				cmp-size: UI32LE         ; compressed size
 				unc-size: UI32LE         ; uncompressed size
 				len-name: UI16LE         ; file name length
