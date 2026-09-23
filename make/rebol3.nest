@@ -1492,8 +1492,10 @@ include-ext-blend2d: [
 	define: BLEND2D_BUILD_NO_CXX_LIB=1
 
 	include: %$SISKIN_INSTALL/$SISKIN_ARCH/include/
-	#if Posix? [
+	#if macOS? [
 		lflag: "-Wl,-search_paths_first"
+	]
+	#if Posix? [
 		libraries: [%c %m %stdc++]
 		libraries: [%$SISKIN_INSTALL/$SISKIN_ARCH/lib/ %blend2d]
 	]
