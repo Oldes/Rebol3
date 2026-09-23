@@ -590,11 +590,11 @@ if value? 'blur [
 	]
 	--assert all [
 		image? blur t 5
-		-1700743341 = checksum to binary! t 'crc32
+		2594223955 = checksum to binary! t 'crc32
 	]
 	--assert all [
 		image? blur t 5
-		-583506697  = checksum to binary! t 'crc32
+		3711460599  = checksum to binary! t 'crc32
 	]
 	--assert all [
 		image? blur i 100000
