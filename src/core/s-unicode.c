@@ -933,6 +933,7 @@ static const struct utf8range_u32 unicode_wide_u32[] = {
 			// UTF-32: each unit is a codepoint
 			codepoint = read_u32(bp, is_little_endian);
 			// Validate data input
+			// Reject code points outside Unicode range or within the surrogate range.
 			if (codepoint > 0x10FFFF || (codepoint >= 0xD800 && codepoint <= 0xDFFF)) {
 				if (err) *err = AS_REBLEN(bp - start);
 				return NULL;
