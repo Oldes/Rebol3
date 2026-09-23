@@ -149,7 +149,7 @@ register-codec [
 					#" " /bright-magenta wr /green ":d=" /bright-cyan 2 /green
 					"hl=" /bright-green 2 /green
 					"l=" /bold wl /green #" " -5
-					#" " /bright-cyan 18 /reset] reduce [
+					#" " /bright-cyan 18 /reset] [
 					tag-pos  - 1         ; tag start position
 					depth    - 1         ; current depth
 					data-pos - tag-pos   ; length of header 
