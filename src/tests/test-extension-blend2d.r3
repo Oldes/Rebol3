@@ -189,9 +189,10 @@ near?: func [
 src: draw 4x4 [fill 0.255.0 fill-all]
 
 ;; Try to locate NotoSans-Regular font for the text tests.
-font-file: any [
-	to-real-file %test/assets/NotoSans-Regular.ttf
-	to-real-file %units/files/NotoSans-Regular.ttf
+;; There seems to be a bug in `to-real-file` that it returns a dir if the file not exists
+any [
+	exists? font-file: to-real-file %test/assets/NotoSans-Regular.ttf
+	exists? font-file: to-real-file %units/files/NotoSans-Regular.ttf
 ]
 ;; Else the first system font which can be found...
 unless font-file [
