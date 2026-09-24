@@ -55,6 +55,19 @@ secure [%/ allow]
 	--assert %./file = undirize %./file/
 ===end-group===
 
+
+===start-group=== "to-rebol-file"
+--test-- "to-rebol-file with invalid volume format"
+	if system/platform = 'Windows [
+		--assert error? try [to-rebol-file "a:b:c"]
+		--assert error? try [to-rebol-file "a\b:c"]
+		--assert error? try [to-rebol-file "a:b\c:d"]
+		--assert %/c/x = to-rebol-file "c:\\x"
+		--assert %/c/  = to-rebol-file "c:\"
+	]
+===end-group===
+
+
 ===start-group=== "to-local-file"
 
 --test-- "issue-2351"
