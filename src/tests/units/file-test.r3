@@ -118,7 +118,26 @@ if find [Linux macOS] system/platform [
 	--assert none? to-real-file %not-existing-file
 	--assert none? to-real-file %not-existing-dir/
 	--assert none? to-real-file %not-existing-dir/file
-
+--test-- "to-real-file with symlinks"
+	dir: to-real-file make-dir %tmp-real-dir/
+	write dir/file.txt "x"
+	tgt: to-local-file dir
+	if #"\" = last tgt [take/last tgt]
+	either system/platform = 'Windows [
+		call/shell/wait rejoin [{mklink /J tmp-real-link "} tgt {"}]
+	][
+		call/shell/wait rejoin [{ln -s "} tgt {" tmp-real-link}]
+	]
+	--assert dir = to-real-file %tmp-real-link
+	--assert dir = to-real-file %tmp-real-link/
+	--assert dir/file.txt = to-real-file %tmp-real-link/file.txt
+	--assert none? to-real-file %tmp-real-link/missing
+	delete dir/file.txt
+	delete dir
+	--assert none? to-real-file %tmp-real-link   ; dangling link
+	call/shell/wait either system/platform = 'Windows [
+		"rmdir tmp-real-link"
+	][	"rm tmp-real-link" ]
 ===end-group===
 
 
