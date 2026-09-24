@@ -704,6 +704,11 @@ X*/	REBOOL As_OS_Str(REBSER *series, REBCHR **string)
 {
 	static REBU16 real_path[MAX_PATH + 2];
 	if (!_wfullpath(real_path, path, MAX_PATH)) return NULL;
+
+	// _wfullpath does not touch the filesystem; verify existence (like realpath on Posix)
+	DWORD fileAttr = GetFileAttributesW(real_path);
+	if (fileAttr == INVALID_FILE_ATTRIBUTES) return NULL;
+
 	size_t len = wcslen(real_path);
 	// if there is not a trailing slash, check if the result is not a directory anyway
 	if (real_path[len - 1] != L'\\') {

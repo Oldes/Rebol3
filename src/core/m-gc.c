@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,7 +23,7 @@
 **  Module:  m-gc.c
 **  Summary: main memory garbage collection
 **  Section: memory
-**  Author:  Carl Sassenrath, Ladislav Mecir, HostileFork
+**  Author:  Carl Sassenrath, Ladislav Mecir, HostileFork, Oldes
 **  Notes:
 **    WARNING WARNING WARNING
 **    This is highly tuned code that should only be modified by experts
@@ -108,6 +108,7 @@ REBVAL *N_watch(REBFRM *frame, REBVAL **inter_block)
 #endif
 
 extern REBDEV *Devices[];
+extern REBCNT Dev_Count;
 
 static void Mark_Series(REBSER *series, REBCNT depth);
 static void Mark_Value(REBVAL *val, REBCNT depth);
@@ -222,22 +223,23 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 ***********************************************************************/
 {
 	REBREQ *req;
+	REBHOB *hob;
 	
-	if (
-		   IS_EVENT_MODEL(value, EVM_PORT)
-		|| IS_EVENT_MODEL(value, EVM_OBJECT)
-		|| (VAL_EVENT_TYPE(value) == EVT_DROP_FILE && GET_FLAG(VAL_EVENT_FLAGS(value), EVF_COPIED))
-	) {
-		// The ->ser field of the REBEVT is void*, so we must cast
-		// Comment says it is a "port or object"
-		CHECK_MARK((REBSER*)VAL_EVENT_SER(value), depth);
+	if (IS_EVENT_MODEL(value, EVM_PORT) || IS_EVENT_MODEL(value, EVM_OBJECT)) {
+		// The ->ser field of the REBEVT is void*, so we must cast.
+		// Comment says it is a "port or object".
+		if (VAL_EVENT_SER(value))
+			CHECK_MARK((REBSER*)VAL_EVENT_SER(value), depth);
 	}
-
-	if (IS_EVENT_MODEL(value, EVM_GUI)) {
-		Mark_Gob(VAL_EVENT_SER(value), depth);
+	else if (IS_EVENT_MODEL(value, EVM_HANDLE)) {
+		// Same as Mark_Value's REB_HANDLE case: the handle context, and
+		// anything it keeps in its series, must outlive the event.
+		if (NZ(hob = VAL_EVENT_HOB(value)) && IS_USED_HOB(hob)) {
+			MARK_HOB(hob);
+			if (hob->series) Mark_Series(hob->series, depth);
+		}
 	}
-
-	if (IS_EVENT_MODEL(value, EVM_DEVICE)) {
+	else if (IS_EVENT_MODEL(value, EVM_DEVICE)) {
 		// In the case of being an EVM_DEVICE event type, the port! will
 		// not be in VAL_EVENT_SER of the REBEVT structure.  It is held
 		// indirectly by the REBREQ ->req field of the event, which
@@ -261,12 +263,12 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 **
 ***********************************************************************/
 {
-	int d;
+	REBCNT d;
 	REBDEV *dev;
 	REBREQ *req;
 	REBDEV **devices = Devices;// Host_Lib->devices;
 	
-	for (d = 0; d < RDI_MAX; d++) {
+	for (d = 0; d < Dev_Count; d++) {
 		dev = devices[d];
 		if (dev)
 			for (req = dev->pending; req; req = req->next)
@@ -304,10 +306,14 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 
 	MARK_SERIES(series);
 
-	// If not a block, go no further
-	if (SERIES_WIDE(series) != sizeof(REBVAL) || IS_BARE_SERIES(series)) return;
+	// If not a block or if sliced block, go no further
+	if (
+		SERIES_WIDE(series) != sizeof(REBVAL)
+		|| IS_BARE_SERIES(series)
+		|| IS_SLICE_SERIES(series))
+		return;
 
-	ASSERT2(RP_SERIES_OVERFLOW, SERIES_TAIL(series) < SERIES_REST(series));
+	ASSERT2(SERIES_TAIL(series) < SERIES_REST(series), RP_SERIES_OVERFLOW);
 
 	//Moved to end: ASSERT1(IS_END(BLK_TAIL(series)), RP_MISSING_END);
 
@@ -332,7 +338,7 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 	}
 
 #if (ALEVEL>0)
-	if (!IS_END(BLK_SKIP(series, len)) && series != DS_Series)
+	if (!IS_END(BLK_SKIP(series, len)) && series != DS_Series && !IS_SLICE_SERIES(series))
 		Crash(RP_MISSING_END);
 #endif
 }
@@ -374,19 +380,26 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 			return;
 		}
 #if (ALEVEL>0)
-		if (!IS_END(BLK_SKIP(ser, SERIES_TAIL(ser))) && ser != DS_Series)
+		// Sliced series do not necessarily end with null!
+		if (!IS_END(BLK_SKIP(ser, SERIES_TAIL(ser))) && ser != DS_Series && !IS_SLICE_SERIES(ser))
 			Crash(RP_MISSING_END);
 #endif
 		if (SERIES_WIDE(ser) != sizeof(REBVAL) && SERIES_WIDE(ser) != 4 && SERIES_WIDE(ser) != 0)
 			Crash(RP_BAD_WIDTH, 16, SERIES_WIDE(ser), VAL_TYPE(val));
-		QUEUE_CHECK_MARK(ser, depth);
+		if (IS_SLICE_SERIES(ser)) {
+			MARK_SERIES(ser);
+			QUEUE_CHECK_MARK(ser->series, depth);
+		}
+		else {
+			QUEUE_CHECK_MARK(ser, depth);
+		}
 		return;
 	}
 	if (VAL_TYPE(val) >= REB_BINARY && VAL_TYPE(val) <= REB_BITSET) {
 		ser = VAL_SERIES(val);
-		if (SERIES_WIDE(ser) > sizeof(REBUNI))
-			Crash(RP_BAD_WIDTH, sizeof(REBUNI), SERIES_WIDE(ser), VAL_TYPE(val));
+		ASSERT1(SERIES_WIDE(ser) <= sizeof(REBUNI), RP_BAD_WIDTH);
 		MARK_SERIES(ser);
+		if (IS_SLICE_SERIES(ser)) MARK_SERIES(ser->series);
 		return;
 	}
 
@@ -556,7 +569,6 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 
 	return count;
 }
-
 
 /***********************************************************************
 **

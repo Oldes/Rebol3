@@ -120,7 +120,6 @@
 		for (REBLEN i = 0; i < ser->tail; i++) {
 			if (ser->data[i] == '*') {
 				ser->tail = i;
-				ser->data[0];
 				break;
 			}
 		}

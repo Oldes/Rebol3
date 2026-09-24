@@ -172,12 +172,8 @@ extern HWND      Focused_Window;
 		if (msg.message == WM_DNS)
 			Done_Device(msg.wParam, msg.lParam>>16); // error code
 		else {
-			#ifdef REB_VIEW
-			if(Focused_Window && !IsDialogMessage(Focused_Window, &msg)) {
-				TranslateMessage(&msg);
-				DispatchMessage(&msg);
-			}
-			#endif
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
 		}
 	}
 

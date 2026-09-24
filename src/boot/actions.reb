@@ -197,7 +197,7 @@ length?: action [
 
 pick: action [
 	{Returns the value at the specified position.}
-	aggregate [series! map! gob! pair! date! time! tuple! bitset! port!]
+	aggregate [series! map! gob! pair! date! time! tuple! bitset! port! struct!]
 	index {Index offset, symbol, or other value to use as index}
 ]
 
@@ -225,7 +225,7 @@ find: action [
 
 select: action [
 	{Searches for a value; returns the value that follows, else none.}
-	series [series! map! any-object! none!]
+	series [series! map! any-object! none! struct!]
 	value [any-type!]
 	/part {Limits the search to a given length or position}
 	range [number! series! pair!]
@@ -337,7 +337,7 @@ change: action [
 
 poke: action [
 	{Replaces an element at a given position.}
-	series [series! port! map! gob! bitset!] {(modified)}
+	series [series! port! map! gob! bitset! struct!] {(modified)}
 	index {Index offset, symbol, or other value to use as index}
 	value [any-type!] {The new value (returned)}
 ]

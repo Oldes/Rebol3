@@ -11,7 +11,7 @@ REBOL [
 		See: http://www.apache.org/licenses/LICENSE-2.0
 	}
 	Author: "Carl Sassenrath"
-	Version: 3.21.0
+	Version: 3.22.0
 	Needs: 3.5.0
 	Purpose: {
 		A lot of the REBOL system is built by REBOL, and this program
@@ -794,13 +794,22 @@ write-generated inc/reb-dialect.h out
 ;----------------------------------------------------------------------------
 
 emit-head "Event Types" %reb-evtypes.h
+emit {^/#ifndef REB_EVTYPES_H^/#define REB_EVTYPES_H^/}
 emit newline
 
+;; A reserved slot carries no name - the next named type gets an explicit
+;; value instead, the same way %types-ext.reb numbers the RXT_ enum.
 emit ["enum event_types {" newline]
+n: 0
+gap: false
 foreach field ob/catalog/event-types [
-	emit-line "EVT_" field none
+	either word? field [
+		emit-line "EVT_" either gap [rejoin [field " = " n]][field] n
+		gap: false
+	][	gap: true ]
+	++ n
 ]
-emit [tab "EVT_MAX^/"]
+emit [tab "EVT_MAX = " n lf]
 emit "};^/^/"
 
 emit ["enum event_keys {" newline]
@@ -810,6 +819,7 @@ foreach field ob/catalog/event-keys [
 ]
 emit [tab "EVK_MAX^/"]
 emit "};^/^/"
+emit {^/#endif // REB_EVTYPES_H^/}
 
 write-generated inc/reb-evtypes.h out
 

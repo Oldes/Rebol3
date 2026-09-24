@@ -3,8 +3,8 @@ Rebol [
 	Purpose: {Reusable line editor}
 	Name:    line-editor
 	Type:    module
-	Version: 0.3.0
-	Date:    6-May-2026
+	Version: 0.3.1
+	Date:    25-Aug-2026
 	Needs:   3.21.18
 	exports: [line-editor!]
 ]
@@ -32,6 +32,20 @@ line-editor!: context [
 		system/console/current: context? 'parent-console
 		if string? :banner [print banner]
 		prin prompt
+	]
+	bind-code: func [
+		"Binds console code, innermost context last."
+		code [block!]
+		/local index
+	][
+		code: bind code system/contexts/lib   ;; core values
+		code: bind code system/contexts/user  ;; e.g. values from startup scripts
+		index: 1 + length? console-ctx
+		code: bind/set code console-ctx       ;; per console session values
+		;; new console words start off with their outer value, if any
+		resolve/only console-ctx system/contexts/user index
+		resolve/only console-ctx lib index
+		code
 	]
 
 	;-- Main callbacks ---
@@ -159,9 +173,7 @@ line-editor!: context [
 			;; It's an error from transcode, no need to show the stack!
 			unset in :result 'where
 		][
-			code: bind result system/contexts/lib  ;; core values
-			code: bind code system/contexts/user   ;; e.g. values from startup scripts
-			code: bind/set code console-ctx        ;; per console session values
+			code: bind-code result
 			;; Evaluate code with protection from all errors and quit.
 			set/any 'result try/all [ catch/quit code ]
 			if system/state/quit? [

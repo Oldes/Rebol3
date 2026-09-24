@@ -66,6 +66,8 @@
 #include "host-init.h"
 #endif
 
+#include "gen-ext-init.h"	// entry points of the embedded extensions
+
 /**********************************************************************/
 
 #ifdef COLOR_CONSOLE
@@ -84,6 +86,16 @@
 
 #ifdef TO_WINDOWS
 #define MAX_TITLE_LENGTH  1024
+# ifndef WINVER
+#  define WINVER 0x0501        // this is needed to be able use WINDOWINFO struct etc.
+# endif
+
+/* Forces the use of Visual Styles if compiling with VisualStudio */
+# ifdef _MSC_VER
+# pragma comment(linker,"\"/manifestdependency:type='win32' \
+	name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
+	processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
+# endif
 #ifdef REB_VIEW
 extern HWND      Focused_Window;
 #endif
@@ -317,7 +329,7 @@ int main(int argc, char **argv) {
 	LoadStringW(hInstance, 101, App_Title, MAX_TITLE_LENGTH);
 #if defined(INCLUDE_IMAGE_OS_CODEC) || defined(INCLUDE_AUDIO_DEVICE) 
 	//CoInitialize(0);
-	HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
+	HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
 #endif
 
 #else //non Windows platforms
@@ -346,9 +358,7 @@ int main(int argc, char **argv) {
 	//Init_Graphics();
 #endif
 
-#ifdef TEST_EXTENSIONS
-	OS_Init_Ext_Test();
-#endif
+	INIT_EMBEDDED_EXTENSIONS();
 
 // Call sys/start function. If a compressed script is provided, it will be 
 // decompressed, stored in system/options/boot-host, loaded, and evaluated.
@@ -383,4 +393,3 @@ int main(int argc, char **argv) {
 	OS_Exit(0, 0);
 	return 0;
 }
-

@@ -278,6 +278,69 @@ Rebol [
 ===end-group===
 
 
+===start-group=== "IMAGE pixels from a VECTOR"
+	rgba: make struct! [r [uint8!] g [uint8!] b [uint8!] a [uint8!]]
+
+--test-- "set the image pixels from a vector of pixels"
+	img: make image! 2x1
+	v: to vector! img
+	v/1: 0
+	img/rgba: v
+	--assert 0.0.0.0 = img/1
+	--assert 255.255.255.255 = img/2
+
+--test-- "an image converted to a vector and back is not changed"
+	img: make image! 2x2
+	img/1: 1.2.3.4
+	img/4: 5.6.7.8
+	v: to vector! img
+	out: make image! 2x2
+	out/rgba: v
+	--assert 1.2.3.4 = out/1
+	--assert 5.6.7.8 = out/4
+
+--test-- "set the image pixels from a vector of structs"
+	img: make image! 2x1
+	v: as rgba to vector! img
+	v/1/r: 1
+	v/1/g: 2
+	v/1/b: 3
+	v/1/a: 4
+	img/rgba: v
+	--assert 1.2.3.4 = img/1
+
+--test-- "set a single channel from a vector"
+	img: make image! 2x1
+	img/alpha: make vector! [uint8! 2]
+	--assert 0 = img/1/4
+	--assert 0 = img/2/4
+	a: make vector! [uint8! [1 2]]
+	img/alpha: a
+	--assert 1 = img/1/4
+	--assert 2 = img/2/4
+
+--test-- "a vector shorter than the image sets only its part"
+	img: make image! 3x1
+	v: make vector! [uint32! 1]
+	img/rgba: v
+	--assert 0.0.0.0 = img/1
+	--assert 255.255.255.255 = img/3
+
+--test-- "the position of the vector is respected"
+	img: make image! 1x1
+	v: make vector! [uint8! [0 0 0 0 1 2 3 4]]
+	img/rgba: skip v 4
+	--assert 1.2.3.4 = img/1
+
+--test-- "only a binary or a vector may be used"
+	img: make image! 1x1
+	--assert error? try [img/rgba: "data"]
+	--assert error? try [img/rgba: [1 2 3 4]]
+
+===end-group===
+
+
+
 ===start-group=== "image/color"
 
 	--test-- "image/color getter"
@@ -353,9 +416,9 @@ FFFFFFDC1616212121212121
 		--assert 255.255.255.255 = img/1
 ===end-group===
 
+if any-function? :rgb-to-hsv [ 
 ===start-group=== "RGB - HSV conversions"
 ;@@ https://github.com/Oldes/Rebol-issues/issues/2342
-
 --test-- "RGB-TO-HSV"
 	--assert 36.235.134     = rgb-to-hsv 134.116.10
 	--assert 36.235.134.100 = rgb-to-hsv 134.116.10.100
@@ -366,9 +429,10 @@ FFFFFFDC1616212121212121
 	--assert 5.9.10.100 = hsv-to-rgb 134.116.10.100
 	--assert 63.123.134 = hsv-to-rgb 134.134.134
 	--assert 0.1.2      = hsv-to-rgb 134.134.2
-
 ===end-group===
+]
 
+if any-function? :color-distance [
 ===start-group=== "RGB color distance"
 --test-- "color-distance"
 	--assert 764.83 = round/to color-distance 0.0.0 255.255.255 0.01
@@ -377,7 +441,9 @@ FFFFFFDC1616212121212121
 	--assert 41.3   = round/to color-distance 175.200.100 200.200.100 0.01
 	--assert 0.0    = round/to color-distance 200.200.100 200.200.100 0.01
 ===end-group===
+]
 
+if any-function? :image-diff [
 ===start-group=== "Image difference"
 --test-- "image-diff (same sizes)"
 	i1: load %units/files/flower.png
@@ -407,7 +473,9 @@ FFFFFFDC1616212121212121
 	--assert error? try [image-diff/part i1 i2 3x0 1x2] ;; offset out of range
 	--assert error? try [image-diff/part i1 i2 0x2 1x2] 
 ===end-group===
+]
 
+if any-function? :tint [
 ===start-group=== "Tint color"
 --test-- "Tint tuple"
 	c: 100.200.255
@@ -422,9 +490,10 @@ FFFFFFDC1616212121212121
 	i: make image! [2x1 100.200.255]
 	--assert 114.164.192.255 = first  tint i 128.128.128 50% ;@@ image is being modified!
 	--assert 121.146.160.255 = second tint i 128.128.128 50%
-
 ===end-group===
+]
 
+if any-function? :luminosity [
 ===start-group=== "Luminosity / Grayscale"
 ;; Use to convert images (or single colors) to grayscale
 --test-- "Luminosity tuple (BT.709)"
@@ -487,8 +556,9 @@ FFFFFFDC1616212121212121
 		#{959595FF95959580} == to binary! img
 	]
 ===end-group===
+]
 
-
+if any-function? :premultiply [
 ===start-group=== "PREMULTIPLY"
 
 --test-- "premultiply image 1 (no alpha)"
@@ -505,8 +575,9 @@ FFFFFFDC1616212121212121
 	--assert i/rgb = #{000000643280C864FF}
 
 ===end-group===
+]
 
-
+if any-function? :blur [
 ===start-group=== "BLUR"
 if value? 'blur [
 --test--  "blur"
@@ -519,11 +590,11 @@ if value? 'blur [
 	]
 	--assert all [
 		image? blur t 5
-		-1700743341 = checksum to binary! t 'crc32
+		2594223955 = checksum to binary! t 'crc32
 	]
 	--assert all [
 		image? blur t 5
-		-583506697  = checksum to binary! t 'crc32
+		3711460599  = checksum to binary! t 'crc32
 	]
 	--assert all [
 		image? blur i 100000
@@ -532,6 +603,7 @@ if value? 'blur [
 	t: i: none
 ]
 ===end-group===
+]
 
 
 ===start-group=== "Save/load image"
