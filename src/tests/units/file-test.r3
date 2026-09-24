@@ -114,6 +114,10 @@ if find [Linux macOS] system/platform [
 	--assert equal? what-dir to-real-file %.
 	--assert equal? what-dir to-real-file %./
 	--assert equal? what-dir to-real-file %./units/files/../../
+--test-- "to-real-file of non-existent path"
+	--assert none? to-real-file %not-existing-file
+	--assert none? to-real-file %not-existing-dir/
+	--assert none? to-real-file %not-existing-dir/file
 
 ===end-group===
 
