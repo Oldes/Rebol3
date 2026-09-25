@@ -376,8 +376,10 @@ static dbgout(char *fmt, int d, char *s)
 		if (GetConsoleScreenBufferInfo(Std_Out, &csbiInfo))
 			wOriginalAttributes = csbiInfo.wAttributes;
 
-		Redir_Out = (GetFileType(Std_Out) != FILE_TYPE_CHAR);
-		Redir_Inp = (GetFileType(Std_Inp) != FILE_TYPE_CHAR);
+		// A handle is a console only if GetConsoleMode succeeds.
+		// (GetFileType returns FILE_TYPE_CHAR for NUL, COM ports, etc.)
+		Redir_Out = !GetConsoleMode(Std_Out, &dwOriginalOutMode);
+		Redir_Inp = !GetConsoleMode(Std_Inp, &dwOriginalInpMode);
 
 #ifdef _WINDOWS
 // This code is needed only when the app is not compiled with Console subsystem
@@ -400,10 +402,6 @@ static dbgout(char *fmt, int d, char *s)
 #endif
 		Std_Buf = OS_Make(BUF_SIZE * sizeof(REBCHR));
 		if (!Std_Buf) goto error;
-
-		// store original modes
-		GetConsoleMode(Std_Out, &dwOriginalOutMode);
-		GetConsoleMode(Std_Inp, &dwOriginalInpMode);
 
 		if (!Redir_Inp) {
 			//
