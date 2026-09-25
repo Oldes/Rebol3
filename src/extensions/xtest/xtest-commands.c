@@ -649,3 +649,27 @@ COMMAND cmd_xtest_evt4(RXIFRM *frm, void *ctx) {
 	RXA_TYPE(frm, 1) = RXT_HANDLE;
 	return RXR_VALUE;
 }
+
+
+//-- Date and time ----------------------------------------------------------
+
+COMMAND cmd_xtest_date0(RXIFRM *frm, void *ctx) {
+	i64 time = RXA_DATE_TIME(frm, 1);
+	if (time == NO_TIME) return RXR_NONE;
+	RXA_TIME(frm, 1) = time;
+	RXA_TYPE(frm, 1) = RXT_TIME;
+	return RXR_VALUE;
+}
+
+COMMAND cmd_xtest_date1(RXIFRM *frm, void *ctx) {
+	REBDAT dat;
+	i64 time = (RXA_TYPE(frm, 4) == RXT_TIME) ? RXA_TIME(frm, 4) : NO_TIME;
+	dat.bits = 0;
+	dat.date.year  = (REBCNT)RXA_INT64(frm, 1);
+	dat.date.month = (REBCNT)RXA_INT64(frm, 2);
+	dat.date.day   = (REBCNT)RXA_INT64(frm, 3);
+	RXA_DATE(frm, 1)      = (i32)dat.bits;
+	RXA_DATE_TIME(frm, 1) = time;
+	RXA_TYPE(frm, 1) = RXT_DATE;
+	return RXR_VALUE;
+}

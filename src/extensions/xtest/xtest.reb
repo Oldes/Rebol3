@@ -98,6 +98,8 @@ commands: [
 	evt2:   ["make an event of the given type code at the given offset" code [integer!] xy [pair!]]
 	evt3:   ["make an event carrying the given handle" code [integer!] hnd [handle!]]
 	evt4:   ["return the handle the event carries" e [event!]]
+	date0:  ["return the time part of a date, or none" d [date!]]
+	date1:  ["make a date from its parts" year [integer!] month [integer!] day [integer!] time [time! none!]]
 	xdev:      ["return the id of the device the extension registered"]
 	xdev-poll: ["return how many times that device has been polled"]
 	xdev-err:  ["try to register that device again; returns the RDR_ code" size [integer!] "REBDEV size to claim, 0 = the real one"]
@@ -112,7 +114,7 @@ commands: [
 ;; Module body. Previously a C string literal with escaped newlines - as a
 ;; block it is ordinary Rebol code that an editor can indent and check.
 mezzanine: [
-	a: b: c: e: g: h: x: y: t: none
+	a: b: c: d: e: g: h: x: y: t: none
 	i: make image! 2x2
 	s: make struct! [a [uint8!]]
 	;; Nested struct - `n/b` is a VIEW into n's data at a non-zero offset,
@@ -164,7 +166,14 @@ mezzanine: [
 			[xarg1 1.1]
 			[xarg1 {test}]
 			[xarg1 [1 2 3]]
-			[xarg1 10-Sep-2010]
+			[10-Sep-2010 = probe xarg1 10-Sep-2010]
+			[10-Sep-2010/1:12 = probe xarg1 10-Sep-2010/1:12]
+			[1:12 = probe xarg1 1:12]
+			[1:12 = probe date0 10-Sep-2010/1:12]
+			[none? probe date0 10-Sep-2010]
+			[25-Sep-2026 = probe date1 2026 9 25 none]
+			[25-Sep-2026/1:12 = probe date1 2026 9 25 1:12]
+			[d: date1 2026 9 25 none  none? d/time]
 			[xarg2 111 222]
 			[xword0]
 			[xword1 {system}]

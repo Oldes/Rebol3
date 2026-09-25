@@ -108,6 +108,10 @@ typedef union rxi_arg_val {
 	// An event is 16 bytes (12 on 32-bit) - it fits whole into the slot,
 	// which is why it needs no series and no spec id like struct/vector.
 	REBEVT event;
+	struct {
+		i64 time;   // nanoseconds, NO_TIME if none
+		i32 date;   // REBYMD bits
+	} datetime;
 } RXIARG;
 
 // For direct access to arg array:
@@ -168,7 +172,8 @@ typedef struct rxi_struct_info {
 #define RXA_LOGIC(f,n)          (RXA_ARG(f,n).int32a)
 #define RXA_CHAR(f,n)           (RXA_ARG(f,n).int32a)
 #define RXA_TIME(f,n)           (RXA_ARG(f,n).int64)
-#define RXA_DATE(f,n)           (RXA_ARG(f,n).int32a)
+#define RXA_DATE(f,n)           (RXA_ARG(f,n).datetime.date)
+#define RXA_DATE_TIME(f,n)      (RXA_ARG(f,n).datetime.time)
 #define RXA_WORD(f,n)           (RXA_ARG(f,n).int32a)
 #define RXA_PAIR(f,n)           (RXA_ARG(f,n).pair)
 #define RXA_TUPLE(f,n)          (RXA_ARG(f,n).tuple_bytes)
