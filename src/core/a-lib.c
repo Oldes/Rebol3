@@ -1655,6 +1655,49 @@ RL_API REBCNT RL_Decode_UTF8_Char(const REBYTE *str, REBCNT *len)
 	return OS_Do_Device(req, command);
 }
 
+RL_API REBINT RL_Form_Value(REBSER *dst, RXIARG val, REBCNT type, REBCNT limit, REBCNT flags)
+/*
+**	Form (or mold) a value into a UTF-8 string series.
+**
+**	Returns:
+**		Number of bytes written, or -1 when dst is not a byte string.
+**	Arguments:
+**		dst   - target string; reset first unless RXF_APPEND is set
+**		val   - the value, as RXIARG + its RXT_ type
+**		limit - max chars (0 = no limit); longer output ends with "..."
+**		flags - RXF_MOLD: mold instead of form
+**		        RXF_APPEND: append to dst instead of replacing it
+**	Notes:
+**		Uses the shared mold buffer, so it must not be called while
+**		another mold is in progress (e.g. from a handle's mold callback).
+*/
+{
+	REB_MOLD mo = {0};
+	REBVAL value;
+	REBCNT start, len;
+
+	if (!dst || !BYTE_SIZE(dst)) return -1;
+
+	RXI_To_Value(&value, val, type);
+	Reset_Mold(&mo);
+	SET_FLAG(mo.opts, MOPT_INDENT);          // one line, no indentation
+	if (limit) mo.limit = limit;
+
+	Mold_Value(&mo, &value, GET_FLAG(flags, RXF_MOLD) ? TRUE : FALSE);
+
+	len = SERIES_TAIL(mo.series);
+	if (limit && STR_LEN(mo.series) > limit) {
+		SERIES_TAIL(mo.series) = limit;
+		Append_Bytes(mo.series, "...");
+		len = SERIES_TAIL(mo.series);
+	}
+
+	start = GET_FLAG(flags, RXF_APPEND) ? SERIES_TAIL(dst) : 0;
+	SERIES_TAIL(dst) = start;
+	Append_Bytes_Len(dst, BIN_HEAD(mo.series), len);   // also terminates
+	if (IS_UTF8_SERIES(mo.series)) UTF8_SERIES(dst);
+	return (REBINT)len;
+}
 
 #include "reb-lib-lib.h"
 

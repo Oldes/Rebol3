@@ -276,6 +276,11 @@ enum {
 	RXE_BAD_ARGS,	// function arguments to not match
 };
 
+enum {
+	RXF_MOLD,
+	RXF_APPEND,
+};
+
 #define SET_EXT_ERROR(v,n) ((v)->int32a = (n))
 #define GET_EXT_ERROR(v)   ((v)->int32a)
 

@@ -266,11 +266,12 @@ catalog: object [
 		menu-close
 		drop-file
 		drop-text
-		_ _ _ _ _		; 167..191 reserved
+		sort            ; list-view sort request
+		_ _ _ _	_	    ; 168..191 reserved
 		_ _ _ _ _
 		_ _ _ _ _
 		_ _ _ _ _
-		_ _ _ _ _
+		_ _ _ _
 
 		;-- 192..255 reserved for extension-defined types --
 	]
