@@ -55,6 +55,19 @@ secure [%/ allow]
 	--assert %./file = undirize %./file/
 ===end-group===
 
+
+===start-group=== "to-rebol-file"
+--test-- "to-rebol-file with invalid volume format"
+	if system/platform = 'Windows [
+		--assert error? try [to-rebol-file "a:b:c"]
+		--assert error? try [to-rebol-file "a\b:c"]
+		--assert error? try [to-rebol-file "a:b\c:d"]
+		--assert %/c/x = to-rebol-file "c:\\x"
+		--assert %/c/  = to-rebol-file "c:\"
+	]
+===end-group===
+
+
 ===start-group=== "to-local-file"
 
 --test-- "issue-2351"
@@ -118,7 +131,26 @@ if find [Linux macOS] system/platform [
 	--assert none? to-real-file %not-existing-file
 	--assert none? to-real-file %not-existing-dir/
 	--assert none? to-real-file %not-existing-dir/file
-
+--test-- "to-real-file with symlinks"
+	dir: to-real-file make-dir %tmp-real-dir/
+	write dir/file.txt "x"
+	tgt: to-local-file dir
+	if #"\" = last tgt [take/last tgt]
+	either system/platform = 'Windows [
+		call/shell/wait rejoin [{mklink /J tmp-real-link "} tgt {"}]
+	][
+		call/shell/wait rejoin [{ln -s "} tgt {" tmp-real-link}]
+	]
+	--assert dir = to-real-file %tmp-real-link
+	--assert dir = to-real-file %tmp-real-link/
+	--assert dir/file.txt = to-real-file %tmp-real-link/file.txt
+	--assert none? to-real-file %tmp-real-link/missing
+	delete dir/file.txt
+	delete dir
+	--assert none? to-real-file %tmp-real-link   ; dangling link
+	call/shell/wait either system/platform = 'Windows [
+		"rmdir tmp-real-link"
+	][	"rm tmp-real-link" ]
 ===end-group===
 
 

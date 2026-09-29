@@ -51,8 +51,9 @@
 **
 ***********************************************************************/
 {
-	REBOOL colon = 0;  // have we hit a ':' yet?
-	REBOOL slash = 0; // have we hit a '/' yet?
+	REBOOL colon = 0;    // have we hit a ':' yet?
+	REBOOL slash = 0;    // was the previous char a '/'? (for collapsing)
+	REBOOL any_slash = 0;// have we hit a '/' yet?
 	REBYTE c = 0;
 	REBSER *dst;
 	REBCNT n;
@@ -78,12 +79,16 @@
 #ifdef TO_WINDOWS
 		if (c == ':') {
 			// Handle the vol:dir/file format:
-			if (colon || slash) return 0; // no prior : or / allowed
+			if (colon || any_slash) { // no prior : or / allowed
+				if (uni) FREE_MEM(src);
+				return 0;
+			}
 			colon = 1;
 			if (i < len) {
 				c = src[i];
-				if (c == '\\' || c == '/') i++; // skip / in foo:/file
+				if (c == '\\' || c == '/') { i++; slash = 1; } // skip / in foo:/file
 			}
+			any_slash = 1;
 			c = '/'; // replace : with a /
 		}
 		else
@@ -91,7 +96,7 @@
 		if (c == '\\' || c== '/') {
 			if (slash > 0) continue;
 			c = '/';
-			slash = 1;
+			slash = any_slash = 1;
 		}
 		else slash = 0;
 		out[n++] = c;

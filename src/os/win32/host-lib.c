@@ -702,32 +702,75 @@ X*/	REBOOL As_OS_Str(REBSER *series, REBCHR **string)
 **
 ***********************************************************************/
 {
-	static REBU16 real_path[MAX_PATH + 2];
-	if (!_wfullpath(real_path, path, MAX_PATH)) return NULL;
+	REBYTE  *result = NULL;
+	wchar_t *final  = NULL;
+	wchar_t *out;
+	DWORD    attr;
+	size_t   len;
 
-	// _wfullpath does not touch the filesystem; verify existence (like realpath on Posix)
-	DWORD fileAttr = GetFileAttributesW(real_path);
-	if (fileAttr == INVALID_FILE_ATTRIBUTES) return NULL;
+	// Make the path absolute and normalized (no MAX_PATH limit when buffer is NULL)
+	wchar_t *full = _wfullpath(NULL, path, 0);
+	if (!full) return NULL;
+	out = full;
 
-	size_t len = wcslen(real_path);
-	// if there is not a trailing slash, check if the result is not a directory anyway
-	if (real_path[len - 1] != L'\\') {
-		// and append the slash, if it is...
-		// https://github.com/Oldes/Rebol-issues/issues/2600
-		DWORD fileAttr = GetFileAttributes(real_path);
-		if (fileAttr & FILE_ATTRIBUTE_DIRECTORY)
-			real_path[len++] = L'\\';
+	// Open the target, following symlinks/junctions.
+	// FILE_FLAG_BACKUP_SEMANTICS is required to open directories.
+	HANDLE h = CreateFileW(full, 0,
+		FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+		NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+
+	if (h != INVALID_HANDLE_VALUE) {
+		BY_HANDLE_FILE_INFORMATION info;
+		if (!GetFileInformationByHandle(h, &info)) {
+			CloseHandle(h);
+			goto done;
+		}
+		attr = info.dwFileAttributes; // attributes of the resolved target
+
+		const DWORD flags = FILE_NAME_NORMALIZED | VOLUME_NAME_DOS;
+		DWORD n = GetFinalPathNameByHandleW(h, NULL, 0, flags); // size incl. null
+		if (n > 0 && (final = malloc((n + 1) * sizeof(wchar_t)))) { // +1 for trailing slash
+			DWORD r = GetFinalPathNameByHandleW(h, final, n, flags);
+			if (r > 0 && r < n) {
+				if (wcsncmp(final, L"\\\\?\\UNC\\", 8) == 0) {
+					out = final + 6;  // "\\?\UNC\srv\share" -> "\\srv\share"
+					out[0] = L'\\';
+				}
+				else if (wcsncmp(final, L"\\\\?\\", 4) == 0 && final[5] == L':') {
+					out = final + 4;  // "\\?\C:\..." -> "C:\..."
+				}
+				// else: volume without a drive letter; keep the unresolved path
+			}
+		}
+		// If resolving the final name failed, fall back to the _wfullpath result
+		CloseHandle(h);
 	}
-	real_path[len] = 0;
+	else {
+		// Could not open it: missing, broken link, or existing but locked/denied.
+		attr = GetFileAttributesW(full); // does not follow links
+		if (attr == INVALID_FILE_ATTRIBUTES) goto done;       // does not exist
+		if (attr & FILE_ATTRIBUTE_REPARSE_POINT) goto done;   // dangling link (like realpath)
+		// existing file which cannot be opened (e.g. pagefile.sys) => unresolved path
+	}
 
-	// convert result to UTF-8...
-	size_t utf8_len = WideCharToMultiByte(CP_UTF8, 0, real_path, AS_INT(len), NULL, 0, NULL, NULL);
-	if (utf8_len == 0) return NULL;
-	REBYTE *utf8_path = malloc(utf8_len+1);
-	if (utf8_path == 0) return NULL;
-	WideCharToMultiByte(CP_UTF8, 0, real_path, AS_INT(len), utf8_path, AS_INT(utf8_len), NULL, NULL);
-	utf8_path[utf8_len] = 0;
-	return utf8_path; // Be sure to copy and free!
+	len = wcslen(out);
+	// Append the trailing slash if it is a directory
+	// https://github.com/Oldes/Rebol-issues/issues/2600
+	if ((attr & FILE_ATTRIBUTE_DIRECTORY) && len > 0 && out[len - 1] != L'\\') {
+		if (out == full) { // _wfullpath result has no spare room
+			wchar_t* tmp = realloc(full, (len + 2) * sizeof(wchar_t));
+			if (!tmp) goto done;
+			out = full = tmp;
+		}
+		out[len++] = L'\\';
+		out[len] = 0;
+	}
+	OS_Wide_To_Multibyte(out, &result, (REBLEN)len);
+
+done:
+	free(full);
+	free(final);
+	return result; // Be sure to copy and free!
 }
 
 /***********************************************************************
@@ -1552,12 +1595,13 @@ static INT CALLBACK BrowseCallbackProc(HWND hwnd, UINT uMsg, LPARAM lParam, LPAR
 ***********************************************************************/
 {
 	if (len == (REBLEN)-1) len = AS_REBLEN(wcslen(wide));
-	size_t needed = WideCharToMultiByte(CP_UTF8, 0, wide, len, NULL, 0, NULL, NULL);
+	size_t needed = WideCharToMultiByte(CP_UTF8, 0, wide, AS_INT(len), NULL, 0, NULL, NULL);
+	if (needed == 0 && len > 0) { *utf8 = NULL; return 0; } // conversion error
 	REBYTE *out = (REBYTE*)MAKE_MEM(needed+1);
 	*utf8 = out;
-	if (out == NULL || needed == 0) return 0;
-	WideCharToMultiByte(CP_UTF8, 0, wide, AS_INT(len), out, AS_INT(needed), NULL, NULL);
+	if (out == NULL) return 0;
 	out[needed] = 0;
+	if (needed) WideCharToMultiByte(CP_UTF8, 0, wide, AS_INT(len), out, AS_INT(needed), NULL, NULL);
 	return (REBLEN)needed;
 }
 
