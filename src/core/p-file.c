@@ -66,8 +66,11 @@
 	file->file.size = os_path->tail * SERIES_WIDE(os_path);
 
 	// Convert full OS path back to Rebol format.
+	// (fails on Windows with colon not used as a volume separator, like: c:\aaa\c:x)
 	ser = To_REBOL_Path(BIN_HEAD(os_path), BIN_LEN(os_path), OS_WIDE, FALSE);
+	if (!ser) Trap1(RE_BAD_FILE_PATH, path);
 	SET_FILE(&val, ser);
+	
 	// And check if access is allowed.
 	Secure_Port(SYM_FILE, file, &val);
 }

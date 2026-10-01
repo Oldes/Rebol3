@@ -124,6 +124,18 @@ if find [Linux macOS] system/platform [
 
 ===end-group===
 
+===start-group=== "invalid paths with colon"
+--test-- "colon not used as a volume separator"
+	if system/platform = 'Windows [
+		--assert all [error? e: try [read   %/c/aaa/c:/]  e/id = 'bad-file-path]
+		--assert all [error? e: try [read   %c:/aaa/c:/]  e/id = 'bad-file-path]
+		--assert all [error? e: try [read   %/c/aaa/c:x]  e/id = 'bad-file-path]
+		--assert all [error? e: try [write  %/c/aaa/c:x ""] e/id = 'bad-file-path]
+		--assert all [error? e: try [delete %/c/aaa/c:x]  e/id = 'bad-file-path]
+		--assert all [error? e: try [query  %/c/aaa/c:x]  e/id = 'bad-file-path]
+	]
+===end-group===
+
 
 ===start-group=== "to-real-file"
 --test-- "On file"

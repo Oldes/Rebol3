@@ -115,7 +115,9 @@
 	dir->file.path = (REBCHR*)(os_path->data);
 
 	// Convert full OS path back to Rebol format.
+	// (fails on Windows with colon not used as a volume separator, like: c:\aaa\c:\)
 	ser = To_REBOL_Path(BIN_HEAD(os_path), BIN_LEN(os_path), OS_WIDE, !wild);
+	if (!ser) Trap1(RE_BAD_FILE_PATH, path);
 	if (wild) {
 		for (REBLEN i = 0; i < ser->tail; i++) {
 			if (ser->data[i] == '*') {
