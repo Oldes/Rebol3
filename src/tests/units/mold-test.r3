@@ -405,7 +405,7 @@ Rebol [
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2362
 		p: make object! [x: "foo"]
 		e: make event! [type: 'lookup port: p]
-		--assert (mold/flat e) = {make event! [type: 'lookup port: make object! [x: "foo"]]}
+		--assert (mold/flat e) = {make event! [type: 'lookup source: make object! [x: "foo"]]}
 		e: make event! [type: 'move offset: 10x20]
 		--assert (mold/flat e) = {make event! [type: 'move offset: 10x20]}
 		
