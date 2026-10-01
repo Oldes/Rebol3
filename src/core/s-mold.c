@@ -59,11 +59,13 @@ REBYTE *URL_Escapes;
 #define MAX_URL_CHAR (0x80-1)
 #define IS_URL_ESC(c)  ((c) <= MAX_URL_CHAR && (URL_Escapes[c] & ESC_URL))
 #define IS_FILE_ESC(c) ((c) <= MAX_URL_CHAR && (URL_Escapes[c] & ESC_FILE))
+#define IS_QFILE_ESC(c) ((c) <= MAX_URL_CHAR && (URL_Escapes[c] & ESC_QFILE))
 
 enum {
 	ESC_URL = 1,
 	ESC_FILE = 2,
 	ESC_EMAIL = 4,
+	ESC_QFILE = 8, // must be escaped even in quoted file notation %"..."
 };
 
 /***********************************************************************
@@ -614,33 +616,38 @@ STOID Mold_File(REBVAL *value, REB_MOLD *mold)
 	REBCNT len = VAL_LEN(value);
 	const REBYTE *bp;
 	REBCNT bytes = len;
+	REBCNT esc = 0;   // chars escaped in %file notation
+	REBCNT qesc = 0;  // chars escaped in %"file" notation
+	REBOOL quote;
 
-	// %: is a set-word, so a file containing only a colon must be quoted
-	if (len == 1 && VAL_DATA(value)[0] == ':') {
-		Append_Bytes(mold->series, "%\":\"");
-		return;
-	}
-
-	// Compute extra space needed for hex encoded characters:
+	// Count chars which must be hex encoded in each notation:
 	bp = VAL_DATA(value);
 	while (bytes > 0) {
 		c = UTF8_Decode_Codepoint(&bp, &bytes);
-		if (IS_FILE_ESC(c)) len += 2;
+		if (IS_FILE_ESC(c))  esc++;
+		if (IS_QFILE_ESC(c)) qesc++;
 	}
 
-	len++; // room for % at start
+	// Use %"..." when some chars may stay literal only inside quotes (space, ()[]{}<>),
+	// or when the file is just a colon (%: is a set-word).
+	// (ESC_QFILE chars are a subset of ESC_FILE chars)
+	quote = (esc > qesc) || (len == 1 && VAL_DATA(value)[0] == ':');
+
+	len += 1 + (quote ? 2 + 2 * qesc : 2 * esc); // % (+ quotes) + hex escapes
 
 	dp = Prep_Mold_Series(mold, len);
 	*dp++ = '%';
+	if (quote) *dp++ = '"';
 
 	// reset input
 	bp = VAL_DATA(value);
 	bytes = VAL_LEN(value);
 	while (bytes > 0) {
 		c = UTF8_Decode_Codepoint(&bp, &bytes);
-		if (IS_FILE_ESC(c)) dp = Form_Hex_Esc(dp, c);  // c => %xx
+		if (quote ? IS_QFILE_ESC(c) : IS_FILE_ESC(c)) dp = Form_Hex_Esc(dp, c);  // c => %xx
 		else dp += Encode_UTF8_Char(dp, c);
 	}
+	if (quote) *dp++ = '"';
 	*dp = 0; // tail already set from Prep.
 }
 
@@ -1751,11 +1758,15 @@ append:
 	// so include also folowing chars for url escaping...
 	URL_Escapes['\x60'] |= ESC_URL;
 	URL_Escapes['\x7C'] |= ESC_URL;
-	// required file escaping... https://github.com/Oldes/Rebol-issues/issues/2491
-	// colon is not escaped in files anymore (lexer accepts it), only file ":" is special (see Mold_File)
+
+	// colon is not escaped in files (the lexer accepts it), file ":" is molded as %":"
 	//URL_Escapes['\x3A'] |= ESC_FILE;
-	//URL_Escapes['\x40'] |= ESC_FILE;
-	
+
+	// chars which must be escaped also in quoted file notation %"..."
+	// (control chars, quote, and chars with special meaning inside quoted file)
+	for (c = 0; c < ' '; c++) cp[c] |= ESC_QFILE;
+	dc = b_cast("\"%;\x5C\x5E\x7F");
+	for (c = (REBYTE)LEN_BYTES(dc); c > 0; c--) URL_Escapes[*dc++] |= ESC_QFILE;
 }
 
 
