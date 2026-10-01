@@ -615,6 +615,11 @@ STOID Mold_File(REBVAL *value, REB_MOLD *mold)
 	const REBYTE *bp;
 	REBCNT bytes = len;
 
+	// %: is a set-word, so a file containing only a colon must be quoted
+	if (len == 1 && VAL_DATA(value)[0] == ':') {
+		Append_Bytes(mold->series, "%\":\"");
+		return;
+	}
 
 	// Compute extra space needed for hex encoded characters:
 	bp = VAL_DATA(value);
@@ -1747,7 +1752,8 @@ append:
 	URL_Escapes['\x60'] |= ESC_URL;
 	URL_Escapes['\x7C'] |= ESC_URL;
 	// required file escaping... https://github.com/Oldes/Rebol-issues/issues/2491
-	URL_Escapes['\x3A'] |= ESC_FILE;
+	// colon is not escaped in files anymore (lexer accepts it), only file ":" is special (see Mold_File)
+	//URL_Escapes['\x3A'] |= ESC_FILE;
 	//URL_Escapes['\x40'] |= ESC_FILE;
 	
 }

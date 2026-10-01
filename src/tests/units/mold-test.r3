@@ -270,6 +270,19 @@ Rebol [
 
 		--assert "%a@b" == mold to-file "a@b"
 
+	--test-- "mold file with colon"
+		--assert "%c:/foo" == mold %c:/foo
+		--assert "%c:/foo" == mold %c:\foo
+		--assert "%c:/foo" == mold %"c:/foo"
+		--assert "%c:/foo" == mold %"c:\foo"
+		--assert "%a:b"    == mold %a:b
+		--assert "%x:"     == mold %x:
+		--assert "%x:"     == mold %"x:"
+		--assert {%":"}    == mold to-file ":"
+		foreach s ["c:/foo" "x:" ":" ":a" "a::b" "a:b:" "%:"] [
+			--assert (to-file s) == load mold to-file s
+		]
+
 ===end-group=== 
 
 

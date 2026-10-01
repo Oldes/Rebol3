@@ -69,7 +69,24 @@ secure [%/ allow]
 
 
 ===start-group=== "to-local-file"
-
+--test-- "to-local-file with drive letter"
+	if system/platform = 'Windows [
+		--assert "c:\foo" = to-local-file %c:/foo
+		--assert "c:\foo" = to-local-file/full %c:/foo
+		--assert "c:\foo" = to-local-file/full %"c:\foo"
+		--assert "c:\"    = to-local-file/full %c:/
+		--assert "c:\foo" = to-local-file/full %/c/foo
+	]
+--test-- "file path with colon (Posix)"
+	if system/platform <> 'Windows [
+		--assert all [
+			make-dir %x:/
+			write %x:/test.txt "ok"
+			"ok" = read/string %x:/test.txt
+			delete %x:/test.txt
+			delete %x:/
+		]
+	]
 --test-- "issue-2351"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2351
 	f: first read what-dir

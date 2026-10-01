@@ -528,6 +528,18 @@ Rebol [
 		--assert file? transcode/one {%a@c}
 		--assert file? transcode/one {%a%40c}
 
+	--test-- "files with colon"
+		--assert (as file! "c:/foo") == transcode/one {%c:/foo}
+		--assert (as file! "c:/foo") == transcode/one {%c:\foo}
+		--assert (as file! "c:/foo") == transcode/one {%"c:\foo"}
+		--assert (as file! "a:b")    == transcode/one {%a:b}
+		--assert (as file! "x:")     == transcode/one {%x:}
+		--assert (as file! "x:")     == transcode/one {%"x:"}
+		--assert (as file! ":a")     == transcode/one {%:a}
+		--assert (as file! ":")      == transcode/one {%%3A}
+		--assert set-word? transcode/one {%:}
+		--assert [%x: 1] == transcode {%x: 1}
+
 ===end-group===
 
 ===start-group=== "Money"

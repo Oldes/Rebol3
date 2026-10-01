@@ -691,14 +691,14 @@ new_line:
 ***********************************************************************/
 {
 	REBYTE term = 0;
-	const REBYTE *invalid = cb_cast(":;()[]\"^");
+	const REBYTE *invalid = cb_cast(";()[]\"^");
 
 	if (*cp == '%') cp++, len--;
 	if (*cp == '"') {
 		cp++;
 		len--;
 		term = '"';
-		invalid = cb_cast(":;\"");
+		invalid = cb_cast(";\"");
 	}
 	cp = Scan_Item(cp, cp + len, term, invalid, NULL);
 	if (cp)
