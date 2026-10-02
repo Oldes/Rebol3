@@ -14,7 +14,7 @@ err-buffer: copy ""
 rebol-cmd: func[cmd][
 	clear out-buffer
 	clear err-buffer
-	insert cmd join to-local-file system/options/boot #" "
+	cmd: rejoin [to-local-file system/options/boot #" " cmd]
 	call/shell/output/error cmd out-buffer err-buffer
 ]
 
@@ -86,6 +86,15 @@ rebol-cmd: func[cmd][
 		--assert not find out-buffer {["a" "b"]}
 		--assert 0 = rebol-cmd {--script --quiet units/files/print-args.r3 a}
 		--assert not find out-buffer {["a"]}
+	--test-- "output into a cleared buffer"
+		;; stale bytes after the new tail must not be counted
+		buf: append/dup copy "" "x" 200
+		clear buf
+		--assert 0 = call/shell/output rejoin [
+			to-local-file system/options/boot { --args "á b" units/files/print-args.r3}
+		] buf
+		--assert 16 = length? buf
+		--assert buf = {["á b"]^/["á b"]^/}
 	--test-- "script args 3"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/2140
 		cmd: "units/files/print-args.r3"
