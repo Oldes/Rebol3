@@ -149,13 +149,15 @@ const struct arg_chr arg_chars2[] = {
 */	static int Get_Ext_Arg(int flag, REBARGS *rargs, REBCHR *arg)
 /*
 **		Get extended argument field. Always UTF-8 encoded!
+**		Returns the flag (without RO_EXT) when the value was used,
+**		or zero when the value is missing (caller reports usage).
 **
 ***********************************************************************/
 {
-	if (arg == NULL) return 0;
-	// Next arg is another --option, so the value is missing.
+	// No more args, or the next one is another --option.
 	// (Test arg[0] first so an empty string is not read past its end.)
-	if (arg[0] == (REBCHR)'-' && arg[1] == (REBCHR)'-') return flag;
+	if (arg == NULL) return 0;
+	if (arg[0] == (REBCHR)'-' && arg[1] == (REBCHR)'-') return 0;
 
 	flag &= ~RO_EXT;
 
@@ -268,8 +270,7 @@ const struct arg_chr arg_chars2[] = {
 				flag = find_option_word(arg+2);
 				if (flag & RO_EXT) {
 					flag = Get_Ext_Arg(flag, rargs, (i+1 >= argc) ? 0 : argv[i+1]);
-					if ((flag & RO_EXT) == 0) i++; // used it
-					else flag &= ~RO_EXT;
+					if (flag) i++; // used it
 				}
 				if (!flag) flag = RO_HELP;
 				rargs->options |= flag;
@@ -280,8 +281,7 @@ const struct arg_chr arg_chars2[] = {
 					flag = find_option_char(*arg, arg_chars);
 					if (flag & RO_EXT) {
 						flag = Get_Ext_Arg(flag, rargs, (i+1 >= argc) ? 0 : argv[i+1]);
-						if ((flag & RO_EXT) == 0) i++; // used it
-						else flag &= ~RO_EXT;
+						if (flag) i++; // used it
 					}
 					if (!flag) flag = RO_HELP;
 					rargs->options |= flag;
@@ -294,8 +294,7 @@ const struct arg_chr arg_chars2[] = {
 				flag = find_option_char(*arg, arg_chars2);
 				if (flag & RO_EXT) {
 					flag = Get_Ext_Arg(flag, rargs, (i+1 >= argc) ? 0 : argv[i+1]);
-					if ((flag & RO_EXT) == 0) i++; // used it
-					else flag &= ~RO_EXT;
+					if (flag) i++; // used it
 				}
 				if (!flag) flag = RO_HELP;
 				rargs->options |= flag;

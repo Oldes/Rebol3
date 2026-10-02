@@ -79,6 +79,13 @@ rebol-cmd: func[cmd][
 		;; single dash values are still accepted
 		--assert 0 = rebol-cmd {--args "-x" units/files/print-args.r3}
 		--assert out-buffer = {["-x"]^/["-x"]^/}
+	--test-- "missing option value"
+		;; value option followed by another --option is a usage error
+		;; (help is shown and the script is not evaluated)
+		--assert 0 = rebol-cmd {--args --quiet units/files/print-args.r3 a b}
+		--assert not find out-buffer {["a" "b"]}
+		--assert 0 = rebol-cmd {--script --quiet units/files/print-args.r3 a}
+		--assert not find out-buffer {["a"]}
 	--test-- "script args 3"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/2140
 		cmd: "units/files/print-args.r3"
