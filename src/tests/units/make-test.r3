@@ -57,10 +57,9 @@ Rebol [
 
 	--test-- "to char! issue!"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/1130
-		--assert all [
-			error? e: try [to char! #FF]
-			e/id = 'bad-make-arg
-		]
+		--assert #"a" = to char! #61
+		--assert 0#FF = to integer! to char! #FF
+		--assert #"😀" = to char! to-hex to integer! #"😀"
 		
 	--test-- "to char! string"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/465
