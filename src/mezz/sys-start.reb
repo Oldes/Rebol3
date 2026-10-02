@@ -18,9 +18,32 @@ REBOL [
 	}
 ]
 
+find-in-path: func [
+    "Returns full path of the file found in one of PATH directories, else NONE."
+    file [file!]
+    /with paths [string!] "Directories to search instead of PATH env variable"
+    /local delimiter dir result
+][
+    ;; Not using SPLIT, as it is not available during the boot!
+    delimiter: pick ";:" system/platform = 'Windows
+    unless with [paths: any [get-env "PATH" ""]]
+    parse paths [
+        any [
+            copy dir [to delimiter | some skip] opt skip (
+                ;; empty entries are skipped (not resolved as a root dir)
+                if all [none? result  not empty? dir] [
+                    dir: append dirize to-rebol-file dir file
+                    if exists? dir [result: dir]
+                ]
+            )
+        ]
+    ]
+    result
+]
+
 start: func [
 	"INIT: Completes the boot sequence. Loads extras, handles args, security, scripts."
-	/local file dir tmp script-path script-args code delimiter ver
+	/local tmp script-path script-args code ver
 ] bind [ ; context is: system/options (must use full path sys/log/.. as there is options/log too!)
 
 	;** Note ** We need to make this work for lower boot levels too!
@@ -81,21 +104,9 @@ start: func [
 	; NOTE: this may be considered as not secure!
 	boot: any [to-real-file boot boot]
 	unless exists? boot [
-		file: second split-path boot
-		;; Using parse rules instead of splitting all PATH values into a block as it was before.
-		delimiter: pick ";:" system/platform = 'Windows
-		parse any [get-env "PATH" ""][
-			any [copy tmp to delimiter skip (
-				dir: to-rebol-file dirize as file! tmp
-				if exists? tmp: dir/:file [
-					boot: file: tmp
-					break
-				]
-			)]
-		]
-		if boot <> file [
+		boot: find-in-path second split-path boot
+		unless boot [
 			sys/log/error 'REBOL "Path to executable was not resolved!"
-			boot: none
 		]
 	]
 	;-  3. /home - preferably one of environment variables or current starting dir

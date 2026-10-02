@@ -30,6 +30,44 @@ Rebol [
 
 ===end-group===
 
+
+===start-group=== "sys/find-in-path"
+	--test-- "find-in-path"
+		dlm: pick ";:" system/platform = 'Windows
+		make-dir %tmp-fip/
+		write %tmp-fip/foo.txt ""
+		dir: to-local-file clean-path %tmp-fip/
+		res: clean-path %tmp-fip/foo.txt
+		;; the only entry (no delimiter at all)
+		--assert res = sys/find-in-path/with %foo.txt dir
+		;; the last entry (no trailing delimiter)
+		--assert res = sys/find-in-path/with %foo.txt rejoin ["not-exists" dlm dir]
+		;; the first entry
+		--assert res = sys/find-in-path/with %foo.txt rejoin [dir dlm "not-exists"]
+		;; empty entries and trailing delimiter
+		--assert res = sys/find-in-path/with %foo.txt rejoin [dlm dlm dir dlm]
+		;; not found
+		--assert none? sys/find-in-path/with %foo.txt rejoin ["not-exists" dlm]
+		--assert none? sys/find-in-path/with %foo.txt ""
+		--assert none? sys/find-in-path/with %foo.txt form dlm
+		;; empty entry must not be resolved as a root directory
+		--assert none? sys/find-in-path/with
+			either system/platform = 'Windows [%Windows][%bin]
+			rejoin [dlm dlm]
+		;; default uses PATH env variable
+		--assert none? sys/find-in-path %not-existing-file.foo
+		p: get-env 'PATH
+		--assert none? sys/find-in-path %foo.txt
+		d: to-real-file %tmp-fip
+		set-env 'PATH rejoin [p dlm to-local-file d]
+		--assert d/foo.txt = sys/find-in-path %foo.txt
+		set-env 'PATH p
+
+		delete %tmp-fip/foo.txt
+		delete %tmp-fip/
+===end-group===
+
+
 ===start-group=== "others"
 	--test-- "echo"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/1224
