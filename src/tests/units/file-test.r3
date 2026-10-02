@@ -69,7 +69,24 @@ secure [%/ allow]
 
 
 ===start-group=== "to-local-file"
-
+--test-- "to-local-file with drive letter"
+	if system/platform = 'Windows [
+		--assert "c:\foo" = to-local-file %c:/foo
+		--assert "c:\foo" = to-local-file/full %c:/foo
+		--assert "c:\foo" = to-local-file/full %"c:\foo"
+		--assert "c:\"    = to-local-file/full %c:/
+		--assert "c:\foo" = to-local-file/full %/c/foo
+	]
+--test-- "file path with colon (Posix)"
+	if system/platform <> 'Windows [
+		--assert all [
+			make-dir %x:/
+			write %x:/test.txt "ok"
+			"ok" = read/string %x:/test.txt
+			delete %x:/test.txt
+			delete %x:/
+		]
+	]
 --test-- "issue-2351"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2351
 	f: first read what-dir
@@ -105,6 +122,18 @@ if find [Linux macOS] system/platform [
 	delete %issue-2538
 ]
 
+===end-group===
+
+===start-group=== "invalid paths with colon"
+--test-- "colon not used as a volume separator"
+	if system/platform = 'Windows [
+		--assert all [error? e: try [read   %/c/aaa/c:/]  e/id = 'bad-file-path]
+		--assert all [error? e: try [read   %c:/aaa/c:/]  e/id = 'bad-file-path]
+		--assert all [error? e: try [read   %/c/aaa/c:x]  e/id = 'bad-file-path]
+		--assert all [error? e: try [write  %/c/aaa/c:x ""] e/id = 'bad-file-path]
+		--assert all [error? e: try [delete %/c/aaa/c:x]  e/id = 'bad-file-path]
+		--assert all [error? e: try [query  %/c/aaa/c:x 'size]  e/id = 'bad-file-path]
+	]
 ===end-group===
 
 

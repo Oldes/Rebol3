@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,6 +30,8 @@
 ***********************************************************************/
 
 #include "sys-core.h"
+
+static void Protect_Value(REBVAL *value, REBCNT flags);
 
 
 /***********************************************************************
@@ -72,6 +74,63 @@
 
 /***********************************************************************
 **
+*/	static void Protect_Struct_Fields(REBSTU *stu, REBSER *fields, REBCNT offset, REBCNT flags)
+/*
+**		Protects the Rebol values stored in a struct's data, including the
+**		values held in nested structs. `fields` is the field record series
+**		of the (nested) struct and `offset` is its position in the data.
+**
+***********************************************************************/
+{
+	REBSTF *field = (REBSTF *)BLK_HEAD(fields) + 1; // the info is at the head
+	REBCNT count = SERIES_TAIL(fields) - 1;
+	REBCNT i, n;
+	REBVAL *val;
+
+	for (i = 0; i < count; i++, field++) {
+		if (!field->done) continue;
+		switch (field->type) {
+		case STRUCT_TYPE_REBVAL:
+			for (n = 0; n < field->dimension; n++) {
+				val = (REBVAL *)BIN_SKIP(STRUCT_DATA(stu), offset + field->offset + n * field->size);
+				if (IS_END(val)) continue;
+				Protect_Value(val, flags);
+				// Protect_Value marks the series it walks, so it must be
+				// unmarked here - the caller unmarks just the struct itself.
+				Unmark(val);
+			}
+			break;
+		case STRUCT_TYPE_STRUCT:
+			// A nested struct may hold Rebol values too!
+			if (!FIELD_SPEC_HAS_VALUES(field)) break;
+			for (n = 0; n < field->dimension; n++) {
+				Protect_Struct_Fields(stu, field->spec->series, offset + field->offset + n * field->size, flags);
+			}
+			break;
+		}
+	}
+}
+
+/***********************************************************************
+**
+*/	static void Protect_Data(REBSER *series, REBCNT flags)
+/*
+**		Sets or removes the protection of a series holding the data.
+**
+***********************************************************************/
+{
+	if (GET_FLAG(flags, PROT_SET)) {
+		PROTECT_SERIES(series);
+		if (GET_FLAG(flags, PROT_LOCK)) LOCK_SERIES(series);
+	}
+	else
+		//unprotect series only when not locked (using protect/permanently)
+		if (!IS_LOCK_SERIES(series))
+			UNPROTECT_SERIES(series);
+}
+
+/***********************************************************************
+**
 */	static void Protect_Value(REBVAL *value, REBCNT flags)
 /*
 **		Anything that calls this must call Unmark() when done.
@@ -82,8 +141,23 @@
 		Protect_Series(value, flags);
 	else if (IS_OBJECT(value) || IS_MODULE(value))
 		Protect_Object(value, flags);
+	else if (IS_STRUCT(value)) {
+		// A struct is not a series value, but its data are in one. Note that
+		// the data may be shared - with a nested struct or with a vector of
+		// structs - so the protection applies to all views of them!
+		REBSTU *stu = &VAL_STRUCT(value);
+		REBSER *root;
+		Protect_Data(STRUCT_DATA(stu), flags);
+		// The Rebol values held in the struct are stored in their own series,
+		// so they are protected only with the /DEEP refinement. Like the GC,
+		// walk them from the root of the data - this struct may be just a
+		// view into a nested part of it!
+		if (!GET_FLAG(flags, PROT_DEEP)) return;
+		root = STRUCT_DATA_ROOT(stu);
+		if (root && FIELDS_NEED_MARK(root))
+			Protect_Struct_Fields(stu, root, 0, flags);
+	}
 }
-
 
 /***********************************************************************
 **
@@ -97,14 +171,7 @@
 
 	if (IS_MARK_SERIES(series)) return; // avoid loop
 
-	if (GET_FLAG(flags, PROT_SET)) {
-		PROTECT_SERIES(series);
-		if (GET_FLAG(flags, PROT_LOCK)) LOCK_SERIES(series);
-	} 
-	else
-		//unprotect series only when not locked (using protect/permanently)
-		if (!IS_LOCK_SERIES(series))
-			UNPROTECT_SERIES(series);
+	Protect_Data(series, flags);
 
 	if (!ANY_BLOCK(val) || !GET_FLAG(flags, PROT_DEEP)) return;
 
@@ -267,6 +334,9 @@
 	}
 	else if (ANY_SERIES(value) || IS_MAP(value)) {
 		if(IS_PROTECT_SERIES(VAL_SERIES(value))) return R_TRUE;
+	}
+	else if (IS_STRUCT(value)) {
+		if(IS_PROTECT_SERIES(VAL_STRUCT_DATA(value))) return R_TRUE;
 	}
 	else if (IS_OBJECT(value) || IS_MODULE(value)) {
 		if(IS_PROTECT_SERIES(VAL_OBJ_FRAME(value))) return R_TRUE;

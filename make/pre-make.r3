@@ -242,6 +242,7 @@ str-version: reform [
 	git-commit
 	get-libc-version ;; musl, glibc_2.28,... or just none
 	select os-info 'VERSION_ID
+	select spec 'extension-abi
 ]
 
 ;;format-datetime may not be available in older Builder tools!

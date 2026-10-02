@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -35,6 +35,8 @@
 #include "reb-evtypes.h"
 #include "reb-net.h"
 
+#define IS_CHAR_KEY_TYPE(t)   ((t) == EVT_KEY       || (t) == EVT_KEY_UP)
+#define IS_NAMED_KEY_TYPE(t)  ((t) == EVT_NAMED_KEY || (t) == EVT_NAMED_KEY_UP)
 
 /***********************************************************************
 **
@@ -81,21 +83,53 @@
 	switch (VAL_WORD_CANON(word)) {
 
 	case SYM_TYPE:
-		if (!IS_WORD(val) && !IS_LIT_WORD(val)) return FALSE;
-		arg = Get_System(SYS_CATALOG, CAT_EVENT_TYPES);
-		if (IS_BLOCK(arg)) {
+		// An extension defines its own types above the named range, so a
+		// plain code is accepted too - and is what event/type hands back.
+		if (IS_INTEGER(val)) {
+			if (VAL_INT64(val) < 0 || VAL_INT64(val) > 255) return FALSE;
+			n = VAL_INT32(val);
+		}
+		else if (IS_WORD(val) || IS_LIT_WORD(val)) {
+			arg = Get_System(SYS_CATALOG, CAT_EVENT_TYPES);
+			if (!IS_BLOCK(arg)) return FALSE;
 			w = VAL_WORD_CANON(val);
 			for (n = 0, arg = VAL_BLK(arg); NOT_END(arg); arg++, n++) {
-				if (IS_WORD(arg) && VAL_WORD_CANON(arg) == w) {
-					VAL_EVENT_TYPE(value) = n;
-					return TRUE;
-				}
+				if (IS_WORD(arg) && VAL_WORD_CANON(arg) == w) break;
 			}
-			Trap_Arg(val);
+			if (IS_END(arg)) Trap_Arg(val);
 		}
-		return FALSE;
+		else return FALSE;
 
-	case SYM_PORT:
+		// The data field is decoded by the TYPE, so a key event must not be
+		// relabelled as the other kind of key - the stored catalog position
+		// would be read as a codepoint, or the codepoint as a position.
+		if ((IS_CHAR_KEY_TYPE(VAL_EVENT_TYPE(value)) && IS_NAMED_KEY_TYPE(n))
+		|| (IS_NAMED_KEY_TYPE(VAL_EVENT_TYPE(value)) && IS_CHAR_KEY_TYPE(n))) {
+			// Name the type it already is - the conflict is the whole point
+			// of the refusal, so the message has to show both sides.
+			REBVAL current;
+			arg = Get_System(SYS_CATALOG, CAT_EVENT_TYPES);
+			if (IS_BLOCK(arg) && (REBCNT)VAL_EVENT_TYPE(value) < VAL_TAIL(arg))
+				current = *VAL_BLK_SKIP(arg, VAL_EVENT_TYPE(value));
+			else
+				SET_INTEGER(&current, VAL_EVENT_TYPE(value));
+			Trap2(RE_BAD_EVENT_TYPE, val, &current);
+		}
+
+		VAL_EVENT_TYPE(value) = (u8)n;
+		return TRUE;
+
+	case SYM_SOURCE:
+		if (IS_HANDLE(val)) {
+			// Only a CONTEXT handle: it is the only kind with a REBHOB the
+			// GC can mark and whose lifetime outlives the value.
+			if (!IS_CONTEXT_HANDLE(val)) return FALSE;
+			VAL_EVENT_MODEL(value) = EVM_HANDLE;
+			VAL_EVENT_HOB(value) = VAL_HANDLE_CTX(val);
+			break;
+		}
+		// fall through - a port, object or none means what PORT means
+ 	case SYM_PORT:
 		if (IS_PORT(val)) {
 			VAL_EVENT_MODEL(value) = EVM_PORT;
 			VAL_EVENT_SER(value) = VAL_PORT(val);
@@ -105,18 +139,10 @@
 			VAL_EVENT_SER(value) = VAL_OBJ_FRAME(val);
 		}
 		else if (IS_NONE(val)) {
-			VAL_EVENT_MODEL(value) = EVM_GUI;
+			VAL_EVENT_MODEL(value) = EVM_DEVICE;
+			VAL_EVENT_SER(value) = 0;
 		} else return FALSE;
 		break;
-
-	case SYM_WINDOW:
-	case SYM_GOB:
-		if (IS_GOB(val)) {
-			VAL_EVENT_MODEL(value) = EVM_GUI;
-			VAL_EVENT_SER(value) = VAL_GOB(val);
-			break;
-		}
-		return FALSE; 
 
 	case SYM_OFFSET:
 		if (IS_PAIR(val)) {
@@ -132,10 +158,13 @@
 		return FALSE;
 
 	case SYM_KEY:
-		//VAL_EVENT_TYPE(value) != EVT_KEY && VAL_EVENT_TYPE(value) != EVT_KEY_UP)
-		VAL_EVENT_MODEL(value) = EVM_GUI;
-		if(!VAL_EVENT_TYPE(value)) VAL_EVENT_TYPE(value) = EVT_KEY;
 		if (IS_CHAR(val)) {
+			// Only EVT_KEY/EVT_KEY_UP decode the data as a character, so
+			// the default type has to follow the kind of key given.
+			if (!IS_CHAR_KEY_TYPE(VAL_EVENT_TYPE(value))
+				&& VAL_EVENT_TYPE(value) != EVT_CUSTOM
+				&& VAL_EVENT_TYPE(value) < EVT_MAX) // extension types are their own
+				VAL_EVENT_TYPE(value) = EVT_KEY;
 			VAL_EVENT_DATA(value) = VAL_CHAR(val);
 			CLR_FLAG(VAL_EVENT_FLAGS(value), EVF_HAS_XY);
 			SET_FLAG(VAL_EVENT_FLAGS(value), EVF_HAS_CODE);
@@ -144,24 +173,44 @@
 		else if (IS_LIT_WORD(val) || IS_WORD(val)) {
 			arg = Get_System(SYS_CATALOG, CAT_EVENT_KEYS);
 			if (IS_BLOCK(arg)) {
-				arg = VAL_BLK_DATA(arg);
-				for (n = VAL_INDEX(arg); NOT_END(arg); n++, arg++) {
+				// Count from the HEAD: Get_Event_Var indexes the catalog
+				// with VAL_BLK_SKIP from the head, so the two must agree.
+				// (The old init read VAL_INDEX of the first ELEMENT, which
+				// aliases a word's frame field - zero only by luck.)
+				arg = VAL_BLK(arg);
+				for (n = 0; NOT_END(arg); n++, arg++) {
 					if (IS_WORD(arg) && VAL_WORD_CANON(arg) == VAL_WORD_CANON(val)) {
-						VAL_EVENT_DATA(value) = (n+1) << 16;
+						if (!IS_NAMED_KEY_TYPE(VAL_EVENT_TYPE(value))
+							&& VAL_EVENT_TYPE(value) != EVT_CUSTOM
+							&& VAL_EVENT_TYPE(value) < EVT_MAX) // extension types are their own
+							VAL_EVENT_TYPE(value) = EVT_NAMED_KEY;
+						// 1-based, unshifted: a character key needs all 32
+						// bits (MAX_CHAR is 21), so the two uses of this
+						// field take turns by event type rather than
+						// splitting it 16/16 as SET_EVENT_KEY assumed.
+						VAL_EVENT_DATA(value) = n + 1;
+						CLR_FLAG(VAL_EVENT_FLAGS(value), EVF_HAS_XY);
+						SET_FLAG(VAL_EVENT_FLAGS(value), EVF_HAS_CODE);
 						break;
 					}
 				}
-				if (IS_END(arg)) return FALSE;
+				if (IS_END(arg)) Trap1(RE_NO_EVENT_KEY, val);
 				break;
 			}
 		}
 		return FALSE;
 
 	case SYM_CODE:
-		//if (GET_FLAG(VAL_EVENT_FLAGS(value), EVF_HAS_XY)) return FALSE;
 		if (IS_INTEGER(val)) {
 			VAL_EVENT_DATA(value) = VAL_INT64(val);
+			CLR_FLAGS(VAL_EVENT_FLAGS(value), EVF_HAS_XY, EVF_HAS_SYM);
+			SET_FLAG(VAL_EVENT_FLAGS(value), EVF_HAS_CODE);
+			break;
+		}
+		if (IS_WORD(val) || IS_LIT_WORD(val)) {
+			VAL_EVENT_DATA(value) = VAL_WORD_CANON(val);
 			CLR_FLAG(VAL_EVENT_FLAGS(value), EVF_HAS_XY);
+			SET_FLAG(VAL_EVENT_FLAGS(value), EVF_HAS_SYM);
 			SET_FLAG(VAL_EVENT_FLAGS(value), EVF_HAS_CODE);
 			break;
 		}
@@ -210,24 +259,47 @@
 	case SYM_TYPE:
 		if (VAL_EVENT_TYPE(value) == 0) goto is_none;
 		arg = Get_System(SYS_CATALOG, CAT_EVENT_TYPES);
-		if (IS_BLOCK(arg) && VAL_TAIL(arg) >= EVT_MAX) {
-			*val = *VAL_BLK_SKIP(arg, VAL_EVENT_TYPE(value));
+		if (IS_BLOCK(arg)) {
+			n = VAL_EVENT_TYPE(value);
+			// A reserved slot holds no word, and an extension-defined type
+			// is past the end of the catalog entirely. Report the raw code
+			// instead of reading whatever happens to sit there - the old
+			// EVT_MAX check did not bound the type itself.
+			if ((REBCNT)n < VAL_TAIL(arg) && IS_WORD(VAL_BLK_SKIP(arg, n)))
+				*val = *VAL_BLK_SKIP(arg, n);
+			else
+				SET_INTEGER(val, n);
 			break;
 		}
 		return FALSE;
 
-	case SYM_PORT:
-		// Most events are for the GUI:
-		if (IS_EVENT_MODEL(value, EVM_GUI)) {
-			*val = *Get_System(SYS_PORTS, PORTS_EVENT);
+	case SYM_SOURCE:
+		// Whatever produced this event, whichever model carries it. Every
+		// model other than EVM_HANDLE keeps its origin where PORT finds it.
+		if (IS_EVENT_MODEL(value, EVM_HANDLE)) {
+			REBHOB *hob = VAL_EVENT_HOB(value);
+			// A handle released since the event was made reads as none
+			// rather than handing back a recycled context.
+			if (!hob || !IS_USED_HOB(hob)) goto is_none;
+			VAL_HANDLE_FLAGS(val) = 0; // SET_HANDLE ORs into this
+			SET_HANDLE(val, hob, hob->sym, HANDLE_CONTEXT);
+			break;
 		}
+		// fall through
+	case SYM_PORT:
 		// Event holds a port:
-		else if (IS_EVENT_MODEL(value, EVM_PORT) || IS_EVENT_MODEL(value, EVM_MIDI)) {
+		if (IS_EVENT_MODEL(value, EVM_PORT) || IS_EVENT_MODEL(value, EVM_MIDI)) {
 			SET_PORT(val, VAL_EVENT_SER(value));
 		}
 		// Event holds an object:
 		else if (IS_EVENT_MODEL(value, EVM_OBJECT)) {
 			SET_OBJECT(val, VAL_EVENT_SER(value));
+		}
+		// Event holds a handle - it belongs to no port at all. This case
+		// must be explicit: without it the HOB falls through to the
+		// EVM_DEVICE branch below and is read as a REBREQ.
+		else if (IS_EVENT_MODEL(value, EVM_HANDLE)) {
+			goto is_none;
 		}
 		else if (IS_EVENT_MODEL(value, EVM_CALLBACK)) {
 			*val = *Get_System(SYS_PORTS, PORTS_CALLBACK);
@@ -244,18 +316,6 @@
 		}
 		break;
 
-	case SYM_WINDOW:
-	case SYM_GOB:
-		if (IS_EVENT_MODEL(value, EVM_GUI)) {
-			if (GET_FLAG(VAL_EVENT_FLAGS(value), EVF_HAS_DATA))
-				goto is_none;
-			if (VAL_EVENT_SER(value)) {
-				SET_GOB(val, VAL_EVENT_SER(value));
-				break;
-			}
-		}
-		goto is_none;
-
 	case SYM_OFFSET:
 		if (GET_FLAG(VAL_EVENT_FLAGS(value), EVF_HAS_XY)) {
 			VAL_SET(val, REB_PAIR);
@@ -268,12 +328,17 @@
 	case SYM_KEY:
 		n = VAL_EVENT_DATA(value);
 		if (VAL_EVENT_TYPE(value) == EVT_KEY || VAL_EVENT_TYPE(value) == EVT_KEY_UP) {
+			// The data may come from an extension - do not build a char!
+			// out of a codepoint the rest of the system cannot encode.
+			if ((REBCNT)n > MAX_CHAR) goto is_none;
 			SET_CHAR(val, n);
 			break;
 		}
-		else if (VAL_EVENT_TYPE(value) == EVT_CONTROL || VAL_EVENT_TYPE(value) == EVT_CONTROL_UP) {
+		else if (VAL_EVENT_TYPE(value) == EVT_NAMED_KEY || VAL_EVENT_TYPE(value) == EVT_NAMED_KEY_UP) {
 			arg = Get_System(SYS_CATALOG, CAT_EVENT_KEYS);
-			if (IS_BLOCK(arg) && n <= (REBINT)VAL_TAIL(arg)) {
+			// n is 1-based; n == 0 means no key, and without the lower
+			// bound VAL_BLK_SKIP(arg, -1) reads before the block's data.
+			if (IS_BLOCK(arg) && n > 0 && n <= (REBINT)VAL_TAIL(arg)) {
 				*val = *VAL_BLK_SKIP(arg, n-1);
 				break;
 			}
@@ -300,24 +365,18 @@
 		break;
 
 	case SYM_CODE:
+		// A symbol id reads back as the word it names. This is what lets an
+		// extension report WHICH item, menu entry or command an event is
+		// about, in the one payload slot an event has.
+		if (GET_FLAG(VAL_EVENT_FLAGS(value), EVF_HAS_SYM)) {
+			Init_Word(val, VAL_EVENT_DATA(value));
+			break;
+		}
 		if (GET_FLAG(VAL_EVENT_FLAGS(value), EVF_HAS_CODE)) {
-			SET_INTEGER(val, VAL_EVENT_DATA(value)); // key-words in top 16, chars in lower 16
+			SET_INTEGER(val, VAL_EVENT_DATA(value));
 			break;
 		}
 		goto is_none;
-
-	case SYM_DATA:
-		// Event holds a file string:
-		if (!GET_FLAG(VAL_EVENT_FLAGS(value), EVF_HAS_DATA)) goto is_none;
-		if (VAL_EVENT_TYPE(value) != EVT_DROP_FILE) goto is_none;
-		if (!GET_FLAG(VAL_EVENT_FLAGS(value), EVF_COPIED)) {
-			void *str = VAL_EVENT_SER(value);
-			VAL_EVENT_SER(value) = Copy_Bytes(str, UNKNOWN);
-			SET_FLAG(VAL_EVENT_FLAGS(value), EVF_COPIED);
-			OS_Free(str);
-		}
-		Set_Series(REB_FILE, val, VAL_EVENT_SER(value));
-		break;
 
 	default:
 		return FALSE;
@@ -399,121 +458,6 @@ is_arg_error:
 	return R_RET;
 }
 
-#ifdef ndef
-//	case A_PATH:
-		if (IS_WORD(arg)) {
-			switch (VAL_WORD_CANON(arg)) {
-			case SYM_TYPE:    index = EF_TYPE; break;
-			case SYM_PORT:	  index = EF_PORT; break;
-			case SYM_KEY:     index = EF_KEY; break;
-			case SYM_OFFSET:  index = EF_OFFSET; break;
-			case SYM_MODE:	  index = EF_MODE; break;
-			case SYM_TIME:    index = EF_TIME; break;
-//!!! return these as options flags, not refinements.
-//			case SYM_SHIFT:   index = EF_SHIFT; break;
-//			case SYM_CONTROL: index = EF_CONTROL; break;
-//			case SYM_DOUBLE_CLICK: index = EF_DCLICK; break;
-			default: Trap1(RE_INVALID_PATH, arg);
-			}
-			goto pick_it;
-		}
-		else if (!IS_INTEGER(arg))
-			Trap1(RE_INVALID_PATH, arg);
-		// fall thru
-
-
-	case A_PICK:
-		index = num = Get_Num_Arg(arg);
-		if (num > 0) index--;
-		if (num == 0 || index < 0 || index > EF_DCLICK) {
-			if (action == A_POKE) Trap_Range(arg);
-			goto is_none;
-		}
-pick_it:
-		switch(index) {
-		case EF_TYPE:
-			if (VAL_EVENT_TYPE(value) == 0) goto is_none;
-			arg = Get_System(SYS_VIEW, VIEW_EVENT_TYPES);
-			if (IS_BLOCK(arg) && VAL_TAIL(arg) >= EVT_MAX) {
-				*D_RET = *VAL_BLK_SKIP(arg, VAL_EVENT_TYPE(value));
-				return R_RET;
-			}
-			return R_NONE;
-
-		case EF_PORT:
-			// Most events are for the GUI:
-			if (GET_FLAG(VAL_EVENT_FLAGS(value), EVF_NO_REQ))
-				*D_RET = *Get_System(SYS_PORTS, PORTS_EVENT);
-			else {
-				req = VAL_EVENT_REQ(value);
-				if (!req || !req->port) goto is_none;
-				SET_PORT(D_RET, (REBSER*)(req->port));
-			}
-			return R_RET;
-
-		case EF_KEY:
-			if (VAL_EVENT_TYPE(value) != EVT_KEY) goto is_none;
-			if (VAL_EVENT_FLAGS(value)) {  // !!!!!!!!!!!!! needs mask
-				VAL_SET(D_RET, REB_CHAR);
-				VAL_CHAR(D_RET) = VAL_EVENT_KEY(value) & 0xff;
-			} else
-				Init_Word(D_RET, VAL_EVENT_XY(value));
-			return R_RET;
-
-		case EF_OFFSET:
-			VAL_SET(D_RET, REB_PAIR);
-			VAL_PAIR_X(D_RET) = VAL_EVENT_X(value);
-			VAL_PAIR_Y(D_RET) = VAL_EVENT_Y(value);
-			return R_RET;
-
-		case EF_TIME:
-			VAL_SET(D_RET, REB_INTEGER);
-//!!			VAL_INT64(D_RET) = VAL_EVENT_TIME(value);
-			return R_RET;
-
-		case EF_SHIFT:
-			VAL_SET(D_RET, REB_LOGIC);
-			VAL_LOGIC(D_RET) = GET_FLAG(VAL_EVENT_FLAGS(value), EVF_SHIFT) != 0;
-			return R_RET;
-
-		case EF_CONTROL:
-			VAL_SET(D_RET, REB_LOGIC);
-			VAL_LOGIC(D_RET) = GET_FLAG(VAL_EVENT_FLAGS(value), EVF_CONTROL) != 0;
-			return R_RET;
-
-		case EF_DCLICK:
-			VAL_SET(D_RET, REB_LOGIC);
-			VAL_LOGIC(D_RET) = GET_FLAG(VAL_EVENT_FLAGS(value), EVF_DOUBLE) != 0;
-			return R_RET;
-
-/*			case EF_FACE:
-			{
-				REBWIN	*wp;
-				if (!IS_BLOCK(BLK_HEAD(Windows) + VAL_EVENT_WIN(value))) return R_RET None_Value;
-				wp = (REBWIN *)VAL_BLK(BLK_HEAD(Windows) + VAL_EVENT_WIN(value));
-				*D_RET = wp->masterFace;
-				return R_RET;
-			}
-*/
-		}
-		break;
-
-// These are used to map symbols to event field cases:
-enum rebol_event_fields {
-	EF_TYPE,
-	EF_KEY,
-	EF_OFFSET,
-	EF_TIME,
-	EF_SHIFT,	// Keep these? !!!
-	EF_CONTROL,
-	EF_DCLICK,
-	EF_PORT,
-	EF_MODE,
-};
-
-#endif
-
-
 /***********************************************************************
 **
 */	 void Mold_Event(REBVAL *value, REB_MOLD *mold)
@@ -523,8 +467,8 @@ enum rebol_event_fields {
 	REBVAL val;
 	REBCNT field;
 	REBCNT fields[] = {
-		SYM_TYPE, SYM_PORT, SYM_GOB, SYM_OFFSET, SYM_KEY,
-		SYM_FLAGS, SYM_CODE, SYM_DATA, 0
+		SYM_TYPE, SYM_SOURCE, SYM_OFFSET, SYM_KEY,
+		SYM_FLAGS, SYM_CODE, 0
 	};
 	REBOOL indented = !GET_MOPT(mold, MOPT_INDENT);
 

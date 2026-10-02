@@ -160,6 +160,7 @@
 	case A_REMOVE:
 		// /PART length
 		TRAP_PROTECT(VAL_SERIES(value));
+		TRAP_FIXED_SIZE(VAL_SERIES(value));
 		if (DS_REF(ARG_REMOVE_KEY)) {
 			if (ANY_BLOCK(value)) {
 				len = 2;
@@ -225,6 +226,8 @@ is_true:
 	 (VAL_INDEX(sval)==VAL_INDEX(tval)))
 		 return 0;
 
+	REBLEN len = VAL_TAIL(sval) >= VAL_INDEX(sval) ? VAL_TAIL(sval) - VAL_INDEX(sval) : 0;
+
 	// make sure that none of block is past tail
 	// https://github.com/Oldes/Rebol-issues/issues/2439
 	s = VAL_BLK_DATA_SAFE(sval);
@@ -232,12 +235,12 @@ is_true:
 
 	CHECK_STACK(&s);
 
-	while (!IS_END(s)) {
+	while (len--> 0) {
 		if ((diff = Cmp_Value(s, t, is_case)) != 0)
 			return diff;
 		s++, t++;
 	}
-	return VAL_TYPE(s) - VAL_TYPE(t);
+	return 0;// VAL_TYPE(s) - VAL_TYPE(t);
 }
 
 
@@ -347,6 +350,14 @@ chkMoney:
 		return Compare_Binary_Vals(s, t);
 
 	case REB_VECTOR:
+		// Element type is the primary key under /case, matching the
+		// ANY_NUMBER handling above (integer! before decimal!). VECT_TYPE's
+		// enum order is signed ints, unsigned ints, then floats.
+		if (is_case) {
+			REBFLG vt2 = VAL_VEC_TYPE(t);
+			REBFLG vt1 = VAL_VEC_TYPE(s);
+			if (vt1 != vt2) return vt1 - vt2;
+		}
 		return Compare_Vector(s, t);
 
 	case REB_DATATYPE:

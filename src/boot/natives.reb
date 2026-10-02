@@ -222,7 +222,7 @@ quit: native [
 
 protect: native [
 	"Protect a series or a variable from being modified."
-	value [word! series! bitset! map! object! module!]
+	value [word! series! bitset! map! object! module! struct!]
 	/deep "Protect all sub-series/objects as well"
 	/words  "Process list as words (and path words)"
 	/values "Process list of values (implied GET)"
@@ -232,7 +232,7 @@ protect: native [
 
 unprotect: native [
 	"Unprotect a series or a variable (it can again be modified)."
-	value [word! series! bitset! map! object! module!]
+	value [word! series! bitset! map! object! module! struct!]
 	/deep "Protect all sub-series as well"
 	/words "Block is a list of words"
 	/values "Process list of values (implied GET)"
@@ -240,7 +240,7 @@ unprotect: native [
 
 protected?: native [
 	"Return true if immediate argument is protected from modification."
-	value [word! series! bitset! map! object! module!]
+	value [word! series! bitset! map! object! module! struct!]
 ]
 
 recycle: native [
@@ -359,8 +359,8 @@ while: native [
 
 as: native [
 	{Coerce a series into a compatible datatype without copying it.}
-	type [any-block! any-string! datatype!] "The datatype or example value"
-	spec [any-block! any-string!] "The series to coerce"
+	type [any-block! any-string! datatype! word! struct!] "The datatype or example value"
+	spec [any-block! any-string! vector!] "The series to coerce"
 ]
 
 bind: native [

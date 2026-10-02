@@ -23,12 +23,14 @@
 **  Module:  t-vector.c
 **  Summary: vector datatype
 **  Section: datatypes
-**  Author:  Carl Sassenrath
+**  Author:  Carl Sassenrath, Oldes
 **  Notes:
 **
 ***********************************************************************/
 
 #include "sys-core.h"
+
+static REBVAL *Make_Vector_Struct_Spec(REBSER *fields, REBVAL *bp, REBVAL *value, REBFLG with_size);
 
 static const REBCNT normalized_vect_sym[29] = {
 	SYM_INT8X,     //SYM_INT8X
@@ -214,6 +216,24 @@ static void set_vect(REBCNT type, REBYTE *data, REBCNT n, REBVAL *val) {
 	setters[type](data, n, val);
 }
 
+// Applying a shape locks the buffer's length: rows is stored per-value, but
+// tail is shared, so any length change would leave every shaped view stale.
+FORCE_INLINE
+static void Set_Vector_Shape(REBVAL *val, REBCNT rows) {
+	VAL_VEC_SET_ROWS(val, rows);
+	if (rows > 1) SERIES_SET_FLAG(VAL_SERIES(val), SER_SIZEP);
+}
+
+FORCE_INLINE
+static REBCNT Vector_Rows_For(REBVAL *vec, REBLEN len) {
+	// An empty view is one empty row -- never inherit a stored row count
+	// there, or SHAPE reports 0x5 and SHAPED claims true for no elements.
+	if (len == 0) return 1;
+	REBCNT rows = (VAL_INDEX(vec) == 0 && len == VAL_TAIL(vec)) ? VAL_VEC_ROWS(vec) : 1;
+	return rows < 1 ? 1 : rows;
+}
+#define Vector_Rows(v)  Vector_Rows_For((v), VAL_LEN(v))
+
 
 // Query functions
 typedef struct Vector_Query_Values {
@@ -227,10 +247,10 @@ typedef struct Vector_Query_Values {
 	REBDEC median;
 } REBVQV;
 
-static void Query_Vector_Statictics(REBSER* vect, REBVQV* out) {
-	REBLEN len = SERIES_TAIL(vect);
-	REBCNT type = VECT_TYPE(vect);
-	REBYTE* data = SERIES_DATA(vect);
+static void Query_Vector_Statictics(REBVAL *vect, REBVQV *out) {
+	REBLEN len = VAL_LEN(vect);
+	REBCNT type = VAL_VEC_TYPE(vect);
+	REBYTE *data = VAL_VEC_DATA(vect);
 	REBDEC num, delta, delta2;
 	REBLEN n;
 
@@ -257,18 +277,17 @@ static void Query_Vector_Statictics(REBSER* vect, REBVQV* out) {
 	out->variance = out->sum_of_squares / len;  // normalize M2 -> population variance
 }
 
-static REBDEC Query_Vector_Median(REBSER *vect) {
-	REBLEN len = SERIES_TAIL(vect);
-	REBCNT type = VECT_TYPE(vect);
+static REBDEC Query_Vector_Median(REBVAL *vec) {
+	REBLEN len  = VAL_LEN(vec);
+	REBCNT type = VAL_VEC_TYPE(vec);
 	REBSER *sorted;
 	REBDEC median;
 
 	if (len == 0) return 0;
-	// Make a vector copy, because sorting modifies
-	sorted = Copy_Series(vect);
-	sorted->size = vect->size; // attributes
+	// Copy only the visible range -- the other statistics use VAL_LEN too.
+	sorted = Copy_Binary_Part(VAL_SERIES(vec), VAL_INDEX(vec), len);
 	ASSERT1(type < VT_MAX, RP_ASSERTS);
-	unstable_sort(SERIES_DATA(sorted), len, VECT_BYTE_SIZE(type), compares[type]);
+	unstable_sort(SERIES_DATA(sorted), len, VAL_VEC_WIDE(vec), compares[type]);
 
 	median = get_vect_decimal(type, SERIES_DATA(sorted), len/2);
 	if (len%2 == 0) {
@@ -281,57 +300,53 @@ static REBDEC Query_Vector_Median(REBSER *vect) {
 
 
 FORCE_INLINE
-static void Set_Vector_Value(REBCNT bits, REBYTE *data, REBCNT n, REBVAL *val) {
+static void Set_Vector_Value(REBCNT type, REBYTE *data, REBCNT n, REBVAL *val) {
 	REBVAL num = *val; // because may be modified!
 	if (IS_DECIMAL(val)) {
 		// value is decimal
-		if (bits <= VTUI64) {
+		if (type <= VTUI64) {
 			// but target is integer 
 			VAL_INT64(&num) = (REBI64)VAL_DECIMAL(val);
 		}
 	}
 	else if (IS_INTEGER(val) || IS_CHAR(val)) {
-		if (bits > VTUI64) {
+		if (type > VTUI64) {
 			VAL_DECIMAL(&num) = (REBDEC)VAL_INT64(val);
 		}
 	}
 	else Trap_Arg(val);
-	setters[bits](data, n, &num);
+	setters[type](data, n, &num);
 }
 
 
-void Set_Vector_Row(REBSER *ser, REBVAL *blk)
+void Set_Vector_Row(REBSER *ser, REBVAL *blk, REBCNT type)
 {
 	REBVAL *val;
 	REBLEN n = 0;
 	REBCNT len = VAL_LEN(blk);
-	REBCNT bits = VECT_TYPE(ser);
+	REBLEN max = SERIES_TAIL(ser);   // never write past what was allocated
 
 	if (IS_BLOCK(blk)) {
 		val = VAL_BLK_DATA(blk);
-		for (; NOT_END(val); val++) {
-			Set_Vector_Value(bits, ser->data, n++, val);
+		for (; NOT_END(val) && n < max; val++) {
+			Set_Vector_Value(type, ser->data, n++, val);
 		}
 	}
 	else {
-#ifdef old_code
-		REBYTE *data = VAL_BIN_DATA(blk);
-		for (; len > 0; len--, idx++) {
-			set_vect(bits, ser->data, n++, (REBI64)(data[idx]), f);
-		}
-#else
-		REBCNT bytes = ser->tail * SERIES_WIDE(ser); //TODO: review! Wide is max 256 bytes!!!
+		// Binary data is copied verbatim -- the bytes are the vector's
+		// storage in native byte order, which is what TO BINARY! produces,
+		// so the two round-trip. Clamp to the allocation.
+		REBCNT bytes = max * VECT_WIDE(type);
 		if (len > bytes) len = bytes;
 		COPY_MEM(ser->data, VAL_BIN_DATA(blk), len);
-#endif
 	}
 }
 
-void Find_Minimum_Of_Vector(REBSER *vect, REBVAL *ret) {
+void Find_Minimum_Of_Vector(REBVAL *vect, REBVAL *ret) {
 	REBLEN len;
 	REBYTE *data;
 	
-	len = SERIES_TAIL(vect);
+	len = VAL_LEN(vect);
 
 	SET_NONE(ret);
 	if (len == 0) return;
@@ -347,9 +362,9 @@ void Find_Minimum_Of_Vector(REBSER *vect, REBVAL *ret) {
         return;                              \
     }
 
-	data = SERIES_DATA(vect);
+	data = VAL_VEC_DATA(vect);
 
-	switch (VECT_TYPE(vect)) {
+	switch (VAL_VEC_TYPE(vect)) {
 	case VTSI08: FIND_MIN(i8, SET_INTEGER); break;
 	case VTSI16: FIND_MIN(i16, SET_INTEGER); break;
 	case VTSI32: FIND_MIN(i32, SET_INTEGER); break;
@@ -365,11 +380,11 @@ void Find_Minimum_Of_Vector(REBSER *vect, REBVAL *ret) {
 #undef FIND_MIN
 }
 
-void Find_Maximum_Of_Vector(REBSER *vect, REBVAL *ret) {
+void Find_Maximum_Of_Vector(REBVAL *vect, REBVAL *ret) {
 	REBLEN len;
 	REBYTE *data;
 
-	len = SERIES_TAIL(vect);
+	len = VAL_LEN(vect);
 
 	SET_NONE(ret);
 	if (len == 0) return;
@@ -385,9 +400,9 @@ void Find_Maximum_Of_Vector(REBSER *vect, REBVAL *ret) {
         return;                              \
     }
 
-	data = SERIES_DATA(vect);
+	data = VAL_VEC_DATA(vect);
 
-	switch (VECT_TYPE(vect)) {
+	switch (VAL_VEC_TYPE(vect)) {
 	case VTSI08: FIND_MAX(i8, SET_INTEGER); break;
 	case VTSI16: FIND_MAX(i16, SET_INTEGER); break;
 	case VTSI32: FIND_MAX(i32, SET_INTEGER); break;
@@ -406,7 +421,7 @@ void Find_Maximum_Of_Vector(REBSER *vect, REBVAL *ret) {
 
 /***********************************************************************
 **
-*/	static REBOOL Query_Vector_Field(REBSER *vect, REBCNT field, REBVAL *ret, REBVQV *vqv)
+*/	static REBOOL Query_Vector_Field(REBVAL *vec, REBCNT field, REBVAL *ret, REBVQV *vqv)
 /*
 **		Set a value with requested vector field result 
 **
@@ -415,43 +430,75 @@ void Find_Maximum_Of_Vector(REBSER *vect, REBVAL *ret) {
 #define RETURN_NONE()     {SET_NONE(ret); return TRUE;}
 #define RETURN_DECIMAL(v) {SET_DECIMAL(ret, v); return TRUE;}
 #define RETURN_NUMBER(v)  {SET_DECIMAL(ret, v); goto return_number;}
+	
+	REBCNT type = VAL_VEC_TYPE(vec);
+
+	if (VECT_IS_STRUCT(type)) {
+		// A struct element is not a number - there are no statistics, sign or
+		// element type word to report for it.
+		switch (field) {
+		case SYM_LENGTH:
+		case SYM_SHAPE:
+		case SYM_SHAPED:
+			break; // resolved below - these do not depend on the element type
+		case SYM_SIZE:
+			SET_INTEGER(ret, VAL_VEC_WIDE(vec) * 8); // element size in bits
+			return TRUE;
+		default:
+			return FALSE;
+		}
+	}
 
 	switch (field) {
+	case SYM_ELEMENT_TYPE:
+		Init_Word(ret, SYM_INT8X + Normalize_Vector_Type_Symbol(type));
+		break;
 	case SYM_TYPE:
-		Init_Word(ret, (VECT_TYPE(vect) >= VTSF08) ? SYM_DECIMAL_TYPE : SYM_INTEGER_TYPE);
+		Init_Word(ret, (type >= VTSF08) ? SYM_DECIMAL_TYPE : SYM_INTEGER_TYPE);
 		break;
 	case SYM_SIZE:
-		SET_INTEGER(ret, VECT_BIT_SIZE(VECT_TYPE(vect)));
+		SET_INTEGER(ret, VAL_VEC_BITS(vec));
 		break;
 	case SYM_LENGTH:
-		SET_INTEGER(ret, vect->tail);
+		SET_INTEGER(ret, VAL_LEN(vec));
+		break;
+	case SYM_SHAPE:
+	{
+		REBLEN len = VAL_LEN(vec);
+		REBCNT rows = Vector_Rows(vec);
+		REBCNT cols = len / rows;
+		SET_PAIR(ret, cols, rows);
+		break;
+	}
+	case SYM_SHAPED:
+		SET_LOGIC(ret, Vector_Rows(vec) > 1);
 		break;
 	case SYM_SIGNED:
-		SET_LOGIC(ret, !(VECT_TYPE(vect) >= VTUI08 && VECT_TYPE(vect) <= VTUI64));
+		SET_LOGIC(ret, VAL_VEC_SIGN(vec));
 		break;
 	case SYM_MIN:
 	case SYM_MINIMUM:
-		if (SERIES_TAIL(vect) == 0) RETURN_NONE();
+		if (VAL_LEN(vec) == 0) RETURN_NONE();
 		if (vqv) RETURN_NUMBER(vqv->minimum);
-		Find_Minimum_Of_Vector(vect, ret);
+		Find_Minimum_Of_Vector(vec, ret);
 		break;
 	case SYM_MAX:
 	case SYM_MAXIMUM:
-		if (SERIES_TAIL(vect) == 0) RETURN_NONE();
+		if (VAL_LEN(vec) == 0) RETURN_NONE();
 		if (vqv) RETURN_NUMBER(vqv->maximum);
-		Find_Maximum_Of_Vector(vect, ret);
+		Find_Maximum_Of_Vector(vec, ret);
 		break;
 	default:
 		if (!vqv) {
 			REBVQV out;
-			Query_Vector_Statictics(vect, &out);
+			Query_Vector_Statictics(vec, &out);
 			vqv = &out;
 		}
 		if (vqv->length == 0) RETURN_NONE();
 		if (field == SYM_SUM) RETURN_NUMBER(vqv->sum);
 		if (field == SYM_RANGE) RETURN_NUMBER((vqv->maximum - vqv->minimum));
 		if (field == SYM_MEAN || field == SYM_AVERAGE) RETURN_DECIMAL(vqv->mean);
-		if (field == SYM_MEDIAN) RETURN_DECIMAL(Query_Vector_Median(vect));
+		if (field == SYM_MEDIAN) RETURN_DECIMAL(Query_Vector_Median(vec));
 		if (field == SYM_VARIANCE) RETURN_DECIMAL(vqv->variance);
 		if (field == SYM_POPULATION_DEVIATION) RETURN_DECIMAL(sqrt(vqv->variance));
 		if (field == SYM_SAMPLE_VARIANCE || field == SYM_SAMPLE_DEVIATION) {
@@ -464,7 +511,7 @@ void Find_Maximum_Of_Vector(REBSER *vect, REBVAL *ret) {
 	return TRUE;
 return_number:
 	// Return integer if vector type is integer, else keep decimal
-	if (VECT_TYPE(vect) < VTSF08) SET_INTEGER(ret, (REBI64)VAL_DECIMAL(ret));
+	if (type < VTSF08) SET_INTEGER(ret, (REBI64)VAL_DECIMAL(ret));
 	return TRUE;
 
 #undef RETURN_NONE
@@ -482,11 +529,27 @@ return_number:
 ***********************************************************************/
 {
 	REBCNT len = VAL_LEN(vect);
-	REBYTE *data = VAL_SERIES(vect)->data;
-	REBCNT type = VECT_TYPE(VAL_SERIES(vect));
+	REBYTE *data = VAL_VEC_HEAD(vect);
+	REBCNT type = VAL_VEC_TYPE(vect);
 	REBSER *ser = Make_Block(len);
 	REBVAL *val = NULL;
 	REBCNT reb_type = (type >= VTSF08) ? REB_DECIMAL : REB_INTEGER;
+
+	if (VECT_IS_STRUCT(type)) {
+		// Unlike PICK, the conversion does not share the vector's data - each
+		// element is copied, so that the block can be modified on its own.
+		REBVAL view;
+		SERIES_TAIL(ser) = len;
+		// The copies allocate, so the block must survive a possible GC!
+		SAVE_SERIES(ser);
+		val = BLK_HEAD(ser);
+		for (REBCNT n = VAL_INDEX(vect); n < VAL_TAIL(vect); n++, val++) {
+			Set_Vector_Struct(&view, vect, n);
+			Copy_Struct_Value(&view, val);
+		}
+		UNSAVE_SERIES(ser);
+		return ser;
+	}
 
 	if (len > 0) {
 		val = BLK_HEAD(ser);
@@ -516,10 +579,8 @@ return_number:
 **
 ***********************************************************************/
 {
-	REBSER *vect = NULL;
-	REBSER *dest;
 	REBYTE *data;
-	REBCNT bits;
+	REBCNT vtype;
 	REBCNT len;
 
 	REBVAL *left;
@@ -540,10 +601,12 @@ return_number:
 		return;
 	}
 
-	vect = VAL_SERIES(left);
-	bits = VECT_TYPE(vect);
+	vtype = VAL_VEC_TYPE(left);
 	len = VAL_LEN(left);
-
+	if (len == 0) {
+		if (!Make_Vector(out, vtype, 0, 1)) Trap0(RE_NO_MEMORY);
+		return;
+	}
 
 	if (IS_INTEGER(right)) {
 		i = VAL_INT64(right);
@@ -553,16 +616,15 @@ return_number:
 		i = (REBI64)f;
 	}
 
-	dest = Copy_Series_Part(vect, VAL_INDEX(left), len);
-	dest->size = vect->size; // attributes
-	data = dest->data;
-	SET_VECTOR(out, dest);
-	n = 0;
+	REBCNT rows = Vector_Rows(left);
+	SET_VECTOR(out, Copy_Binary_Part(VAL_SERIES(left), VAL_INDEX(left), len), vtype);
+	Set_Vector_Shape(out, rows);
 
+	data = VAL_VEC_HEAD(out);
 
 	switch (action) {
 	case A_ADD:
-		switch (bits) {
+		switch (vtype) {
 		case VTSI08: VEC_OP_LOOP(i8, +=, i); break;
 		case VTSI16: VEC_OP_LOOP(i16, +=, i); break;
 		case VTSI32: VEC_OP_LOOP(i32, +=, i); break;
@@ -576,7 +638,7 @@ return_number:
 		}
 		break;
 	case A_SUBTRACT:
-		switch (bits) {
+		switch (vtype) {
 		case VTSI08: VEC_OP_LOOP(i8, -=, i); break;
 		case VTSI16: VEC_OP_LOOP(i16, -=, i); break;
 		case VTSI32: VEC_OP_LOOP(i32, -=, i); break;
@@ -590,7 +652,7 @@ return_number:
 		}
 		break;
 	case A_MULTIPLY:
-		switch (bits) {
+		switch (vtype) {
 		case VTSI08: VEC_OP_LOOP(i8, *=, i); break;
 		case VTSI16: VEC_OP_LOOP(i16, *=, i); break;
 		case VTSI32: VEC_OP_LOOP(i32, *=, i); break;
@@ -604,8 +666,8 @@ return_number:
 		}
 		break;
 	case A_DIVIDE:
-		if (i == 0 && bits <= VTUI64) Trap0(RE_ZERO_DIVIDE);
-		switch (bits) {
+		if (i == 0 && vtype <= VTUI64) Trap0(RE_ZERO_DIVIDE);
+		switch (vtype) {
 		case VTSI08: VEC_OP_LOOP(i8, /=, i); break;
 		case VTSI16: VEC_OP_LOOP(i16, /=, i); break;
 		case VTSI32: VEC_OP_LOOP(i32, /=, i); break;
@@ -619,7 +681,7 @@ return_number:
 		}
 		break;
 	case A_AND:
-		switch (bits) {
+		switch (vtype) {
 		case VTSI08: VEC_OP_LOOP(i8, &=, i); break;
 		case VTSI16: VEC_OP_LOOP(i16, &=, i); break;
 		case VTSI32: VEC_OP_LOOP(i32, &=, i); break;
@@ -632,7 +694,7 @@ return_number:
 		}
 		break;
 	case A_OR:
-		switch (bits) {
+		switch (vtype) {
 		case VTSI08: VEC_OP_LOOP(i8, |=, i); break;
 		case VTSI16: VEC_OP_LOOP(i16, |=, i); break;
 		case VTSI32: VEC_OP_LOOP(i32, |=, i); break;
@@ -645,7 +707,7 @@ return_number:
 		}
 		break;
 	case A_XOR:
-		switch (bits) {
+		switch (vtype) {
 		case VTSI08: VEC_OP_LOOP(i8, ^=, i); break;
 		case VTSI16: VEC_OP_LOOP(i16, ^=, i); break;
 		case VTSI32: VEC_OP_LOOP(i32, ^=, i); break;
@@ -659,7 +721,7 @@ return_number:
 		break;
 	case A_REMAINDER:
 		if (i == 0) Trap0(RE_ZERO_DIVIDE);
-		switch (bits) {
+		switch (vtype) {
 		case VTSI08: VEC_OP_LOOP(i8, %=, i); break;
 		case VTSI16: VEC_OP_LOOP(i16, %=, i); break;
 		case VTSI32: VEC_OP_LOOP(i32, %=, i); break;
@@ -703,33 +765,48 @@ return_number:
 **
 ***********************************************************************/
 {
-	REBSER *vect1 = VAL_SERIES(v1);
-	REBSER *vect2 = VAL_SERIES(v2);
-	REBLEN len1 = VAL_LEN(v1);
-	REBLEN len2 = VAL_LEN(v2);
-	REBLEN len, n;
+	REBLEN len, n = 0;
 	REBLEN idx1 = VAL_INDEX(v1);
 	REBLEN idx2 = VAL_INDEX(v2);
-	REBINT bits1 = VECT_TYPE(vect1);
-	REBINT bits2 = VECT_TYPE(vect2);
-	REBSER *dest;
+	REBLEN len1 = VAL_LEN(v1);
+	REBLEN len2 = VAL_LEN(v2);
+	REBINT type = VAL_VEC_TYPE(v1);
 	REBYTE *data;
-	REBYTE *data1 = vect1->data;
-	REBYTE *data2 = vect2->data;
+	REBYTE *data1 = VAL_VEC_HEAD(v1);
+	REBYTE *data2 = VAL_VEC_HEAD(v2);
 
-	len = MIN(len1, len2);
+	REBCNT rows1 = Vector_Rows(v1);
+	REBCNT rows2 = Vector_Rows(v2);
+	REBOOL shaped1 = rows1 > 1;
+	REBOOL shaped2 = rows2 > 1;
+	REBSER *dest;
 
-	if (bits1 != bits2)	Trap0(RE_VECTOR_NOT_COMPATIBLE);
-	dest = Make_Series(MAX(len,1), SERIES_WIDE(vect1), FALSE);
-	dest->size = vect1->size; // attributes
-	data = dest->data;
+	if (type != VAL_VEC_TYPE(v2)) Trap0(RE_VECTOR_NOT_COMPATIBLE);
+	if (shaped1 && shaped2) {
+		if (rows1 != rows2 || len1 != len2)   // len here already encodes cols via tail/rows, but check explicitly
+			Trap0(RE_VECTOR_NOT_COMPATIBLE);  // shapes differ, not just types
+		len = len1;
+	}
+	else if (shaped1 || shaped2) {
+		if (len1 != len2)
+			Trap0(RE_VECTOR_NOT_COMPATIBLE);  // total counts must still match for elementwise broadcast
+		len = len1;
+	}
+	else {
+		len = MIN(len1, len2);   // plain-vector behavior
+	}
+
+	dest = Make_Series(MAX(len,1) + 1, VAL_VEC_WIDE(v1), FALSE);
 	SERIES_TAIL(dest) = len;
-	SET_VECTOR(out, dest);
+	SET_VECTOR(out, dest, type);
+	// Shape is per-value now: inherit from whichever operand carries one.
+	Set_Vector_Shape(out, shaped1 ? rows1 : (shaped2 ? rows2 : 1));
+	data = VAL_VEC_HEAD(out);
 	n = 0;
 
 	switch (action) {
 	case A_ADD:
-		switch (bits1) {
+		switch (type) {
 		case VTSI08: VEC_OP_LOOP(i8, +); break;
 		case VTSI16: VEC_OP_LOOP(i16, +); break;
 		case VTSI32: VEC_OP_LOOP(i32, +); break;
@@ -743,7 +820,7 @@ return_number:
 		}
 		break;
 	case A_SUBTRACT:
-		switch (bits1) {
+		switch (type) {
 		case VTSI08: VEC_OP_LOOP(i8, -); break;
 		case VTSI16: VEC_OP_LOOP(i16, -); break;
 		case VTSI32: VEC_OP_LOOP(i32, -); break;
@@ -757,7 +834,7 @@ return_number:
 		}
 		break;
 	case A_MULTIPLY:
-		switch (bits1) {
+		switch (type) {
 		case VTSI08: VEC_OP_LOOP(i8, *); break;
 		case VTSI16: VEC_OP_LOOP(i16, *); break;
 		case VTSI32: VEC_OP_LOOP(i32, *); break;
@@ -771,7 +848,7 @@ return_number:
 		}
 		break;
 	case A_DIVIDE:
-		switch (bits1) {
+		switch (type) {
 		case VTSI08: VEC_OP_LOOP_NO_ZERO(i8, /); break;
 		case VTSI16: VEC_OP_LOOP_NO_ZERO(i16, /); break;
 		case VTSI32: VEC_OP_LOOP_NO_ZERO(i32, /); break;
@@ -785,7 +862,7 @@ return_number:
 		}
 		break;
 	case A_AND:
-		switch (bits1) {
+		switch (type) {
 		case VTSI08: VEC_OP_LOOP(i8, &); break;
 		case VTSI16: VEC_OP_LOOP(i16, &); break;
 		case VTSI32: VEC_OP_LOOP(i32, &); break;
@@ -798,7 +875,7 @@ return_number:
 		}
 		break;
 	case A_OR:
-		switch (bits1) {
+		switch (type) {
 		case VTSI08: VEC_OP_LOOP(i8, |); break;
 		case VTSI16: VEC_OP_LOOP(i16, |); break;
 		case VTSI32: VEC_OP_LOOP(i32, |); break;
@@ -811,7 +888,7 @@ return_number:
 		}
 		break;
 	case A_XOR:
-		switch (bits1) {
+		switch (type) {
 		case VTSI08: VEC_OP_LOOP(i8, ^); break;
 		case VTSI16: VEC_OP_LOOP(i16, ^); break;
 		case VTSI32: VEC_OP_LOOP(i32, ^); break;
@@ -824,7 +901,7 @@ return_number:
 		}
 		break;
 	case A_REMAINDER:
-		switch (bits1) {
+		switch (type) {
 		case VTSI08: VEC_OP_LOOP_NO_ZERO(i8, %); break;
 		case VTSI16: VEC_OP_LOOP_NO_ZERO(i16, %); break;
 		case VTSI32: VEC_OP_LOOP_NO_ZERO(i32, %); break;
@@ -844,66 +921,136 @@ return_number:
 #undef VEC_OP_LOOP_NO_ZERO
 #endif
 
+// Exact comparison of a 64-bit integer against a REBDEC, with no precision loss.
+// Widening the integer to REBDEC would break above 2^53, so instead we compare
+// against the float's integral part and let the fraction settle ties.
+// NaN policy: NaN orders LAST (greater than every number) so trichotomy holds
+// and sorts terminate; two NaNs compare equal.
+static REBINT cmp_i64_dec(REBI64 i, REBDEC d) {
+	if (isnan(d)) return -1;                            // i < NaN
+	// +/-2^63 are exactly representable as doubles, so these bounds are exact.
+	if (d >=  9223372036854775808.0) return -1;         // d above int64 range -> i < d
+	if (d <  -9223372036854775808.0) return  1;         // d below int64 range -> i > d
+	REBDEC t  = floor(d);
+	REBI64 ti = (REBI64)t;                              // safe: t is in range now
+	if (i < ti) return -1;
+	if (i > ti) return  1;
+	return (d > t) ? -1 : 0;                            // same integral part; fraction -> i < d
+}
+
+static REBINT cmp_u64_dec(REBU64 u, REBDEC d) {
+	if (isnan(d)) return -1;                            // u < NaN
+	if (d >= 18446744073709551616.0) return -1;         // d above uint64 range
+	if (d <  0.0) return 1;                             // any unsigned >= 0 > negative d
+	REBDEC t  = floor(d);
+	REBU64 tu = (REBU64)t;
+	if (u < tu) return -1;
+	if (u > tu) return  1;
+	return (d > t) ? -1 : 0;
+}
+
 /***********************************************************************
 **
 */	REBINT Compare_Vector(REBVAL *a, REBVAL *b)
 /*
+**		Compares two vectors by value, not by storage representation.
+**
+**		Ordering keys, in priority order:
+**		  1. shape (row count)  -- structural; a 2x3 never equals a 3x2
+**		  2. element values     -- compared numerically, ignoring element
+**		                           type (int/uint/float all interoperate,
+**		                           mirroring `1 = 1.0` for plain numbers)
+**		  3. length
+**
+**		Element type identity is NOT considered here; that distinction
+**		belongs to strict equality (==) in CT_Vector.
+**
 ***********************************************************************/
 {
 	REBCNT l1 = VAL_LEN(a);
 	REBCNT l2 = VAL_LEN(b);
 	REBCNT len = MIN(l1, l2);
 	REBCNT n;
-	REBCNT b1 = VECT_TYPE(VAL_SERIES(a));
-	REBCNT b2 = VECT_TYPE(VAL_SERIES(b));
-	REBYTE* d1 = VAL_SERIES(a)->data;
-	REBYTE* d2 = VAL_SERIES(b)->data;
+	REBSER *s1 = VAL_SERIES(a);
+	REBSER *s2 = VAL_SERIES(b);
+	REBCNT  b1 = VAL_VEC_TYPE(a);
+	REBCNT  b2 = VAL_VEC_TYPE(b);
+	REBYTE *d1 = s1->data;
+	REBYTE *d2 = s2->data;
 	REBVAL v1, v2;
 	REBINT cmp = 0;
 
+	// --- 1. Shape is structural and takes priority over content.
+	// Only `rows` needs comparing: `cols` is derived from rows+tail, so a
+	// cols-only difference implies a tail difference, already caught by the
+	// length fallback at the end.
+	REBCNT rows1 = Vector_Rows(a);
+	REBCNT rows2 = Vector_Rows(b);
+	if (rows1 != rows2) return (rows1 > rows2) ? 1 : -1;
+
 	REBOOL float1 = (b1 >= VTSF08);
 	REBOOL float2 = (b2 >= VTSF08);
-	if (float1 != float2) Trap0(RE_NOT_SAME_TYPE);
+	REBOOL uns1   = (b1 >= VTUI08 && b1 <= VTUI64);
+	REBOOL uns2   = (b2 >= VTUI08 && b2 <= VTUI64);
 
+	// --- 2. Element-by-element numeric comparison.
+	// NOTE: there is deliberately no raw-bits fast path here. Comparing
+	// VAL_UNT64 to find "the first difference" disagrees with the typed
+	// ordering below in two cases (-0.0 vs 0.0 compare as different bits but
+	// equal values; a 64-bit signed -1 and unsigned UINT64_MAX share bits but
+	// differ numerically), so detection and ordering must be one computation.
 	for (n = 0; n < len; n++) {
 		get_vect(b1, d1, n + VAL_INDEX(a), &v1);
 		get_vect(b2, d2, n + VAL_INDEX(b), &v2);
 
-		if (float1) {
+		if (float1 && float2) {
 			REBDEC f1 = VAL_DECIMAL(&v1), f2 = VAL_DECIMAL(&v2);
-			cmp = (f1 > f2) - (f1 < f2);   // -0.0 == 0.0 falls out naturally: cmp == 0
+			if (isnan(f1) || isnan(f2))
+				cmp = isnan(f1) ? (isnan(f2) ? 0 : 1) : -1;   // NaN orders last
+			else
+				cmp = (f1 > f2) - (f1 < f2);                  // -0.0 == 0.0 falls out naturally
+		}
+		else if (float1 != float2) {
+			// Mixed float/int: compare numerically (no trap). Normalize so the
+			// integer side drives the helper, then flip if the float was A.
+			REBDEC  d  = float1 ? VAL_DECIMAL(&v1) : VAL_DECIMAL(&v2);
+			REBVAL *iv = float1 ? &v2 : &v1;
+			REBOOL  iu = float1 ? uns2 : uns1;
+			cmp = iu ? cmp_u64_dec(VAL_UNT64(iv), d)
+			         : cmp_i64_dec(VAL_INT64(iv), d);
+			if (float1) cmp = -cmp;
+		}
+		else if (!uns1 && !uns2) {
+			// Both signed: exact 64-bit signed compare (getters sign-extend,
+			// so differing storage widths are already normalized here).
+			REBI64 i1 = VAL_INT64(&v1), i2 = VAL_INT64(&v2);
+			cmp = (i1 > i2) - (i1 < i2);
+		}
+		else if (uns1 && uns2) {
+			REBU64 u1 = VAL_UNT64(&v1), u2 = VAL_UNT64(&v2);
+			cmp = (u1 > u2) - (u1 < u2);
 		}
 		else {
-			REBOOL uns1 = (b1 >= VTUI08 && b1 <= VTUI64);
-			REBOOL uns2 = (b2 >= VTUI08 && b2 <= VTUI64);
-
-			if (!uns1 && !uns2) {
+			// Mixed signed/unsigned: sign settles it first; once both are
+			// known non-negative, an unsigned compare is exact.
+			REBOOL neg1 = !uns1 && VAL_INT64(&v1) < 0;
+			REBOOL neg2 = !uns2 && VAL_INT64(&v2) < 0;
+			if (neg1 != neg2) cmp = neg1 ? -1 : 1;
+			else if (neg1) {
 				REBI64 i1 = VAL_INT64(&v1), i2 = VAL_INT64(&v2);
 				cmp = (i1 > i2) - (i1 < i2);
 			}
-			else if (uns1 && uns2) {
+			else {
 				REBU64 u1 = VAL_UNT64(&v1), u2 = VAL_UNT64(&v2);
 				cmp = (u1 > u2) - (u1 < u2);
 			}
-			else {
-				REBOOL neg1 = !uns1 && VAL_INT64(&v1) < 0;
-				REBOOL neg2 = !uns2 && VAL_INT64(&v2) < 0;
-				if (neg1 != neg2) cmp = neg1 ? -1 : 1;
-				else if (neg1) {
-					REBI64 i1 = VAL_INT64(&v1), i2 = VAL_INT64(&v2);
-					cmp = (i1 > i2) - (i1 < i2);
-				}
-				else {
-					REBU64 u1 = VAL_UNT64(&v1), u2 = VAL_UNT64(&v2);
-					cmp = (u1 > u2) - (u1 < u2);
-				}
-			}
 		}
-		if (cmp != 0) break;
+
+		if (cmp != 0) return cmp;
 	}
 
-	if (cmp != 0) return cmp;
-	return l1 - l2;
+	// --- 3. Common prefix matched; shorter vector sorts first.
+	return (l1 > l2) - (l1 < l2);
 }
 
 
@@ -916,8 +1063,8 @@ return_number:
 	REBCNT n;
 	REBCNT k;
 	REBVAL a, b;
-	REBYTE *data = VAL_SERIES(vect)->data;
-	REBCNT type = VECT_TYPE(VAL_SERIES(vect));
+	REBYTE *data = VAL_VEC_HEAD(vect);
+	REBCNT type = VAL_VEC_TYPE(vect);
 	REBCNT idx = VAL_INDEX(vect);
 
 	for (n = VAL_LEN(vect); n > 1;) {
@@ -932,92 +1079,232 @@ return_number:
 
 /***********************************************************************
 **
-*/	void Sort_Vector(REBVAL *vect, REBLEN len, REBFLG reversed)
+*/	static int Compare_Vector_Record(const void *v1, const void *v2)
+/*
+**	Compares whole records field by field (sort/skip/all). Context comes
+**	from the data stack, as with the block comparators.
+**
+***********************************************************************/
+{
+	REBCNT type   = VAL_UNT32(DS_GET(DSP - 2));
+	REBCNT fields = VAL_UNT32(DS_GET(DSP - 1));
+	REBU64 flags  = VAL_UNT64(DS_TOP);
+	REBCNT wide   = VECT_WIDE(type);
+	CompareFunc cmp = GET_FLAG(flags, SORT_FLAG_REVERSE)
+	                ? compares_rev[type] : compares[type];
+	const REBYTE *p = (const REBYTE*)v1;
+	const REBYTE *q = (const REBYTE*)v2;
+	REBINT result = 0;
+
+	for (REBCNT i = 0; i < fields && result == 0; i++, p += wide, q += wide)
+		result = cmp(p, q);
+
+	return result;
+}
+
+/***********************************************************************
+**
+*/	static int Compare_Vector_Val(const void *v1, const void *v2)
+/*
+**	sort/compare with an integer offset (1-based field within a record).
+**
+***********************************************************************/
+{
+	REBCNT type  = VAL_UNT32(DS_GET(DSP - 2));
+	REBVAL *val  = DS_GET(DSP - 1);
+	REBU64 flags = VAL_UNT64(DS_TOP);
+	REBLEN offset = 0;
+
+	if (IS_INTEGER(val)) offset = AS_REBLEN(VAL_INT64(val) - 1) * VECT_WIDE(type);
+
+	return (GET_FLAG(flags, SORT_FLAG_REVERSE) ? compares_rev : compares)[type](
+		(const REBYTE*)v1 + offset, (const REBYTE*)v2 + offset);
+}
+
+/***********************************************************************
+**
+*/	static int Compare_Vector_Multi(const void *v1, const void *v2)
+/*
+**	sort/compare with a block of field offsets, tried in order.
+**
+***********************************************************************/
+{
+	REBCNT type  = VAL_UNT32(DS_GET(DSP - 2));
+	REBVAL *val  = DS_GET(DSP - 1);
+	REBU64 flags = VAL_UNT64(DS_TOP);
+	REBCNT wide  = VECT_WIDE(type);
+	CompareFunc cmp = compares[type];
+	REBVAL *ofs = VAL_BLK_DATA(val);
+	REBINT result = 0;
+
+	ASSERT1(IS_BLOCK(val), RP_BAD_EVALTYPE);
+	while (result == 0 && IS_INTEGER(ofs)) {
+		REBLEN offset = AS_REBLEN(VAL_INT64(ofs++) - 1) * wide;
+		result = cmp((const REBYTE*)v1 + offset, (const REBYTE*)v2 + offset);
+	}
+	if (GET_FLAG(flags, SORT_FLAG_REVERSE)) result = -result;
+	return result;
+}
+
+/***********************************************************************
+**
+*/	void Sort_Vector(REBVAL *vec, REBLEN len, REBINT skip, REBVAL *compv, REBFLG all, REBFLG rev)
 /*
 ***********************************************************************/
 {
-	REBCNT type = VECT_TYPE(VAL_SERIES(vect));
-	REBCNT idx = VAL_INDEX(vect);
-	REBCNT skp = VECT_BYTE_SIZE(type);
-	REBYTE *data = VAL_SERIES(vect)->data + (idx * skp);
+	REBCNT  type  = VAL_VEC_TYPE(vec);
+	REBCNT  wide  = VAL_VEC_WIDE(vec);
+	REBYTE *data  = VAL_VEC_DATA(vec);
+	REBINT  stack = DSP;
+	REBU64  flags = 0;
+	CompareFunc cmp;
 	ASSERT1(type < VT_MAX, RP_ASSERTS);
-	unstable_sort(data, len, skp, reversed ? compares_rev[type] : compares[type]);
+
+	if (skip > 1) { len /= skip; wide *= skip; }
+	if (len < 2) return;
+
+	// Fast path: no comparator, no /all -- the element comparator doubles
+	// as a record comparator, reading only the leading field.
+	if (!all && !IS_INTEGER(compv) && !IS_BLOCK(compv)) {
+		unstable_sort(data, len, wide, rev ? compares_rev[type] : compares[type]);
+		return;
+	}
+
+	if (rev) SET_FLAG(flags, SORT_FLAG_REVERSE);
+	DS_PUSH_INTEGER(type);                 // DSP-2
+	if (all && skip > 1) {
+		DS_PUSH_INTEGER(skip);             // DSP-1: field count
+		cmp = Compare_Vector_Record;
+	} else {
+		DS_PUSH(compv);                    // DSP-1: offset or block of offsets
+		cmp = IS_BLOCK(compv) ? Compare_Vector_Multi : Compare_Vector_Val;
+	}
+	DS_PUSH_INTEGER(flags);                // DSP
+
+	unstable_sort(data, len, wide, cmp);
+	DSP = stack;
 }
 
 /***********************************************************************
 **
-*/	void Get_Vector_Value(REBVAL *var, REBSER *series, REBCNT index)
+*/	void Set_Vector_Struct(REBVAL *val, REBVAL *vec, REBCNT index)
+/*
+**		Makes a struct view of the vector's element at the given index
+**		(zero based). The view shares the vector's data series, so it
+**		may be used to modify the element in place!
+**
+***********************************************************************/
+{
+	REBSER *ser    = VAL_SERIES(vec);
+	REBSER *fields = VAL_VEC_STRUCT(vec);
+
+	SET_TYPE(val, REB_STRUCT);
+	VAL_STRUCT_SPEC(val)   = FIELDS_SPEC(fields);
+	VAL_STRUCT_DATA(val)   = ser;
+	VAL_STRUCT_OFFSET(val) = index * SERIES_WIDE(ser);
+}
+
+/***********************************************************************
+**
+*/	void Get_Vector_Value(REBVAL *var, REBVAL *vec, REBCNT index)
 /*
 ***********************************************************************/
 {
-	REBYTE *data = series->data;
-	REBCNT bits = VECT_TYPE(series);
-
-	get_vect(bits, data, index, var);
-	SET_TYPE(var, (bits >= VTSF08) ? REB_DECIMAL : REB_INTEGER);
+	REBCNT type  = VAL_VEC_TYPE(vec);
+	if (VECT_IS_STRUCT(type)) {
+		// The element is a view - FOREACH can modify the vector in place!
+		Set_Vector_Struct(var, vec, index);
+		return;
+	}
+	get_vect(type, VAL_VEC_HEAD(vec), index, var);
+	SET_TYPE(var, (type >= VTSF08) ? REB_DECIMAL : REB_INTEGER);
 }
-
 
 /***********************************************************************
 **
-*/	REBSER *Make_Vector(REBINT type, REBINT sign, REBINT dims, REBINT bits, REBINT size)
+*/	REBSER* Make_Vector_Series(REBINT cols, REBCNT wide, REBINT rows)
 /*
-**		type: the datatype
-**		sign: signed or unsigned
-**		dims: number of dimensions
-**		bits: number of bits per unit (8, 16, 32, 64)
+**		cols: number of values per row
+**		wide: number of bytes per value
+**		rows: number of rows
+**
+***********************************************************************/
+{
+	REBU64 len = (REBU64)cols * rows;
+	if (len > 0x7fffffff) return NULL;
+	REBSER* ser = Make_Series(AS_REBLEN(len) + 1, wide, TRUE);
+	LABEL_SERIES(ser, "make vector");
+	ser->tail = AS_REBLEN(len);
+	return ser;
+}
+
+/***********************************************************************
+**
+*/	REBINT Make_Vector(REBVAL* val, REBCNT vtype, REBINT cols, REBINT rows)
+/*
+**		type: encoded vector type info (one of VTSI08..VTSF64)
 **		size: number of values
 **
 ***********************************************************************/
 {
-	REBCNT len;
-	REBSER *ser;
-
-	//printf("MAKE_VECTOR=> type: %i sign: %i dims: %i bits: %i size: %i\n", type, sign, dims, bits, size);
-
-	len = size * dims;
-	if (len > 0x7fffffff) return 0;
-	ser = Make_Series(len+1, bits/8, TRUE); // !!! can width help extend the len?
-	LABEL_SERIES(ser, "make vector");
-	//No need to clear the series, because Make_Series guarantees completely cleared memory.
-	ser->tail = len;  // !!! another way to do it?
-
-	// Store info about the vector (could be moved to flags if necessary):
-	ser->size = (dims << 8) | (type << 3) | (sign << 2) | (bits == 64 ? 3 : bits >> 4); // there are only 2 bits to store the info
-
-	return ser;
-}
-
-REBOOL Get_Vector_Spec_From_Symbol(REBCNT sym, REBINT *type, REBINT *sign, REBINT *bits) {
-	switch (Normalize_Vector_Type_Symbol(sym)) {
-	case SYM_INT8X:    *type = 0; *sign = 0; *bits =  8; break;
-	case SYM_UINT8X:   *type = 0; *sign = 1; *bits =  8; break;
-	case SYM_INT16X:   *type = 0; *sign = 0; *bits = 16; break;
-	case SYM_UINT16X:  *type = 0; *sign = 1; *bits = 16; break;
-	case SYM_INT32X:   *type = 0; *sign = 0; *bits = 32; break;
-	case SYM_UINT32X:  *type = 0; *sign = 1; *bits = 32; break;
-	case SYM_INT64X:   *type = 0; *sign = 0; *bits = 64; break;
-	case SYM_UINT64X:  *type = 0; *sign = 1; *bits = 64; break;
-	case SYM_FLOAT32X: *type = 1; *sign = 0; *bits = 32; break;
-	case SYM_FLOAT64X: *type = 1; *sign = 0; *bits = 64; break;
-	default: return FALSE;
-	}
+	REBSER* ser;
+	if (!(ser = Make_Vector_Series(cols, VECT_WIDE(vtype), rows))) return FALSE;
+	SET_VECTOR(val, ser, vtype);
+	Set_Vector_Shape(val, rows);
+	//printf("Make_Vector: wide: %u bits: %u sign: %u\n", VAL_VEC_WIDE(val), VAL_VEC_BITS(val), VAL_VEC_SIGN(val));
 	return TRUE;
 }
 
 /***********************************************************************
 **
-*/	REBSER *Make_Vector_From_Word(REBCNT sym, REBINT size)
+*/	REBINT Make_Vector_Struct(REBVAL* val, REBSER* fields, REBINT cols, REBINT rows)
+/*
+**		fields: field list of the struct used as the element prototype
+**		cols:   number of elements per row
+**		rows:   number of rows (1 for a plain vector)
+**
+**		The data are zero filled. The struct must not hold any Rebol values -
+**		the vector's data are raw bytes which the GC never marks!
+**
+***********************************************************************/
+{
+	REBSER* ser;
+	REBCNT  size = FIELDS_INFO(fields)->size;
+
+	// The element size is kept as the series width, which is 8 bits only!
+	if (size == 0 || size > VECT_STRUCT_MAX_SIZE) return FALSE;
+	// Raw data must never be marked as Rebol values by the GC!
+	if (FIELDS_NEED_MARK(fields)) return FALSE;
+
+	if (rows < 1) rows = 1;
+	if (!(ser = Make_Vector_Series(cols, size, rows))) return FALSE;
+	// Like in a struct's data series, the link holds the element's field list.
+	ser->series = fields;
+	SET_VECTOR(val, ser, VTSTRUCT);
+	Set_Vector_Shape(val, rows);
+	return TRUE;
+}
+
+static
+REBCNT Get_Vector_Type_From_Symbol(REBCNT sym) {
+	sym = Normalize_Vector_Type_Symbol(sym);
+	return (sym < SYM_INT8X || sym > SYM_FLOAT64X)
+		? UNKNOWN
+		: sym - SYM_INT8X;
+}
+
+/***********************************************************************
+**
+*/	void Make_Vector_From_Word(REBVAL *val, REBCNT sym, REBINT size)
 /*
 **	Make a vector from a type name.
 **
 ***********************************************************************/
 {
-	REBINT type, sign, bits;
-	if (Get_Vector_Spec_From_Symbol(sym, &type, &sign, &bits)) {
-		return Make_Vector(type, sign, 1, bits, size);
+	REBCNT type = Get_Vector_Type_From_Symbol(sym);
+	if (type==UNKNOWN || !Make_Vector(val, type, size, 1)) {
+		VAL_SERIES(val) = NULL;
 	}
-	return NULL;	
 }
 
 /***********************************************************************
@@ -1036,50 +1323,177 @@ REBOOL Get_Vector_Spec_From_Symbol(REBCNT sym, REBINT *type, REBINT *sign, REBIN
 **
 ***********************************************************************/
 {
-	REBINT type = -1; // 0 = int,    1 = float
-	REBINT sign = -1; // 0 = signed, 1 = unsigned
-	REBINT dims = 1;
-	REBINT bits = 32;
-	REBCNT size = 0;
+	REBINT rows = 1;
+	REBINT cols = 0;
 	REBVAL *iblk = 0;
-	REBSER *vect;
+	REBLEN index = 0;
+
+	// vector of structs: #(vector! #(struct! [x [int32!]]) 2 #{...})
+	if (IS_STRUCT(bp))
+		return Make_Vector_Struct_Spec(VAL_STRUCT_FIELDS(bp), bp + 1, value, FALSE);
 
 	// Vector type:
 	if (!IS_WORD(bp)) return 0;
 	if (VAL_WORD_CANON(bp) == SYM_VECTOR_TYPE) {
 		// allow #(vector! uint8! [1 2 3])
 		bp++;
+		if (IS_STRUCT(bp))
+			return Make_Vector_Struct_Spec(VAL_STRUCT_FIELDS(bp), bp + 1, value, FALSE);
 		if (!IS_WORD(bp)) return 0;
 	}
-	if (!Get_Vector_Spec_From_Symbol(VAL_WORD_CANON(bp), &type, &sign, &bits)) return 0;
+	REBCNT vtype = Get_Vector_Type_From_Symbol(VAL_WORD_CANON(bp));
+	if (vtype == UNKNOWN) {
+		// a registered struct: #(vector! point2d! #{...})
+		REBVAL *spec = Find_Struct_Spec(bp);
+		if (spec && IS_BLOCK(spec) && VAL_SERIES(spec)->series)
+			return Make_Vector_Struct_Spec(VAL_SERIES(spec)->series, bp + 1, value, FALSE);
+		return 0;
+	}
+	//printf("vtype: wide: %u bits: %u sign: %u\n", VECT_WIDE(vtype), VECT_BITS(vtype), VECT_SIGN(vtype));
+
 	bp++;
+	// Shape:
+	if (IS_PAIR(bp)) {
+		cols = VAL_PAIR_X_INT(bp);
+		rows = VAL_PAIR_Y_INT(bp);
+		if (cols <= 0 || rows <= 0) return 0;
+		bp++;
+	}
 	// Initial data:
 	if (IS_BLOCK(bp) || IS_BINARY(bp)) {
 		REBCNT len = VAL_LEN(bp);
-		if (IS_BINARY(bp)) len /= (bits >> 3);
-		if (len > size && size == 0) size = len;
+		if (IS_BINARY(bp)) {
+			len /= VECT_WIDE(vtype);
+			if (len == 0 && VAL_LEN(bp) > 0)
+				return 0;   // or Trap1(RE_INVALID_DATA, bp) in Make_Vector_Spec
+		}
+		if (len > (REBCNT)cols && cols == 0) cols = len;
 		iblk = bp;
 		bp++;
 	}
-	else if (IS_END(bp)) {
-		size = 0;
-	}
-	else return 0;
+	else if (!IS_END(bp)) return 0;
 	// Index offset:
-	if (IS_INTEGER(bp)) {
-		VAL_INDEX(value) = (Int32s(bp, 1) - 1);
-	}
+	if (IS_INTEGER(bp)) index = (Int32s(bp, 1) - 1);
 
-	vect = Make_Vector(type, sign, dims, bits, size);
-	if (!vect) return 0;
-	if (iblk) Set_Vector_Row(vect, iblk);
-
-	SET_TYPE(value, REB_VECTOR);
-	VAL_SERIES(value) = vect;
-	// index set earlier
-
+	if (!Make_Vector(value, vtype, cols, rows)) return 0;
+	if (iblk) Set_Vector_Row(VAL_SERIES(value), iblk, vtype);
+	VAL_INDEX(value) = index;
 	return value;
 }
+
+// Makes a vector of structs. The element prototype is already resolved, `bp`
+// are the values which follow it. All of them are optional:
+//
+//     make vector! [:point 100]
+//     make vector! [:point 3x2]             ;; a shaped vector (3 cols, 2 rows)
+//     make vector! [point2d! 100]           ;; a registered struct
+//     make vector! [:point :size :data :index]
+//     #(vector! #(struct! [x [int32!] y [int32!]]) #{...} 2)
+//
+// Like with the other vector types, the number of elements may be used only in
+// the MAKE specification - in the construction syntax it is given by the data!
+static
+REBVAL *Make_Vector_Struct_Spec(REBSER *fields, REBVAL *bp, REBVAL *value, REBFLG with_size)
+{
+	REBCNT size = FIELDS_INFO(fields)->size;
+	REBINT cols = 0;
+	REBINT rows = 1;
+	REBLEN index = 0;
+	REBVAL *data = NULL;
+	REBVAL *val = bp;
+
+	if (IS_GET_WORD(val)) val = Get_Var(val);
+	// Number of elements:
+	if (with_size && IS_INTEGER(val)) {
+		cols = Int32s(val, 0); // traps on negative
+		val = ++bp;
+		if (IS_GET_WORD(val)) val = Get_Var(val);
+	}
+	// Shape (the number of elements is given by it):
+	else if (IS_PAIR(val)) {
+		cols = VAL_PAIR_X_INT(val);
+		rows = VAL_PAIR_Y_INT(val);
+		if (cols <= 0 || rows <= 0) Trap_Range(val);
+		val = ++bp;
+		if (IS_GET_WORD(val)) val = Get_Var(val);
+	}
+	// Initial data:
+	if (IS_BINARY(val)) {
+		REBCNT len = size ? (VAL_LEN(val) / size) : 0;
+		if (len == 0 && VAL_LEN(val) > 0) return 0;
+		if (len > (REBCNT)cols && cols == 0) cols = len;
+		data = val;
+		val = ++bp;
+		if (IS_GET_WORD(val)) val = Get_Var(val);
+	}
+	// Index offset:
+	if (IS_INTEGER(val)) {
+		index = Int32s(val, 1) - 1;
+		val = ++bp;
+	}
+	if (NOT_END(val)) return 0;
+
+	if (!Make_Vector_Struct(value, fields, cols, rows)) return 0;
+	if (data) {
+		REBCNT len = MIN(VAL_LEN(data), VAL_TAIL(value) * size);
+		if (len > 0) COPY_MEM(VAL_VEC_HEAD(value), VAL_BIN_DATA(data), len);
+	}
+	if (index > VAL_TAIL(value)) return 0;
+	VAL_INDEX(value) = index;
+	return value;
+}
+
+
+/***********************************************************************
+**
+*/	REBFLG As_Vector(REBVAL *type, REBVAL *vec)
+/*
+**		Coerces a vector to another element type without copying its data.
+**		The element size must stay the same - it is stored as the series
+**		width, which is shared by all values using the same data!
+**
+**		type: a struct value, a registered struct name or an element type
+**		      word, like: as uint32! v
+**
+**		Returns FALSE when the coercion is not possible.
+**
+***********************************************************************/
+{
+	REBCNT  wide   = VAL_VEC_WIDE(vec);
+	REBSER *fields = NULL;
+	REBCNT  vtype  = UNKNOWN;
+
+	if (IS_STRUCT(type)) {
+		fields = VAL_STRUCT_FIELDS(type);
+	}
+	else if (IS_WORD(type)) {
+		vtype = Get_Vector_Type_From_Symbol(VAL_WORD_CANON(type));
+		if (vtype == UNKNOWN) {
+			// A registered struct, like: as point2d! v
+			REBVAL *spec = Find_Struct_Spec(type);
+			if (!spec || !IS_BLOCK(spec) || !VAL_SERIES(spec)->series) return FALSE;
+			fields = VAL_SERIES(spec)->series;
+		}
+	}
+	else return FALSE;
+
+	if (fields) {
+		if (FIELDS_INFO(fields)->size != wide) return FALSE;
+		// Raw data must never be marked as Rebol values by the GC!
+		if (FIELDS_NEED_MARK(fields)) return FALSE;
+		// The element specification is kept in the series, so it is shared
+		// with any other value using the same data!
+		VAL_SERIES(vec)->series = fields;
+		vtype = VTSTRUCT;
+	}
+	else if (VECT_WIDE(vtype) != wide) return FALSE;
+
+	// Only the element type changes - the shape and the position are kept.
+	VAL_VEC_INFO(vec) = (VAL_VEC_INFO(vec) & ~VECT_INFO_TYPE_MASK)
+	                  | (vtype & VECT_INFO_TYPE_MASK);
+	return TRUE;
+}
+
 
 /***********************************************************************
 **
@@ -1110,42 +1524,54 @@ REBOOL Get_Vector_Spec_From_Symbol(REBCNT sym, REBINT *type, REBINT *sign, REBIN
 ***********************************************************************/
 {
 	REBVAL *bp = VAL_BLK_DATA(spec);
-	REBINT type = -1; // 0 = int,    1 = float
-	REBINT sign = -1; // 0 = signed, 1 = unsigned
-	REBINT dims = 1;
+	REBCNT isfloat = 0;  // 0 = int,    1 = float
+	REBCNT sign = 1;     // 1 = signed, 0 = unsigned
+	REBINT rows = 1;  // -> passed as Make_Vector's `dims` param (this is what persists in ser->size)
+	REBINT cols = 0;  // -> passed as Make_Vector's `size` param (only used transiently to compute total length)
 	REBINT bits = 64;
-	REBCNT size = 0;
+	//REBCNT size = 0;
 	REBLEN index = 0;
-	REBSER *vect;
 	REBVAL *iblk = 0;
 	REBVAL *val;
+	REBCNT vtype = UNKNOWN;
+
+	// Vector of structs, like: make vector! [:point 100] or [point2d! 100]
+	val = bp;
+	if (IS_GET_WORD(val)) val = Get_Var(val);
+	if (IS_STRUCT(val))
+		return Make_Vector_Struct_Spec(VAL_STRUCT_FIELDS(val), bp + 1, value, TRUE);
+	if (IS_WORD(val) && Get_Vector_Type_From_Symbol(VAL_WORD_CANON(val)) == UNKNOWN) {
+		REBVAL *spec = Find_Struct_Spec(val);
+		if (spec && IS_BLOCK(spec) && VAL_SERIES(spec)->series)
+			return Make_Vector_Struct_Spec(VAL_SERIES(spec)->series, bp + 1, value, TRUE);
+	}
 
 	if (IS_WORD(bp)) {
 		// Using the prefered type like: make vector! [uint8! ...]
-		if (Get_Vector_Spec_From_Symbol(VAL_WORD_CANON(bp), &type, &sign, &bits)) {
+		vtype = Get_Vector_Type_From_Symbol(VAL_WORD_CANON(bp));
+		if (vtype != UNKNOWN) {
 			bp++;
+			bits = VECT_BITS(vtype);
 			goto size_spec;
 		}
 		// Old specification like: make vector! [unsigned integer! 8 ...]
 		switch (VAL_WORD_CANON(bp)) {
-		case SYM_UNSIGNED: sign = 1; bp++; break;
-		case SYM_SIGNED:   sign = 0; bp++; break;
+		case SYM_UNSIGNED: sign = 0; bp++; break;
+		case SYM_SIGNED:   sign = 1; bp++; break;
 		}
 	}
 	else if (IS_INTEGER(bp) || IS_DECIMAL(bp)) {
 		// make vector! [1 2 3]
 		// make vector! [1.0 2.0 3.0]
 		// using signed and 64 bits as a default
-		type = IS_INTEGER(bp) ? 0 : 1;
-		sign = 0;
-		size = VAL_LEN(spec);
+		isfloat = IS_INTEGER(bp) ? 0 : 1;
+		cols = AS_INT(VAL_LEN(spec));
 		iblk = spec;
 		goto data_spec;
 	}
 	else if (IS_END(bp)) {
-		// make vector! [] ;; some like: make vector! 0
-		type = 0;  // integer!
-		sign = 0;  // signed
+		// make vector! [] ;; same like: make vector! 0
+		isfloat = 0;  // integer!
 		bits = 32; // 32bit
 		goto data_spec;
 	}
@@ -1153,17 +1579,14 @@ REBOOL Get_Vector_Spec_From_Symbol(REBCNT sym, REBINT *type, REBINT *sign, REBIN
 	// INTEGER! or DECIMAL!
 	if (IS_WORD(bp)) {
 		if (VAL_WORD_CANON(bp) == (REB_INTEGER+1)) // integer! symbol
-			type = 0;
+			isfloat = 0;
 		else if (VAL_WORD_CANON(bp) == (REB_DECIMAL+1)) { // decimal! symbol
-			type = 1;
-			if (sign > 0) return 0;
+			isfloat = 1;
+			if (!sign) return 0;
 		}
 		else return 0;
 		bp++;
 	}
-
-	if (type < 0) type = 0;
-	if (sign < 0) sign = 0;
 
 	// BITS
 	if (IS_INTEGER(bp)) {
@@ -1171,10 +1594,11 @@ REBOOL Get_Vector_Spec_From_Symbol(REBCNT sym, REBINT *type, REBINT *sign, REBIN
 		if (
 			(bits == 32 || bits == 64)
 			||
-			(type == 0 && (bits == 8 || bits == 16))
+			(isfloat == 0 && (bits == 8 || bits == 16))
 		) bp++;
 		else return 0;
 	} else return 0;
+	vtype = VECT_MAKE_TYPE(bits==64?3:bits>>4, sign, isfloat);
 
 size_spec:
 	// For size, data and index one can use get-words
@@ -1185,17 +1609,26 @@ size_spec:
 		val = Get_Var(val);
 	// SIZE
 	if (IS_INTEGER(val)) {
-		size = Int32(val);
-		if (size < 0) return 0;
+		cols = Int32s(val, 0); // traps on negative
 		val = ++bp;
-		if (IS_GET_WORD(val))
-			val = Get_Var(val);
 	}
+	else if (IS_PAIR(val)) {
+		cols = VAL_PAIR_X_INT(val); //== cols
+		rows = VAL_PAIR_Y_INT(val); //== rows
+		if (cols <= 0 || rows <= 0) Trap_Range(val);
+		val = ++bp;
+	}
+	if (IS_GET_WORD(val))
+		val = Get_Var(val);
 	// Initial data:
 	if (IS_BLOCK(val) || IS_BINARY(val)) {
 		REBCNT len = VAL_LEN(val);
-		if (IS_BINARY(val)) len /= (bits >> 3);
-		if (len > size && size == 0) size = len;
+		if (IS_BINARY(val)) {
+			len /= VECT_WIDE(vtype);
+			if (len == 0 && VAL_LEN(bp) > 0)
+				return 0;   // or Trap1(RE_INVALID_DATA, bp) in Make_Vector_Spec
+		}
+		if (len > (REBCNT)cols && cols == 0) cols = len;
 		iblk = val;
 		val = ++bp;
 		if (IS_GET_WORD(val))
@@ -1211,12 +1644,9 @@ size_spec:
 
 	if (NOT_END(val)) return 0;
 data_spec:
-	vect = Make_Vector(type, sign, dims, bits, size);
-	if (!vect) return 0;
-	if (iblk) Set_Vector_Row(vect, iblk);
-
-	SET_TYPE(value, REB_VECTOR);
-	VAL_SERIES(value) = vect;
+	if (vtype == UNKNOWN) vtype = VECT_MAKE_TYPE(bits == 64 ? 3 : bits >> 4, sign, isfloat);
+	if (!Make_Vector(value, vtype, cols, rows)) return 0;
+	if (iblk) Set_Vector_Row(VAL_SERIES(value), iblk, vtype);
 	VAL_INDEX(value) = index;
 
 	return value;
@@ -1237,10 +1667,31 @@ data_spec:
 }
 
 
+// Compares the raw data of two vectors with struct elements.
+// Both must hold elements of the very same specification!
+static
+REBINT Compare_Vector_Struct(REBVAL *a, REBVAL *b)
+{
+	REBCNT la  = VAL_LEN(a);
+	REBCNT lb  = VAL_LEN(b);
+	REBCNT len = MIN(la, lb) * VAL_VEC_WIDE(a);
+	REBINT num = len ? memcmp(VAL_VEC_DATA(a), VAL_VEC_DATA(b), len) : 0;
+
+	if (num != 0) return (num > 0) ? 1 : -1;
+	if (la == lb) return 0;
+	return (la > lb) ? 1 : -1;
+}
+
+
 /***********************************************************************
 **
 */	REBINT CT_Vector(REBVAL *a, REBVAL *b, REBINT mode)
 /*
+**		mode 3   : same?        -- identical series + index
+**		mode 1,2 : strict equal -- element type must match too
+**		mode 0   : equal        -- numeric comparison, type-transparent
+**		mode <0  : ordering
+**
 ***********************************************************************/
 {
 	REBINT num;
@@ -1248,10 +1699,93 @@ data_spec:
 	if (mode == 3)
 		return VAL_SERIES(a) == VAL_SERIES(b) && VAL_INDEX(a) == VAL_INDEX(b);
 
+	// Struct elements are not numbers - such vectors are compared as raw data
+	// and only when both hold elements of the very same specification.
+	if (VAL_VEC_IS_STRUCT(a) || VAL_VEC_IS_STRUCT(b)) {
+		if (!VAL_VEC_IS_STRUCT(a) || !VAL_VEC_IS_STRUCT(b)) return 0;
+		if (VAL_VEC_STRUCT(a) != VAL_VEC_STRUCT(b)) return 0;
+		num = Compare_Vector_Struct(a, b);
+		if (mode >=  0) return (num == 0);
+		if (mode == -1) return (num >= 0);
+		return (num > 0);
+	}
+
+	// Strict equality additionally requires the same element type.
+	// Loose equality deliberately ignores it, so #(i32! [1]) = #(f32! [1.0])
+	// holds, mirroring `1 = 1.0` for plain numbers.
+	if (mode >= 1 && VAL_VEC_TYPE(a) != VAL_VEC_TYPE(b))
+		return 0;
+
 	num = Compare_Vector(a, b);
-	if (mode >= 0) return (num == 0);
+	if (mode >=  0) return (num == 0);
 	if (mode == -1) return (num >= 0);
 	return (num > 0);
+}
+
+
+// Path access to a vector with struct elements. The picked element is a struct
+// value sharing the vector's data series, so it may be modified in place:
+//
+//     v/2/x: 42
+//     s: pick v 2   s/x: 42
+static
+REBINT Path_Vector_Struct(REBPVS *pvs)
+{
+	REBVAL *sel  = pvs->select;
+	REBVAL *val  = pvs->value;
+	REBSER *vect = VAL_SERIES(val);
+	REBSER *fields = VAL_VEC_STRUCT(val);
+	REBCNT  size = SERIES_WIDE(vect);
+	REBVAL *set;
+	REBINT  n;
+
+	// The value is stored only in the last step of the path, so that `v/2/x: 1`
+	// modifies the field and not the whole element! (There is no path at all
+	// when the action is used directly, like in `poke v 2 s`)
+	set = (pvs->path == 0 || IS_END(pvs->path + 1)) ? pvs->setval : NULL;
+
+	// Any set-path modifies the vector's data, no matter how deep it goes,
+	// so `v/2/x: 1` must be refused as well as `poke v 2 s`!
+	if (pvs->setval) TRAP_PROTECT(vect);
+
+	if (IS_PAIR(sel)) {
+		// Row and column of a shaped vector, like: v/2x1
+		REBCNT rows = Vector_Rows(val);
+		REBCNT cols = VAL_LEN(val) / rows;
+		REBINT col  = VAL_PAIR_X_INT(sel);
+		REBINT row  = VAL_PAIR_Y_INT(sel);
+
+		if (col < 1 || row < 1 || (REBCNT)col > cols || (REBCNT)row > rows)
+			return set ? PE_BAD_RANGE : PE_NONE;
+
+		n = (row - 1) * cols + col + VAL_INDEX(val);
+	}
+	else {
+		if (!IS_INTEGER(sel) && !IS_DECIMAL(sel)) return PE_BAD_SELECT;
+
+		n = Int32(sel);
+		// allow PICK with zero index but not for POKE
+		if (n == 0) return set ? PE_BAD_RANGE : PE_NONE;
+		// Negative selector is relative to the vector's current position.
+		if (n < 0) n++;
+		n += VAL_INDEX(val);
+	}
+	if (n <= 0 || (REBCNT)n > vect->tail) return set ? PE_BAD_RANGE : PE_NONE;
+
+	if (set) {
+		// Only a struct of the same specification may be stored!
+		if (!IS_STRUCT(set)
+			|| VAL_STRUCT_SIZE(set) != size
+			|| !Same_Struct_Fields(fields, VAL_STRUCT_FIELDS(set))
+		) return PE_BAD_SET;
+		COPY_MEM(BIN_SKIP(vect, (n - 1) * size), VAL_STRUCT_DATA_BIN(set), size);
+		return PE_OK;
+	}
+
+	// The element is just a view into the vector's data!
+	pvs->value = pvs->store;
+	Set_Vector_Struct(pvs->value, val, n - 1);
+	return PE_OK;
 }
 
 
@@ -1264,12 +1798,15 @@ data_spec:
 	REBVAL *sel = pvs->select;
 	REBVAL *val = pvs->value;
 	REBVAL *set = pvs->setval;
+	REBVAL *vec = val;
 	REBSER *vect = VAL_SERIES(val);
-	REBINT bits = VECT_TYPE(vect);
-	REBINT n;
-	//REBINT dims;
-	
-	REBYTE *vp;
+	REBINT vtype = VAL_VEC_TYPE(val);
+	REBINT n;	
+	REBYTE *vp = vect->data;
+
+	// Elements of a vector of structs are struct views into its data! A word
+	// selector (like /SHAPE) is resolved by the common code below.
+	if (VECT_IS_STRUCT(vtype) && !IS_WORD(sel)) return Path_Vector_Struct(pvs);
 
 	if (IS_INTEGER(sel) || IS_DECIMAL(sel)) {
 		n = Int32(sel);
@@ -1283,17 +1820,46 @@ data_spec:
 	} else if (IS_WORD(sel)) {
 		if (set == 0) {
 			val = pvs->value = pvs->store;
-			if(!Query_Vector_Field(vect, VAL_WORD_CANON(sel), val, NULL)) return PE_BAD_SELECT;
+			if(!Query_Vector_Field(vec, VAL_WORD_CANON(sel), val, NULL)) return PE_BAD_SELECT;
 			return PE_OK;
-		} else
+		}
+		else if (VAL_WORD_CANON(sel) == SYM_SHAPE && IS_PAIR(set)) {
+			REBINT ncols = VAL_PAIR_X_INT(set);
+			REBINT nrows = VAL_PAIR_Y_INT(set);
+			// A partial view has no shape of its own -- Vector_Rows always
+			// reports 1 for it, so a stored row count there would be ignored.
+			if (VAL_INDEX(vec) != 0 || VAL_LEN(vec) != VAL_TAIL(vec))
+				return PE_BAD_ARGUMENT;
+			if (ncols <= 0 || nrows <= 0) return PE_BAD_ARGUMENT;
+			if ((REBU64)ncols * (REBU64)nrows != (REBU64)VAL_TAIL(vec)) return PE_BAD_ARGUMENT;
+			TRAP_PROTECT(vect);
+			Set_Vector_Shape(vec, nrows);
+			return PE_OK;
+		}
+		else
 			return PE_BAD_SET;
-	} else  return PE_BAD_SELECT;
+	}
+	else if (IS_PAIR(sel)) {
+		REBCNT rows = Vector_Rows(vec);
+		REBCNT cols = VAL_LEN(vec) / rows;
+		REBINT col = VAL_PAIR_X_INT(sel);
+		REBINT row = VAL_PAIR_Y_INT(sel);
+
+		if (col < 1 || row < 1 || (REBCNT)col > cols || (REBCNT)row > rows)
+			return (pvs->setval) ? PE_BAD_RANGE : PE_NONE;
+
+		n = (row - 1) * cols + (col - 1) + VAL_INDEX(val);
+		if (pvs->setval == 0) {
+			get_vect(vtype, vp, n, pvs->store);
+			SET_TYPE(pvs->store, (vtype >= VTSF08) ? REB_DECIMAL : REB_INTEGER);
+			return PE_USE;
+		}
+		Set_Vector_Value(vtype, vp, n, set);
+		return PE_OK;
+	}
+	else  return PE_BAD_SELECT;
 
 	n += VAL_INDEX(val);
-	vect = VAL_SERIES(val);
-	vp   = vect->data;
-	
-	//dims = vect->size >> 8;
 
 	if (pvs->setval == 0) {
 
@@ -1302,8 +1868,8 @@ data_spec:
 		if (n <= 0 || (REBCNT)n > vect->tail) return PE_NONE;
 
 		// Get element value:
-		get_vect(bits, vp, n - 1, pvs->store);
-		SET_TYPE(pvs->store, (bits >= VTSF08) ? REB_DECIMAL : REB_INTEGER);
+		get_vect(vtype, vp, n - 1, pvs->store);
+		SET_TYPE(pvs->store, (vtype >= VTSF08) ? REB_DECIMAL : REB_INTEGER);
 		return PE_USE;
 	}
 
@@ -1312,53 +1878,33 @@ data_spec:
 
 	// Same range rule as PICK above, but out-of-range is an error for POKE.
 	if (n <= 0 || (REBCNT)n > vect->tail) return PE_BAD_RANGE;
-	Set_Vector_Value(bits, vp, n-1, set);
+	Set_Vector_Value(vtype, vp, n-1, set);
 	return PE_OK;
 }
 
 
 static void reverse_vector(REBVAL *value, REBCNT len)
 {
-	REBCNT n;
-	REBCNT m;
-	REBINT width = VAL_VEC_WIDTH(value);
+	REBCNT n, m;
+	REBYTE *data = VAL_VEC_DATA(value);
 
-	if (width == 1) {
-		REBYTE *bp = VAL_BIN_DATA(value);
-		REBYTE c1;
-		for (n = 0, m = len-1; n < len / 2; n++, m--) {
-			c1 = bp[n];
-			bp[n] = bp[m];
-			bp[m] = c1;
-		}
+	if (len < 2) return;
+
+#define REV_LOOP(type) { \
+		type *p = (type*)data; \
+		for (n = 0, m = len - 1; n < m; n++, m--) { \
+			type t = p[n]; p[n] = p[m]; p[m] = t; \
+		} \
 	}
-	else if (width == 2) {
-		REBUNI *up = VAL_UNI_DATA(value);
-		REBUNI c2;
-		for (n = 0, m = len-1; n < len / 2; n++, m--) {
-			c2 = up[n];
-			up[n] = up[m];
-			up[m] = c2;
-		}
+
+	switch (VAL_VEC_WIDE(value)) {
+	case 1: REV_LOOP(u8);  break;
+	case 2: REV_LOOP(u16); break;
+	case 4: REV_LOOP(u32); break;
+	case 8: REV_LOOP(u64); break;
 	}
-	else if (width == 4) {
-		REBCNT *i4 = (REBCNT*)VAL_DATA(value);
-		REBCNT c4;
-		for (n = 0, m = len-1; n < len / 2; n++, m--) {
-			c4 = i4[n];
-			i4[n] = i4[m];
-			i4[m] = c4;
-		}
-	}
-	else if (width == 8) {
-		REBU64 *i8 = (REBU64*)VAL_DATA(value);
-		REBU64 c8;
-		for (n = 0, m = len-1; n < len / 2; n++, m--) {
-			c8 = i8[n];
-			i8[n] = i8[m];
-			i8[m] = c8;
-		}
-	}
+
+#undef REV_LOOP
 }
 
 
@@ -1370,9 +1916,9 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 {
 	REBVAL *value = D_ARG(1);
 	REBVAL *arg = D_ARG(2);
-	REBINT type;
-	REBCNT size, bits;
-	REBLEN index;
+	REBINT  type;          // Do_Series_Action result (may be negative)
+	REBCNT  size, vtype;   // element type
+	REBLEN  index;
 	REBSER *vect;
 	REBSER *ser;
 	REBSER *blk;
@@ -1387,6 +1933,27 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 	// Check must be in this order (to avoid checking a non-series value);
 	if (action >= A_TAKE && action <= A_SORT && IS_PROTECT_SERIES(vect))
 		Trap0(RE_PROTECTED);
+
+	// A vector of structs holds no numbers, so only the generic series actions
+	// resolved by Do_Series_Action above and the element access are supported
+	// for it so far!
+	if (!IS_DATATYPE(value) && VAL_VEC_IS_STRUCT(value)) {
+		switch (action) {
+		case A_PICK:
+		case A_POKE:
+		case A_COPY:
+		case A_CLEAR:
+		case A_APPEND:
+		case A_INSERT:
+		case A_CHANGE:
+		case A_TAKE:
+		case A_FIND:
+		case A_SELECT:
+			break;
+		default:
+			Trap_Action(VAL_TYPE(value), action);
+		}
+	}
 
 	switch (action) {
 
@@ -1421,44 +1988,74 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 		// CASE: make vector! 100
 		if (IS_INTEGER(arg) || IS_DECIMAL(arg)) {
 			size = Int32s(arg, 0);
-			if (size < 0) goto bad_make;
-			ser = Make_Vector(0, 0, 1, 32, size);
-			SET_VECTOR(value, ser);
+			Make_Vector(value, VTSI32, size, 1);
 			break;
 		}
-//		if (IS_NONE(arg)) {
-//			ser = Make_Vector(0, 0, 1, 32, 0);
-//			SET_VECTOR(value, ser);
-//			break;
-//		}
 		// fall thru
 
 	case A_TO:
+		// CASE: to vector! img ;== a shaped vector of the image's pixels
+		if (IS_IMAGE(arg)) {
+			REBSER *img  = VAL_SERIES(arg);
+			REBCNT  cols = IMG_WIDE(img);
+			REBCNT  rows = IMG_HIGH(img);
+			REBYTE *src, *dst;
+			REBCNT  n;
+
+			if (!Make_Vector(value, VTUI32, cols, rows)) Trap0(RE_NO_MEMORY);
+			// The internal pixel order depends on the host system, so the
+			// pixels are normalized - the vector always holds the components
+			// in the RGBA order, like the RGBA binary conversion does.
+			src = QUAD_HEAD(img);
+			dst = VAL_VEC_HEAD(value);
+			for (n = VAL_TAIL(value); n > 0; n--, src += 4, dst += 4) {
+				*(REBCNT*)dst = TO_RGBA_COLOR(src[C_R], src[C_G], src[C_B], src[C_A]);
+			}
+			break;
+		}
 		// CASE: make vector! #{01FF} ;== #(uint8! [1 255]) 
 		if (IS_BINARY(arg)) {
 			len = VAL_LEN(arg);
-			ser = Make_Vector(0, 1, 1, 8, len); //== uint8!
-			if (len > 0) {
-				COPY_MEM(SERIES_DATA(ser), VAL_BIN_DATA(arg), len);
+			Make_Vector(value, VTUI08, len, 1);
+			if (len > 0 && VAL_TAIL(value) == len) {
+				COPY_MEM(VAL_VEC_HEAD(value), VAL_BIN_DATA(arg), len);
 			}
-			SET_VECTOR(value, ser);
 			break;
 		}
 		// CASE: make vector! [...]
 		if (IS_BLOCK(arg) && Make_Vector_Spec(arg, value)) break;
 		goto bad_make;
 
-	case A_LENGTHQ:
-		//bits = 1 << (vect->size & 3);
-		SET_INTEGER(D_RET, vect->tail);
-		return R_RET;
-
 	case A_COPY:
-		len = Partial(value, 0, D_ARG(3), 0); // Can modify value index.
-		ser = Copy_Series_Part(vect, VAL_INDEX(value), len);
-		ser->size = vect->size; // attributes
-		SET_VECTOR(value, ser);
-		break;
+	{
+		REBCNT vtype = VAL_VEC_TYPE(value);
+		REBCNT rows;
+		// The element specification of a vector of structs (NULL otherwise):
+		REBSER *fields = VECT_IS_STRUCT(vtype) ? VAL_VEC_STRUCT(value) : NULL;
+
+		len = Partial(value, 0, D_ARG(ARG_COPY_RANGE), 0); // can modify value index
+
+		if (len <= 0) {
+			// Copy_Binary_Part is not safe with a zero length.
+			if (fields) {
+				if (!Make_Vector_Struct(value, fields, 0, 1)) Trap0(RE_NO_MEMORY);
+			}
+			else if (!Make_Vector(value, vtype, 0, 1)) Trap0(RE_NO_MEMORY);
+			break;
+		}
+
+		// Shape survives only when the copy covers the whole series. Read it
+		// after Partial (which can move the index) and before SET_VECTOR
+		// (which overwrites the value's packed type/rows field).
+		rows = Vector_Rows_For(value, len);
+
+		// Copy_Binary_Part keeps the series width, which is the element size!
+		ser = Copy_Binary_Part(vect, VAL_INDEX(value), len);
+		SET_VECTOR(value, ser, vtype);
+		// Like in Make_Vector_Struct, the link holds the element's field list.
+		if (fields) ser->series = fields;
+		Set_Vector_Shape(value, rows);
+	}	break;
 
 	case A_REVERSE:
 		len = Partial(value, 0, D_ARG(3), 0);
@@ -1466,15 +2063,41 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 		break;
 
 	case A_SORT:
+	{
+		REBVAL *compv = D_ARG(6);
+		REBINT  skip  = 1;
+
 		len = Partial(value, 0, D_ARG(8), 0);
-		if (
-		//	D_REF(2) ||	// case sensitive
-			D_REF(3) ||	// skip
-			D_REF(5) 	// comparator
-		//	D_REF(9) 	// all fields
-			) Trap0(RE_FEATURE_NA);
-		Sort_Vector(value, len, D_REF(10));
-		break;
+
+		// Validation mirrors Sort_Block, including its ordering: a series of
+		// 0 or 1 elements short-circuits before any argument is checked.
+		if (len > 1) {
+			if (D_REF(3)) {                       // /skip
+				skip = Int32(D_ARG(4));
+				if (skip <= 0 || len % skip != 0 || skip > len)
+					Trap_Range(D_ARG(4));
+			}
+			if (D_REF(5)) {                       // /compare
+				if (ANY_FUNC(compv))
+					Trap0(RE_FEATURE_NA);         // function comparators not supported yet
+				if (IS_INTEGER(compv)) {
+					if (D_REF(9)) Trap0(RE_BAD_REFINES);   // /all + offset is contradictory
+					if (!D_REF(3) || VAL_INT64(compv) < 1 || VAL_INT64(compv) > skip)
+						Trap1(RE_INVALID_ARG, compv);
+				}
+				else if (IS_BLOCK(compv)) {
+					REBVAL *tmp = VAL_BLK_DATA(compv);
+					while (NOT_END(tmp)) {
+						if (!IS_INTEGER(tmp) || VAL_INT64(tmp) < 1 || VAL_INT64(tmp) > skip)
+							Trap1(RE_INVALID_ARG, tmp);
+						tmp++;
+					}
+				}
+				else Trap1(RE_INVALID_ARG, compv);
+			}
+		}
+		Sort_Vector(value, len, skip, compv, D_REF(9), D_REF(10));
+	}	break;
 			
 	case A_RANDOM:
 		if (D_REF(2) || D_REF(4)) Trap0(RE_BAD_REFINES); // /seed /only
@@ -1482,32 +2105,34 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 		return R_ARG1;
 
 	case A_REFLECT:
-		bits = VECT_TYPE(vect);
+		vtype = VAL_VEC_TYPE(value);
 		if (SYM_SPEC == VAL_WORD_SYM(D_ARG(2))) {
-			blk = Make_Block(4);
-			if (bits >= VTUI08 && bits <= VTUI64) Init_Word(Append_Value(blk), SYM_UNSIGNED);
-			Query_Vector_Field(vect, SYM_TYPE, Append_Value(blk), NULL);
-			Query_Vector_Field(vect, SYM_SIZE, Append_Value(blk), NULL);
-			Query_Vector_Field(vect, SYM_LENGTH, Append_Value(blk), NULL);
+			blk = Make_Block(2);
+			Query_Vector_Field(value, SYM_ELEMENT_TYPE, Append_Value(blk), NULL);
+			// A shaped vector emits its pair! shape in the size slot, so the
+			// spec still round-trips through MAKE; otherwise the plain length.
+			Query_Vector_Field(value,
+				(VAL_VEC_ROWS(value) > 1) ? SYM_SHAPE : SYM_LENGTH,
+				Append_Value(blk), NULL);
 			Set_Series(REB_BLOCK, value, blk);
 		} else {
-			if(!Query_Vector_Field(vect, VAL_WORD_SYM(D_ARG(2)), value, NULL))
+			if(!Query_Vector_Field(value, VAL_WORD_SYM(D_ARG(2)), value, NULL))
 				Trap_Reflect(VAL_TYPE(value), D_ARG(2));
 		}
 		break;
 
 	case A_QUERY:
-		bits = VECT_TYPE(vect);
+		vtype = VAL_VEC_TYPE(value);
 		REBVAL *spec = Get_System(SYS_STANDARD, STD_VECTOR_INFO);
 		if (!IS_OBJECT(spec)) Trap_Arg(spec);
 		REBVAL *field = D_ARG(ARG_QUERY_FIELD);
 		if(IS_WORD(field)) {
-			if (!Query_Vector_Field(vect, VAL_WORD_SYM(field), value, NULL))
+			if (!Query_Vector_Field(value, VAL_WORD_SYM(field), value, NULL))
 				Trap_Reflect(VAL_TYPE(value), field); // better error?
 			break;
 		}
 		REBVQV results = { 0 };
-		Query_Vector_Statictics(vect, &results);
+		Query_Vector_Statictics(value, &results);
 
 		if (IS_BLOCK(field)) {
 			REBSER *values = Make_Block(2 * BLK_LEN(VAL_SERIES(field)));
@@ -1522,7 +2147,7 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 						VAL_SET_LINE(val);
 					}
 					val = Append_Value(values);
-					if (!Query_Vector_Field(vect, VAL_WORD_SYM(word), val, &results))
+					if (!Query_Vector_Field(value, VAL_WORD_SYM(word), val, &results))
 						Trap1(RE_INVALID_ARG, word);
 				}
 				else  Trap1(RE_INVALID_ARG, word);
@@ -1535,90 +2160,144 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 		}
 		else {
 			REBSER *obj = CLONE_OBJECT(VAL_OBJ_FRAME(spec));
-			Query_Vector_Field(vect, SYM_SIGNED, OFV(obj, STD_VECTOR_INFO_SIGNED), &results);
-			Query_Vector_Field(vect, SYM_TYPE,   OFV(obj, STD_VECTOR_INFO_TYPE), &results);
-			Query_Vector_Field(vect, SYM_SIZE,   OFV(obj, STD_VECTOR_INFO_SIZE), &results);
-			Query_Vector_Field(vect, SYM_LENGTH, OFV(obj, STD_VECTOR_INFO_LENGTH), &results);
-			Query_Vector_Field(vect, SYM_MINIMUM, OFV(obj, STD_VECTOR_INFO_MINIMUM), &results);
-			Query_Vector_Field(vect, SYM_MAXIMUM, OFV(obj, STD_VECTOR_INFO_MAXIMUM), &results);
-			Query_Vector_Field(vect, SYM_RANGE, OFV(obj, STD_VECTOR_INFO_RANGE), &results);
-			Query_Vector_Field(vect, SYM_SUM, OFV(obj, STD_VECTOR_INFO_SUM), &results);
-			Query_Vector_Field(vect, SYM_MEAN, OFV(obj, STD_VECTOR_INFO_MEAN), &results);
-			Query_Vector_Field(vect, SYM_MEDIAN, OFV(obj, STD_VECTOR_INFO_MEDIAN), &results);
-			Query_Vector_Field(vect, SYM_VARIANCE, OFV(obj, STD_VECTOR_INFO_VARIANCE), &results);
-			Query_Vector_Field(vect, SYM_SAMPLE_VARIANCE, OFV(obj, STD_VECTOR_INFO_SAMPLE_VARIANCE), &results);
-			Query_Vector_Field(vect, SYM_POPULATION_DEVIATION, OFV(obj, STD_VECTOR_INFO_POPULATION_DEVIATION), &results);
-			Query_Vector_Field(vect, SYM_SAMPLE_DEVIATION, OFV(obj, STD_VECTOR_INFO_SAMPLE_DEVIATION), &results);
+			Query_Vector_Field(value, SYM_ELEMENT_TYPE, OFV(obj, STD_VECTOR_INFO_ELEMENT_TYPE), &results);
+			Query_Vector_Field(value, SYM_SIGNED, OFV(obj, STD_VECTOR_INFO_SIGNED), &results);
+			Query_Vector_Field(value, SYM_TYPE,   OFV(obj, STD_VECTOR_INFO_TYPE), &results);
+			Query_Vector_Field(value, SYM_SIZE,   OFV(obj, STD_VECTOR_INFO_SIZE), &results);
+			Query_Vector_Field(value, SYM_LENGTH, OFV(obj, STD_VECTOR_INFO_LENGTH), &results);
+			Query_Vector_Field(value, SYM_SHAPE,  OFV(obj, STD_VECTOR_INFO_SHAPE), &results);
+			Query_Vector_Field(value, SYM_SHAPED,  OFV(obj, STD_VECTOR_INFO_SHAPED), &results);
+			Query_Vector_Field(value, SYM_MINIMUM, OFV(obj, STD_VECTOR_INFO_MINIMUM), &results);
+			Query_Vector_Field(value, SYM_MAXIMUM, OFV(obj, STD_VECTOR_INFO_MAXIMUM), &results);
+			Query_Vector_Field(value, SYM_RANGE, OFV(obj, STD_VECTOR_INFO_RANGE), &results);
+			Query_Vector_Field(value, SYM_SUM, OFV(obj, STD_VECTOR_INFO_SUM), &results);
+			Query_Vector_Field(value, SYM_MEAN, OFV(obj, STD_VECTOR_INFO_MEAN), &results);
+			Query_Vector_Field(value, SYM_MEDIAN, OFV(obj, STD_VECTOR_INFO_MEDIAN), &results);
+			Query_Vector_Field(value, SYM_VARIANCE, OFV(obj, STD_VECTOR_INFO_VARIANCE), &results);
+			Query_Vector_Field(value, SYM_SAMPLE_VARIANCE, OFV(obj, STD_VECTOR_INFO_SAMPLE_VARIANCE), &results);
+			Query_Vector_Field(value, SYM_POPULATION_DEVIATION, OFV(obj, STD_VECTOR_INFO_POPULATION_DEVIATION), &results);
+			Query_Vector_Field(value, SYM_SAMPLE_DEVIATION, OFV(obj, STD_VECTOR_INFO_SAMPLE_DEVIATION), &results);
 			SET_OBJECT(value, obj);
 		}
 		break;
 	
+	case A_FIND:
+	case A_SELECT:
+	{
+		REBCNT args = Find_Refines(ds, ALL_FIND_REFS);
+		REBCNT found;
+		REBINT skip = 1;
+
+		index = VAL_INDEX(value);
+		len = VAL_TAIL(value);
+		if (args & AM_FIND_PART) len = index + Partial(value, 0, D_ARG(ARG_FIND_RANGE), 0);
+		if (args & AM_FIND_SKIP) {
+			skip = Int32(D_ARG(ARG_FIND_SIZE));
+			if (skip == 0) return R_NONE;
+		}
+
+		found = Find_Vector(value, arg, index, (REBCNT)len, args, skip);
+		if (found == NOT_FOUND) return R_NONE;
+
+		if (action == A_FIND) {
+			if (args & AM_FIND_TAIL) found++;
+			VAL_INDEX(value) = found;
+			break;
+		}
+		// SELECT returns the element which follows the found one
+		if (++found >= VAL_TAIL(value)) return R_NONE;
+		Get_Vector_Value(D_RET, value, found);
+		return R_RET;
+	}
+
 	//-- Modification:
 	case A_APPEND:
 	case A_INSERT:
+		if (IS_FIXED_SIZE_VALUE(value)) Trap0(RE_FIXED_SIZED_SERIES);
+		// fall thru
 	case A_CHANGE:
 		// Length of target (may modify index): (arg can be anything)
 		len = Partial1((action == A_CHANGE) ? value : arg, DS_ARG(AN_LENGTH));
 		index = VAL_INDEX(value);
 		REBFLG args = 0;
 		if (DS_REF(AN_PART)) SET_FLAG(args, AN_PART);
-		index = Modify_Vector(action, VAL_SERIES(value), index, arg, args, len, DS_REF(AN_DUP) ? Int32(DS_ARG(AN_COUNT)) : 1);
+		index = Modify_Vector(action, value, index, arg, args, len, DS_REF(AN_DUP) ? Int32(DS_ARG(AN_COUNT)) : 1);
 		VAL_INDEX(value) = index;
 		break;
 
 	case A_TAKE:
-		bits = VECT_TYPE(vect);
-		index = VAL_INDEX(value);
+	{
+		if (IS_FIXED_SIZE_VALUE(value)) Trap0(RE_FIXED_SIZED_SERIES);
+		vtype = VAL_VEC_TYPE(value);
 		REBOOL do_part = D_REF(ARG_TAKE_PART);
 		REBCNT tail = SERIES_TAIL(vect);
 		REBCNT start;
 
+		// Partial1 can move the value's index (negative /part walks backwards),
+		// so read the index only after it has run
+		len = do_part ? Partial1(value, D_ARG(ARG_TAKE_RANGE)) : 1;
+		if (len < 0) len = 0;
+		index = VAL_INDEX(value);
 		if (index > tail) index = tail;
 
-		len = do_part ? Partial1(value, D_ARG(ARG_TAKE_RANGE)) : 1;
 
 		if (D_REF(ARG_TAKE_LAST)) {
-			if (len > tail) len = tail;
+			if ((REBCNT)len > tail) len = tail;
 			start = tail - len;
 		}
 		else {
-			if (index + len > tail) len = tail - index;
+			if (index + (REBCNT)len > tail) len = tail - index;
 			start = index;
 		}
 
 		if (len == 0) {
 			if (do_part) {
-				ser = Make_Vector(0, 0, 1, VECT_BIT_SIZE(bits), 0);
-				// NOTE: Make_Vector's `type`/`sign` params need deriving from
-				// bits the same way Make_Vector_Spec does -- it's not just bit-width.
-				SET_VECTOR(D_RET, ser);
+				if (VECT_IS_STRUCT(vtype)) {
+					if (!Make_Vector_Struct(D_RET, VAL_VEC_STRUCT(value), 0, 1))
+						Trap0(RE_NO_MEMORY);
+				}
+				else if (!Make_Vector(D_RET, vtype, 0, 1))
+					Trap0(RE_NO_MEMORY);
 			}
-			else {
-				SET_NONE(D_RET);
-			}
+			else SET_NONE(D_RET);
 			return R_RET;
 		}
 		if (do_part) {
-			ser = Copy_Series_Part(vect, start, len);
-			ser->size = vect->size; // preserve type/sign/dims attributes
-			SET_VECTOR(D_RET, ser);
+			// Copy_Binary_Part keeps the series width, which is the element size!
+			REBSER *fields = VECT_IS_STRUCT(vtype) ? VAL_VEC_STRUCT(value) : NULL;
+			ser = Copy_Binary_Part(vect, start, len);
+			SET_VECTOR(D_RET, ser, vtype);
+			// Like in Make_Vector_Struct, the link holds the element's field list.
+			if (fields) ser->series = fields;
+			VAL_VEC_SET_ROWS(D_RET, 1);
+		}
+		else if (VECT_IS_STRUCT(vtype)) {
+			// The element is removed below, so it must be copied out of the
+			// vector's data - a view would be left pointing to other data!
+			REBVAL view;
+			Set_Vector_Struct(&view, value, start);
+			Copy_Struct_Value(&view, D_RET);
 		}
 		else {
-			get_vect(bits, vect->data, start, D_RET);
-			SET_TYPE(D_RET, (bits >= VTSF08) ? REB_DECIMAL : REB_INTEGER);
+			get_vect(vtype, vect->data, start, D_RET);
+			SET_TYPE(D_RET, (vtype >= VTSF08) ? REB_DECIMAL : REB_INTEGER);
 		}
 		Remove_Series(vect, start, len);
+		if (VAL_INDEX(value) > SERIES_TAIL(vect)) VAL_INDEX(value) = SERIES_TAIL(vect);
 		return R_RET;
-
+	}
 
 	case A_CLEAR:
+	{
+		if (IS_FIXED_SIZE_VALUE(value)) Trap0(RE_FIXED_SIZED_SERIES);
 		index = VAL_INDEX(value);
 		if (index < VAL_TAIL(value)) {
-			// Null all values.
-			CLEAR(VAL_BIN_DATA(value), VAL_TAIL(value) - index);
-			// Set new tail.
+			// VAL_VEC_DATA scales the index by the value's element width;
+			// the byte count has to be scaled the same way.
+			CLEAR(VAL_VEC_DATA(value), (VAL_TAIL(value) - index) * VAL_VEC_WIDE(value));
 			VAL_TAIL(value) = index;
 		}
+	}
 		break;
 
 	default:
@@ -1633,9 +2312,109 @@ bad_make:
 }
 
 
+// Is the element at the given index equal to the target? A struct is compared
+// as raw data (`pat`), a number with the decoded element.
+static
+REBFLG Match_Vector_Element(REBCNT vtype, REBYTE *data, REBCNT size, REBCNT index, REBYTE *pat, REBVAL *target)
+{
+	REBVAL tmp;
+
+	if (pat) return (0 == memcmp(data + (index * size), pat, size));
+
+	get_vect(vtype, data, index, &tmp);
+	SET_TYPE(&tmp, (vtype >= VTSF08) ? REB_DECIMAL : REB_INTEGER);
+	return (0 == Cmp_Value(&tmp, target, FALSE));
+}
+
 /***********************************************************************
 **
-*/	REBCNT Modify_Vector(REBCNT action, REBSER *vect, REBCNT index, REBVAL *src_val, REBCNT flags, REBINT dst_len, REBINT dups)
+*/	REBCNT Find_Vector(REBVAL *vec, REBVAL *target, REBCNT index, REBCNT tail, REBCNT flags, REBINT skip)
+/*
+**		Searches a vector for an element equal to the target and returns
+**		its index, or NOT_FOUND. A struct element is compared as raw data
+**		and so only a struct of the vector's own specification can match,
+**		while a number is compared with the decoded element, so that an
+**		integer may be found in a vector of decimals and the other way.
+**		A target which cannot match at all is not an error - it is simply
+**		not found.
+**
+**		/LAST searches the range from its end, while /REVERSE searches
+**		backwards from the current position, towards the head.
+**
+***********************************************************************/
+{
+	REBCNT  vtype = VAL_VEC_TYPE(vec);
+	REBCNT  size  = VAL_VEC_WIDE(vec);
+	REBYTE *data  = VAL_VEC_HEAD(vec);
+	REBYTE *pat   = NULL;
+	REBINT  n, lo;
+
+	if (tail > VAL_TAIL(vec)) tail = VAL_TAIL(vec);
+	if (index > VAL_TAIL(vec)) return NOT_FOUND;
+	if (skip <= 0) skip = 1;
+
+	if (VECT_IS_STRUCT(vtype)) {
+		// Only a struct of the vector's own specification can be found!
+		if (!IS_STRUCT(target)
+			|| VAL_STRUCT_SIZE(target) != size
+			|| !Same_Struct_Fields(VAL_VEC_STRUCT(vec), VAL_STRUCT_FIELDS(target))
+		)	return NOT_FOUND;
+		pat = VAL_STRUCT_DATA_BIN(target);
+	}
+	else if (!IS_INTEGER(target) && !IS_DECIMAL(target) && !IS_PERCENT(target))
+		return NOT_FOUND;
+
+	// The search is anchored at the current position:
+	if (flags & AM_FIND_MATCH) {
+		if (index >= tail) return NOT_FOUND;
+		return Match_Vector_Element(vtype, data, size, index, pat, target)
+			? index : NOT_FOUND;
+	}
+
+	if (flags & (AM_FIND_LAST | AM_FIND_REVERSE)) {
+		if (flags & AM_FIND_REVERSE) {
+			// backwards from the current position, towards the head
+			lo = 0;
+			n  = (REBINT)index - 1;
+		}
+		else {
+			// the same range as a plain FIND, but the last match is returned
+			lo = (REBINT)index;
+			n  = (REBINT)tail - 1;
+		}
+		if (n >= (REBINT)VAL_TAIL(vec)) n = (REBINT)VAL_TAIL(vec) - 1;
+		for (; n >= lo; n -= skip) {
+			if (Match_Vector_Element(vtype, data, size, (REBCNT)n, pat, target))
+				return (REBCNT)n;
+		}
+		return NOT_FOUND;
+	}
+
+	for (n = (REBINT)index; n < (REBINT)tail; n += skip) {
+		if (Match_Vector_Element(vtype, data, size, (REBCNT)n, pat, target))
+			return (REBCNT)n;
+	}
+	return NOT_FOUND;
+}
+
+// Copies the data of a struct into the buffer at the given element index.
+// Only a struct of the vector's own element specification is accepted!
+static
+void Set_Vector_Struct_Value(REBVAL *vec, REBSER *buf, REBCNT index, REBVAL *val)
+{
+	REBCNT size = VAL_VEC_WIDE(vec);
+
+	if (!IS_STRUCT(val)
+		|| VAL_STRUCT_SIZE(val) != size
+		|| !Same_Struct_Fields(VAL_VEC_STRUCT(vec), VAL_STRUCT_FIELDS(val))
+	)	Trap_Arg(val);
+
+	COPY_MEM(BIN_SKIP(buf, index * size), VAL_STRUCT_DATA_BIN(val), size);
+}
+
+/***********************************************************************
+**
+*/	REBCNT Modify_Vector(REBCNT action, REBVAL *vec, REBCNT index, REBVAL *src_val, REBCNT flags, REBINT dst_len, REBINT dups)
 /*
 **		action: INSERT, APPEND, CHANGE
 **
@@ -1653,9 +2432,10 @@ bad_make:
 	REBSER *src_ser = 0;
 	REBCNT src_idx = 0;
 	REBCNT src_len = 0;
+	REBSER *vect = VAL_SERIES(vec);
+	REBCNT vtype = VAL_VEC_TYPE(vec);
 	REBCNT tail = SERIES_TAIL(vect);
-	REBCNT type = VECT_TYPE(vect);
-	REBCNT bpv = VECT_BYTE_SIZE(type); // bytes per value
+	REBCNT bpv  = VAL_VEC_WIDE(vec); // bytes per value
 	REBINT size;  // total to insert/append/change (includes dups)
 	REBVAL *val = NULL;
 
@@ -1667,12 +2447,19 @@ bad_make:
 	if (IS_VECTOR(src_val)) {
 		REBLEN index = MIN(VAL_TAIL(src_val), VAL_INDEX(src_val));
 		REBLEN part = VAL_TAIL(src_val) - index;
+		// Structs have no numeric representation, so they may be copied only
+		// between vectors with the very same element specification!
+		if ((VECT_IS_STRUCT(vtype) || VAL_VEC_IS_STRUCT(src_val))
+			&& (vtype != VAL_VEC_TYPE(src_val)
+				|| VAL_VEC_STRUCT(vec) != VAL_VEC_STRUCT(src_val))
+		)	Trap_Arg(src_val);
 		if (action != A_CHANGE && GET_FLAG(flags, AN_PART) && dst_len < AS_INT(part))
 			part = dst_len;
-		if (type == VECT_TYPE(VAL_SERIES(src_val))) {
-			// same vector types...
+		if (vtype == VAL_VEC_TYPE(src_val)) {
+			// same vector types -- copy straight from the source series.
+			// src_idx is a BYTE offset here (BIN_SKIP below), so scale it.
 			src_ser = VAL_SERIES(src_val);
-			src_idx = index;
+			src_idx = index * bpv;
 			src_len = part;
 		}
 		else {
@@ -1680,8 +2467,8 @@ bad_make:
 			RESIZE_SERIES(src_ser, part * bpv);
 			// Encode values from the source vector to the temp buffer.
 			for (REBVAL tmp; src_len < part; index++) {
-				Get_Vector_Value(&tmp, VAL_SERIES(src_val), index);
-				Set_Vector_Value(type, src_ser->data, src_len++, &tmp);
+				Get_Vector_Value(&tmp, src_val, index);
+				Set_Vector_Value(vtype, src_ser->data, src_len++, &tmp);
 			}
 		}
 	}
@@ -1704,12 +2491,20 @@ bad_make:
 		RESIZE_SERIES(src_ser, part * bpv);
 		// Encode values from the block vector to the temp buffer.
 		for (val = VAL_BLK_DATA(src_val); src_len < part; val++) {
-			Set_Vector_Value(type, src_ser->data, src_len++, val);
+			if (VECT_IS_STRUCT(vtype))
+				Set_Vector_Struct_Value(vec, src_ser, src_len++, val);
+			else
+				Set_Vector_Value(vtype, src_ser->data, src_len++, val);
 		}
+	}
+	else if (VECT_IS_STRUCT(vtype)) {
+		// Encode single struct into the temp buffer.
+		RESIZE_SERIES(src_ser, bpv);
+		Set_Vector_Struct_Value(vec, src_ser, src_len++, src_val);
 	}
 	else {
 		// Encode single value into the temp buffer.
-		Set_Vector_Value(type, src_ser->data, src_len++, src_val);
+		Set_Vector_Value(vtype, src_ser->data, src_len++, src_val);
 	}
 
 	// Total to insert:
@@ -1717,14 +2512,19 @@ bad_make:
 
 	if (action != A_CHANGE) {
 		// Always expand vect for INSERT and APPEND actions:
+		if (IS_FIXED_SIZE(vect)) Trap0(RE_FIXED_SIZED_SERIES);
 		Expand_Series(vect, index, size);
 	}
 	else {
 		// CHANGE action...
-		if (size > dst_len)
+		if (size > dst_len) {
+			if (IS_FIXED_SIZE(vect)) Trap0(RE_FIXED_SIZED_SERIES);
 			Expand_Series(vect, index, size - dst_len);
-		else if (size < dst_len &&GET_FLAG(flags, AN_PART))
+		}
+		else if (size < dst_len &&GET_FLAG(flags, AN_PART)) {
+			if (IS_FIXED_SIZE(vect)) Trap0(RE_FIXED_SIZED_SERIES);
 			Remove_Series(vect, index, dst_len - size);
+		}
 	}
 
 	// For dup count:
@@ -1738,6 +2538,85 @@ bad_make:
 	return (action == A_APPEND) ? 0 : index;
 }
 
+// A vector with struct elements has no readable value representation, so it is
+// molded using the raw data:
+//
+//     #(vector! #(struct! [x [int32!] y [int32!]]) #{...})
+//     #(vector! #(struct! point2d!) #{...})
+static
+void Mold_Vector_Struct(REBVAL *value, REB_MOLD *mold, REBFLG molded)
+{
+	REBSER *fields = VAL_VEC_STRUCT(value);
+	REBOOL  all    = GET_MOPT(mold, MOPT_MOLD_ALL);
+	REBCNT  len    = all ? VAL_TAIL(value) : VAL_LEN(value);
+	REBYTE *data   = all ? VAL_VEC_HEAD(value) : VAL_VEC_DATA(value);
+	REBCNT  size   = len * VAL_VEC_WIDE(value);
+	REBCNT  rows   = VAL_VEC_ROWS(value);
+	REBCNT  cols   = (rows > 1) ? VAL_VEC_COLS(value) : 0;
+	// The shape is emitted only for a whole vector, like with the other types
+	REBOOL  shaped = (rows > 1) && (VAL_INDEX(value) == 0) && (len == VAL_TAIL(value));
+	REBSER *bin;
+	REBVAL  tmp;
+
+	if (molded) {
+		Emit(mold, "S", "#(vector! #(struct! ");
+		if (!all && FIELDS_INFO(fields)->name) {
+			// The specification is registered under a name. Like with a struct
+			// value, the name is used only when not molding with /ALL, which
+			// must be readable without the registration.
+			Emit(mold, "N", FIELDS_INFO(fields)->name);
+		}
+		else if (FIELDS_SPEC(fields)) {
+			Set_Block(&tmp, FIELDS_SPEC(fields));
+			Emit(mold, "V", &tmp);
+		}
+		else {
+			// Should not happen - the specification is kept with the fields!
+			Append_Int(mold->series, FIELDS_INFO(fields)->id);
+ 		}
+		Emit(mold, "S", ") ");
+		if (shaped) Emit(mold, "IxI ", cols, rows);
+	}
+
+	// The number of elements is given by the data, like with the other types!
+	if (shaped) {
+		// Each row of the data is put on its own line - the line breaks are
+		// just a whitespace inside the binary!
+		REBCNT row = cols * VAL_VEC_WIDE(value); // bytes per row
+		REBCNT n;
+		Append_Bytes(mold->series, "#{");
+		for (n = 0; n < rows; n++) {
+			// Also the first row starts on a new line, so that all of them
+			// are aligned at the same column.
+			Append_Byte(mold->series, LF);
+			bin = Make_Binary(row);
+			COPY_MEM(BIN_HEAD(bin), data + (n * row), row);
+			SERIES_TAIL(bin) = row;
+			Set_Binary(&tmp, bin);
+			Emit(mold, "E", Encode_Base16(&tmp, 0, row, FALSE));
+			Free_Series(bin);
+		}
+		Append_Byte(mold->series, '}');
+	}
+	else {
+		bin = Make_Binary(size);
+		if (size > 0) COPY_MEM(BIN_HEAD(bin), data, size);
+		SERIES_TAIL(bin) = size;
+		Set_Binary(&tmp, bin);
+		Emit(mold, "V", &tmp);
+		Free_Series(bin);
+	}
+
+	if (molded) {
+		if (all && VAL_INDEX(value)) {
+ 			Append_Byte(mold->series, ' ');
+ 			Append_Int(mold->series, VAL_INDEX(value) + 1);
+ 		}
+		Append_Byte(mold->series, ')');
+ 	}
+}
+
+
 /***********************************************************************
 **
 */	void Mold_Vector(REBVAL *value, REB_MOLD *mold, REBFLG molded)
@@ -1746,8 +2625,11 @@ bad_make:
 {
 	REBSER *vect = VAL_SERIES(value);
 	REBYTE *data = vect->data;
-	REBCNT bits  = VECT_TYPE(vect);
-//	REBCNT dims  = vect->size >> 8;
+	REBCNT vtype = VAL_VEC_TYPE(value);
+	REBCNT rows  = VAL_VEC_ROWS(value);
+	REBCNT cols  = (rows > 1) ? VAL_VEC_COLS(value) : 0;
+	REBOOL shaped;    // emit the NxM annotation in the header
+	REBOOL gridded;   // break a line after every `cols` elements
 	REBCNT len;
 	REBCNT n;
 	REBCNT c;
@@ -1756,6 +2638,11 @@ bad_make:
 	REBYTE l;
 	REBOOL indented = !GET_MOPT(mold, MOPT_INDENT);
 
+	if (VECT_IS_STRUCT(vtype)) {
+		Mold_Vector_Struct(value, mold, molded);
+		return;
+	}
+
 	if (GET_MOPT(mold, MOPT_MOLD_ALL)) {
 		len = VAL_TAIL(value);
 		n = 0;
@@ -1763,40 +2650,52 @@ bad_make:
 		len = VAL_LEN(value);
 		n = VAL_INDEX(value);
 	}
-
+	shaped = (rows > 1) && (n == 0);
+	gridded = shaped && indented;
 	if (molded) {
-//		REBCNT type = (bits >= VTSF32) ? REB_DECIMAL : REB_INTEGER;
-//		if (GET_MOPT(mold, MOPT_MOLD_ALL)) {
-//			Emit(mold, "#(T ", value);
-//			if (bits >= VTUI08 && bits <= VTUI64) Append_Bytes(mold->series, "unsigned ");
-//			Emit(mold, "N I I [", type + 1, VECT_BIT_SIZE(bits), len);
-//		}
-//		else {
-			Emit(mold, "#(S [", Get_Sym_Name(SYM_INT8X + bits));
-//		}
-		if (indented && len > 10) {
+		Emit(mold, "#(S ", Get_Sym_Name(SYM_INT8X + vtype));
+		if (shaped) {
+			Emit(mold, "IxI ", cols, rows);
+		}
+		Append_Byte(mold->series, '[');
+		if (indented && !shaped && len > 10) {
 			mold->indent++;
 			New_Indented_Line(mold);
 		}
 		CHECK_MOLD_LIMIT(mold, len);
 	}
 
+	if (gridded) {
+		mold->indent++;
+		New_Indented_Line(mold);
+	}
 	c = 0;
 	for (; n < vect->tail; n++) {
 		if (MOLD_HAS_LIMIT(mold) && MOLD_OVER_LIMIT(mold)) return;
-		get_vect(bits, data, n, &v);
-		if (bits < VTSF08) {
+		get_vect(vtype, data, n, &v);
+		if (vtype < VTSF08) {
 			l = Emit_Integer(buf, VAL_INT64(&v));
 		} else {
 			l = Emit_Decimal(buf, VAL_DECIMAL(&v), 0, '.', mold->digits);
 		}
 		Append_Bytes_Len(mold->series, buf, l);
-		if (indented && (++c > 9) && (n+1 < vect->tail)) {
+		if (gridded) {
+			if ((n + 1) % cols == 0 && (n + 1 < vect->tail)) {
+				New_Indented_Line(mold);
+				continue;
+			}
+		}
+		else if (indented && (++c > 9) && (n + 1 < vect->tail)) {
 			New_Indented_Line(mold);
 			c = 0;
+			continue;
 		}
-		else
-			Append_Byte(mold->series, ' '); 
+		Append_Byte(mold->series, ' ');
+	}
+	if (gridded) {
+		mold->indent--;
+		New_Indented_Line(mold);
+		len = 0;
 	}
 
 	if (len) mold->series->tail--; // remove final space

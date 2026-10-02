@@ -155,11 +155,17 @@
 	REBYTE *out;
 	REBYTE *lpath = NULL;
 	REBCNT l = 0;
+	REBOOL volume = FALSE; // path starts with a drive letter (Windows only)
 
 	if (!bp) return NULL;
 
 	if (len == 0) len = (REBCNT)LEN_BYTES(bp);
 	src = bp;
+
+#ifdef TO_WINDOWS
+	// %c:/dir or %c:dir => volume specified, so current dir is not prepended
+	volume = (len > 1 && src[1] == ':' && (src[0] | 0x20) >= 'a' && (src[0] | 0x20) <= 'z');
+#endif
 
 	// Prescan for: /c/dir = c:/dir, /vol/dir = //vol/dir, //dir = ??
 	c = src[i];
@@ -195,9 +201,9 @@
 		out[n++] = OS_DIR_SEP;
 	}
 	else {
-		if (full) l = OS_Get_Current_Dir(&lpath); // lpath is UTF-8 encoded!
+		if (full && !volume) l = OS_Get_Current_Dir(&lpath); // lpath is UTF-8 encoded!
 		dst = Make_Binary(l + len + FN_PAD); // may be longer (if lpath is encoded)
-		if (full) {
+		if (full && !volume) {
 			Append_Bytes_Len(dst, lpath, l);
 			if (OS_DIR_SEP != STR_LAST(dst)[0]) {
 				EXPAND_SERIES_TAIL(dst, 1);

@@ -1488,10 +1488,13 @@ load-module: function [
 				all [
 					module? module
 					not mixin? module-header
-					block? select module-header 'exports
+					block? words: select module-header 'exports
 				][
-					resolve/extend/only lib module module-header/exports
-					; no-op if empty
+					resolve/extend/only lib module words ; no-op if empty
+					;; extend also the REPL context, if exists
+					try [
+						resolve/extend/only/all system/console/current/console-ctx module words
+					]
 				]
 			]
 		]
@@ -1510,26 +1513,25 @@ locate-extension: function [
 	name [word!]
 ][
 	modules: system/options/modules
+	arch:    system/build/arch
+	abi: ajoin ["abi" system/build/extension-abi] ;; e.g. "abi2"
 
 	foreach test [
+		[modules name #"-" abi #"-" arch %.rebx]
+		[modules name #"-" abi %.rebx]
+
+		;; unqualified names are pre-ABI-marker builds; still tried, so a
+		;; user with a single generation installed needs no renaming - a
+		;; genuinely incompatible one is rejected by RX_Abi at load time
+		[modules name #"-" arch %.rebx]
 		[modules name %.rebx]
-		[modules name #"-" system/build/arch %.rebx]
 
-		; not sure, if keep the folowing ones too.. it simplifies CI testing
-		; they should be probably removed, when all used CI tests will be modified
-		;
-		[modules name #"-" system/build/os #"-" system/build/arch %.rebx]
-		[modules name #"-" system/build/sys #"-" system/build/arch %.rebx]
+		[modules name #"-" system/build/os  #"-" arch %.rebx]
+		[modules name #"-" system/build/sys #"-" arch %.rebx]
 	][
-		if exists? file: as file! ajoin test [
-			return file
-		]
-
-		sys/log/debug 'REBOL [
-			"Not found extension file:" file
-		]
+		if exists? file: as file! ajoin test [return file]
+		sys/log/debug 'REBOL ["Not found extension file:" file]
 	]
-
 	_
 ]
 

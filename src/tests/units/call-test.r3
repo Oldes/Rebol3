@@ -14,7 +14,7 @@ err-buffer: copy ""
 rebol-cmd: func[cmd][
 	clear out-buffer
 	clear err-buffer
-	insert cmd join to-local-file system/options/boot #" "
+	cmd: rejoin [to-local-file system/options/boot #" " cmd]
 	call/shell/output/error cmd out-buffer err-buffer
 ]
 
@@ -67,6 +67,34 @@ rebol-cmd: func[cmd][
 		--assert out-buffer = {["1" "2"]^/["1" "2"]^/}
 		--assert 0 = rebol-cmd {--args 1 --script units/files/print-args.r3 2}
 		--assert out-buffer = {["1" "2"]^/["1"]^/}
+	--test-- "option values"
+		;; empty value must not be read past its end
+		--assert 0 = rebol-cmd {--do ""}
+		--assert out-buffer = ""
+		;; values with `-` as the second char are valid values
+		--assert 0 = rebol-cmd {--do "a-b: 3 print a-b"}
+		--assert out-buffer = "3^/"
+		--assert 0 = rebol-cmd {--args "a-b" units/files/print-args.r3}
+		--assert out-buffer = {["a-b"]^/["a-b"]^/}
+		;; single dash values are still accepted
+		--assert 0 = rebol-cmd {--args "-x" units/files/print-args.r3}
+		--assert out-buffer = {["-x"]^/["-x"]^/}
+	--test-- "missing option value"
+		;; value option followed by another --option is a usage error
+		;; (help is shown and the script is not evaluated)
+		--assert 0 = rebol-cmd {--args --quiet units/files/print-args.r3 a b}
+		--assert not find out-buffer {["a" "b"]}
+		--assert 0 = rebol-cmd {--script --quiet units/files/print-args.r3 a}
+		--assert not find out-buffer {["a"]}
+	--test-- "output into a cleared buffer"
+		;; stale bytes after the new tail must not be counted
+		buf: append/dup copy "" "x" 200
+		clear buf
+		--assert 0 = call/shell/output rejoin [
+			to-local-file system/options/boot { --args "á b" units/files/print-args.r3}
+		] buf
+		--assert 16 = length? buf
+		--assert buf = {["á b"]^/["á b"]^/}
 	--test-- "script args 3"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/2140
 		cmd: "units/files/print-args.r3"

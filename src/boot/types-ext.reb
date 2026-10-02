@@ -53,13 +53,15 @@ lit-path	*	ser
 
 binary		40	ser
 bitset		*	ser
-vector		*	ser
+vector		*	vector
 image		*	image
 
 gob			47	ser
 
 object		48	object
 module		*	object
+port		*	object
 
 struct		54  struct
+event       *   event
 

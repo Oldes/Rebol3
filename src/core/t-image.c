@@ -1372,6 +1372,25 @@ is_true:
 }
 
 
+// Raw data of a binary or of any vector, used as a source of the image's
+// pixels or channels. A vector's index and length are counted in elements,
+// so they must be scaled by the element size.
+static
+REBFLG Get_Image_Source(REBVAL *val, REBYTE **data, REBCNT *len)
+{
+	if (IS_BINARY(val)) {
+		*data = VAL_BIN_DATA(val);
+		*len  = VAL_LEN(val);
+		return TRUE;
+	}
+	if (IS_VECTOR(val)) {
+		*data = VAL_VEC_DATA(val);
+		*len  = VAL_LEN(val) * VAL_VEC_WIDE(val);
+		return TRUE;
+	}
+	return FALSE;
+}
+
 /***********************************************************************
 **
 */	REBINT PD_Image(REBPVS *pvs)
@@ -1389,6 +1408,8 @@ is_true:
 	REBSER *series = VAL_SERIES(data);
 	REBCNT *dp;
 	REBCNT sym;
+	REBYTE *bin;  // raw data of a binary or vector argument
+	REBCNT blen;  // and their length in bytes
 
 	if(pvs->path && !IS_END(pvs->path+1)) val = NULL;
 
@@ -1489,8 +1510,8 @@ is_true:
 					n = VAL_INT32(val);
 					if (n < 0 || n > 255) return PE_BAD_RANGE;
 					Fill_Line((REBCNT *)src, TO_PIXEL_COLOR(n,n,n,0xff), len, 1);
-				} else if ((IS_VECTOR(val) && VAL_VEC_WIDTH(val) == 1) || IS_BINARY(val)) {
-					Bin_To_RGB(src, len, VAL_BIN_DATA(val), VAL_LEN(val) / 3);
+				} else if (Get_Image_Source(val, &bin, &blen)) {
+					Bin_To_RGB(src, len, bin, blen / 3);
 				}
 				else return PE_BAD_SET;
 				break;
@@ -1512,8 +1533,8 @@ is_true:
 					n = VAL_INT32(val);
 					if (n < 0 || n > 255) return PE_BAD_RANGE;
 					Fill_Line((REBCNT *)src, TO_PIXEL_COLOR(n,n,n,n), len, FALSE);
-				} else if ((IS_VECTOR(val) && VAL_VEC_WIDTH(val) == 1) || IS_BINARY(val)) {
-					Bin_To_Color(src, VAL_BIN_DATA(val), VAL_LEN(val) / 4, sym);
+				} else if (Get_Image_Source(val, &bin, &blen)) {
+					Bin_To_Color(src, bin, blen / 4, sym);
 				} else return PE_BAD_SET;
 				break;
 
@@ -1526,8 +1547,8 @@ is_true:
 					n = VAL_INT32(val);
 					if (n < 0 || n > 255) return PE_BAD_RANGE;
 					Fill_Channel_Line(src, (REBYTE)n, len, sym);
-				} else if ((IS_VECTOR(val) && VAL_VEC_WIDTH(val) == 1) || IS_BINARY(val)) {
-					Bin_To_Channel(src, len, VAL_BIN_DATA(val), VAL_LEN(val), sym);
+				} else if (Get_Image_Source(val, &bin, &blen)) {
+					Bin_To_Channel(src, len, bin, blen, sym);
 				} else return PE_BAD_SET;
 				break;
 
@@ -1538,8 +1559,8 @@ is_true:
 					if (n < 0 || n > 255) return PE_BAD_RANGE;
 					Fill_Line((REBCNT*)src, TO_PIXEL_COLOR(n, n, n, n), len, FALSE);
 				}
-				else if ((IS_VECTOR(val) && VAL_VEC_WIDTH(val) == 1) || IS_BINARY(val)) {
-					Bin_To_Color(src, VAL_BIN_DATA(val), VAL_LEN(val), sym);
+				else if (Get_Image_Source(val, &bin, &blen)) {
+					Bin_To_Color(src, bin, blen, sym);
 				}
 				else return PE_BAD_SET;
 				break;

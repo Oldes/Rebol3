@@ -66,8 +66,11 @@
 	file->file.size = os_path->tail * SERIES_WIDE(os_path);
 
 	// Convert full OS path back to Rebol format.
+	// (fails on Windows with colon not used as a volume separator, like: c:\aaa\c:x)
 	ser = To_REBOL_Path(BIN_HEAD(os_path), BIN_LEN(os_path), OS_WIDE, FALSE);
+	if (!ser) Trap1(RE_BAD_FILE_PATH, path);
 	SET_FILE(&val, ser);
+	
 	// And check if access is allowed.
 	Secure_Port(SYM_FILE, file, &val);
 }
@@ -304,6 +307,7 @@ resize:
 {
 	REBOOL lines = (args & AM_WRITE_LINES) != 0;
 	REBINT n = 0;
+	REBYTE buf[8]; // UTF-8 encoded char; must live until the device write below
 
 	if (IS_BLOCK(data)) {
 		// Form the values of the block
@@ -341,9 +345,8 @@ resize:
 //	}
 	else if (IS_CHAR(data)) {
 		// Auto convert char to UTF-8
-		REBYTE buf[8];
 		len = Encode_UTF8_Char(buf, VAL_CHAR(data));
-		file->data = (REBYTE*)&buf;
+		file->data = buf;
 	}
 	else {
 		// it should be already handled

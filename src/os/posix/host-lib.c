@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -638,14 +638,27 @@ RL_LIB *RL; // Link back to reb-lib from embedded extensions (like for now: host
 **		provide a precise time sampling method. So, if the target
 **		posix OS does, add the ifdef code in here.
 **
+**		A monotonic clock is used when available, so the result is
+**		not affected by changes of the system time (NTP, user...).
+**		The counter is not a wall clock time, it is usable only as
+**		a base.
+**
 ***********************************************************************/
 {
-	struct timeval tv;
 	i64 time;
+#ifdef CLOCK_MONOTONIC
+	struct timespec ts;
+
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+
+	time = ((i64)ts.tv_sec * 1000000) + (ts.tv_nsec / 1000);
+#else
+	struct timeval tv;
 
 	gettimeofday(&tv,0);
 
 	time = ((i64)tv.tv_sec * 1000000) + tv.tv_usec;
+#endif
 
 	if (base == 0) return time;
 
