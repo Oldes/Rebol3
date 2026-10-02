@@ -724,6 +724,38 @@ if all [system/platform != 'Windows exists? %/proc/cpuinfo] [
 		--assert n = 0
 		h: none
 
+	--test-- "two timers in the same wait"
+		a: b: 0  wrong: 0
+		t1: open [scheme: 'timer timeout: repeat: 0.1]
+		t2: open [scheme: 'timer timeout: repeat: 0.25]
+		t1/awake: func [e] [if not same? e/port t1 [++ wrong]  ++ a  false]
+		t2/awake: func [e] [if not same? e/port t2 [++ wrong]  ++ b  false]
+		wait 1.05
+		close t1  close t2
+		--assert all [a >= 9  a <= 11]   ;; ~10 ticks of 0.1s
+		--assert all [b >= 3  b <= 5]    ;; ~4 ticks of 0.25s
+		--assert zero? wrong             ;; each event went to its own port
+
+	--test-- "one-shot and repeating timer in the same wait"
+		a: b: 0
+		t1: open [scheme: 'timer timeout: 0.2   awake: func [e] [++ a  false]]
+		t2: open [scheme: 'timer repeat:  0.1   awake: func [e] [++ b  false]]
+		wait 0.55
+		--assert a = 1                   ;; one-shot fired exactly once
+		--assert not open? t1            ;; ...and disarmed itself
+		--assert all [b >= 4  b <= 6]    ;; repeating one kept going
+		--assert open? t2
+		close t2
+
+	--test-- "closing one timer does not stop the other"
+		a: b: 0
+		t1: open [scheme: 'timer timeout: repeat: 0.1 awake: func [e] [++ a  false]]
+		t2: open [scheme: 'timer timeout: repeat: 0.1 awake: func [e] [++ b  if b = 2 [close t1]  false]]
+		wait 0.55
+		close t2
+		--assert a <= 3                  ;; t1 stopped early (closed from t2's awake)
+		--assert all [b >= 4  b <= 6]    ;; t2 kept running
+
 	--test-- "dt measures wait"
 		t: dt [wait 0.2]
 		--assert all [t >= 0:0:0.19  t < 0:0:0.5]
