@@ -67,6 +67,7 @@
 #include "reb-evtypes.h"
 
 #define MAX_TIMER_SECS 9223372036LL   // keeps microseconds within REBI64
+#define MAX_TIMER_LAG  4               // missed ticks to catch up before resync
 
 typedef struct rebol_timer_state TIMER_STATE;
 struct rebol_timer_state {
@@ -175,6 +176,7 @@ static TIMER_STATE *Timers; // armed timers (weak references)
 	REBVAL *evt;
 	REBI64 now, delta;
 	REBI64 min = -1;
+	REBFLG posted;
 
 	if (!Timers) return ALL_BITS;
 
@@ -185,9 +187,11 @@ static TIMER_STATE *Timers; // armed timers (weak references)
 		if (now >= tmr->due) {
 			// Post the event, unless the previous one was not processed yet
 			// (so a slow awake function cannot flood the event queue):
+			posted = FALSE;
 			if (!Find_Event(EVM_PORT, EVT_TIME, tmr->port)) {
 				evt = Append_Event();
 				if (evt) {
+					posted = TRUE;
 					VAL_SET(evt, REB_EVENT);
 					VAL_EVENT_TYPE(evt)  = EVT_TIME;
 					VAL_EVENT_FLAGS(evt) = 0;
@@ -201,10 +205,20 @@ static TIMER_STATE *Timers; // armed timers (weak references)
 				Unlink_Timer(tmr); // one-shot timer is done
 				continue;
 			}
-			// Schedule the next event, skipping missed ticks (no bursts):
-			tmr->due += ((now - tmr->due) / tmr->interval + 1) * tmr->interval;
+			// When the event was not posted, the tick stays due, so it is
+			// posted once the queued event is processed.
+			if (posted) {
+				// Late ticks are caught up one by one (so the rate is kept
+				// even when the OS wakes us late), but when too far behind
+				// (slow awake function or long blocking code), the backlog
+				// is dropped and the timer is resynchronized.
+				tmr->due += tmr->interval;
+				if (now - tmr->due >= MAX_TIMER_LAG * tmr->interval)
+					tmr->due += ((now - tmr->due) / tmr->interval + 1) * tmr->interval;
+			}
 		}
 		delta = tmr->due - now;
+		if (delta < 0) delta = 0; // already due
 		if (min < 0 || delta < min) min = delta;
 	}
 
