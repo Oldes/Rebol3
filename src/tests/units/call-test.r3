@@ -67,6 +67,18 @@ rebol-cmd: func[cmd][
 		--assert out-buffer = {["1" "2"]^/["1" "2"]^/}
 		--assert 0 = rebol-cmd {--args 1 --script units/files/print-args.r3 2}
 		--assert out-buffer = {["1" "2"]^/["1"]^/}
+	--test-- "option values"
+		;; empty value must not be read past its end
+		--assert 0 = rebol-cmd {--do ""}
+		--assert out-buffer = ""
+		;; values with `-` as the second char are valid values
+		--assert 0 = rebol-cmd {--do "a-b: 3 print a-b"}
+		--assert out-buffer = "3^/"
+		--assert 0 = rebol-cmd {--args "a-b" units/files/print-args.r3}
+		--assert out-buffer = {["a-b"]^/["a-b"]^/}
+		;; single dash values are still accepted
+		--assert 0 = rebol-cmd {--args "-x" units/files/print-args.r3}
+		--assert out-buffer = {["-x"]^/["-x"]^/}
 	--test-- "script args 3"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/2140
 		cmd: "units/files/print-args.r3"

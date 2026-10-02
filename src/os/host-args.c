@@ -153,7 +153,9 @@ const struct arg_chr arg_chars2[] = {
 ***********************************************************************/
 {
 	if (arg == NULL) return 0;
-	if (arg[1] == (REBCHR)'-') return flag;
+	// Next arg is another --option, so the value is missing.
+	// (Test arg[0] first so an empty string is not read past its end.)
+	if (arg[0] == (REBCHR)'-' && arg[1] == (REBCHR)'-') return flag;
 
 	flag &= ~RO_EXT;
 
