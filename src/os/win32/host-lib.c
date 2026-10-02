@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -618,19 +618,27 @@ X*/	REBOOL As_OS_Str(REBSER *series, REBCHR **string)
 **		Note: Requires high performance timer.
 ** 		Q: If not found, use timeGetTime() instead ?!
 **
+**		The counter is not in microseconds (it is in performance
+**		counter ticks), so it is usable only as a base.
+**
 ***********************************************************************/
 {
-	LARGE_INTEGER freq;
+	static LARGE_INTEGER freq = {0}; // fixed at system boot, so cached
 	LARGE_INTEGER time;
+	i64 delta;
 
 	if (!QueryPerformanceCounter(&time))
 		OS_Crash(cb_cast("Missing resource"), cb_cast("High performance timer"));
 
 	if (base == 0) return time.QuadPart; // counter (may not be time)
 
-	QueryPerformanceFrequency(&freq);
+	if (freq.QuadPart == 0) QueryPerformanceFrequency(&freq);
 
-	return ((time.QuadPart - base) * 1000) / (freq.QuadPart / 1000);
+	// Whole seconds and the rest are converted separately, so the result
+	// is exact for any frequency and the multiplication cannot overflow.
+	delta = time.QuadPart - base;
+	return (delta / freq.QuadPart) * 1000000
+		+ ((delta % freq.QuadPart) * 1000000) / freq.QuadPart;
 }
 
 
@@ -1625,4 +1633,3 @@ static INT CALLBACK BrowseCallbackProc(HWND hwnd, UINT uMsg, LPARAM lParam, LPAR
 {
 	return _isatty(_fileno(stdin));
 }
-

@@ -723,6 +723,17 @@ if all [system/platform != 'Windows exists? %/proc/cpuinfo] [
 		n: 0  wait 0.2
 		--assert n = 0
 		h: none
+
+	--test-- "dt measures wait"
+		t: dt [wait 0.2]
+		--assert all [t >= 0:0:0.19  t < 0:0:0.5]
+	--test-- "timer interval matches measured time"
+		n: 0
+		t: open [scheme: 'timer timeout: repeat: 0.1 awake: func [e] [n: n + 1  false]]
+		d: dt [wait 1.05]
+		close t
+		--assert all [n >= 9  n <= 11]
+		--assert all [d >= 0:0:1  d < 0:0:1.5]
 ===end-group===
 
 ~~~end-file~~~
