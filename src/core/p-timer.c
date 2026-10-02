@@ -79,21 +79,20 @@ struct rebol_timer_state {
 };
 
 static TIMER_STATE *Timers; // armed timers (weak references)
-static REBI64 Timer_Base;    // OS_Delta_Time base (set on init)
 
 
 /***********************************************************************
 **
 */	static REBI64 Timer_Now(void)
 /*
-**		Returns microseconds since the timer scheme initialization.
+**		Returns microseconds since boot (same clock as `stats/timer`).
 **		NOTE: OS_Delta_Time(0, 0) is not usable as a time value - it
 **		returns a raw OS counter (on Windows in performance counter
 **		ticks), only a delta from a base is in microseconds.
 **
 ***********************************************************************/
 {
-	return OS_Delta_Time(Timer_Base, 0);
+	return OS_Delta_Time(PG_Boot_Time, 0);
 }
 
 
@@ -365,7 +364,6 @@ static REBI64 Timer_Base;    // OS_Delta_Time base (set on init)
 ***********************************************************************/
 {
 	Timers = NULL;
-	Timer_Base = OS_Delta_Time(0, 0);
 	Register_Handle(SYM_TIMER, sizeof(TIMER_STATE), (REB_HANDLE_FREE_FUNC)Free_Timer_State);
 	Register_Scheme(SYM_TIMER, 0, Timer_Actor);
 }
