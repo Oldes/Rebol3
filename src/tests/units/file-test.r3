@@ -132,7 +132,7 @@ if find [Linux macOS] system/platform [
 		--assert all [error? e: try [read   %/c/aaa/c:x]  e/id = 'bad-file-path]
 		--assert all [error? e: try [write  %/c/aaa/c:x ""] e/id = 'bad-file-path]
 		--assert all [error? e: try [delete %/c/aaa/c:x]  e/id = 'bad-file-path]
-		--assert all [error? e: try [query  %/c/aaa/c:x]  e/id = 'bad-file-path]
+		--assert all [error? e: try [query  %/c/aaa/c:x 'size]  e/id = 'bad-file-path]
 	]
 ===end-group===
 
