@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -89,7 +89,9 @@
 */	REBFLG Pending_Port(REBVAL *port)
 /*
 **		Return TRUE if port value is pending a signal.
-**		Not valid for all ports - requires request struct!!!
+**		Only ports holding a device request (SYM_PORT_STATEX handle)
+**		can report that they are not pending. Other ports (including
+**		ports with other handle types, like timers) are always pending.
 **
 ***********************************************************************/
 {
@@ -98,7 +100,7 @@
 
 	if (IS_PORT(port)) {
 		state = BLK_SKIP(VAL_PORT(port), STD_PORT_STATE);
-		if (IS_HANDLE(state)) {
+		if (IS_HANDLE(state) && VAL_HANDLE_TYPE(state) == SYM_PORT_STATEX) {
 			req = (REBREQ*)VAL_HANDLE_CONTEXT_DATA(state);
 			if (!GET_FLAG(req->flags, RRF_PENDING)) return FALSE;
 		}
@@ -178,6 +180,7 @@
 	REBCNT wt = 1;
 	REBCNT res = (timeout >= 1000) ? 0 : 16;  // OS dependent?
 	REBINT old_time = -1;
+	REBCNT next_timer;
 
 	while (wt) {
 		if (GET_SIGNAL(SIG_ESCAPE)) {
@@ -185,6 +188,9 @@
 			Out_Str(cb_cast("[ESC]"), 1, TRUE);
 			Halt_Code(RE_HALT, 0); // Throws!
 		}
+
+		// Queue events of timers which are due:
+		next_timer = Check_Timers();
 
 		// Process any waiting events:
 		if ((result = Awake_System(ports, only)) > 0) return TRUE;
@@ -195,6 +201,9 @@
 			wt *= 2;
 			if (wt > MAX_WAIT_MS) wt = MAX_WAIT_MS;
 		}
+
+		// Do not sleep past the next timer (but keep the loop running):
+		if (next_timer < wt) wt = next_timer ? next_timer : 1;
 
 		if (timeout != ALL_BITS) {
 			// Figure out how long that (and OS_WAIT) took:
@@ -606,6 +615,7 @@ SCHEME_ACTIONS *Scheme_Actions;	// Initial Global (not threaded)
 	Init_File_Scheme();
 	Init_Dir_Scheme();
 	Init_Event_Scheme();
+	Init_Timer_Scheme();
 	Init_TCP_Scheme();
 	Init_UDP_Scheme();
 	Init_DNS_Scheme();

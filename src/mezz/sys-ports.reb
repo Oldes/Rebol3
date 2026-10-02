@@ -386,6 +386,13 @@ init-schemes: func [
 	] 'file
 
 	make-scheme [
+		title: "Timer"
+		name: 'timer
+		spec: system/standard/port-spec-timer
+		awake: func [event] [true]
+	]
+
+	make-scheme [
 		title: "DNS Lookup"
 		name: 'dns
 		spec: system/standard/port-spec-net

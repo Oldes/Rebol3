@@ -540,6 +540,12 @@ standard: object [
 		fragment: none
 	]
 
+	port-spec-timer: make port-spec-head [
+		scheme:  'timer
+		timeout: none ; delay before the first event (seconds or time!)
+		repeat:  none ; interval of the following events (none = only one event)
+	]
+
 	port-spec-checksum: make port-spec-head [
 		scheme: 'checksum
 		method: none

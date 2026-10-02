@@ -730,6 +730,9 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 	while (GC_Mark_Queue->tail > 0) {
 		Mark_Series(((REBSER**)GC_Mark_Queue->data)[--GC_Mark_Queue->tail], 0);
 	}
+
+	// Disarm timers of ports which are going to be released (weak references):
+	Sweep_Timers();
 	
 	count = Sweep_Series();
 	count += Sweep_Gobs();

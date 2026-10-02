@@ -665,4 +665,64 @@ if all [system/platform != 'Windows exists? %/proc/cpuinfo] [
 		--assert port? system/ports/callback
 ===end-group===
 
+
+===start-group=== "timer scheme"
+	--test-- "repeating timer"
+		n: 0  e: none
+		t: open [scheme: 'timer timeout: repeat: 0.1]
+		t/awake: func [event] [n: n + 1  e: event  false]
+		wait 0.55
+		--assert all [n >= 4  n <= 6]
+		--assert event? e
+		--assert e/type = 'time
+		--assert same? e/port t
+	--test-- "close and reopen"
+		--assert open? t
+		close t
+		--assert not open? t
+		n: 0  wait 0.3
+		--assert n = 0
+		open t
+		wait 0.35
+		--assert n >= 2
+		close t
+	--test-- "one-shot timer"
+		m: 0
+		t1: open [scheme: 'timer timeout: 0.1 awake: func [event] [m: m + 1  false]]
+		wait 0.4
+		--assert m = 1
+		--assert not open? t1
+	--test-- "time! value"
+		m: 0
+		t1: open [scheme: 'timer timeout: 0:0:0.1 awake: func [event] [m: m + 1  false]]
+		wait 0.25
+		--assert m = 1
+	--test-- "wait on a timer port"
+		t1: open [scheme: 'timer timeout: 0.1] ;; default awake returns true
+		--assert same? t1 wait [t1 1]
+	--test-- "invalid timer specs"
+		--assert error? try [open [scheme: 'timer]]
+		--assert error? try [open [scheme: 'timer timeout: -1]]
+		--assert error? try [open [scheme: 'timer repeat: "1"]]
+	--test-- "unreferenced timer is released by GC"
+		n: 0
+		t: open [scheme: 'timer repeat: 0.05 awake: func [event] [n: n + 1  false]]
+		wait 0.2
+		--assert n > 0
+		t: none
+		n1: n  wait 0.2
+		--assert n > n1        ;; still active until GC
+		loop 2 [recycle recycle]
+		n: 0  wait 0.2
+		--assert n = 0         ;; released
+	--test-- "kept handle does not keep the timer alive"
+		n: 0
+		t: open [scheme: 'timer repeat: 0.05 awake: func [event] [n: n + 1  false]]
+		h: t/state  t: none
+		loop 2 [recycle recycle]
+		n: 0  wait 0.2
+		--assert n = 0
+		h: none
+===end-group===
+
 ~~~end-file~~~
