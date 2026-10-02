@@ -96,15 +96,8 @@
 	name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
 	processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 # endif
-#ifdef REB_VIEW
-extern HWND      Focused_Window;
-#endif
+
 WCHAR     App_Title[MAX_TITLE_LENGTH]; //will be filled later from the resources file
-#endif
-
-
-#ifdef REB_VIEW
-//extern void Init_Graphics(void);
 #endif
 
 void Host_Repl(void) {
@@ -351,11 +344,6 @@ int main(int argc, char **argv) {
 #ifdef TO_WINDOWS
 	// Setting title after Open_StdIO, because with Windows subsystem the console is not by default opened.
 	SetConsoleTitle((LPWSTR)App_Title);
-#endif
-
-#ifdef REB_VIEW
-	OS_Init_Windows(hInstance);
-	//Init_Graphics();
 #endif
 
 	INIT_EMBEDDED_EXTENSIONS();

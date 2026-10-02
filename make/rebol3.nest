@@ -328,9 +328,6 @@ host-files-view: [
 		%os/win32/sys-utils.c
 		%os/win32/sys-codecs.cpp
 		%os/win32/sys-d2d.cpp
-	;	%os/win32/host-event.c
-	;	%os/win32/host-window.c
-	;	%os/win32/host-compositor.c
 	]
 ]
 
@@ -904,7 +901,6 @@ include-view: [
 		core-files: %core/n-request-color.c
 	]
 	#if Windows? [
-		;define: REB_VIEW
 		:include-image-os-codec
 		libraries: [
 			%Gdi32

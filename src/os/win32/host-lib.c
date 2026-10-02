@@ -77,11 +77,6 @@ static void *Task_Ready;
 static void *Temp_Buffer;
 static size_t Temp_Buffer_Size = 0;
 
-#ifdef REB_VIEW
-void Dispose_Windows(void);
-#endif
-
-
 /***********************************************************************
 **
 */	void Convert_Date(SYSTEMTIME *stime, REBOL_DAT *dat, long zone)
@@ -397,10 +392,6 @@ X*/	REBOOL As_OS_Str(REBSER *series, REBCHR **string)
 	OS_Quit_Devices(0);
 #ifdef INCLUDE_IMAGE_OS_CODEC
 	OS_Release_Codecs();
-#endif
-#ifdef REB_VIEW
-	//Dispose_Graphics();
-	Dispose_Windows();
 #endif
 #ifdef DEBUG
 	if (flags) RL_Dispose();
