@@ -307,6 +307,7 @@ resize:
 {
 	REBOOL lines = (args & AM_WRITE_LINES) != 0;
 	REBINT n = 0;
+	REBYTE buf[8]; // UTF-8 encoded char; must live until the device write below
 
 	if (IS_BLOCK(data)) {
 		// Form the values of the block
@@ -344,9 +345,8 @@ resize:
 //	}
 	else if (IS_CHAR(data)) {
 		// Auto convert char to UTF-8
-		REBYTE buf[8];
 		len = Encode_UTF8_Char(buf, VAL_CHAR(data));
-		file->data = (REBYTE*)&buf;
+		file->data = buf;
 	}
 	else {
 		// it should be already handled

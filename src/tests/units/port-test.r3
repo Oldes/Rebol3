@@ -565,14 +565,16 @@ if system/platform = 'Windows [
 		--assert all [
 			not error? try [
 				p: open/new %issue-1894
-				write/append p "Hello"
+				write/append p #{CAFE 00}
 				write/append p newline
+				write/append p #"č"    ;; 2 bytes in UTF-8
+				write/append p #"😀"   ;; 4 bytes in UTF-8
 				close p
 				p: open %issue-1894
-				write/append p #{5265626F6C}
+				write/append p #{00 DEAD}
 				close p
 			]
-			"Hello^/Rebol" = read/string %issue-1894
+			#{CAFE 00 0A C48D F09F9880 00 DEAD} = read %issue-1894
 		]
 
 	--test-- "APPEND file-port"
