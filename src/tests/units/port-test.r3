@@ -768,4 +768,39 @@ if all [system/platform != 'Windows exists? %/proc/cpuinfo] [
 		--assert all [d >= 0:0:1  d < 0:0:1.5]
 ===end-group===
 
+===start-group=== "timer precision"
+	--test-- "60 fps timer"
+		n: 0
+		t: open [scheme: 'timer repeat: 1 / 60 awake: func [e] [++ n  false]]
+		wait 1
+		close t
+		--assert all [n >= 58  n <= 61]
+	--test-- "60 fps timer in a short wait"
+		n: 0
+		t: open [scheme: 'timer repeat: 1 / 60 awake: func [e] [++ n  false]]
+		loop 4 [wait 0.25]               ;; res < 1000 path
+		close t
+		--assert all [n >= 57  n <= 61]
+	--test-- "late ticks are caught up"
+		n: 0  slow: true
+		t: open [scheme: 'timer repeat: 0.05 awake: func [e] [
+			++ n
+			if slow [slow: false  s: stats/timer  until [stats/timer - s > 0:0:0.12]] ;; block ~2 ticks
+			false
+		]]
+		wait 1.01
+		close t
+		--assert all [n >= 19  n <= 21]  ;; missed ticks were delivered
+	--test-- "too late ticks are dropped (resync)"
+		n: 0  slow: true
+		t: open [scheme: 'timer repeat: 0.05 awake: func [e] [
+			++ n
+			if slow [slow: false  s: stats/timer  until [stats/timer - s > 0:0:0.5]] ;; block ~10 ticks
+			false
+		]]
+		wait 1.01
+		close t
+		--assert n < 17                  ;; backlog over 4 ticks was dropped
+===end-group===
+
 ~~~end-file~~~

@@ -178,7 +178,10 @@
 	REBCNT time;
 	REBINT result;
 	REBCNT wt = 1;
-	REBCNT res = (timeout >= 1000) ? 0 : 16;  // OS dependent?
+	// Minimal time worth sleeping (shorter waits are spun). It used to be
+	// 16ms (Windows timer tick), but OS_Wait now sleeps precisely (~1ms)
+	// on all platforms, and spinning made short timer intervals busy loops.
+	REBCNT res = (timeout >= 1000) ? 0 : 1;
 	REBINT old_time = -1;
 	REBCNT next_timer;
 
