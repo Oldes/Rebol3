@@ -347,10 +347,10 @@ mezzanine: [
 			;; A port's payload is its object frame (VAL_PORT == VAL_OBJ_FRAME),
 			;; so it crosses as RXE_OBJECT and must come back as the same port,
 			;; not a copy and not a plain object.
-			[port? echo system/ports/event]
-			[same? system/ports/event echo system/ports/event]
+			[port? echo system/ports/system]
+			[same? system/ports/system echo system/ports/system]
 			;; ...and the frame the extension receives must be readable.
-			[object? xobj1 system/ports/event 'spec]
+			[object? xobj1 system/ports/system 'spec]
 
 			;; --- port scheme over the registered device -------------------
 			;; A scheme defined entirely in extension mezzanine, reaching a

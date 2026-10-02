@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -292,10 +292,16 @@ static int Poll_Default(REBDEV *dev)
 **		Free - Free a device request structure.
 **		Poll - Poll device for activity.
 **
+**		Init, Quit and Poll are device level commands: they receive
+**		the device itself (their command functions cast it to REBDEV*),
+**		not a request. Init is done only once, the same way as the
+**		auto init in OS_Do_Device.
+**
 ***********************************************************************/
 {
 	REBDEV *dev;
 	REBREQ req;
+	int result;
 
 	// Validate device:
 	if (device >= Dev_Count || !(dev = Devices[device]))
@@ -304,6 +310,17 @@ static int Poll_Default(REBDEV *dev)
 	// Validate command:
 	if (command > dev->max_command || dev->commands[command] == 0)
 		return -2;
+
+	switch (command) {
+	case RDC_INIT:
+		if (GET_FLAG(dev->flags, RDF_INIT)) return DR_DONE; // already initialized
+		result = dev->commands[RDC_INIT]((REBREQ*)dev);
+		if (result == DR_DONE) SET_FLAG(dev->flags, RDF_INIT);
+		return result;
+	case RDC_QUIT:
+	case RDC_POLL:
+		return dev->commands[command]((REBREQ*)dev);
+	}
 
 	// Do command, return result:
 	/* fake a request, not all fields are set */

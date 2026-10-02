@@ -644,6 +644,25 @@ if all [system/platform != 'Windows exists? %/proc/cpuinfo] [
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1373
 	;; not implemented yet!
 		--assert all [error? e: try [query system:// object!]  e/id = 'no-port-action]
+
+	--test-- "event scheme removed"
+		--assert none? in system/schemes 'event
+		--assert none? in system/ports 'event
+		--assert error? try [open [scheme: 'event]]
+	--test-- "system/view removed"
+		--assert none? in system 'view
+	--test-- "system and callback ports still open"
+		--assert port? system/ports/system
+		--assert port? system/ports/callback
+	--test-- "system ports cannot be closed"
+		--assert error? try [close system/ports/system]
+		--assert error? try [close system/ports/callback]
+	--test-- "open of a system port is a no-op"
+		--assert same? system/ports/system open system/ports/system
+	--test-- "events still processed after the close attempts"
+		--assert none? wait 0.01
+		;; async callbacks still reach their port
+		--assert port? system/ports/callback
 ===end-group===
 
 ~~~end-file~~~

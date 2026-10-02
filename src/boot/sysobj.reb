@@ -3,7 +3,7 @@ REBOL [
 	Title: "System object"
 	Rights: {
 		Copyright 2012 REBOL Technologies
-		Copyright 2012-2024 Rebol Open Source Contributors
+		Copyright 2012-2026 Rebol Open Source Contributors
 		REBOL is a trademark of REBOL Technologies
 	}
 	License: {
@@ -418,7 +418,6 @@ schemes: make block! 20 ; Block only before init-scheme! Than it is an object.
 
 ports: object [
 	system:         ; Port for system events
-	event:          ; Port for GUI
 	input:          ; Port for user input.
 	output:         ; Port for user output
 	echo:           ; Port for echoing output
@@ -685,19 +684,6 @@ standard: object [
 	utype: none
 	font: none	; mezz-graphics.h
 	para: none	; mezz-graphics.h
-]
-
-view: object [
-	screen-gob: none
-	handler: none
-	metrics: construct [
-		screen-size:
-		border-size:
-		border-fixed:
-		title-size:
-		work-origin:
-		work-size: 0x0
-	]
 ]
 
 console: construct [

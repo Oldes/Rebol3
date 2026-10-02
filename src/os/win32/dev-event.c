@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -109,6 +109,9 @@ extern HWND      Focused_Window;
 
 	if (!Event_Handle) return DR_ERROR;
 
+	// Poll this device on each wait, even without any pending request,
+	// so messages (like WM_DNS for async DNS) are processed promptly.
+	SET_FLAG(dev->flags, RDO_AUTO_POLL);
 	SET_FLAG(dev->flags, RDF_INIT);
 	return DR_DONE;
 }
