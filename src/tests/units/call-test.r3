@@ -205,21 +205,24 @@ rebol-cmd: func[cmd][
 ===start-group=== "Raw input"
 	--test-- "Pipe input"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/2613
+		;; Reading stdin returns only data available at the moment (like POSIX `read`),
+		;; and the writer may send its output in more chunks (`print` = value + newline),
+		;; so read until the end of input (an empty result) to avoid a race.
+		read-stdin: { --cgi --do "bin: copy #{} while [not empty? b: read/binary system/ports/input][append bin b] probe bin"}
 		--assert all [
 			0 = rebol-cmd rejoin [
 				{--do "print 123 flush system/ports/output" | }
 				to-local-file system/options/boot 
-				{ --cgi --do "probe read/binary system/ports/input"} 
+				read-stdin
 			]
 			out-buffer == "#{3132330A}^/"
 			err-buffer == ""
 		]
-		? out-buffer
 		--assert all [
 			0 = rebol-cmd rejoin [
 				{--do "prin 123 flush system/ports/output" | }
 				to-local-file system/options/boot 
-				{ --cgi --do "probe read/binary system/ports/input"} 
+				read-stdin
 			]
 			out-buffer == "#{313233}^/"
 			err-buffer == ""
@@ -228,13 +231,11 @@ rebol-cmd: func[cmd][
 			0 = rebol-cmd rejoin [
 				{--do "prin {} flush system/ports/output" | }
 				to-local-file system/options/boot 
-				{ --cgi --do "probe read/binary system/ports/input"} 
+				read-stdin
 			]
 			out-buffer == "#{}^/"
 			err-buffer == ""
 		]
-		? out-buffer
-		? err-buffer
 	--test-- "Resolve length of bytes available on stdin"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/2614
 		--assert all [
@@ -255,8 +256,6 @@ rebol-cmd: func[cmd][
 			out-buffer == "1"
 			err-buffer == ""
 		]
-		? out-buffer
-		? err-buffer
 	--test-- "Input with null byte"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2668
 		clear out-buffer
@@ -267,7 +266,6 @@ rebol-cmd: func[cmd][
 			] out-buffer #{cafe001e} 
 			out-buffer == "4"
 		]
-		? out-buffer
 		clear out-buffer
 		--assert all [
 			0 = call/shell/output/input rejoin [
@@ -276,7 +274,6 @@ rebol-cmd: func[cmd][
 			] out-buffer "one^@two"
 			out-buffer == "7"
 		]
-		? out-buffer
 ===end-group===
 
 ~~~end-file~~~
