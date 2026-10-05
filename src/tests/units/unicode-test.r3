@@ -999,6 +999,13 @@ Rebol [
 		--assert "čx" > "č"
 		--assert equal? "a^@č" "A^@č"
 		--assert not equal? "a^@č" "a^@"
+	--test-- "case-insensitive comparison of UTF-8 strings"
+		--assert "Č" = "č"
+		--assert "čÁ" = "Čá"
+		--assert not strict-equal? "Č" "č"
+		--assert not "Č" < "č"
+		--assert not "Č" > "č"
+		--assert "č" < "Čx"
 ===end-group===
 
 ~~~end-file~~~

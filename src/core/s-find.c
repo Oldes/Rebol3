@@ -221,8 +221,9 @@
 	if (IS_BINARY(v1) || IS_BINARY(v2)) uncase = FALSE;
 	if (uncase && (IS_UTF8_SERIES(VAL_SERIES(v1)) || IS_UTF8_SERIES(VAL_SERIES(v2)))) {
 		n = Compare_UTF8_Len(VAL_BIN_DATA(v1), l1, VAL_BIN_DATA(v2), l2);
-		if (n == 0) return 0;
-		return (n < 0) ? n + 2 : n - 2;
+		// exact (0) or non-case match (1, 3) is a match in case-insensitive compare
+		if (n >= 0) return 0;
+		return n + 2; // -1: v1 > v2, -3: v2 > v1
 	}
 	else {
 		n = Compare_Bytes(VAL_BIN_DATA(v1), VAL_BIN_DATA(v2), len, uncase);
