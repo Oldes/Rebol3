@@ -224,7 +224,7 @@ const struct arg_chr arg_chars2[] = {
 	if (0 == OS_Get_Boot_Path(&rargs->exe_path) && argc > 0) {
 		// First arg is path to executable (on most systems):
 #ifdef OS_WIDE_CHAR
-		OS_Wide_To_Multibyte(*argv, &rargs->exe_path, -1);
+		OS_Wide_To_Multibyte(*argv, &rargs->exe_path, (REBLEN)-1);
 #else
 		rargs->exe_path = Copy_Arg(*argv); // owned, it is released in Init_Main_Args
 #endif
@@ -243,7 +243,7 @@ const struct arg_chr arg_chars2[] = {
 		// First arg is path to executable (on most systems):
 		if (argc > 0) {
 #ifdef OS_WIDE_CHAR
-			OS_Wide_To_Multibyte(*argv, &rargs->exe_path, -1);
+			OS_Wide_To_Multibyte(*argv, &rargs->exe_path, (REBLEN)-1);
 #else
 			rargs->exe_path = Copy_Arg(*argv); // owned, it is released in Init_Main_Args
 #endif
@@ -305,7 +305,7 @@ const struct arg_chr arg_chars2[] = {
 			}
 			else {
 #ifdef OS_WIDE_CHAR
-				OS_Wide_To_Multibyte(arg, &rargs->script, -1);
+				OS_Wide_To_Multibyte(arg, &rargs->script, (REBLEN)-1);
 #else
 				rargs->script = arg;
 #endif
