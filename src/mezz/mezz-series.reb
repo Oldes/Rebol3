@@ -12,13 +12,6 @@ REBOL [
 	}
 ]
 
-empty?: make :tail? [
-	[
-		{Returns TRUE if empty or NONE, or for series if index is at or beyond its tail.}
-		series [series! object! gob! port! bitset! typeset! map! none!]
-	]
-]
-
 offset?: func [
 	"Returns the offset between two series positions."
 	series1 [series!]
