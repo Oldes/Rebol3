@@ -150,7 +150,7 @@
 
 	case A_LENGTHQ:
 		if (IS_UTF8_STRING(value)) {
-			SET_INTEGER(DS_RETURN, tail > index ? Length_As_UTF8_Code_Points(VAL_BIN_DATA(value)) : 0);
+			SET_INTEGER(DS_RETURN, tail > index ? UTF8_Length(VAL_BIN_DATA(value), tail - index) : 0);
 		}
 		else {
 			SET_INTEGER(DS_RETURN, tail > index ? tail - index : 0);

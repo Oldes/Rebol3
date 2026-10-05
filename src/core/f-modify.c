@@ -211,7 +211,7 @@
 		// Special case when source or target has Unicode chars and not used /part and target is not binary
 		if ((IS_UTF8_SERIES(src_ser) || IS_UTF8_SERIES(dst_ser)) && !GET_FLAGS(flags, AN_PART, AN_SERIES)) {
 			// src_len and dst_len are in bytes... so map it to real chars in the destination
-			REBCNT chr = dups * Length_As_UTF8_Code_Points(BIN_SKIP(src_ser, src_idx));
+			REBCNT chr = dups * UTF8_Length(BIN_SKIP(src_ser, src_idx), src_len);
 			REBCNT idx = dst_idx;
 			while (chr-- > 0 && idx < tail) {
 				idx += UTF8_Next_Char_Size(BIN_HEAD(dst_ser), idx);

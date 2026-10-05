@@ -200,7 +200,8 @@ FORCE_INLINE
 {
 	REBCNT pos = 0;
 	const REBYTE *end = str + index;
-	while (*str && str < end) {
+	// Not stopping on null, because strings may contain #"^@" chars!
+	while (str < end) {
 		pos += (*str++ & 0xC0) != 0x80;
 	}
 	return pos;
@@ -959,7 +960,10 @@ u16_error:
 **
 */	REBCNT Length_As_UTF8_Code_Points(REBYTE *src)
 /*
-**		Returns number of code points encoded in UTF-8.
+**		Returns number of code points encoded in null terminated UTF-8.
+**
+**		Use only for C strings! Series must use UTF8_Length with
+**		its byte length, else bytes past the tail are counted too.
 **
 ***********************************************************************/
 {
@@ -967,6 +971,24 @@ u16_error:
 	while (*src) {
         size += (*src++ & 0xC0) != 0x80;
     }
+	return size;
+}
+
+
+/***********************************************************************
+**
+*/	REBCNT UTF8_Length(const REBYTE *src, REBLEN len)
+/*
+**		Returns number of code points in the given number of UTF-8
+**		encoded bytes. Null bytes are counted as chars.
+**
+***********************************************************************/
+{
+	REBCNT size = 0;
+	const REBYTE *end = src + len;
+	while (src < end) {
+		size += (*src++ & 0xC0) != 0x80;
+	}
 	return size;
 }
 

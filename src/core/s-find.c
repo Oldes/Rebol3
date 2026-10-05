@@ -220,7 +220,7 @@
 
 	if (IS_BINARY(v1) || IS_BINARY(v2)) uncase = FALSE;
 	if (uncase && (IS_UTF8_SERIES(VAL_SERIES(v1)) || IS_UTF8_SERIES(VAL_SERIES(v2)))) {
-		n = Compare_UTF8(VAL_BIN_DATA(v1), VAL_BIN_DATA(v2), len);
+		n = Compare_UTF8_Len(VAL_BIN_DATA(v1), l1, VAL_BIN_DATA(v2), l2);
 		if (n == 0) return 0;
 		return (n < 0) ? n + 2 : n - 2;
 	}
@@ -234,6 +234,21 @@
 /***********************************************************************
 **
 */	REBINT Compare_UTF8(const REBYTE *s1, const REBYTE *s2, REBCNT l2)
+/*
+**		Compare null terminated UTF8 string (s1) with UTF8 data (s2).
+**		See Compare_UTF8_Len for the result values.
+**
+**		Used for: WORD comparison.
+**
+***********************************************************************/
+{
+	return Compare_UTF8_Len(s1, (REBCNT)LEN_BYTES(s1), s2, l2);
+}
+
+
+/***********************************************************************
+**
+*/	REBINT Compare_UTF8_Len(const REBYTE *s1, REBCNT l1, const REBYTE *s2, REBCNT l2)
 /*
 **		Compare two UTF8 strings.
 **
@@ -250,12 +265,9 @@
 **		So, result + 2 for no-match gives proper sort order.
 **		And, result - 2 for non-case match gives sort order.
 **
-**		Used for: WORD comparison.
-**
 ***********************************************************************/
 {
 	REBINT c1, c2;
-	REBCNT l1 = (REBCNT)LEN_BYTES(s1);
 	REBINT result = 0;
 
 	for (; l1 > 0 && l2 > 0;) {

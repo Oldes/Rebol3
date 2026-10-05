@@ -801,7 +801,7 @@ FORCE_INLINE
 		switch (word) {
 		case SYM_LENGTH:
 			len = IS_UTF8_SERIES(ser)
-				? Length_As_UTF8_Code_Points(data)
+				? UTF8_Length(data, tail - idx)
 				: tail - idx;
 			break;
 		case SYM_WIDTH:
