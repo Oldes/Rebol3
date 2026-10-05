@@ -342,6 +342,13 @@ int main(int argc, char **argv) {
 	if (!args) Host_Crash("Failed to initialize Rebol library");
 
 #ifdef TO_WINDOWS
+	// The arguments are already stored in system/options, so release
+	// the array allocated by CommandLineToArgvW (and do not keep
+	// a dangling pointer to it).
+	LocalFree((HLOCAL)argv);
+	args->argv = NULL;
+	args->argc = 0;
+
 	// Setting title after Open_StdIO, because with Windows subsystem the console is not by default opened.
 	SetConsoleTitle((LPWSTR)App_Title);
 #endif
