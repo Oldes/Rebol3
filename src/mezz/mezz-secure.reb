@@ -101,28 +101,25 @@ secure: function/with [
 				lb: length? b
 				either la <> lb [la > lb] [a > b]
 			]
-			;; Global level reduction
-			rule: pol/-1
+			rule: pol/-1 ;; the global policy
+			case: all [target = 'file system/platform != 'Windows]
+			;; Remove exceptions, which have the same policy as the one, which would be
+			;; used without them: the nearest parent directory's (for files), else the global.
+			;; (Only the nearest parent may be used, because an exception between them
+			;; may have a different policy!)
 			while [not tail? pol][
-				;; remove all exceptions with same policy as the global one
-				pol: either rule = pol/2 [remove/part pol 2][skip pol 2] 
-			]
-			if target = 'file [
-				;; Directory policy level reduction 
-				case: system/platform != 'Windows
-				pol: reverse head pol                     ;; work from least to most specific
-				while [series? pol/2][
-					cur: pol: skip pol 2                  ;; advance to next exception pair
-					unless dir? pol/-1 [continue]         ;; parent must be a directory!
-					while [series? cur/2][                ;; skip global fallback (tuple, not block)
-						cur: either all [
-							cur/1 = pol/-2                ;; same policy as parent?
-							find/match/:case cur/2 pol/-1 ;; path is under parent?
-						][  remove/part cur 2             ;; redundant, remove
-						][  skip cur 2 ]                  ;; keep, move on
+				parent: rule
+				if target = 'file [
+					tmp: skip pol 2                       ;; shorter paths follow (sorted)
+					while [not tail? tmp][
+						if all [
+							dir? tmp/1                    ;; parent must be a directory!
+							find/match/:case pol/1 tmp/1  ;; path is under it?
+						][	parent: tmp/2  break ]        ;; the nearest one found
+						tmp: skip tmp 2
 					]
 				]
-				pol: reverse head pol                     ;; restore original order
+				pol: either parent = pol/2 [remove/part pol 2][skip pol 2]
 			]
 		]
 	]
@@ -182,7 +179,8 @@ secure: function/with [
 		case [
 			file? target [
 				;; convert to absolute file
-				val: to-real-file target
+				;; (to-real-file returns NONE for not existing files on Posix)
+				val: any [to-real-file target clean-path target]
 				target: 'file
 			]
 			url? target [

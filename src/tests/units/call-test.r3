@@ -14,8 +14,10 @@ err-buffer: copy ""
 rebol-cmd: func[cmd][
 	clear out-buffer
 	clear err-buffer
-	insert cmd join to-local-file system/options/boot #" "
-	call/shell/output/error cmd out-buffer err-buffer
+	cmd: rejoin [to-local-file system/options/boot #" " cmd]
+	;; stdin is not inherited (no TTY), so a security request is denied
+	;; automatically instead of waiting for a key forever
+	call/shell/output/error/input cmd out-buffer err-buffer none
 ]
 
 ===start-group=== "Command-Line Interface (/shell)"
@@ -117,7 +119,35 @@ rebol-cmd: func[cmd][
 		--assert out-buffer == {_^/}
 		--assert 0 = rebol-cmd {-s --secure 1 --do "probe system/options/secure"}
 		--assert out-buffer == {_^/}
-
+		;; invalid value without -s is a usage error
+		--assert 1 = rebol-cmd {--secure "foo bar" --do "print {unexpected}"}
+		--assert not find out-buffer "unexpected"
+	--test-- "SECURE file policy of not existing path"
+		;; must be stored as an exception, not replace the whole file policy
+		--assert 0 = rebol-cmd {-s --do "d: to-file {/no/such/dir/} secure (reduce [d [ask write]]) probe select secure query d"}
+		--assert out-buffer == "[allow read ask write allow execute]^/"
+	--test-- "SECURE file policy reduction"
+		;; exception is redundant only when equal to its nearest parent (or global) policy
+		--assert 0 = rebol-cmd {-s --do "a: to-file {/a/} b: to-file {/a/b/} c: to-file {/a/b/c.reb} secure (reduce [a [ask write] b 'allow c [ask write]]) p: secure query probe select p b probe select p c"}
+		--assert out-buffer == "allow^/[allow read ask write allow execute]^/"
+	--test-- "SECURE startup policies"
+		;; default policy protects startup script and modules from silent modification
+		if all [system/options/data system/options/modules] [
+			--assert 0 = rebol-cmd {--do "p: secure query probe select p system/options/data/user.reb probe select p system/options/modules"}
+			--assert out-buffer == "[allow read ask write allow execute]^/[allow read ask write allow execute]^/"
+		]
+	--test-- "default SECURE policy without HOME"
+		;; home is NONE, so it must not be used in the default policy
+		;; (REBOL_HOME is set, so there is still a valid data directory)
+		if find [Macintosh Linux] system/platform [
+			clear out-buffer
+			clear err-buffer
+			--assert 0 = call/shell/output/error/input rejoin [
+				{env -u HOME REBOL_HOME="} to-local-file first split-path system/options/boot {" }
+				to-local-file system/options/boot { --do "print 1"}
+			] out-buffer err-buffer none ;; no TTY, so it cannot wait on a security request
+			--assert out-buffer = "1^/"
+		]
 	--test-- "NO_COLOR env variable"
 		;@@ https://no-color.org/
 		old: get-env "NO_COLOR"
