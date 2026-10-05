@@ -210,22 +210,6 @@ FORCE_INLINE
 FORCE_INLINE
 /***********************************************************************
 **
-*/	REBCNT UTF8_Skip_Forward(const REBYTE *str, REBLEN chars)
-/*
-**		Return number of bytes needed for given number of chars forward.
-**
-***********************************************************************/
-{
-	REBLEN index = 0;
-	while (chars-- > 0 && str[index]) {
-		index += UTF8_Next_Char_Size(str, index);
-	}
-	return index;
-}
-
-FORCE_INLINE
-/***********************************************************************
-**
 */	REBCNT UTF8_Skip(const REBSER *ser, REBCNT index, REBINT chars)
 /*
 **		Return position in series after skipping number of chars forward or reverse.
@@ -234,9 +218,12 @@ FORCE_INLINE
 {
 	REBYTE *head = BIN_HEAD(ser);
 	if (chars > 0) {
-		while (chars-- > 0 && head[index]) {
+		// Bounded by the tail, not by a null byte (strings may contain #"^@" chars)
+		REBCNT tail = SERIES_TAIL(ser);
+		while (chars-- > 0 && index < tail) {
 			index += UTF8_Next_Char_Size(head, index);
 		}
+		if (index > tail) index = tail; // truncated sequence at the tail
 	}
 	else {
 		while (index > 0 && chars < 0) {

@@ -385,8 +385,8 @@
 			if (uncase && c1 < UNICODE_CASES) c1 = LO_CASE(c1);
 			if (c1 == c2) {
 				REBYTE *end = str1 + len;
-				str1 += UTF8_Skip_Forward(str1, 1);
-				str2 += UTF8_Skip_Forward(str2, 1);
+				str1 += UTF8_Next_Char_Size(str1, 0); // not stopping on null char
+				str2 += UTF8_Next_Char_Size(str2, 0); // not stopping on null char
 				while (str1 < end) {
 					c1 = UTF8_Get_Codepoint(str1);
 					c3 = UTF8_Get_Codepoint(str2);
@@ -396,8 +396,8 @@
 					else {
 						if (c1 != c3) break;
 					}
-					str1 += UTF8_Skip_Forward(str1, 1);
-					str2 += UTF8_Skip_Forward(str2, 1);
+					str1 += UTF8_Next_Char_Size(str1, 0); // not stopping on null char
+					str2 += UTF8_Next_Char_Size(str2, 0); // not stopping on null char
 				}
 				if ((str2 - BIN_SKIP(ser2, index2)) == len) {
 					if (flags & AM_FIND_TAIL) return index + len;
@@ -494,8 +494,8 @@
 					else {
 						if (c1 != c2) break;
 					}
-					str1 += UTF8_Skip_Forward(str1, 1);
-					str2 += UTF8_Skip_Forward(str2, 1);
+					str1 += UTF8_Next_Char_Size(str1, 0); // not stopping on null char
+					str2 += UTF8_Next_Char_Size(str2, 0); // not stopping on null char
 				}
 				if (str1 == end) {
 					c1 = UTF8_Get_Codepoint(str1);

@@ -1006,6 +1006,17 @@ Rebol [
 		--assert not "Č" < "č"
 		--assert not "Č" > "č"
 		--assert "č" < "Čx"
+	--test-- "find in UTF-8 string with null char"
+		;; must not hang on the null char
+		--assert "x" == find "č^@x" #"x"
+		--assert "x" == find "č^@x" "x"
+		--assert "^@x" == find "č^@x" "^@x"
+		--assert "x" == find/tail "č^@x" "^@"
+		--assert "x" == find "č^@x" charset "x"
+		--assert "<x>" == find "č^@<x>" <x>
+		--assert "^@x^@" == find/last "č^@x^@" "^@x"
+	--test-- "insert/part from UTF-8 string with null char"
+		--assert "č^@x" == head insert/part "" "č^@xy" 3
 ===end-group===
 
 ~~~end-file~~~
