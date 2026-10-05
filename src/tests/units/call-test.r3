@@ -273,11 +273,14 @@ rebol-cmd: func[cmd][
 		]
 	--test-- "Resolve length of bytes available on stdin"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/2614
+		;; The reader may query stdin before the writer has written anything,
+		;; so poll for a while until some bytes are available (max ~1s).
+		query-stdin: { --cgi --do "n: 0 loop 100 [if 0 < n: query system/ports/input 'length [break] wait 0.01] prin n"}
 		--assert all [
 			0 = rebol-cmd rejoin [
 				{ --cgi --do "prin {}" | }
 				to-local-file system/options/boot 
-				{ --cgi --do "prin query system/ports/input 'length"} 
+				query-stdin
 			]
 			out-buffer == "0"
 			err-buffer == ""
@@ -286,7 +289,7 @@ rebol-cmd: func[cmd][
 			0 = rebol-cmd rejoin [
 				{ --cgi --do "prin {1}" | }
 				to-local-file system/options/boot 
-				{ --cgi --do "prin query system/ports/input 'length"} 
+				query-stdin
 			]
 			out-buffer == "1"
 			err-buffer == ""
