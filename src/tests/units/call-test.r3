@@ -108,6 +108,25 @@ rebol-cmd: func[cmd][
 	--test-- "--secure"
 		--assert 0 = rebol-cmd {--secure none --do "probe system/options/secure"}
 		--assert out-buffer == {none^/}
+
+	--test-- "NO_COLOR env variable"
+		;@@ https://no-color.org/
+		old: get-env "NO_COLOR"
+		set-env "NO_COLOR" "1"
+		--assert 0 = rebol-cmd {--do "probe system/options/no-color"}
+		--assert out-buffer = "#(true)^/"
+		if find [Macintosh Linux] system/platform [
+			;; empty value must be ignored (not possible to set it on Windows)
+			set-env "NO_COLOR" ""
+			--assert 0 = rebol-cmd {--do "probe system/options/no-color"}
+			--assert out-buffer = "#(false)^/"
+		]
+		;; --no-color option still works
+		set-env "NO_COLOR" none
+		--assert 0 = rebol-cmd {--no-color --do "probe system/options/no-color"}
+		--assert out-buffer = "#(true)^/"
+		set-env "NO_COLOR" old
+
 ===end-group===
 
 

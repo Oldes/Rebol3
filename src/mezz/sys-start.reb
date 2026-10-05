@@ -49,10 +49,11 @@ start: func [
 	;** Note ** We need to make this work for lower boot levels too!
 
 	if any [
+		;; can come from user's startup option
 		no-color
-		no-color: get-env 'NO_COLOR ;; https://no-color.org/
-	][
-		;; remove ANSI escape color sequences
+		;; https://no-color.org/ - only when present and not an empty string
+		no-color: not empty? get-env 'NO_COLOR 
+	][	;; remove ANSI escape color sequences
 		foreach [k v] ansi [clear v]
 	]
 
