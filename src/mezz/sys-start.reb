@@ -228,14 +228,34 @@ start: func [
 		case [
 			flags/secure-min [lib/secure allow]
 			flags/secure-max [lib/secure ask]
-			flags/secure     [lib/secure (secure)]
+			flags/secure     [
+				;; missing or invalid value of the --secure option is a usage error
+				unless secure [lib/usage quit/return 1]
+				lib/secure (secure)
+			]
 			true [
 				;; main exceptions...
-				lib/secure (compose [
-					file ask        ;; ask on file access, except...
-					(data)  allow   ;; full access in the data directory..
-					(home) [allow read allow execute] ;; read+exe in home
-				])
+				;; allow reading everywhere, ask on write/execute outside the trusted folders
+				lib/secure [file [allow read ask write ask execute]]
+				;; (data, home, modules and boot may be NONE, when not resolved)
+				;; read+exe in home
+				if home [lib/secure (reduce [home [allow read allow execute]])]
+				if data [
+					lib/secure (reduce [
+						;; full access in the data directory..
+						data 'allow
+						;; ..except the startup script, which must not be modified silently
+						data/user.reb [allow read ask write allow execute]
+					])
+				]
+				;; modules are imported later, so these must not be modified silently too
+				if modules [lib/secure (reduce [modules [allow read ask write allow execute]])]
+				;; startup script next to the executable must not be modified silently
+				if boot [
+					lib/secure (reduce [
+						join first split-path boot %rebol.reb [allow read ask write allow execute]
+					])
+				]
 				if file? script [
 					lib/secure (
 						compose [
@@ -255,10 +275,9 @@ start: func [
 	if boot [
 		tmp: first split-path boot
 		sys/log/info 'REBOL ["Checking for rebol.reb file in" tmp]
-		
 		if all [
 			#"/" = first tmp ; only if we know absolute path
-			exists? tmp/rebol.reb
+			attempt [exists? tmp/rebol.reb] ;; may be denied by user's security policy
 		][
 			try/with [do tmp/rebol.reb][sys/log/error 'REBOL system/state/last-error]
 		]
@@ -270,7 +289,10 @@ start: func [
 	system/contexts/user: tmp
 
 	sys/log/info 'REBOL ["Checking for user.reb file in" data]
-	if all [data exists? data/user.reb] [
+	if all [
+		data
+		attempt [exists? data/user.reb] ;; may be denied by user's security policy
+	][
 		try/with [do data/user.reb][sys/log/error 'REBOL system/state/last-error]
 	]
 
