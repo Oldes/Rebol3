@@ -483,10 +483,14 @@ X*/	REBOOL As_OS_Str(REBSER *series, REBCHR **string)
 {
 	REBCHR *wide = MAKE_STR(MAX_FILE_NAME);
 	if (!wide) return 0;
-	if (!GetModuleFileName(0, wide, MAX_FILE_NAME)) return 0;
+	if (!GetModuleFileName(0, wide, MAX_FILE_NAME)) {
+		FREE_MEM(wide);
+		return 0;
+	}
 	REBYTE *temp = NULL;
 	OS_Wide_To_Multibyte(wide, &temp, -1);
 	FREE_MEM(wide);
+	if (!temp) return 0;
 	*name = temp;
 	return 1;
 }

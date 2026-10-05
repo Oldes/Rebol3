@@ -49,6 +49,8 @@
 extern int OS_Get_Current_Dir(REBYTE **lp);
 extern REBOOL OS_Get_Boot_Path(REBYTE **path);
 extern REBLEN OS_Wide_To_Multibyte(const REBU16 *wide, REBYTE **utf8, REBLEN len);
+extern void *OS_Make(size_t size);
+extern void OS_Free(void *mem);
 
 // REBOL Option --Words:
 
@@ -146,6 +148,22 @@ const struct arg_chr arg_chars2[] = {
 
 /***********************************************************************
 **
+*/	static REBYTE *Copy_Arg(const REBCHR *arg)
+/*
+**		Returns an allocated copy of a (not wide) argument, so the
+**		result can be released like values from OS_Wide_To_Multibyte.
+**
+***********************************************************************/
+{
+	size_t size = strlen((const char *)arg) + 1;
+	REBYTE *copy = OS_Make(size);
+	if (copy) memcpy(copy, arg, size);
+	return copy;
+}
+
+
+/***********************************************************************
+**
 */	static int Get_Ext_Arg(int flag, REBARGS *rargs, REBCHR *arg)
 /*
 **		Get extended argument field. Always UTF-8 encoded!
@@ -161,49 +179,27 @@ const struct arg_chr arg_chars2[] = {
 
 	flag &= ~RO_EXT;
 
-	REBYTE *value = NULL;
-
-#ifdef OS_WIDE_CHAR
-	OS_Wide_To_Multibyte(arg, &value, (REBLEN)-1);
-#else
-	value = arg;
-#endif
+	REBYTE **field;
 
 	switch (flag) {
-
-	case RO_VERSION:
-		rargs->version = value;
-		break;
-
-	case RO_SCRIPT:
-		rargs->script = value;
-		break;
-
-	case RO_ARGS:
-		rargs->args = value;
-		break;
-
-	case RO_DO:
-		rargs->do_arg = value;
-		break;
-
-	case RO_DEBUG:
-		rargs->debug = value;
-		break;
-
-	case RO_SECURE:
-		rargs->secure = value;
-		break;
-
-	case RO_IMPORT:
-		rargs->import = value;
-		break;
-
-	case RO_BOOT:
-		rargs->boot = value;
-		break;
+	case RO_VERSION: field = &rargs->version; break;
+	case RO_SCRIPT:  field = &rargs->script;  break;
+	case RO_ARGS:    field = &rargs->args;    break;
+	case RO_DO:      field = &rargs->do_arg;  break;
+	case RO_DEBUG:   field = &rargs->debug;   break;
+	case RO_SECURE:  field = &rargs->secure;  break;
+	case RO_IMPORT:  field = &rargs->import;  break;
+	case RO_BOOT:    field = &rargs->boot;    break;
+	default: return flag; // value is consumed, but not stored
 	}
 
+#ifdef OS_WIDE_CHAR
+	// The converted value is allocated, so release a value of a repeated option.
+	if (*field) OS_Free(*field);
+	OS_Wide_To_Multibyte(arg, field, (REBLEN)-1);
+#else
+	*field = arg;
+#endif
 	return flag;
 }
 
@@ -225,12 +221,12 @@ const struct arg_chr arg_chars2[] = {
 	CLEARS(rargs);
 	rargs->argc = argc;
 	rargs->argv = argv;
-	if (0 == OS_Get_Boot_Path(&rargs->exe_path)) {
+	if (0 == OS_Get_Boot_Path(&rargs->exe_path) && argc > 0) {
 		// First arg is path to executable (on most systems):
 #ifdef OS_WIDE_CHAR
 		OS_Wide_To_Multibyte(*argv, &rargs->exe_path, -1);
 #else
-		rargs->exe_path = *argv;
+		rargs->exe_path = Copy_Arg(*argv); // owned, it is released in Init_Main_Args
 #endif
 	}
 	OS_Get_Current_Dir(&rargs->current_dir);
@@ -249,7 +245,7 @@ const struct arg_chr arg_chars2[] = {
 #ifdef OS_WIDE_CHAR
 			OS_Wide_To_Multibyte(*argv, &rargs->exe_path, -1);
 #else
-			rargs->exe_path = *argv;
+			rargs->exe_path = Copy_Arg(*argv); // owned, it is released in Init_Main_Args
 #endif
 		}
 	}
@@ -326,6 +322,3 @@ const struct arg_chr arg_chars2[] = {
 	}
 #endif
 }
-
-
-

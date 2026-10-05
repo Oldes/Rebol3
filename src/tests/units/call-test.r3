@@ -14,7 +14,7 @@ err-buffer: copy ""
 rebol-cmd: func[cmd][
 	clear out-buffer
 	clear err-buffer
-	cmd: rejoin [to-local-file system/options/boot #" " cmd]
+	insert cmd join to-local-file system/options/boot #" "
 	call/shell/output/error cmd out-buffer err-buffer
 ]
 
@@ -55,7 +55,6 @@ rebol-cmd: func[cmd][
 		--assert out-buffer = {["-v" "--" "-x"]^/["-v" "--" "-x"]^/}
 		--assert 0 = rebol-cmd {--args "a b" units/files/print-args.r3 -v}
 		--assert out-buffer = {["a b" "-v"]^/["a b"]^/}
-
 		--assert 0 = rebol-cmd {--args "á b" units/files/print-args.r3 -v}
 		--assert out-buffer = {["á b" "-v"]^/["á b"]^/}
 
@@ -79,6 +78,11 @@ rebol-cmd: func[cmd][
 		;; single dash values are still accepted
 		--assert 0 = rebol-cmd {--args "-x" units/files/print-args.r3}
 		--assert out-buffer = {["-x"]^/["-x"]^/}
+		;; repeated option: the last value is used (the previous is released)
+		--assert 0 = rebol-cmd {--do "print 1" --do "print 2"}
+		--assert out-buffer = "2^/"
+		--assert 0 = rebol-cmd {--args "a" --args "b" units/files/print-args.r3}
+		--assert out-buffer = {["b"]^/["b"]^/}
 	--test-- "missing option value"
 		;; value option followed by another --option is a usage error
 		;; (help is shown and the script is not evaluated)

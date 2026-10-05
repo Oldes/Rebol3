@@ -457,11 +457,14 @@ RL_LIB *RL; // Link back to reb-lib from embedded extensions (like for now: host
 		*path = (REBCHR*)realpath(cs_cast(buf), NULL); // needs FREE once not used!!
 	}
 	FREE_MEM(buf);
+	if (!*path) return FALSE;
 #else
 	// Linux version...
 	*path = MAKE_STR(PATH_MAX);            // needs FREE once not used!!
 	CLEAR(*path, PATH_MAX*sizeof(REBCHR)); // readlink does not null terminate!
 	if (readlink("/proc/self/exe", *path, PATH_MAX) == -1) {
+		FREE_MEM(*path);
+		*path = NULL;
 		return FALSE;
 	}
 #endif
