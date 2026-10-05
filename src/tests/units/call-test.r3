@@ -112,6 +112,11 @@ rebol-cmd: func[cmd][
 	--test-- "--secure"
 		--assert 0 = rebol-cmd {--secure none --do "probe system/options/secure"}
 		--assert out-buffer == {none^/}
+		;; invalid word is ignored (-s used, so the policy is not set from it)
+		--assert 0 = rebol-cmd {-s --secure "foo bar" --do "probe system/options/secure"}
+		--assert out-buffer == {_^/}
+		--assert 0 = rebol-cmd {-s --secure 1 --do "probe system/options/secure"}
+		--assert out-buffer == {_^/}
 
 	--test-- "NO_COLOR env variable"
 		;@@ https://no-color.org/

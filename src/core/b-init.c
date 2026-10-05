@@ -801,9 +801,12 @@ static REBCNT Set_Option_Word(REBYTE *str, REBCNT field)
 	// The input string is already UTF8 encoded, so no need to clip Unicode
 	if (str) {
 		n = (REBLEN)LEN_BYTES(str);
-		n = Make_Word(str, n);
-		val = Get_System(SYS_OPTIONS, field);
-		Init_Word(val, n);
+		// Accept only a valid word (like: `base`), else the option stays NONE
+		n = Scan_Word(str, n);
+		if (n) {
+			val = Get_System(SYS_OPTIONS, field);
+			Init_Word(val, n);
+		}
 	}
 	return n;
 }
