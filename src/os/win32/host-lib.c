@@ -1161,6 +1161,7 @@ done:
 		DWORD wait_result = 0;
 		DWORD output_size = 0;
 		DWORD err_size = 0;
+		DWORD input_pos = 0; // must survive loop iterations (partial writes)
 
 #define BUF_SIZE_CHUNK 4096
 
@@ -1200,7 +1201,6 @@ done:
 			if (wait_result >= WAIT_OBJECT_0
 				&& wait_result < WAIT_OBJECT_0 + count) {
 				int i = wait_result - WAIT_OBJECT_0;
-				DWORD input_pos = 0;
 				DWORD n = 0;
 
 				if (handles[i] == hInputWrite) {

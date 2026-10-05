@@ -274,6 +274,17 @@ rebol-cmd: func[cmd][
 			] out-buffer "one^@two"
 			out-buffer == "7"
 		]
+	--test-- "Large binary input"
+		;; input larger than the pipe buffer is written in more chunks
+		bin: append/dup copy #{} #{0102030405060708} 100000 ;; 800kB
+		clear out-buffer
+		--assert all [
+			0 = call/shell/output/input rejoin [
+				to-local-file system/options/boot
+				{ --cgi --do "bin: copy #{} while [not empty? b: read/binary system/ports/input][append bin b] prin checksum bin 'sha1"}
+			] out-buffer bin
+			out-buffer == form checksum bin 'sha1
+		]
 ===end-group===
 
 ~~~end-file~~~
