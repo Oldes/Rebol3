@@ -87,7 +87,7 @@ start: func [
 	;-- Print minimal identification banner if needed:
 	if all [
 		not quiet
-		any [flags/verbose flags/usage flags/help]
+		any [flags/verbose flags/help]
 	][
 		; basic boot banner only
 		print boot-banner: lib/version

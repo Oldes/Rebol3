@@ -126,7 +126,12 @@ rebol-cmd: func[cmd][
 		--assert 0 = rebol-cmd {--no-color --do "probe system/options/no-color"}
 		--assert out-buffer = "#(true)^/"
 		set-env "NO_COLOR" old
-
+	--test-- "--help"
+		;; prints the version banner followed by the usage
+		--assert 0 = rebol-cmd {--help}
+		--assert did find/match out-buffer join version newline
+		--assert 0 = rebol-cmd {--quiet --help}
+		--assert not find/match out-buffer version
 ===end-group===
 
 
