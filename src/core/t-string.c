@@ -1103,15 +1103,19 @@ pick_it:
 			if (D_REF(ARG_TAKE_LAST) && IS_UTF8_SERIES(ser)) {
 				// special case for Unicode when taking from the tail
 				REBINT range;
+				REBLEN idx = VAL_INDEX(value);
 				if (IS_INTEGER(part) || IS_DECIMAL(part)) {
-					range = MIN((int)UTF8_Index_To_Position(BIN_SKIP(ser, VAL_INDEX(value)), tail), Int32(part));
+					range = MIN((int)UTF8_Length(BIN_SKIP(ser, idx), tail - idx), Int32(part));
 				}
 				else {
 					// part provided as a series position
 					if (VAL_SERIES(part) != VAL_SERIES(value))
 						Trap1(RE_INVALID_PART, part);
-					range = UTF8_Index_To_Position(BIN_SKIP(ser, VAL_INDEX(value)), tail)
-						  - UTF8_Index_To_Position(BIN_SKIP(ser, VAL_INDEX(value)), VAL_INDEX(part));
+					// number of chars from the part position to the tail
+					REBLEN pidx = VAL_INDEX(part);
+					if (pidx < idx)  pidx = idx;
+					if (pidx > tail) pidx = tail;
+					range = UTF8_Length(BIN_SKIP(ser, pidx), tail - pidx);
 				}
 				index = UTF8_Skip(ser, tail, -range);
 				if (index == UNKNOWN) index = 0; // e.g.: take/part/last "abc" 100
