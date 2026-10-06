@@ -159,7 +159,13 @@ CODECS_API int DecodeImageFromFile(PCWSTR uri, UINT frame, REBCDI *codi)
 		TRACE("size: %ux%u", w, h);
 		codi->w = w;
 		codi->h = h;
-		codi->len = w * h * 4;
+		// check for overflow (CopyPixels takes UINT stride and buffer size)
+		UINT64 size = (UINT64)w * h * 4;
+		if ((UINT64)w * 4 > UINT_MAX || size > UINT_MAX) {
+			hr = HRESULT_FROM_WIN32(ERROR_ARITHMETIC_OVERFLOW);
+			ASSERT_HR("image too large");
+		}
+		codi->len = (UINT)size;
 
 		data = (unsigned char *)malloc(codi->len);
 		if (!data) {
@@ -233,7 +239,7 @@ CODECS_API int EncodeImageToFile(PCWSTR uri, REBCDI *codi)
 		stride = (UINT64)codi->w * 4;
 		size   = stride * (UINT64)codi->h;
 		if (size > UINT_MAX) {
-			hr = E_OUTOFMEMORY;
+			hr = HRESULT_FROM_WIN32(ERROR_ARITHMETIC_OVERFLOW);
 			ASSERT_HR("image too large");
 		}
 

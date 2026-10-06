@@ -484,6 +484,19 @@ if system/platform = 'Windows [
 					try [delete file]
 				]
 			]
+
+		--test-- "WIC decode of image too large for 32-bit buffer must fail"
+		;; covers: w * h * 4 overflow check in the decoder
+		;; TIFF header only, claiming 40000x40000 pixels (6.4GB as 32bpp)
+			if in system/codecs 'tiff [
+				bin: #{
+					49492A000800000009000001040001000000409C00000101040001000000409C
+					0000020103000100000008000000030103000100000001000000060103000100
+					0000010000001101040001000000080000001501030001000000010000001601
+					040001000000409C0000170104000100000000105E5F00000000
+				}
+				--assert error? try [decode 'tiff bin]
+			]
 	===end-group===
 ]
 
