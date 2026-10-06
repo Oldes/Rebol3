@@ -267,35 +267,22 @@ if find [Linux macOS] system/platform [
 	--test-- "query file dates (some asserts may fail in CI and WSL)"
 		write %query-test "test"
 		fields: [:modified :created :accessed]
-		--assert all [
-			block? probe dates1: query %query-test fields
-			date? dates1/1
-			date? dates1/2
-			date? dates1/3
-		]
+		--assert block? dates1: query %query-test fields
+		--assert date? dates1/1
+		--assert any [none? dates1/2 date? dates1/2]  ;; no birth time on some FS
+		--assert date? dates1/3
 		wait 1
-		--assert all [
-			block? probe dates2: query %query-test fields
-			dates1/1 = dates2/1
-			dates1/2 = dates2/2
-			dates1/3 = dates2/3
-		]
+		read %query-test
+		dates2: query %query-test fields
+		--assert dates1/1 = dates2/1
+		--assert dates1/2 = dates2/2
+		--assert dates1/3 <= dates2/3                 ;; noatime / WSL may not update
 		wait 1
-		read %query-test ;; should change access time
-		--assert all [
-			block? probe dates2: query %query-test fields
-			dates1/1 = dates2/1
-			dates1/2 = dates2/2
-			dates1/3 < dates2/3
-		]
-		wait 1
-		write/append %query-test "!" ;; should change modified and access times
-		--assert all [
-			block? probe dates3: query %query-test fields
-			dates2/1 < dates3/1
-			dates2/2 = dates3/2
-			dates2/3 <= dates3/3
-		]
+		write/append %query-test "!"
+		dates3: query %query-test fields
+		--assert dates2/1 < dates3/1
+		--assert dates2/2 = dates3/2                  ;; fails if created = st_ctime
+		--assert dates2/3 <= dates3/3
 		delete %query-test
 ===end-group===
 
