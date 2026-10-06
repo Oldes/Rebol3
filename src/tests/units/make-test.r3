@@ -697,7 +697,7 @@ Rebol [
 		--assert error? try [make map! quote http://aa ] ; url!
 		--assert error? try [make map! quote <tag> ] ; tag!
 		--assert   map? try [make map! quote [1 2] ] ; block!
-		--assert error? try [make map! quote (1 2) ] ; paren!
+		--assert   map? try [make map! quote (1 2) ] ; paren!
 		--assert error? try [make map! quote a/b ] ; path!
 		--assert error? try [make map! quote a/b: ] ; set-path!
 		--assert error? try [make map! quote :a/b ] ; get-path!
@@ -733,7 +733,7 @@ Rebol [
 		--assert error? try [to map! quote http://aa ] ; url!
 		--assert error? try [to map! quote <tag> ] ; tag!
 		--assert   map? try [to map! quote [1 2] ] ; block!
-		--assert error? try [to map! quote (1 2) ] ; paren!
+		--assert   map? try [to map! quote (1 2) ] ; paren!
 		--assert error? try [to map! quote a/b ] ; path!
 		--assert error? try [to map! quote a/b: ] ; set-path!
 		--assert error? try [to map! quote :a/b ] ; get-path!
