@@ -61,7 +61,7 @@ CODECS_API int codecs_init()
 
 CODECS_API void codecs_fini()
 {
-	if (pIWICFactory) pIWICFactory->Release();
+	RELEASE(pIWICFactory); // also resets it to NULL, so codecs_init can create it again
 }
 
 
