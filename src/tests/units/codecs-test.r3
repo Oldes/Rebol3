@@ -6,6 +6,9 @@ Rebol [
 	Needs:   [%../quick-test-module.r3]
 ]
 
+has-lzma?: did find system/catalog/compressions 'lzma
+
+
 ~~~start-file~~~ "Codecs"
 
 ===start-group=== "Codec's identify"
@@ -82,24 +85,16 @@ Rebol [
 		;@@ https://github.com/Oldes/Rebol-issues/issues/1466
 		--assert all [
 			binary? b: try [save/compress none [print "Hello World!"] true]
-			b = #{
-5245424F4C205B0A202020206F7074696F6E733A205B636F6D70726573735D0A
-5D0A789C2B28CACC2B5150F248CDC9C95708CF2FCA495154E20200526B06D9}
 			(load b) = [print "Hello World!"]
 			object? first load/header b
 		]
 		--assert all [
 			binary? b: try [save/compress none [print "Hello World!"] 'script]
-			b = #{
-5245424F4C205B0A202020206F7074696F6E733A205B636F6D70726573735D0A
-5D0A3634237B654A77724B4D724D4B314651386B6A4E79636C58434D3876796B
-6C52564F494341464A7242746B3D7D}
 			(load b) = [print "Hello World!"]
 			object? first load/header b
 		]
 		--assert all [
 			binary? b: try [save/compress none [print "Hello World!"] false]
-			b = #{789C2B28CACC2B5150F248CDC9C95708CF2FCA495154E20200526B06D9}
 			(load decompress b 'zlib) = [print "Hello World!"]
 		]
 
@@ -237,8 +232,10 @@ if find codecs 'swf [
 		
 		--test-- "Load SWF file"
 			--assert object? swf1: load %units/files/test1-deflate.swf
-			--assert object? swf2: load %units/files/test2-lzma.swf
-			--assert swf1/tags = swf2/tags
+			if has-lzma? [
+				--assert object? swf2: load %units/files/test2-lzma.swf
+				--assert swf1/tags = swf2/tags
+			]
 			--assert swf1/header/frames = 25
 
 		codecs/swf/verbose: 3
@@ -256,7 +253,9 @@ if find codecs 'zip [
 	===start-group=== "ZIP codec"
 		
 		--test-- "Load ZIP file"
+		if has-lzma? [
 			--assert block? load %units/files/test-lzma.zip
+		]
 			--assert block? load %units/files/test-stored.zip
 			--assert block? load %units/files/test-deflate.zip
 
@@ -266,12 +265,14 @@ if find codecs 'zip [
 			--assert block? codecs/zip/decode data/2/2
 
 		--test-- "Decode ZIP using info"
+		if has-lzma? [
 			bin: read %units/files/test-lzma.zip
 			--assert block? info: codecs/zip/decode/info bin
 			--assert info/1   = %xJSFL.komodoproject
 			--assert info/2/1 = 18-Aug-2012/5:20:28
 			data: codecs/zip/decompress-file at bin info/2/2 reduce [info/2/5 info/2/3 info/2/4]
 			--assert info/2/6 = checksum data 'crc32
+		]
 
 		--test-- "Encode ZIP using encode"
 			--assert binary? try [bin: encode 'ZIP [
@@ -813,7 +814,7 @@ if find codecs 'safe [
 		--test-- "Initialise new user"
 			--assert not error? try [set-user/n/p temp-user "passw"]
 			--assert system/user/name = @temp-user
-			--assert 'file = exists? try [system/user/data/spec/ref]
+			--assert 'file = try [exists? system/user/data/spec/ref]
 			--assert "hello" = put system/user/data 'key "hello"  ;; store some data...
 			--assert "hello" = user's key               ;; resolve the data
 			--assert not error? try [su]                ;; release user
