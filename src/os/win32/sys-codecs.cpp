@@ -2,7 +2,7 @@
 **
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
-**	Copyright 2019-2023 Oldes
+**	Copyright 2019-2026 Oldes
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
 **  you may not use this file except in compliance with the License.
@@ -34,6 +34,14 @@
 
 IWICImagingFactory *pIWICFactory = NULL;
 static LARGE_INTEGER zero = { 0 };
+
+// Converts the last Win32 error to a failing HRESULT.
+// (GetLastError returns a positive DWORD, which FAILED() would not catch.)
+static HRESULT LastErrorHR(void)
+{
+	DWORD err = GetLastError();
+	return err ? HRESULT_FROM_WIN32(err) : E_FAIL;
+}
 
 CODECS_API int codecs_init()
 {
@@ -91,7 +99,7 @@ CODECS_API int DecodeImageFromFile(PCWSTR *uri, UINT frame, REBCDI *codi)
 			// Global memory for stream will be released with the stream automaticaly
 			HGLOBAL	hMem = ::GlobalAlloc(GMEM_MOVEABLE, codi->len);
 			if (!hMem) {
-				hr = GetLastError();
+				hr = LastErrorHR();
 				ASSERT_HR("GlobalAlloc");
 			}
 
@@ -99,10 +107,10 @@ CODECS_API int DecodeImageFromFile(PCWSTR *uri, UINT frame, REBCDI *codi)
 			ASSERT_HR("CreateStreamOnHGlobal");
 
 #define use_memcpy
-#ifdef  use_memcpy 
+#ifdef  use_memcpy
 			LPVOID tmp = GlobalLock(hMem);
 			if (!tmp) {
-				hr = GetLastError();
+				hr = LastErrorHR();
 				ASSERT_HR("GlobalLock");
 			}
 			memcpy(tmp, codi->data, codi->len);
@@ -154,11 +162,13 @@ CODECS_API int DecodeImageFromFile(PCWSTR *uri, UINT frame, REBCDI *codi)
 		codi->len = w * h * 4;
 
 		data = (unsigned char *)malloc(codi->len);
-		if (data) {
-			wrect = { 0,0,(INT)w,(INT)h };
-			hr = pConverter->CopyPixels(&wrect, w * 4, codi->len, data);
-			ASSERT_HR("CopyPixels");
+		if (!data) {
+			hr = E_OUTOFMEMORY;
+			ASSERT_HR("malloc");
 		}
+		wrect = { 0,0,(INT)w,(INT)h };
+		hr = pConverter->CopyPixels(&wrect, w * 4, codi->len, data);
+		ASSERT_HR("CopyPixels");
 	} while(FALSE);
 
 	codi->error = hr;
@@ -180,26 +190,19 @@ CODECS_API int DecodeImageFromFile(PCWSTR *uri, UINT frame, REBCDI *codi)
 HRESULT AddBoolProperty(IPropertyBag2 *pPropertybag, LPOLESTR name, VARIANT_BOOL value) {
 	PROPBAG2 option = { 0 };
 	option.pstrName = name;
-	VARIANT varValue;    
+	VARIANT varValue;
 	VariantInit(&varValue);
 	varValue.vt = VT_BOOL;
-	varValue.boolVal = value;      
-	return pPropertybag->Write(1, &option, &varValue);   
+	varValue.boolVal = value;
+	return pPropertybag->Write(1, &option, &varValue);
 }
 
 CODECS_API int EncodeImageToFile(PCWSTR *uri, REBCDI *codi)
 {
 	HRESULT hr = S_OK;
-//	UINT  w, h;
-	UINT  size;
-	BYTE *data = NULL;
-	WICRect wrect;
+	UINT64 stride, size;
 
-//	ULONG bytes;
-
-	IWICBitmap         *pWICBitmap     = NULL;
-	IWICBitmapLock     *pWICBitmapLock = NULL;
-
+	IWICBitmap            *pWICBitmap  = NULL;
 	IWICBitmapEncoder     *encoder     = NULL;
 	IWICStream            *wicStream   = NULL;
 	IWICBitmapFrameEncode *frameEncode = NULL;
@@ -208,8 +211,6 @@ CODECS_API int EncodeImageToFile(PCWSTR *uri, REBCDI *codi)
 	IPropertyBag2 *pPropertybag = NULL;
 
 	GUID containerFormat;
-
-	HGLOBAL	hMem = NULL;
 
 	switch (codi->type) {
 	case CODI_IMG_PNG:  containerFormat = GUID_ContainerFormatPng  ; break;     // Portable Network Graphics
@@ -229,27 +230,25 @@ CODECS_API int EncodeImageToFile(PCWSTR *uri, REBCDI *codi)
 		hr = codecs_init();
 		ASSERT_HR("codecs_init");
 
-		hr = pIWICFactory->CreateBitmap(
-			  codi->w
-			, codi->h
+		stride = (UINT64)codi->w * 4;
+		size   = stride * (UINT64)codi->h;
+		if (size > UINT_MAX) {
+			hr = E_OUTOFMEMORY;
+			ASSERT_HR("image too large");
+		}
+
+		// Creates a bitmap with its own copy of the source pixels
+		hr = pIWICFactory->CreateBitmapFromMemory(
+			  (UINT)codi->w
+			, (UINT)codi->h
 			, GUID_WICPixelFormat32bppBGRA
-			, WICBitmapCacheOnLoad
+			, (UINT)stride
+			, (UINT)size
+			, (BYTE *)codi->bits
 			, &pWICBitmap
 		);
-		ASSERT_HR("CreateBitmap");
+		ASSERT_HR("CreateBitmapFromMemory");
 
-		wrect = {0,0,(INT)codi->w,(INT)codi->h};
-
-		hr = pWICBitmap->Lock(&wrect, WICBitmapLockWrite, &pWICBitmapLock);
-		ASSERT_HR("WICBitmap->Lock");
-
-		hr = pWICBitmapLock->GetDataPointer(&size, &data);
-		ASSERT_HR("GetDataPointer");
-
-		hr = memcpy_s(data, size, codi->bits, size);
-		ASSERT_HR("memcpy_s to pWICBitmap");
-		RELEASE(pWICBitmapLock);
-		
 		hr = pIWICFactory->CreateEncoder(containerFormat, nullptr, &encoder);
 		ASSERT_HR("pIWICFactory->CreateEncoder");
 
@@ -257,7 +256,7 @@ CODECS_API int EncodeImageToFile(PCWSTR *uri, REBCDI *codi)
 			// output to raw binary
 			hr = CreateStreamOnHGlobal(NULL, TRUE, &outStream);
 			ASSERT_HR("CreateStreamOnHGlobal");
-		
+
 		} else {
 			// Create a stream for the encoder
 			hr = pIWICFactory->CreateStream(&wicStream);
@@ -330,7 +329,6 @@ CODECS_API int EncodeImageToFile(PCWSTR *uri, REBCDI *codi)
 
 	RELEASE(pPropertybag);
 	RELEASE(pWICBitmap);
-	RELEASE(pWICBitmapLock);
 	RELEASE(outStream);
 	RELEASE(frameEncode);
 	RELEASE(wicStream);

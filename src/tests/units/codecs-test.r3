@@ -443,6 +443,40 @@ if find codecs 'JSON [
 	===end-group===
 ]
 
+if system/platform = 'Windows [
+	===start-group=== "Windows WIC codecs (sys-codecs.cpp)"
+	
+		;- 3x2 image with distinct colors and non-zero alpha values
+		img: make image! [3x2 #{FF000000FF000000FFFFFFFF000000808080}]
+		img/alpha: #{FF80401020F0}
+
+		--test-- "WIC encode/decode roundtrip (lossless formats)"
+		;; covers: encoder bitmap now created by CreateBitmapFromMemory
+		;; covers: decoding from binary via HGLOBAL stream and malloc path
+			foreach codec [bmp tiff] [
+				if in system/codecs codec [
+					bin: encode codec img
+					--assert binary? bin
+					--assert img = decode codec bin
+				]
+			]
+
+		--test-- "WIC decode of invalid binary must fail"
+		;; error HRESULTs must propagate, not be reported as success
+			foreach codec [bmp tiff jpeg gif] [
+				if in system/codecs codec [
+					--assert error? try [decode codec #{0001020304050607}]
+				]
+			]
+
+		--test-- "WIC decode of empty binary must fail"
+			if in system/codecs 'tiff [
+				--assert error? try [decode 'tiff #{}]
+			]
+	===end-group===
+]
+
+
 if find codecs 'PNG [
 	system/options/log/png: 3
 	===start-group=== "PNG codec"
