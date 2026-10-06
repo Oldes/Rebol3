@@ -1005,6 +1005,7 @@ include-native-oid: [core-files: %core/n-oid.c] ; `form-oid` native (used in DER
 ;- Product specifications                                                       
 
 include-rebol-core: [
+	:include-lzma-compression   ;= cca 17kB
 ;	:include-mezz-ansi
 	:include-clipboard
 	:include-cryptography
@@ -1038,7 +1039,6 @@ include-rebol-bulk: [
 	:include-image-natives
 	:include-lz4-compression
 	:include-lzav-compression
-	:include-lzma-compression   ;= cca 17kB
 	:include-lzw-compression    ;= cca 2kB
 	:include-brotli-compression ;= cca 330kB
 	:include-crush-compression
