@@ -65,7 +65,7 @@ CODECS_API void codecs_fini()
 }
 
 
-CODECS_API int DecodeImageFromFile(PCWSTR *uri, UINT frame, REBCDI *codi)
+CODECS_API int DecodeImageFromFile(PCWSTR uri, UINT frame, REBCDI *codi)
 {
 	HRESULT hr = S_OK;
 	UINT w, h;
@@ -85,7 +85,7 @@ CODECS_API int DecodeImageFromFile(PCWSTR *uri, UINT frame, REBCDI *codi)
 			TRACE("Filename %ls", uri);
 
 			hr = pIWICFactory->CreateDecoderFromFilename(
-				(LPCWSTR)uri
+				uri
 				, NULL
 				, GENERIC_READ
 				, WICDecodeMetadataCacheOnDemand
@@ -197,7 +197,7 @@ HRESULT AddBoolProperty(IPropertyBag2 *pPropertybag, LPOLESTR name, VARIANT_BOOL
 	return pPropertybag->Write(1, &option, &varValue);
 }
 
-CODECS_API int EncodeImageToFile(PCWSTR *uri, REBCDI *codi)
+CODECS_API int EncodeImageToFile(PCWSTR uri, REBCDI *codi)
 {
 	HRESULT hr = S_OK;
 	UINT64 stride, size;
@@ -262,7 +262,7 @@ CODECS_API int EncodeImageToFile(PCWSTR *uri, REBCDI *codi)
 			hr = pIWICFactory->CreateStream(&wicStream);
 			ASSERT_HR("pIWICFactory->CreateStream");
 			// Initialize the stream using the output file path
-			hr = wicStream->InitializeFromFilename((LPCWSTR)uri, GENERIC_WRITE);
+			hr = wicStream->InitializeFromFilename(uri, GENERIC_WRITE);
 			ASSERT_HR("wicStream->InitializeFromFilename");
 			hr = wicStream->QueryInterface(IID_PPV_ARGS(&outStream));
 			ASSERT_HR("wicStream->QueryInterface");

@@ -473,6 +473,17 @@ if system/platform = 'Windows [
 			if in system/codecs 'tiff [
 				--assert error? try [decode 'tiff #{}]
 			]
+ 
+		--test-- "WIC save/load image using a file name"
+		;; covers: file name passed to WIC as PCWSTR, incl. non-ASCII name
+			if in system/codecs 'tiff [
+				foreach file [%wic-test.tiff %wic-test-ěščř.tiff] [
+					save file img
+					--assert did exists? file
+					--assert img = load file
+					try [delete file]
+				]
+			]
 	===end-group===
 ]
 
