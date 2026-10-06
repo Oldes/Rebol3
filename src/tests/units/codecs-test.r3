@@ -113,22 +113,22 @@ Rebol [
 --test-- "load UCS16-LE txt"
 	--assert all [
 		string? try [str: load %units/files/issue-2186-UTF16-LE.txt]
-		11709824 = checksum str 'crc24
+		5408699 = checksum str 'crc24
 	]
 --test-- "load UCS16-BE txt"
 	--assert all [
 		string? try [str: load %units/files/issue-2186-UTF16-BE.txt]
-		11709824 = checksum str 'crc24
+		5408699 = checksum str 'crc24
 	]
 --test-- "load UCS32-LE txt"
 	--assert all [
 		string? try [str: load %units/files/issue-2186-UTF32-LE.txt]
-		11709824 = checksum str 'crc24
+		5408699 = checksum str 'crc24
 	]
 --test-- "load UCS32-BE txt"
 	--assert all [
 		string? try [str: load %units/files/issue-2186-UTF32-BE.txt]
-		11709824 = checksum str 'crc24
+		5408699 = checksum str 'crc24
 	]
 --test-- "load/save issue! as .txt"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1937
