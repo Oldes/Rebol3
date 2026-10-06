@@ -841,13 +841,15 @@ Rebol [
 		--assert #{0002} = transcode/one/error "#{00;XXX^/02}"
 		--assert #{0002} = transcode/one/error "#{00;XXX^M02}" ;CR is also comment stopper
 
-		--assert error? transcode/one/error "#{0}"
-
 	--test-- {binary! with other valid escapes}
 		--assert #{0003} = transcode/one/error "#{^(30)^(30)03}"
 	--test-- {binary! with unicode char} ; is handled early
 		--assert error? first transcode/only/error "#{0č}"
 		--assert error? transcode/one/error "#{0č}"
+	--test-- {binary! padding}
+		--assert #{00}   = transcode/one/error "#{0}"
+		--assert #{01}   = transcode/one/error "2#{1}"
+
 	--test-- "Invalid binary"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1431
 		--assert all [error? e: try [load {000016#{FF}}] e/id = 'invalid e/arg1 = "integer"]
