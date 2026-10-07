@@ -209,14 +209,12 @@ Rebol [
 		e/type = 'custom
 		e/code = 1
 	]
-	if system/ports/event [
-		; using port in the custom event
-		--assert all [
-			event? e: try [make event! [type: 'custom code: 2 port: system/ports/event]]
-			e/type = 'custom
-			e/code = 2
-			e/port = system/ports/event
-		]
+	; using port in the custom event
+	--assert all [
+		event? e: try [make event! [type: 'custom code: 2 port: system/ports/system]]
+		e/type = 'custom
+		e/code = 2
+		e/port = system/ports/system
 	]
 
 ===end-group===
