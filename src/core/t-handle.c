@@ -239,7 +239,7 @@ extern void RXI_To_Value(REBVAL *val, RXIARG arg, REBCNT type); // f-extension.
 		*D_ARG(3) = *D_ARG(2);
 		// continue..
 	case A_QUERY:
-		Query_Fields(val, D_ARG(ARG_QUERY_FIELD), STD_HANDLE_INFO, Query_Handle_Field, NULL, D_RET);
+		Query_Fields(val, D_ARG(ARG_QUERY_FIELD), Get_System(SYS_STANDARD, STD_HANDLE_INFO), Query_Handle_Field, NULL, D_RET);
 		return R_RET;
 
 	default:

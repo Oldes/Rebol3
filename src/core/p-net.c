@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -67,65 +67,12 @@ enum Transport_Types {
 	return TRUE;
 }
 
-/***********************************************************************
-**
-*/	static void Ret_Query_Net(REBSER *port, REBREQ *sock, REBVAL *ret, REBVAL *info)
-/*
-***********************************************************************/
+
+static REBOOL Query_Net_Field(REBVAL *port, REBVAL *word, REBVAL *ret, void *ctx)
 {
-	REBSER *obj;
-	REBVAL *val;
-	
-	if (IS_WORD(info)) {
-		if (!Set_Net_Mode_Value(sock, VAL_WORD_CANON(info), ret))
-			Trap1(RE_INVALID_ARG, info);
-	}
-	else if (IS_BLOCK(info)) {
-		// example:
-		//	query port [:remote-ip :remote-port] ;== [127.0.0.1 1234]
-		// or:
-		//	 query port [remote-ip remote-port] ;== [remote-ip: 127.0.0.1 remote-port: 1234]
-		// or combined:
-		//	 query file [remote-ip: :remote-port] ;== [remote-ip: 127.0.0.1 1234]
-		// When not supported word is used, if will throw an error
-
-		REBSER *values = Make_Block(2 * BLK_LEN(VAL_SERIES(info)));
-		REBVAL *word = VAL_BLK_DATA(info);
-		for (; NOT_END(word); word++) {
-			if (ANY_WORD(word)) {
-				if (!IS_GET_WORD(word)) {
-					// keep the word as a key (converted to the set-word) in the result
-					val = Append_Value(values);
-					*val = *word;
-					VAL_TYPE(val) = REB_SET_WORD;
-					VAL_SET_LINE(val);
-				}
-				val = Append_Value(values);
-				if (!Set_Net_Mode_Value(sock, VAL_WORD_CANON(word), val))
-					Trap1(RE_INVALID_ARG, word);
-			}
-			else  Trap1(RE_INVALID_ARG, word);
-		}
-		Set_Series(REB_BLOCK, ret, values);
-	}
-	else {
-		//@@ oldes: is returning object really still needed?
-		info = In_Object(port, STD_PORT_SCHEME, STD_SCHEME_INFO, 0);
-
-		if (!info || !IS_OBJECT(info)) {
-			Trap_Port(RE_INVALID_SPEC, port, -10);
-			DEAD_END;
-		}
-
-		obj = CLONE_OBJECT(VAL_OBJ_FRAME(info));
-
-		SET_OBJECT(ret, obj);
-		Set_Tuple(OFV(obj, STD_NET_INFO_LOCAL_IP), (REBYTE *)&sock->net.local_ip, 4);
-		Set_Tuple(OFV(obj, STD_NET_INFO_REMOTE_IP), (REBYTE *)&sock->net.remote_ip, 4);
-		SET_INTEGER(OFV(obj, STD_NET_INFO_LOCAL_PORT), sock->net.local_port);
-		SET_INTEGER(OFV(obj, STD_NET_INFO_REMOTE_PORT), sock->net.remote_port);
-	}
+	return Set_Net_Mode_Value((REBREQ *)ctx, VAL_WORD_CANON(word), ret);
 }
+
 
 /***********************************************************************
 **
@@ -342,16 +289,14 @@ enum Transport_Types {
 			Trap_Range(arg);
 		break;
 
-	case A_QUERY:
+	case A_QUERY: {
 		// Get specific information - the scheme's info object.
 		// Special notation allows just getting part of the info.
-		if (IS_NONE(D_ARG(ARG_QUERY_FIELD))) {
-			Ret_Net_Modes(port, D_RET);
-			return R_RET;
-		}
-		Ret_Query_Net(port, sock, D_RET, D_ARG(ARG_QUERY_FIELD));
+		REBVAL *info = In_Object(port, STD_PORT_SCHEME, STD_SCHEME_INFO, 0);
+		if (!info || !IS_OBJECT(info)) Trap_Port(RE_INVALID_SPEC, port, -10);
+		Query_Fields(D_ARG(1), D_ARG(ARG_QUERY_FIELD), info, Query_Net_Field, sock, D_RET);
 		break;
-
+	}
 	case A_OPENQ:
 		// Connect for clients, bind for servers:
 		if (sock->state & ((1<<RSM_CONNECT) | (1<<RSM_BIND))) return R_TRUE;

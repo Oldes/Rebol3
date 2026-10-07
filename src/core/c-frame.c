@@ -1303,7 +1303,7 @@
 
 /***********************************************************************
 **
-*/	void Query_Fields(REBVAL *value, REBVAL *field, REBCNT info, REB_QUERY_FN query_field, void *ctx, REBVAL *ret)
+*/	void Query_Fields(REBVAL *value, REBVAL *field, REBVAL *spec, REB_QUERY_FN query_field, void *ctx, REBVAL *ret)
 /*
 **		Shared QUERY/REFLECT for datatypes with an info object
 **		in system/standard (`info` is its STD_*_INFO index).
@@ -1317,7 +1317,6 @@
 **
 ***********************************************************************/
 {
-	REBVAL *spec = Get_System(SYS_STANDARD, info);
 	REBVAL *word, *out;
 	REBVAL tmp;
 	REBSER *ser;

@@ -1404,11 +1404,11 @@ makeCopy2:
 		break;
 
 	case A_REFLECT:
-		Query_Fields(value, D_ARG(2), STD_IMAGE_INFO, Query_Image_Field, NULL, D_RET);
+		Query_Fields(value, D_ARG(2), Get_System(SYS_STANDARD, STD_IMAGE_INFO), Query_Image_Field, NULL, D_RET);
 		return R_RET;
 
 	case A_QUERY:
-		Query_Fields(value, D_ARG(ARG_QUERY_FIELD), STD_IMAGE_INFO, Query_Image_Field, NULL, D_RET);
+		Query_Fields(value, D_ARG(ARG_QUERY_FIELD), Get_System(SYS_STANDARD, STD_IMAGE_INFO), Query_Image_Field, NULL, D_RET);
 		return R_RET;
 		
 	default:

@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -282,7 +282,7 @@ create:
 
 	case A_QUERY:
 		if (IS_NONE(D_ARG(ARG_QUERY_FIELD))) {
-			Ret_File_Modes(port, D_RET);
+			Ret_Query_File(port, dir, D_RET, D_ARG(ARG_QUERY_FIELD));
 			return R_RET;
 		}
 		SET_NONE(data);

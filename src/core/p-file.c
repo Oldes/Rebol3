@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -133,58 +133,29 @@
 
 /***********************************************************************
 **
-*/	void Ret_Query_File(REBSER *port, REBREQ *file, REBVAL *ret, REBVAL *info)
+*/	static REBOOL Query_File_Field(REBVAL *port, REBVAL *word, REBVAL *ret, void *ctx)
 /*
-**		Query file and set RET value to resulting STD_FILE_INFO object.
+**		Query_Fields callback; ctx is the file request.
 **
 ***********************************************************************/
 {
-	REBSER *obj;
-	REBVAL *val;
+	return Set_File_Mode_Value((REBREQ *)ctx, VAL_WORD_CANON(word), ret);
+}
 
-	if ( IS_WORD(info) ) {
-		if(!Set_File_Mode_Value(file, VAL_WORD_CANON(info), ret))
-			Trap1(RE_INVALID_ARG, info);
-	} else if (IS_BLOCK(info)) {
-		// example:
-		//	query file [:type :size] ;== [file 1234]
-		// or:
-		//	 query file [type size] ;== [type: file size: 1234]
-		// or combined:
-		//	 query file [type: :size] ;== [type: file 1234]
-		// When not supported word is used, if will throw an error
-
-		REBSER *values = Make_Block(2 * BLK_LEN(VAL_SERIES(info)));
-		REBVAL *word = VAL_BLK_DATA(info);
-		for (; NOT_END(word); word++) {
-			if(ANY_WORD(word)) {
-				if (!IS_GET_WORD(word)) {
-					// keep the word as a key (converted to the set-word) in the result
-					val = Append_Value(values);
-					*val = *word;
-					VAL_TYPE(val) = REB_SET_WORD;
-					VAL_SET_LINE(val);
-				}
-				val = Append_Value(values);
-				if(!Set_File_Mode_Value(file, VAL_WORD_CANON(word), val))
-					Trap1(RE_INVALID_ARG, word);
-			} else  Trap1(RE_INVALID_ARG, word);
-		}
-		Set_Series(REB_BLOCK, ret, values);
-	} else {
-		//@@ oldes: is returning object really still needed?
-		info = In_Object(port, STD_PORT_SCHEME, STD_SCHEME_INFO, 0);
-		if (!info || !IS_OBJECT(info)) Trap_Port(RE_INVALID_SPEC, port, -10);
-		obj = CLONE_OBJECT(VAL_OBJ_FRAME(info));
-		Set_File_Mode_Value(file, SYM_TYPE, OFV(obj, STD_FILE_INFO_TYPE));
-		Set_File_Mode_Value(file, SYM_SIZE, OFV(obj, STD_FILE_INFO_SIZE));
-		Set_File_Mode_Value(file, SYM_NAME, OFV(obj, STD_FILE_INFO_NAME));
-		Set_File_Mode_Value(file, SYM_CREATED,  OFV(obj, STD_FILE_INFO_CREATED));
-		Set_File_Mode_Value(file, SYM_ACCESSED, OFV(obj, STD_FILE_INFO_ACCESSED));
-		Set_File_Mode_Value(file, SYM_MODIFIED, OFV(obj, STD_FILE_INFO_MODIFIED));
-		Set_File_Mode_Value(file, SYM_DATE, OFV(obj, STD_FILE_INFO_MODIFIED)); // for backward compatibility
-		SET_OBJECT(ret, obj);
-	}
+/***********************************************************************
+**
+*/	void Ret_Query_File(REBSER *port, REBREQ *file, REBVAL *ret, REBVAL *field)
+/*
+**		Shared by file and dir ports. For a none field, the request
+**		is not used, so it does not have to be queried yet.
+**
+***********************************************************************/
+{
+	REBVAL port_value;
+	REBVAL *info = In_Object(port, STD_PORT_SCHEME, STD_SCHEME_INFO, 0);
+	if (!info || !IS_OBJECT(info)) Trap_Port(RE_INVALID_SPEC, port, -10);
+	SET_PORT(&port_value, port);
+	Query_Fields(&port_value, field, info, Query_File_Field, file, ret);
 }
 
 /***********************************************************************
@@ -619,7 +590,7 @@ resize:
 
 	case A_QUERY:
 		if (IS_NONE(D_ARG(ARG_QUERY_FIELD))) {
-			Ret_File_Modes(port, D_RET);
+			Ret_Query_File(port, file, D_RET, D_ARG(ARG_QUERY_FIELD));
 			return R_RET;
 		}
 		if (!IS_OPEN(file)) {

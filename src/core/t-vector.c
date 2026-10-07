@@ -2127,7 +2127,7 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 			Set_Series(REB_BLOCK, value, blk);
 			break;
 		}
-		Query_Fields(value, D_ARG(2), STD_VECTOR_INFO, Query_Vector_Word, NULL, D_RET);
+		Query_Fields(value, D_ARG(2), Get_System(SYS_STANDARD, STD_VECTOR_INFO), Query_Vector_Word, NULL, D_RET);
 		return R_RET;
 
 	case A_QUERY: {
@@ -2140,7 +2140,7 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 			Query_Vector_Statictics(value, &results);
 			ctx = &results;
 		}
-		Query_Fields(value, field, STD_VECTOR_INFO, Query_Vector_Word, ctx, D_RET);
+		Query_Fields(value, field, Get_System(SYS_STANDARD, STD_VECTOR_INFO), Query_Vector_Word, ctx, D_RET);
 		return R_RET;
 	}
 	

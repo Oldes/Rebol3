@@ -1111,7 +1111,7 @@ setDate:
 			*D_ARG(3) = *D_ARG(2);
 			// continue..
 		case A_QUERY:
-			Query_Fields(val, D_ARG(ARG_QUERY_FIELD), STD_DATE_INFO, Query_Date_Field, NULL, D_RET);
+			Query_Fields(val, D_ARG(ARG_QUERY_FIELD), Get_System(SYS_STANDARD, STD_DATE_INFO), Query_Date_Field, NULL, D_RET);
 			return R_RET;
 		}
 	}
