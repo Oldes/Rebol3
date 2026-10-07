@@ -130,8 +130,12 @@ Rebol [
 		]
 	--test-- "bind to error"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/894
-		err: make error! "foo"
-		--assert all [error? e: try [bind 'id err] e/id = 'expect-arg]
+	;@@ https://github.com/Oldes/Rebol-issues/issues/2704
+		e: make error! "foo"
+		--assert all [
+			[:arg1] = spec: system/catalog/errors/(e/type)/(e/id)
+			["foo"] = reduce bind system/catalog/errors/(e/type)/(e/id) e
+		]
 ===end-group===
 
 
