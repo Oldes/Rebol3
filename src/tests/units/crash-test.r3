@@ -154,7 +154,8 @@ Rebol [
 
 --test-- "write clipboard:// [a]"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1619
-	--assert to logic! try [write clipboard:// [a]] ;- no crash
+	;; (There is clipboard scheme on Linux, but just as a placeholder - returns none)
+	--assert not error? try [write clipboard:// [a]] ;- no crash
 
 --test-- "unset 'self"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1569
