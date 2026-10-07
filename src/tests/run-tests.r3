@@ -118,11 +118,11 @@ dt [ ;- delta time
 
 	unless empty? failed-units [
 		print "------------------------------------------------------------"
-		print "FAILED units files:"
+		print as-red "FAILED units files:"
 		foreach [file error] failed-units [
-			?? file
-			?? error
+			print [as-yellow mold file mold/part error 500] 
 		]
+		quit/return -2 ;; Test should not pass when there is any error in the test files.
 	]
 
 
