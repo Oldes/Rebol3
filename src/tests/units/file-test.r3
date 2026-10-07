@@ -79,7 +79,7 @@ secure [%/ allow]
 	]
 --test-- "file path with colon (Posix)"
 	if system/platform <> 'Windows [
-		--assert all [
+		--assert did all [
 			make-dir %x:/
 			write %x:/test.txt "ok"
 			"ok" = read/string %x:/test.txt
