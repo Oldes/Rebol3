@@ -203,37 +203,8 @@ Rebol [
 	--assert (mold/all/flat v) == "#(uint8! 3x2 [1 2 3 4 5 6])"
 	--assert not find mold/flat v "^/"
 
-
---test-- "QUERY on vector as object"
-	;@@ https://github.com/Oldes/Rebol-issues/issues/2352
-	v: make vector! [unsigned integer! 16 2]
-	o: query v object!
-	--assert object? o
-	--assert not o/signed
-	--assert o/type = 'integer!
-	--assert o/size = 16
-	--assert o/length = 2
-	--assert o/minimum = 0
-	--assert o/maximum = 0
---test-- "QUERY on vector"
-	--assert [element-type signed type size length shape shaped minimum maximum range sum mean median variance sample-variance population-deviation sample-deviation] = query v none
-	--assert [16 integer!] = query v [:size :type]
-	--assert block? b: query v [signed length]
-	--assert all [not b/signed b/length = 2]
-	--assert 16 = query v 'size
-	--assert 16 = size? v
---test-- "REFLECT on vector"
-	--assert 16 = reflect v 'size
-	--assert  2 = reflect v 'length
-	--assert 'integer! = reflect v 'type
-	--assert false = reflect v 'signed
-	--assert [uint16! 2] = reflect v 'spec
-	--assert [uint16! 2] = spec-of v
-	--assert [uint8! 2x2] = spec-of #(u8! 2x2)
-	;; signed and float spellings round-trip too
-	--assert (spec-of #(i16! 2x2 [1 2 3 4])) = [int16! 2x2]
-	--assert (spec-of #(f32! 2x2 [1 2 3 4])) = [float32! 2x2]
 --test-- "ACCESSORS on vector"
+	v: make vector! [unsigned integer! 16 2]
 	--assert 16 = v/size
 	--assert  2 = v/length
 	--assert 'integer! = v/type
@@ -274,6 +245,71 @@ Rebol [
 	--assert #(f32! [1.0 3.0 2.0]) = head reverse next #(f32! [1 2 3])
 	--assert #(f64! [1.0 3.0 2.0]) = head reverse next #(f64! [1 2 3])
 ===end-group===
+
+
+===start-group=== "query vector"
+	--test-- "QUERY on vector as object"
+		;@@ https://github.com/Oldes/Rebol-issues/issues/2352
+		v: make vector! [unsigned integer! 16 2]
+		o: query v object!
+		--assert object? o
+		--assert not o/signed
+		--assert o/type = 'integer!
+		--assert o/size = 16
+		--assert o/length = 2
+		--assert o/minimum = 0
+		--assert o/maximum = 0
+	--test-- "QUERY on vector"
+		--assert [element-type signed type size length shape shaped minimum maximum range sum mean median variance sample-variance population-deviation sample-deviation] = query v none
+		--assert [16 integer!] = query v [:size :type]
+		--assert block? b: query v [signed length]
+		--assert all [not b/signed b/length = 2]
+		--assert 16 = query v 'size
+		--assert 16 = size? v
+	--test-- "REFLECT on vector"
+		--assert 16 = reflect v 'size
+		--assert  2 = reflect v 'length
+		--assert 'integer! = reflect v 'type
+		--assert false = reflect v 'signed
+		--assert [uint16! 2] = reflect v 'spec
+		--assert [uint16! 2] = spec-of v
+		--assert [uint8! 2x2] = spec-of #(u8! 2x2)
+		;; signed and float spellings round-trip too
+		--assert (spec-of #(i16! 2x2 [1 2 3 4])) = [int16! 2x2]
+		--assert (spec-of #(f32! 2x2 [1 2 3 4])) = [float32! 2x2]
+		--assert error? try [reflect v 'foo]
+
+	--test-- "QUERY vector fields"
+		v: #(i16! [1 2 3 4])
+		--assert 4  = query v 'length
+		--assert 4  = query v 'LENGTH
+		--assert 10 = query v 'sum
+		--assert [length: 4 sum: 10] = query v [length sum]
+		--assert [4 2.5] = query v [:length :median]
+		--assert error? try [query v 'foo]
+		--assert error? try [query v [foo]]
+	--test-- "QUERY vector block is not modified"
+		b: [:length 'mean]
+		query v b
+		--assert get-word? first b
+		--assert lit-word? second b
+	--test-- "QUERY vector words"
+		--assert (query v 'words) = words-of system/standard/vector-info
+		--assert (query v none)   = words-of system/standard/vector-info
+	--test-- "QUERY vector object"
+		o: query v object!
+		--assert o/length = 4
+		--assert o/sum    = 10
+		--assert o/median = 2.5
+		--assert o/mean   = 2.5
+		--assert o/shape  = 4x1
+	--test-- "query empty vector object"
+		o: query #(i16! []) object!
+		--assert o/length = 0
+		--assert none? o/sum
+		
+===end-group===
+
 
 
 ===start-group=== "VECTOR from binary data"

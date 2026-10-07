@@ -1109,6 +1109,10 @@ typedef struct Reb_Path_Value {
 	REBVAL *orig;	// static
 } REBPVS;
 
+// Sets `ret` for the field named by `word` (always a word!) and returns TRUE,
+// or returns FALSE for an unknown field. `ctx` is passed through untouched.
+typedef REBOOL (*REB_QUERY_FN)(REBVAL *value, REBVAL *word, REBVAL *ret, void *ctx);
+
 enum Path_Eval_Result {
 	PE_OK,
 	PE_SET,

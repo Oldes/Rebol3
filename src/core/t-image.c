@@ -1059,7 +1059,7 @@ find_none:
 
 /***********************************************************************
 **
-*/	static REBOOL Query_Image_Field(REBVAL *data, REBVAL *field, REBVAL *ret)
+*/	static REBOOL Query_Image_Field(REBVAL *data, REBVAL *field, REBVAL *ret, void *ctx)
 /*
 **		Set a value with image info according to the specified field.
 **		Accepts any word type (does not modify the field).
@@ -1404,56 +1404,13 @@ makeCopy2:
 		break;
 
 	case A_REFLECT:
-		*D_ARG(3) = *D_ARG(2);
-		// continue..
-	case A_QUERY: {
-		REBVAL *spec  = Get_System(SYS_STANDARD, STD_IMAGE_INFO);
-		REBVAL *field = D_ARG(ARG_QUERY_FIELD);
-		REBVAL *word, *out;
-		REBSER *ser;
-		REBCNT  n;
-
-		if (!IS_OBJECT(spec)) Trap_Arg(spec);
-
-		if (IS_WORD(field)) {
-			switch (VAL_WORD_CANON(field)) {
-			case SYM_WORDS:
-				Set_Block(D_RET, Get_Object_Words(spec));
-				return R_RET;
-			case SYM_SPEC:
-				return R_ARG1;
-			}
-			if (!Query_Image_Field(value, field, D_RET))
-				Trap_Reflect(VAL_TYPE(value), field);
-		}
-		else if (IS_BLOCK(field)) {
-			ser = Make_Block(2 * VAL_BLK_LEN(field));
-			for (word = VAL_BLK_DATA(field); NOT_END(word); word++) {
-				if (!ANY_WORD(word)) Trap1(RE_INVALID_ARG, word);
-				if (!IS_GET_WORD(word)) {
-					out = Append_Value(ser);
-					*out = *word;
-					VAL_TYPE(out) = REB_SET_WORD;
-					VAL_SET_LINE(out);
-				}
-				out = Append_Value(ser);
-				if (!Query_Image_Field(value, word, out))
-					Trap1(RE_INVALID_ARG, word);
-			}
-			Set_Series(REB_BLOCK, D_RET, ser);
-		}
-		else if (IS_NONE(field)) {
-			Set_Block(D_RET, Get_Object_Words(spec));
-		}
-		else {
-			REBSER *obj = CLONE_OBJECT(VAL_OBJ_FRAME(spec));
-			word = BLK_HEAD(VAL_OBJ_WORDS(spec));
-			for (n = 0; NOT_END(word); word++, n++)
-				Query_Image_Field(value, word, OFV(obj, n));
-			SET_OBJECT(D_RET, obj);
-		}
+		Query_Fields(value, D_ARG(2), STD_IMAGE_INFO, Query_Image_Field, NULL, D_RET);
 		return R_RET;
-	}
+
+	case A_QUERY:
+		Query_Fields(value, D_ARG(ARG_QUERY_FIELD), STD_IMAGE_INFO, Query_Image_Field, NULL, D_RET);
+		return R_RET;
+		
 	default:
 		Trap_Action(VAL_TYPE(value), action);
 	}

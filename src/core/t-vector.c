@@ -522,6 +522,18 @@ return_number:
 
 /***********************************************************************
 **
+*/	static REBOOL Query_Vector_Word(REBVAL *vec, REBVAL *word, REBVAL *ret, void *ctx)
+/*
+**		Query_Fields callback; ctx is NULL or precomputed REBVQV statistics.
+**
+***********************************************************************/
+{
+	return Query_Vector_Field(vec, VAL_WORD_CANON(word), ret, (REBVQV *)ctx);
+}
+
+
+/***********************************************************************
+**
 */	REBSER *Make_Vector_Block(REBVAL *vect)
 /*
 **		Convert a vector to a block.
@@ -1922,7 +1934,6 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 	REBSER *vect;
 	REBSER *ser;
 	REBSER *blk;
-	REBVAL *val;
 	REBINT	len;
 
 	type = Do_Series_Action(action, value, arg);
@@ -2105,8 +2116,7 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 		return R_ARG1;
 
 	case A_REFLECT:
-		vtype = VAL_VEC_TYPE(value);
-		if (SYM_SPEC == VAL_WORD_SYM(D_ARG(2))) {
+		if (SYM_SPEC == VAL_WORD_CANON(D_ARG(2))) {
 			blk = Make_Block(2);
 			Query_Vector_Field(value, SYM_ELEMENT_TYPE, Append_Value(blk), NULL);
 			// A shaped vector emits its pair! shape in the size slot, so the
@@ -2115,71 +2125,24 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 				(VAL_VEC_ROWS(value) > 1) ? SYM_SHAPE : SYM_LENGTH,
 				Append_Value(blk), NULL);
 			Set_Series(REB_BLOCK, value, blk);
-		} else {
-			if(!Query_Vector_Field(value, VAL_WORD_SYM(D_ARG(2)), value, NULL))
-				Trap_Reflect(VAL_TYPE(value), D_ARG(2));
-		}
-		break;
-
-	case A_QUERY:
-		vtype = VAL_VEC_TYPE(value);
-		REBVAL *spec = Get_System(SYS_STANDARD, STD_VECTOR_INFO);
-		if (!IS_OBJECT(spec)) Trap_Arg(spec);
-		REBVAL *field = D_ARG(ARG_QUERY_FIELD);
-		if(IS_WORD(field)) {
-			if (!Query_Vector_Field(value, VAL_WORD_SYM(field), value, NULL))
-				Trap_Reflect(VAL_TYPE(value), field); // better error?
 			break;
 		}
-		REBVQV results = { 0 };
-		Query_Vector_Statictics(value, &results);
+		Query_Fields(value, D_ARG(2), STD_VECTOR_INFO, Query_Vector_Word, NULL, D_RET);
+		return R_RET;
 
-		if (IS_BLOCK(field)) {
-			REBSER *values = Make_Block(2 * BLK_LEN(VAL_SERIES(field)));
-			REBVAL *word = VAL_BLK_DATA(field);
-			for (; NOT_END(word); word++) {
-				if (ANY_WORD(word)) {
-					if (!IS_GET_WORD(word)) {
-						// keep the word as a key (converted to the set-word) in the result
-						val = Append_Value(values);
-						*val = *word;
-						VAL_TYPE(val) = REB_SET_WORD;
-						VAL_SET_LINE(val);
-					}
-					val = Append_Value(values);
-					if (!Query_Vector_Field(value, VAL_WORD_SYM(word), val, &results))
-						Trap1(RE_INVALID_ARG, word);
-				}
-				else  Trap1(RE_INVALID_ARG, word);
-			}
-			Set_Series(REB_BLOCK, value, values);
+	case A_QUERY: {
+		REBVAL *field = D_ARG(ARG_QUERY_FIELD);
+		REBVQV  results;
+		REBVQV *ctx = NULL;
+		// When more than one field is requested, compute the statistics once
+		// and share them. Struct vectors have no statistics.
+		if (!(IS_WORD(field) || IS_NONE(field)) && !VECT_IS_STRUCT(VAL_VEC_TYPE(value))) {
+			Query_Vector_Statictics(value, &results);
+			ctx = &results;
 		}
-		else if (IS_NONE(field)) {
-			Set_Block(D_RET, Get_Object_Words(spec));
-			return R_RET;
-		}
-		else {
-			REBSER *obj = CLONE_OBJECT(VAL_OBJ_FRAME(spec));
-			Query_Vector_Field(value, SYM_ELEMENT_TYPE, OFV(obj, STD_VECTOR_INFO_ELEMENT_TYPE), &results);
-			Query_Vector_Field(value, SYM_SIGNED, OFV(obj, STD_VECTOR_INFO_SIGNED), &results);
-			Query_Vector_Field(value, SYM_TYPE,   OFV(obj, STD_VECTOR_INFO_TYPE), &results);
-			Query_Vector_Field(value, SYM_SIZE,   OFV(obj, STD_VECTOR_INFO_SIZE), &results);
-			Query_Vector_Field(value, SYM_LENGTH, OFV(obj, STD_VECTOR_INFO_LENGTH), &results);
-			Query_Vector_Field(value, SYM_SHAPE,  OFV(obj, STD_VECTOR_INFO_SHAPE), &results);
-			Query_Vector_Field(value, SYM_SHAPED,  OFV(obj, STD_VECTOR_INFO_SHAPED), &results);
-			Query_Vector_Field(value, SYM_MINIMUM, OFV(obj, STD_VECTOR_INFO_MINIMUM), &results);
-			Query_Vector_Field(value, SYM_MAXIMUM, OFV(obj, STD_VECTOR_INFO_MAXIMUM), &results);
-			Query_Vector_Field(value, SYM_RANGE, OFV(obj, STD_VECTOR_INFO_RANGE), &results);
-			Query_Vector_Field(value, SYM_SUM, OFV(obj, STD_VECTOR_INFO_SUM), &results);
-			Query_Vector_Field(value, SYM_MEAN, OFV(obj, STD_VECTOR_INFO_MEAN), &results);
-			Query_Vector_Field(value, SYM_MEDIAN, OFV(obj, STD_VECTOR_INFO_MEDIAN), &results);
-			Query_Vector_Field(value, SYM_VARIANCE, OFV(obj, STD_VECTOR_INFO_VARIANCE), &results);
-			Query_Vector_Field(value, SYM_SAMPLE_VARIANCE, OFV(obj, STD_VECTOR_INFO_SAMPLE_VARIANCE), &results);
-			Query_Vector_Field(value, SYM_POPULATION_DEVIATION, OFV(obj, STD_VECTOR_INFO_POPULATION_DEVIATION), &results);
-			Query_Vector_Field(value, SYM_SAMPLE_DEVIATION, OFV(obj, STD_VECTOR_INFO_SAMPLE_DEVIATION), &results);
-			SET_OBJECT(value, obj);
-		}
-		break;
+		Query_Fields(value, field, STD_VECTOR_INFO, Query_Vector_Word, ctx, D_RET);
+		return R_RET;
+	}
 	
 	case A_FIND:
 	case A_SELECT:

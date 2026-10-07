@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2024 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -722,7 +722,7 @@ set_time:
 
 /***********************************************************************
 **
-*/	static REBOOL Query_Date_Field(REBVAL *data, REBVAL *select, REBVAL *ret)
+*/	static REBOOL Query_Date_Field(REBVAL *data, REBVAL *select, REBVAL *ret, void *ctx)
 /*
 **		Set a value with date data according specified mode
 **
@@ -986,7 +986,6 @@ setDate:
 	REBVAL	*val;
 	REBVAL	*arg = D_RET; // using D_RET to silent compiler's warnings (it's redefined if needed)
 	REBINT	num;
-	REBVAL *spec;
 
 	val = D_ARG(1);
 	if (IS_DATE(val)) {
@@ -1112,55 +1111,7 @@ setDate:
 			*D_ARG(3) = *D_ARG(2);
 			// continue..
 		case A_QUERY:
-			spec = Get_System(SYS_STANDARD, STD_DATE_INFO);
-			if (!IS_OBJECT(spec)) Trap_Arg(spec);
-			REBVAL *field = D_ARG(ARG_QUERY_FIELD);
-			if(IS_WORD(field)) {
-				switch(VAL_WORD_CANON(field)) {
-				case SYM_WORDS:
-					Set_Block(D_RET, Get_Object_Words(spec));
-					return R_RET;
-				case SYM_SPEC:
-					return R_ARG1;
-				}
-				if (!Query_Date_Field(val, field, D_RET))
-					Trap_Reflect(VAL_TYPE(val), field); // better error?
-			}
-			else if (IS_BLOCK(field)) {
-				REBVAL *out = D_RET;
-				REBSER *values = Make_Block(2 * BLK_LEN(VAL_SERIES(field)));
-				REBVAL *word = VAL_BLK_DATA(field);
-				REBVAL *field;
-				for (; NOT_END(word); word++) {
-					if (ANY_WORD(word)) {
-						if (!IS_GET_WORD(word)) {
-							// keep the word as a key (converted to the set-word) in the result
-							out = Append_Value(values);
-							*out = *word;
-							VAL_TYPE(out) = REB_SET_WORD;
-							VAL_SET_LINE(out);
-						}
-						out = Append_Value(values);
-						SET_TYPE((field = word), REB_WORD);
-						if (!Query_Date_Field(val, field, out))
-							Trap1(RE_INVALID_ARG, word);
-					}
-					else  Trap1(RE_INVALID_ARG, word);
-				}
-				Set_Series(REB_BLOCK, D_RET, values);
-			}
-			else if (IS_NONE(field)) {
-				Set_Block(D_RET, Get_Object_Words(spec));
-			}
-			else {
-				REBSER *obj = CLONE_OBJECT(VAL_OBJ_FRAME(spec));
-				REBSER *words = VAL_OBJ_WORDS(spec);
-				REBVAL *word = BLK_HEAD(words);
-				for (num=0; NOT_END(word); word++,num++) {
-					Query_Date_Field(val, word, OFV(obj, num));
-				}
-				SET_OBJECT(D_RET, obj);
-			}
+			Query_Fields(val, D_ARG(ARG_QUERY_FIELD), STD_DATE_INFO, Query_Date_Field, NULL, D_RET);
 			return R_RET;
 		}
 	}
