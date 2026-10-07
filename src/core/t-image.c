@@ -1059,6 +1059,52 @@ find_none:
 
 /***********************************************************************
 **
+*/	static REBOOL Query_Image_Field(REBVAL *data, REBVAL *field, REBVAL *ret)
+/*
+**		Set a value with image info according to the specified field.
+**		Accepts any word type (does not modify the field).
+**
+***********************************************************************/
+{
+	REBCNT w     = VAL_IMAGE_WIDE(data);
+	REBCNT tail  = VAL_TAIL(data);
+	REBCNT index = MIN(VAL_INDEX(data), tail);
+
+	switch (VAL_WORD_CANON(field)) {
+	case SYM_SIZE:
+		VAL_SET(ret, REB_PAIR);
+		VAL_PAIR_X(ret) = (REBD32)w;
+		VAL_PAIR_Y(ret) = (REBD32)VAL_IMAGE_HIGH(data);
+		break;
+	case SYM_WIDTH:
+		SET_INTEGER(ret, w);
+		break;
+	case SYM_HEIGHT:
+		SET_INTEGER(ret, VAL_IMAGE_HIGH(data));
+		break;
+	case SYM_LENGTH:
+		SET_INTEGER(ret, tail - index);
+		break;
+	case SYM_POSITION:
+		VAL_SET(ret, REB_PAIR);
+		VAL_PAIR_X(ret) = (REBD32)(w ? (index % w) + 1 : 1);
+		VAL_PAIR_Y(ret) = (REBD32)(w ? (index / w) + 1 : 1);
+		break;
+	case SYM_OPAQUE:
+		SET_LOGIC(ret, !Image_Has_Alpha(data, FALSE));
+		break;
+	case SYM_COLOR:
+		Average_Image_Color(VAL_IMAGE_DATA(data), ret, tail - index);
+		break;
+	default:
+		return FALSE;
+	}
+	return TRUE;
+}
+
+
+/***********************************************************************
+**
 */	REBTYPE(Image)
 /*
 ***********************************************************************/
@@ -1357,6 +1403,57 @@ makeCopy2:
 		return R_RET;
 		break;
 
+	case A_REFLECT:
+		*D_ARG(3) = *D_ARG(2);
+		// continue..
+	case A_QUERY: {
+		REBVAL *spec  = Get_System(SYS_STANDARD, STD_IMAGE_INFO);
+		REBVAL *field = D_ARG(ARG_QUERY_FIELD);
+		REBVAL *word, *out;
+		REBSER *ser;
+		REBCNT  n;
+
+		if (!IS_OBJECT(spec)) Trap_Arg(spec);
+
+		if (IS_WORD(field)) {
+			switch (VAL_WORD_CANON(field)) {
+			case SYM_WORDS:
+				Set_Block(D_RET, Get_Object_Words(spec));
+				return R_RET;
+			case SYM_SPEC:
+				return R_ARG1;
+			}
+			if (!Query_Image_Field(value, field, D_RET))
+				Trap_Reflect(VAL_TYPE(value), field);
+		}
+		else if (IS_BLOCK(field)) {
+			ser = Make_Block(2 * VAL_BLK_LEN(field));
+			for (word = VAL_BLK_DATA(field); NOT_END(word); word++) {
+				if (!ANY_WORD(word)) Trap1(RE_INVALID_ARG, word);
+				if (!IS_GET_WORD(word)) {
+					out = Append_Value(ser);
+					*out = *word;
+					VAL_TYPE(out) = REB_SET_WORD;
+					VAL_SET_LINE(out);
+				}
+				out = Append_Value(ser);
+				if (!Query_Image_Field(value, word, out))
+					Trap1(RE_INVALID_ARG, word);
+			}
+			Set_Series(REB_BLOCK, D_RET, ser);
+		}
+		else if (IS_NONE(field)) {
+			Set_Block(D_RET, Get_Object_Words(spec));
+		}
+		else {
+			REBSER *obj = CLONE_OBJECT(VAL_OBJ_FRAME(spec));
+			word = BLK_HEAD(VAL_OBJ_WORDS(spec));
+			for (n = 0; NOT_END(word); word++, n++)
+				Query_Image_Field(value, word, OFV(obj, n));
+			SET_OBJECT(D_RET, obj);
+		}
+		return R_RET;
+	}
 	default:
 		Trap_Action(VAL_TYPE(value), action);
 	}

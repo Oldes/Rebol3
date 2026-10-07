@@ -131,7 +131,7 @@ catalog: object [
 	reflectors: [
 		spec   [any-function! any-object! vector! datatype! struct!]
 		body   [any-function! any-object! map! struct!]
-		words  [any-function! any-object! map! date! handle! struct!]
+		words  [any-function! any-object! map! date! handle! struct! image!]
 		values [any-object! map! struct!]
 		types  [any-function!]
 		title  [any-function! datatype! module!]
@@ -582,6 +582,16 @@ standard: object [
 		bits: 16
 		sample-type: 1
 		loop-count: 0
+	]
+
+	image-info: construct [
+		size:        ;; pair! width and height
+		width:
+		height:
+		length:      ;; pixels from the current position to the tail
+		position:    ;; pair! 1-based xy of the current position
+		opaque:      ;; true if all pixels are fully opaque
+		color:       ;; average color
 	]
 
 	file-info: construct [

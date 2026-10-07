@@ -84,6 +84,51 @@ Rebol [
 
 ===end-group===
 
+
+===start-group=== "query image"
+	--test-- "query image basic"
+		img: make image! 3x2
+		--assert 3x2 = query img 'size
+		--assert 3   = query img 'width
+		--assert 2   = query img 'height
+		--assert 6   = query img 'length
+		--assert 1x1 = query img 'position
+		--assert 3x2 = size? img
+	--test-- "query image at position"
+		img: at make image! 3x2 5
+		--assert 2   = query img 'length
+		--assert 2x2 = query img 'position
+		--assert 3x2 = query img 'size
+	--test-- "query image block"
+		img: make image! 3x2
+		--assert [size: 3x2 width: 3] = query img [size width]
+		--assert [3x2 3] = query img [:size :width]
+		--assert error? try [query img [foo]]
+	--test-- "query image object"
+		o: query make image! [2x1 255.0.0] object!
+		--assert object? o
+		--assert o/size = 2x1
+		--assert o/color = 255.0.0.255
+		--assert o/opaque
+	--test-- "query image opaque"
+		img: make image! 2x2
+		--assert query img 'opaque
+		img/1: 0.0.0.0
+		--assert not query img 'opaque
+	--test-- "query image words"
+		--assert [size width height length position opaque color] = words-of img
+		--assert error? try [query img 'foo]
+	--test-- "query empty image"
+		img: make image! 0x0
+		--assert 0x0 = size? img
+		--assert 0x0 = query img 'size
+		--assert 0   = query img 'length
+		--assert 1x1 = query img 'position
+		--assert 0.0.0.0 = query img 'color
+		--assert query img 'opaque   ; no pixels = nothing transparent
+===end-group===
+
+
 ===start-group=== "INDEX? / INDEXZ? / AT / ATZ"
 	img: make image! 2x2
 	--test-- "index? image!"
