@@ -250,7 +250,7 @@ rebol-cmd: func[cmd][
 				to-local-file system/options/boot 
 				read-stdin
 			]
-			out-buffer == "#{3132330A}^/"
+			find ["#{3132330A}^/" "#{313233}^/"] out-buffer ;; on Windows there is the CR char! 
 			err-buffer == ""
 		]
 		--assert all [
