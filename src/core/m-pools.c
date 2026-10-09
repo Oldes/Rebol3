@@ -1072,97 +1072,98 @@ crash:
 }
 
 
-// Check if a segment is completely empty (all nodes free)
-static REBFLG Is_Segment_Empty(REBPOL* pool, REBSEG* seg)
+static int Cmp_Seg_Addr(const void *a, const void *b)
 {
-	// Quick reject: not enough free nodes in the pool overall
-	if (pool->free < pool->units)
-		return FALSE;
-
-	REBNOD* node;
-	REBCNT count = 0;
-
-	for (node = pool->first; node; node = *node) {
-		if ((REBUPT)node > (REBUPT)seg
-			&& (REBUPT)node < (REBUPT)seg + (REBUPT)seg->size) {
-			if (++count == pool->units)
-				return TRUE;   // all nodes from this segment are free
-		}
-	}
-
-	return FALSE;
+	REBUPT x = (REBUPT)*(REBSEG * const *)a;
+	REBUPT y = (REBUPT)*(REBSEG * const *)b;
+	return (x > y) - (x < y);
 }
 
-// Free a single empty segment from a pool's segment list
-static void Free_Empty_Segment(REBPOL* pool, REBSEG* seg)
+// Index of the segment containing node (segs sorted by address)
+static REBCNT Find_Seg(REBSEG **segs, REBCNT n, void *node)
 {
-	// 1. Remove ALL nodes from free list FIRST
-	REBNOD** prevNode = &pool->first;
-	REBNOD*  node = pool->first;
-	REBCNT n = 0;
-	while (node) {
-		REBNOD* nextNode = *(REBNOD**)node;
-		if ((REBUPT)node > (REBUPT)seg &&
-			(REBUPT)node < (REBUPT)seg + (REBUPT)seg->size) {
-			// Unlink this node (belongs to segment)
-			*prevNode = nextNode;
-			n++;
-		}
-		else {
-			prevNode = (REBNOD**)node;
-		}
-		node = nextNode;
+	REBCNT lo = 0, hi = n;
+	while (hi - lo > 1) {
+		REBCNT mid = lo + (hi - lo) / 2;
+		if ((REBUPT)segs[mid] < (REBUPT)node) lo = mid; else hi = mid;
 	}
-	//printf("unlinked %u nodes\n", n);
-	ASSERT1(n == pool->units, RP_CORRUPT_MEMORY);
-
-	// 2. Update accounting
-	pool->has -= pool->units;
-	pool->free -= pool->units;
-
-	// 3. Free memory
-	Free_Mem(seg, seg->size);
+	return lo;
 }
 
 /***********************************************************************
 **
 */ REBLEN Free_Empty_Pool_Segments(REBCNT usage_threshold)
 /*
+**		Release pool segments whose nodes are all free.
+**		Runs in O(F log S) per pool (F = free nodes, S = segments).
+**		Scratch memory comes from malloc, not Make_Mem, because
+**		this runs inside the GC and must not raise errors.
+**		One empty segment is always kept as a reserve.
+**
 ***********************************************************************/
 {
-	REBCNT  pool_id;
+	REBCNT pool_id, n, i, dead;
 	REBLEN freed = 0;
-	FOREACH(pool_id, SYSTEM_POOL) {
-		REBPOL* pool = &Mem_Pools[pool_id];
-		REBSEG* prev = pool->segs;
-		if (!prev) continue;
-		REBSEG* seg = prev->next;
-		REBSEG* next = NULL;
+	REBSEG *seg, **segp, **segs;
+	REBNOD *node, **link;
+	REBCNT *cnt;
 
-		REBLEN used = pool->has - pool->free;
-		
-		if (pool->has == 0 || ((100 * used) / pool->has) > usage_threshold) {
-			//printf("Pool %u is not empty enough.\n");
+	FOREACH(pool_id, SYSTEM_POOL) {
+		REBPOL *pool = &Mem_Pools[pool_id];
+		if (!pool->segs || pool->has == 0 || pool->free < pool->units) continue;
+		if (((REBU64)100 * (pool->has - pool->free)) / pool->has > usage_threshold) continue;
+
+		for (n = 0, seg = pool->segs; seg; seg = seg->next) n++;
+		if (n < 2) continue;
+		segs = (REBSEG **)malloc(n * (sizeof(REBSEG *) + sizeof(REBCNT)));
+		if (!segs) continue; // not fatal, just skip this pool
+		cnt = (REBCNT *)(segs + n);
+		for (i = 0, seg = pool->segs; seg; seg = seg->next) segs[i++] = seg;
+		qsort(segs, n, sizeof(REBSEG *), Cmp_Seg_Addr);
+		CLEAR(cnt, n * sizeof(REBCNT));
+
+		// 1. Count free nodes per segment
+		dead = 0;
+		for (node = pool->first; node; node = *node)
+			if (++cnt[Find_Seg(segs, n, node)] == pool->units) dead++;
+		if (dead == n) {
+			// keep one reserve segment
+			for (i = 0; cnt[i] != pool->units; i++);
+			cnt[i] = 0;
+			dead--;
+		}
+		if (dead == 0) {
+			free(segs);
 			continue;
 		}
-		//printf("Pool %u has: %u units:%u used: %u (%u%%)\n", pool_id, pool->has, pool->units, used, (used * 100) / pool->has);
-		while (seg) {
-			if (Is_Segment_Empty(pool, seg)) {
+
+		// 2. Unlink nodes of empty segments (free list order is kept)
+		i = 0;
+		for (link = (REBNOD **)&pool->first; (node = *link); ) {
+			if (cnt[Find_Seg(segs, n, node)] == pool->units) {
+				*link = *node;
+				i++;
+			}
+			else link = (REBNOD **)node;
+		}
+		ASSERT1(i == dead * pool->units, RP_CORRUPT_MEMORY);
+
+		// 3. Unlink and free empty segments
+		for (segp = &pool->segs; (seg = *segp); ) {
+			if (cnt[Find_Seg(segs, n, seg + 1)] == pool->units) {
+				*segp = seg->next;
 #ifdef DEBUG
 				if (Reb_Opts->watch_recycle)
 					Debug_Fmt(BOOT_STR(RS_WATCH, 3), pool_id, (void*)seg, seg->size);
 #endif
-				next = seg->next;
-				Free_Empty_Segment(pool, seg);
-				freed += prev->size;
-				prev->next = next;
-				seg = next;
+				freed += seg->size; // read before the segment is freed
+				Free_Mem(seg, seg->size);
 			}
-			else {
-				prev = seg;
-				seg = seg->next;
-			}
+			else segp = &seg->next;
 		}
+		pool->has  -= dead * pool->units;
+		pool->free -= dead * pool->units;
+		free(segs);
 	}
 	return freed;
 }
