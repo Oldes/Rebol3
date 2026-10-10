@@ -47,6 +47,11 @@ rebol-cmd: func[cmd][
 		;@@ https://github.com/Oldes/Rebol-issues/issues/2227
 		--assert 0 = rebol-cmd {-v}
 		--assert not none? find/match out-buffer {Rebol/}
+		;; `--version` without a value prints the version (not the usage)
+		--assert 0 = rebol-cmd {--version}
+		--assert out-buffer == join version newline
+		--assert 0 = rebol-cmd {--version --quiet}
+		--assert out-buffer == join version newline
 		--assert 0 = rebol-cmd {units/files/print-args.r3 -v}
 		--assert out-buffer = {["-v"]^/["-v"]^/}
 		--assert 0 = rebol-cmd {units/files/print-args.r3 -x}

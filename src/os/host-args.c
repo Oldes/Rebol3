@@ -265,8 +265,11 @@ const struct arg_chr arg_chars2[] = {
 				// --option words
 				flag = find_option_word(arg+2);
 				if (flag & RO_EXT) {
+					int ext = flag;
 					flag = Get_Ext_Arg(flag, rargs, (i+1 >= argc) ? 0 : argv[i+1]);
 					if (flag) i++; // used it
+					// `--version` without a value just prints the version (like `-v`)
+					else if (ext == (RO_VERSION | RO_EXT)) flag = RO_VERS;
 				}
 				if (!flag) flag = RO_HELP;
 				rargs->options |= flag;
