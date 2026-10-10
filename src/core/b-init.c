@@ -801,12 +801,17 @@ static REBCNT Set_Option_Word(REBYTE *str, REBCNT field)
 	// The input string is already UTF8 encoded, so no need to clip Unicode
 	if (str) {
 		n = (REBLEN)LEN_BYTES(str);
-		n = Make_Word(str, n);
-		val = Get_System(SYS_OPTIONS, field);
-		Init_Word(val, n);
+		// Accept only a valid word (like: `base`), else the option stays NONE
+		n = Scan_Word(str, n);
+		if (n) {
+			val = Get_System(SYS_OPTIONS, field);
+			Init_Word(val, n);
+		}
 	}
 	return n;
 }
+
+#define FREE_ARG(f) if (rargs->f) { OS_Free(rargs->f); rargs->f = NULL; }
 
 static void Set_Option_File(REBCNT field, REBYTE* src, REBOOL dir )
 {
@@ -914,15 +919,28 @@ static void Set_Option_File(REBCNT field, REBYTE* src, REBOOL dir )
 	Set_Option_String(rargs->import, OPTIONS_IMPORT);
 
 	Set_Option_Word(rargs->secure, OPTIONS_SECURE);
+
+#ifdef OS_WIDE_CHAR
+	// Option values were converted (allocated) by the host, so release them.
+	// The `script` is kept, because the host checks it after RL_Init!
+	FREE_ARG(do_arg);
+	FREE_ARG(debug);
+	FREE_ARG(version);
+	FREE_ARG(import);
+	FREE_ARG(secure);
+	FREE_ARG(boot);
+	FREE_ARG(args);
+#endif
 #endif
 	if (rargs->exe_path) {
 		Set_Option_File(OPTIONS_BOOT, (REBYTE*)rargs->exe_path, FALSE);
+		FREE_ARG(exe_path); // always allocated by the host
 	}
 
 	// Print("home: %s", rargs->current_dir);
 	if (rargs->current_dir) {
 		Set_Option_File(OPTIONS_PATH, (REBYTE*)rargs->current_dir, TRUE);
-		OS_Free(rargs->current_dir);
+		FREE_ARG(current_dir); // no dangling pointer in the struct returned to host
 	}
 	if (NZ(data = OS_Get_Locale(0))) {
 		val = Get_System(SYS_LOCALE, LOCALE_LANGUAGE);

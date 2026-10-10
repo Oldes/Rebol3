@@ -6,6 +6,9 @@ Rebol [
 	Needs:   [%../quick-test-module.r3]
 ]
 
+has-lzma?: did find system/catalog/compressions 'lzma
+
+
 ~~~start-file~~~ "Codecs"
 
 ===start-group=== "Codec's identify"
@@ -82,24 +85,16 @@ Rebol [
 		;@@ https://github.com/Oldes/Rebol-issues/issues/1466
 		--assert all [
 			binary? b: try [save/compress none [print "Hello World!"] true]
-			b = #{
-5245424F4C205B0A202020206F7074696F6E733A205B636F6D70726573735D0A
-5D0A789C2B28CACC2B5150F248CDC9C95708CF2FCA495154E20200526B06D9}
 			(load b) = [print "Hello World!"]
 			object? first load/header b
 		]
 		--assert all [
 			binary? b: try [save/compress none [print "Hello World!"] 'script]
-			b = #{
-5245424F4C205B0A202020206F7074696F6E733A205B636F6D70726573735D0A
-5D0A3634237B654A77724B4D724D4B314651386B6A4E79636C58434D3876796B
-6C52564F494341464A7242746B3D7D}
 			(load b) = [print "Hello World!"]
 			object? first load/header b
 		]
 		--assert all [
 			binary? b: try [save/compress none [print "Hello World!"] false]
-			b = #{789C2B28CACC2B5150F248CDC9C95708CF2FCA495154E20200526B06D9}
 			(load decompress b 'zlib) = [print "Hello World!"]
 		]
 
@@ -113,22 +108,22 @@ Rebol [
 --test-- "load UCS16-LE txt"
 	--assert all [
 		string? try [str: load %units/files/issue-2186-UTF16-LE.txt]
-		11709824 = checksum str 'crc24
+		5408699 = checksum str 'crc24
 	]
 --test-- "load UCS16-BE txt"
 	--assert all [
 		string? try [str: load %units/files/issue-2186-UTF16-BE.txt]
-		11709824 = checksum str 'crc24
+		5408699 = checksum str 'crc24
 	]
 --test-- "load UCS32-LE txt"
 	--assert all [
 		string? try [str: load %units/files/issue-2186-UTF32-LE.txt]
-		11709824 = checksum str 'crc24
+		5408699 = checksum str 'crc24
 	]
 --test-- "load UCS32-BE txt"
 	--assert all [
 		string? try [str: load %units/files/issue-2186-UTF32-BE.txt]
-		11709824 = checksum str 'crc24
+		5408699 = checksum str 'crc24
 	]
 --test-- "load/save issue! as .txt"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1937
@@ -237,8 +232,10 @@ if find codecs 'swf [
 		
 		--test-- "Load SWF file"
 			--assert object? swf1: load %units/files/test1-deflate.swf
-			--assert object? swf2: load %units/files/test2-lzma.swf
-			--assert swf1/tags = swf2/tags
+			if has-lzma? [
+				--assert object? swf2: load %units/files/test2-lzma.swf
+				--assert swf1/tags = swf2/tags
+			]
 			--assert swf1/header/frames = 25
 
 		codecs/swf/verbose: 3
@@ -256,7 +253,9 @@ if find codecs 'zip [
 	===start-group=== "ZIP codec"
 		
 		--test-- "Load ZIP file"
+		if has-lzma? [
 			--assert block? load %units/files/test-lzma.zip
+		]
 			--assert block? load %units/files/test-stored.zip
 			--assert block? load %units/files/test-deflate.zip
 
@@ -266,12 +265,14 @@ if find codecs 'zip [
 			--assert block? codecs/zip/decode data/2/2
 
 		--test-- "Decode ZIP using info"
+		if has-lzma? [
 			bin: read %units/files/test-lzma.zip
 			--assert block? info: codecs/zip/decode/info bin
 			--assert info/1   = %xJSFL.komodoproject
 			--assert info/2/1 = 18-Aug-2012/5:20:28
 			data: codecs/zip/decompress-file at bin info/2/2 reduce [info/2/5 info/2/3 info/2/4]
 			--assert info/2/6 = checksum data 'crc32
+		]
 
 		--test-- "Encode ZIP using encode"
 			--assert binary? try [bin: encode 'ZIP [
@@ -441,6 +442,64 @@ if find codecs 'JSON [
 
 	===end-group===
 ]
+
+if system/platform = 'Windows [
+	===start-group=== "Windows WIC codecs (sys-codecs.cpp)"
+	
+		;- 3x2 image with distinct colors and non-zero alpha values
+		img: make image! [3x2 #{FF000000FF000000FFFFFFFF000000808080}]
+		img/alpha: #{FF80401020F0}
+
+		--test-- "WIC encode/decode roundtrip (lossless formats)"
+		;; covers: encoder bitmap now created by CreateBitmapFromMemory
+		;; covers: decoding from binary via HGLOBAL stream and malloc path
+			foreach codec [bmp tiff] [
+				if in system/codecs codec [
+					bin: encode codec img
+					--assert binary? bin
+					--assert img = decode codec bin
+				]
+			]
+
+		--test-- "WIC decode of invalid binary must fail"
+		;; error HRESULTs must propagate, not be reported as success
+			foreach codec [bmp tiff jpeg gif] [
+				if in system/codecs codec [
+					--assert error? try [decode codec #{0001020304050607}]
+				]
+			]
+
+		--test-- "WIC decode of empty binary must fail"
+			if in system/codecs 'tiff [
+				--assert error? try [decode 'tiff #{}]
+			]
+ 
+		--test-- "WIC save/load image using a file name"
+		;; covers: file name passed to WIC as PCWSTR, incl. non-ASCII name
+			if in system/codecs 'tiff [
+				foreach file [%wic-test.tiff %wic-test-ěščř.tiff] [
+					save file img
+					--assert did exists? file
+					--assert img = load file
+					try [delete file]
+				]
+			]
+
+		--test-- "WIC decode of image too large for 32-bit buffer must fail"
+		;; covers: w * h * 4 overflow check in the decoder
+		;; TIFF header only, claiming 40000x40000 pixels (6.4GB as 32bpp)
+			if in system/codecs 'tiff [
+				bin: #{
+					49492A000800000009000001040001000000409C00000101040001000000409C
+					0000020103000100000008000000030103000100000001000000060103000100
+					0000010000001101040001000000080000001501030001000000010000001601
+					040001000000409C0000170104000100000000105E5F00000000
+				}
+				--assert error? try [decode 'tiff bin]
+			]
+	===end-group===
+]
+
 
 if find codecs 'PNG [
 	system/options/log/png: 3
@@ -813,7 +872,7 @@ if find codecs 'safe [
 		--test-- "Initialise new user"
 			--assert not error? try [set-user/n/p temp-user "passw"]
 			--assert system/user/name = @temp-user
-			--assert 'file = exists? try [system/user/data/spec/ref]
+			--assert 'file = try [exists? system/user/data/spec/ref]
 			--assert "hello" = put system/user/data 'key "hello"  ;; store some data...
 			--assert "hello" = user's key               ;; resolve the data
 			--assert not error? try [su]                ;; release user

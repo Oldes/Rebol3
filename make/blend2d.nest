@@ -1,0 +1,6 @@
+;-    .-.                                                                       
+;-   /'v'\   SISKIN-Builder project file                                        
+;-  (/uOu\)  https://github.com/Siskin-framework/Builder/                       
+;-===="="=======================================================================
+github: @Rebol-Blend2D /ABI-1
+nest:   %Rebol-Blend2D/Rebol-Blend2D.nest

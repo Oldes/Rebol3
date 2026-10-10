@@ -221,11 +221,20 @@ form-header/gen "REBOL Host and Extension API" %reb-lib.reb %make-reb-lib.reb
 #define RL_REV } version/2 {
 #define RL_UPD } version/3 {
 
+// Bumped ONLY when an existing RL_API function's signature/semantics
+// change in a way that breaks old extension binaries calling it - i.e.
+// exactly the cases the "append new functions at the end, never modify
+// existing ones" convention (see a-lib.c header) is meant to avoid.
+// Extensions compiled against ABI N remain loadable by any host whose
+// RL_MIN_SUPPORTED_ABI <= N <= RL_ABI_VERSION.
+#define RL_ABI_VERSION        1   // bump only on a break like this one
+#define RL_MIN_SUPPORTED_ABI  1   // floor; raise only when dropping support for an old break-era
+
 // Compatiblity with the lib requires that structs are aligned using the same
 // method. This is concrete, not abstract. The macro below uses struct
 // sizes to inform the developer that something is wrong.
 #if defined(__LP64__) || defined(__LLP64__)
-#define CHECK_STRUCT_ALIGN (sizeof(REBREQ) == 116 && sizeof(REBEVT) == 16)
+#define CHECK_STRUCT_ALIGN (sizeof(REBREQ) == 120 && sizeof(REBEVT) == 16)
 #else
 #define CHECK_STRUCT_ALIGN (sizeof(REBREQ) == 96 && sizeof(REBEVT) == 12)
 #endif
@@ -233,20 +242,30 @@ form-header/gen "REBOL Host and Extension API" %reb-lib.reb %make-reb-lib.reb
 // Function entry points for reb-lib (used for MACROS below):}
 rlib
 {
+#ifndef API_EXPORT
+# define RL_API API_EXPORT
+# ifdef TO_WINDOWS
+#  define API_EXPORT __declspec(dllexport)
+# else
+#  define API_EXPORT __attribute__((visibility("default")))
+# endif
+#endif
+
 // Extension entry point functions:
 #ifdef TO_WINDOWS
 #ifdef __cplusplus
-#define RXIEXT extern "C" __declspec(dllexport)
+#define RXIEXT extern "C" API_EXPORT
 #else
-#define RXIEXT __declspec(dllexport)
+#define RXIEXT API_EXPORT
 #endif
 #else
-#define RXIEXT extern
+#define RXIEXT extern API_EXPORT
 #endif
 
 RXIEXT const char *RX_Init(int opts, RL_LIB *lib);
 RXIEXT int RX_Quit(int opts);
 RXIEXT int RX_Call(int cmd, RXIFRM *frm, void *data);
+RXIEXT int RX_Abi(void);
 
 // The macros below will require this base pointer:
 extern RL_LIB *RL;  // is passed to the RX_Init() function

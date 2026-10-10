@@ -18,18 +18,42 @@ REBOL [
 	}
 ]
 
+find-in-path: func [
+    "Returns full path of the file found in one of PATH directories, else NONE."
+    file [file!]
+    /with paths [string!] "Directories to search instead of PATH env variable"
+    /local delimiter dir result
+][
+    ;; Not using SPLIT, as it is not available during the boot!
+    delimiter: pick ";:" system/platform = 'Windows
+    unless with [paths: any [get-env "PATH" ""]]
+    parse paths [
+        any [
+            copy dir [to delimiter | some skip] opt skip (
+                ;; empty entries are skipped (not resolved as a root dir)
+                if all [none? result  not empty? dir] [
+                    dir: append dirize to-rebol-file dir file
+                    if exists? dir [result: dir]
+                ]
+            )
+        ]
+    ]
+    result
+]
+
 start: func [
 	"INIT: Completes the boot sequence. Loads extras, handles args, security, scripts."
-	/local file dir tmp script-path script-args code delimiter ver
+	/local tmp script-path script-args code ver
 ] bind [ ; context is: system/options (must use full path sys/log/.. as there is options/log too!)
 
 	;** Note ** We need to make this work for lower boot levels too!
 
 	if any [
+		;; can come from user's startup option
 		no-color
-		no-color: get-env 'NO_COLOR ;; https://no-color.org/
-	][
-		;; remove ANSI escape color sequences
+		;; https://no-color.org/ - only when present and not an empty string
+		no-color: not empty? get-env 'NO_COLOR 
+	][	;; remove ANSI escape color sequences
 		foreach [k v] ansi [clear v]
 	]
 
@@ -56,13 +80,14 @@ start: func [
 	system/build/git:      ver/13
 	system/build/libc:     ver/14
 	system/build/os-version: ver/15
+	system/build/extension-abi: ver/16
 
 	if flags/verbose [system/options/log/rebol: 3] ;maximum log output for system messages
 
 	;-- Print minimal identification banner if needed:
 	if all [
 		not quiet
-		any [flags/verbose flags/usage flags/help]
+		any [flags/verbose flags/help]
 	][
 		; basic boot banner only
 		print boot-banner: lib/version
@@ -80,21 +105,9 @@ start: func [
 	; NOTE: this may be considered as not secure!
 	boot: any [to-real-file boot boot]
 	unless exists? boot [
-		file: second split-path boot
-		;; Using parse rules instead of splitting all PATH values into a block as it was before.
-		delimiter: pick ";:" system/platform = 'Windows
-		parse any [get-env "PATH" ""][
-			any [copy tmp to delimiter skip (
-				dir: to-rebol-file dirize as file! tmp
-				if exists? tmp: dir/:file [
-					boot: file: tmp
-					break
-				]
-			)]
-		]
-		if boot <> file [
+		boot: find-in-path second split-path boot
+		unless boot [
 			sys/log/error 'REBOL "Path to executable was not resolved!"
-			boot: none
 		]
 	]
 	;-  3. /home - preferably one of environment variables or current starting dir
@@ -215,14 +228,34 @@ start: func [
 		case [
 			flags/secure-min [lib/secure allow]
 			flags/secure-max [lib/secure ask]
-			flags/secure     [lib/secure (secure)]
+			flags/secure     [
+				;; missing or invalid value of the --secure option is a usage error
+				unless secure [lib/usage quit/return 1]
+				lib/secure (secure)
+			]
 			true [
 				;; main exceptions...
-				lib/secure (compose [
-					file ask        ;; ask on file access, except...
-					(data)  allow   ;; full access in the data directory..
-					(home) [allow read allow execute] ;; read+exe in home
-				])
+				;; allow reading everywhere, ask on write/execute outside the trusted folders
+				lib/secure [file [allow read ask write ask execute]]
+				;; (data, home, modules and boot may be NONE, when not resolved)
+				;; read+exe in home
+				if home [lib/secure (reduce [home [allow read allow execute]])]
+				if data [
+					lib/secure (reduce [
+						;; full access in the data directory..
+						data 'allow
+						;; ..except the startup script, which must not be modified silently
+						data/user.reb [allow read ask write allow execute]
+					])
+				]
+				;; modules are imported later, so these must not be modified silently too
+				if modules [lib/secure (reduce [modules [allow read ask write allow execute]])]
+				;; startup script next to the executable must not be modified silently
+				if boot [
+					lib/secure (reduce [
+						join first split-path boot %rebol.reb [allow read ask write allow execute]
+					])
+				]
 				if file? script [
 					lib/secure (
 						compose [
@@ -242,10 +275,9 @@ start: func [
 	if boot [
 		tmp: first split-path boot
 		sys/log/info 'REBOL ["Checking for rebol.reb file in" tmp]
-		
 		if all [
 			#"/" = first tmp ; only if we know absolute path
-			exists? tmp/rebol.reb
+			attempt [exists? tmp/rebol.reb] ;; may be denied by user's security policy
 		][
 			try/with [do tmp/rebol.reb][sys/log/error 'REBOL system/state/last-error]
 		]
@@ -257,7 +289,10 @@ start: func [
 	system/contexts/user: tmp
 
 	sys/log/info 'REBOL ["Checking for user.reb file in" data]
-	if all [data exists? data/user.reb] [
+	if all [
+		data
+		attempt [exists? data/user.reb] ;; may be denied by user's security policy
+	][
 		try/with [do data/user.reb][sys/log/error 'REBOL system/state/last-error]
 	]
 

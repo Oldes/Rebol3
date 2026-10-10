@@ -18,5 +18,5 @@ extern "C" {
 
 CODECS_API int  codecs_init();
 CODECS_API void codecs_fini();
-CODECS_API int DecodeImageFromFile(PCWSTR *uri, UINT frame, REBCDI *codi);
-CODECS_API int EncodeImageToFile(PCWSTR *uri, REBCDI *codi);
+CODECS_API int DecodeImageFromFile(PCWSTR uri, UINT frame, REBCDI *codi);
+CODECS_API int EncodeImageToFile(PCWSTR uri, REBCDI *codi);

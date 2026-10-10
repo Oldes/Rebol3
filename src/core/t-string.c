@@ -285,7 +285,7 @@ static REBSER *make_binary(REBVAL *arg, REBOOL make)
 	// MAKE/TO BINARY! <vector!>
 	case REB_VECTOR:
 		// result is in little-endian!
-		ser = Copy_Bytes(VAL_DATA(arg), VAL_LEN(arg) * VAL_VEC_WIDTH(arg));
+		ser = Copy_Bytes(VAL_DATA(arg), VAL_LEN(arg) * VAL_VEC_WIDE(arg));
 		break;
 
 	case REB_BLOCK:
@@ -801,7 +801,7 @@ FORCE_INLINE
 		switch (word) {
 		case SYM_LENGTH:
 			len = IS_UTF8_SERIES(ser)
-				? Length_As_UTF8_Code_Points(data)
+				? UTF8_Length(data, tail - idx)
 				: tail - idx;
 			break;
 		case SYM_WIDTH:
@@ -965,7 +965,6 @@ FORCE_INLINE
 	case A_APPEND:
 	case A_INSERT:
 	case A_CHANGE:
-		//Modify_String(action, value, arg);
 		// Length of target (may modify index): (arg can be anything)
 		len = Partial1((action == A_CHANGE) ? value : arg, DS_ARG(AN_LENGTH));
 		index = VAL_INDEX(value);
@@ -1093,6 +1092,7 @@ pick_it:
 
 	case A_TAKE:
 		ser = VAL_SERIES(value);
+		if (IS_FIXED_SIZE(ser)) Trap0(RE_FIXED_SIZED_SERIES);
 		if (D_REF(ARG_TAKE_ALL)) {
 			if (tail <= index) goto empty_str;
 			len = tail - index;
@@ -1103,15 +1103,19 @@ pick_it:
 			if (D_REF(ARG_TAKE_LAST) && IS_UTF8_SERIES(ser)) {
 				// special case for Unicode when taking from the tail
 				REBINT range;
+				REBLEN idx = VAL_INDEX(value);
 				if (IS_INTEGER(part) || IS_DECIMAL(part)) {
-					range = MIN(UTF8_Index_To_Position(BIN_SKIP(ser, VAL_INDEX(value)), tail), Int32(part));
+					range = MIN((int)UTF8_Length(BIN_SKIP(ser, idx), tail - idx), Int32(part));
 				}
 				else {
 					// part provided as a series position
 					if (VAL_SERIES(part) != VAL_SERIES(value))
 						Trap1(RE_INVALID_PART, part);
-					range = UTF8_Index_To_Position(BIN_SKIP(ser, VAL_INDEX(value)), tail)
-						  - UTF8_Index_To_Position(BIN_SKIP(ser, VAL_INDEX(value)), VAL_INDEX(part));
+					// number of chars from the part position to the tail
+					REBLEN pidx = VAL_INDEX(part);
+					if (pidx < idx)  pidx = idx;
+					if (pidx > tail) pidx = tail;
+					range = UTF8_Length(BIN_SKIP(ser, pidx), tail - pidx);
 				}
 				index = UTF8_Skip(ser, tail, -range);
 				if (index == UNKNOWN) index = 0; // e.g.: take/part/last "abc" 100
@@ -1158,6 +1162,7 @@ pick_it:
 		return R_RET;
 
 	case A_CLEAR:
+		if (IS_FIXED_SIZE_VALUE(value)) Trap0(RE_FIXED_SIZED_SERIES);
 		if (index < tail) {
 			if (index == 0) Reset_Series(VAL_SERIES(value));
 			else {
@@ -1220,8 +1225,10 @@ pick_it:
 			(args & (AM_TRIM_HEAD | AM_TRIM_LINES | AM_TRIM_ALL | AM_TRIM_WITH)))
 		)
 			Trap0(RE_BAD_REFINES);
-		if (IS_BINARY(value))
+		if (IS_BINARY(value)) {
+			if (IS_FIXED_SIZE_VALUE(value)) Trap0(RE_FIXED_SIZED_SERIES);
 			Trim_Binary(VAL_SERIES(value), VAL_INDEX(value), VAL_LEN(value), args, D_ARG(ARG_TRIM_STR));
+		}
 		else
 			Trim_String(VAL_SERIES(value), VAL_INDEX(value), VAL_LEN(value), args, D_ARG(ARG_TRIM_STR));
 		break;

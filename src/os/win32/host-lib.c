@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -76,11 +76,6 @@ RL_LIB *RL; // Link back to reb-lib from embedded extensions (like for now: host
 static void *Task_Ready;
 static void *Temp_Buffer;
 static size_t Temp_Buffer_Size = 0;
-
-#ifdef REB_VIEW
-void Dispose_Windows(void);
-#endif
-
 
 /***********************************************************************
 **
@@ -398,10 +393,6 @@ X*/	REBOOL As_OS_Str(REBSER *series, REBCHR **string)
 #ifdef INCLUDE_IMAGE_OS_CODEC
 	OS_Release_Codecs();
 #endif
-#ifdef REB_VIEW
-	//Dispose_Graphics();
-	Dispose_Windows();
-#endif
 #ifdef DEBUG
 	if (flags) RL_Dispose();
 #endif
@@ -492,10 +483,14 @@ X*/	REBOOL As_OS_Str(REBSER *series, REBCHR **string)
 {
 	REBCHR *wide = MAKE_STR(MAX_FILE_NAME);
 	if (!wide) return 0;
-	if (!GetModuleFileName(0, wide, MAX_FILE_NAME)) return 0;
+	if (!GetModuleFileName(0, wide, MAX_FILE_NAME)) {
+		FREE_MEM(wide);
+		return 0;
+	}
 	REBYTE *temp = NULL;
 	OS_Wide_To_Multibyte(wide, &temp, -1);
 	FREE_MEM(wide);
+	if (!temp) return 0;
 	*name = temp;
 	return 1;
 }
@@ -627,19 +622,27 @@ X*/	REBOOL As_OS_Str(REBSER *series, REBCHR **string)
 **		Note: Requires high performance timer.
 ** 		Q: If not found, use timeGetTime() instead ?!
 **
+**		The counter is not in microseconds (it is in performance
+**		counter ticks), so it is usable only as a base.
+**
 ***********************************************************************/
 {
-	LARGE_INTEGER freq;
+	static LARGE_INTEGER freq = {0}; // fixed at system boot, so cached
 	LARGE_INTEGER time;
+	i64 delta;
 
 	if (!QueryPerformanceCounter(&time))
 		OS_Crash(cb_cast("Missing resource"), cb_cast("High performance timer"));
 
 	if (base == 0) return time.QuadPart; // counter (may not be time)
 
-	QueryPerformanceFrequency(&freq);
+	if (freq.QuadPart == 0) QueryPerformanceFrequency(&freq);
 
-	return ((time.QuadPart - base) * 1000) / (freq.QuadPart / 1000);
+	// Whole seconds and the rest are converted separately, so the result
+	// is exact for any frequency and the multiplication cannot overflow.
+	delta = time.QuadPart - base;
+	return (delta / freq.QuadPart) * 1000000
+		+ ((delta % freq.QuadPart) * 1000000) / freq.QuadPart;
 }
 
 
@@ -1158,6 +1161,7 @@ done:
 		DWORD wait_result = 0;
 		DWORD output_size = 0;
 		DWORD err_size = 0;
+		DWORD input_pos = 0; // must survive loop iterations (partial writes)
 
 #define BUF_SIZE_CHUNK 4096
 
@@ -1197,7 +1201,6 @@ done:
 			if (wait_result >= WAIT_OBJECT_0
 				&& wait_result < WAIT_OBJECT_0 + count) {
 				int i = wait_result - WAIT_OBJECT_0;
-				DWORD input_pos = 0;
 				DWORD n = 0;
 
 				if (handles[i] == hInputWrite) {
@@ -1634,4 +1637,3 @@ static INT CALLBACK BrowseCallbackProc(HWND hwnd, UINT uMsg, LPARAM lParam, LPAR
 {
 	return _isatty(_fileno(stdin));
 }
-

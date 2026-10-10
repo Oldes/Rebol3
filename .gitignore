@@ -21,6 +21,7 @@ src/include/reb-lib-lib.h
 src/include/reb-lib.h
 src/include/reb-types.h
 src/include/gen-*
+src/extensions/*/gen-*
 src/tools/reb-lib-doc.txt
 reb-lib-doc.txt
 src/mezz/base-collected.reb

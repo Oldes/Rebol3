@@ -201,7 +201,7 @@ static int Parse_CSI_Sequence(REBEVT *evt, REBYTE *c) {
 	// an optional intermediate byte, and a final byte.
 	// Reference: https://invisible-island.net/xterm/ctlseqs/ctlseqs.html
 
-	evt->type = EVT_CONTROL;
+	evt->type = EVT_NAMED_KEY;
 	if (!READ_BYTE(&c[1])) return DR_ERROR;
 
 	// Single-byte final sequences ESC [ <final>
@@ -369,7 +369,7 @@ static int Parse_SS3_Sequence(REBEVT *evt, REBYTE *c) {
 	// addition to CSI sequences depending on their keypad mode (DECCKM).
 	// Reference: https://invisible-island.net/xterm/ctlseqs/ctlseqs.html
 	if (!READ_BYTE(&c[1])) return DR_ERROR;
-	evt->type = EVT_CONTROL;
+	evt->type = EVT_NAMED_KEY;
 	switch (c[1]) {
 	// Arrow keys (sent instead of CSI sequences in application cursor key mode)
 	case 'A': evt->data = EVK_UP;    return DR_DONE; // ESC O A
@@ -414,7 +414,7 @@ static int Parse_SS3_Sequence(REBEVT *evt, REBYTE *c) {
 #undef READ_BYTE
 
 static int Parse_Escape_Sequence(REBEVT *evt, REBYTE *c) {
-	evt->type = EVT_CONTROL;
+	evt->type = EVT_NAMED_KEY;
 
 	if (poll(&poller, 1, 0) <= 0) {
 		evt->data = EVK_ESCAPE;
@@ -444,7 +444,7 @@ static int Parse_Escape_Sequence(REBEVT *evt, REBYTE *c) {
 	}
 	if (c[0] >= 0x01 && c[0] < 0x20) {
 		// Alt+control: ESC ^A = Alt+Ctrl+A, etc.
-		evt->type = EVT_CONTROL;
+		evt->type = EVT_NAMED_KEY;
 		evt->data = c[0];
 		SET_FLAG(evt->flags, EVF_ALT);
 		SET_FLAG(evt->flags, EVF_CONTROL);
@@ -486,7 +486,7 @@ static int Read_Key_Event(REBEVT *evt) {
 		// plain ASCII
 		// Normalize backspace
 		if (c[0] == 0x7F || c[0] == 0x08) {
-			evt->type = EVT_CONTROL;
+			evt->type = EVT_NAMED_KEY;
 			evt->data = EVK_BACKSPACE;
 			if (c[0] != settings_original.c_cc[VERASE])
 				SET_FLAG(evt->flags, EVF_CONTROL);
@@ -735,7 +735,7 @@ static int Read_Key_Event(REBEVT *evt) {
 
 				// Map parsed event back to req->key
 				req->key.flags = evt.flags;
-				if (evt.type == EVT_CONTROL) {
+				if (evt.type == EVT_NAMED_KEY) {
 					req->key.uchar = 0;
 					req->key.virtu = evt.data;
 				} else {

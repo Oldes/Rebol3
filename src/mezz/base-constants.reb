@@ -59,6 +59,11 @@ q: :quit
 min: :minimum
 max: :maximum
 abs: :absolute
-empty?: :tail?
+empty?: make :tail? [
+	[
+		{Returns TRUE if empty or NONE, or for series if index is at or beyond its tail.}
+		series [series! object! gob! port! bitset! typeset! map! none!]
+	]
+]
 ---: :comment
 ;bind?: :bound? ;@@ https://github.com/Oldes/Rebol-issues/issues/2440

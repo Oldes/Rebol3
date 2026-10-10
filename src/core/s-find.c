@@ -220,9 +220,10 @@
 
 	if (IS_BINARY(v1) || IS_BINARY(v2)) uncase = FALSE;
 	if (uncase && (IS_UTF8_SERIES(VAL_SERIES(v1)) || IS_UTF8_SERIES(VAL_SERIES(v2)))) {
-		n = Compare_UTF8(VAL_BIN_DATA(v1), VAL_BIN_DATA(v2), len);
-		if (n == 0) return 0;
-		return (n < 0) ? n + 2 : n - 2;
+		n = Compare_UTF8_Len(VAL_BIN_DATA(v1), l1, VAL_BIN_DATA(v2), l2);
+		// exact (0) or non-case match (1, 3) is a match in case-insensitive compare
+		if (n >= 0) return 0;
+		return n + 2; // -1: v1 > v2, -3: v2 > v1
 	}
 	else {
 		n = Compare_Bytes(VAL_BIN_DATA(v1), VAL_BIN_DATA(v2), len, uncase);
@@ -234,6 +235,21 @@
 /***********************************************************************
 **
 */	REBINT Compare_UTF8(const REBYTE *s1, const REBYTE *s2, REBCNT l2)
+/*
+**		Compare null terminated UTF8 string (s1) with UTF8 data (s2).
+**		See Compare_UTF8_Len for the result values.
+**
+**		Used for: WORD comparison.
+**
+***********************************************************************/
+{
+	return Compare_UTF8_Len(s1, (REBCNT)LEN_BYTES(s1), s2, l2);
+}
+
+
+/***********************************************************************
+**
+*/	REBINT Compare_UTF8_Len(const REBYTE *s1, REBCNT l1, const REBYTE *s2, REBCNT l2)
 /*
 **		Compare two UTF8 strings.
 **
@@ -250,12 +266,9 @@
 **		So, result + 2 for no-match gives proper sort order.
 **		And, result - 2 for non-case match gives sort order.
 **
-**		Used for: WORD comparison.
-**
 ***********************************************************************/
 {
 	REBINT c1, c2;
-	REBCNT l1 = (REBCNT)LEN_BYTES(s1);
 	REBINT result = 0;
 
 	for (; l1 > 0 && l2 > 0;) {
@@ -372,8 +385,8 @@
 			if (uncase && c1 < UNICODE_CASES) c1 = LO_CASE(c1);
 			if (c1 == c2) {
 				REBYTE *end = str1 + len;
-				str1 += UTF8_Skip_Forward(str1, 1);
-				str2 += UTF8_Skip_Forward(str2, 1);
+				str1 += UTF8_Next_Char_Size(str1, 0); // not stopping on null char
+				str2 += UTF8_Next_Char_Size(str2, 0); // not stopping on null char
 				while (str1 < end) {
 					c1 = UTF8_Get_Codepoint(str1);
 					c3 = UTF8_Get_Codepoint(str2);
@@ -383,8 +396,8 @@
 					else {
 						if (c1 != c3) break;
 					}
-					str1 += UTF8_Skip_Forward(str1, 1);
-					str2 += UTF8_Skip_Forward(str2, 1);
+					str1 += UTF8_Next_Char_Size(str1, 0); // not stopping on null char
+					str2 += UTF8_Next_Char_Size(str2, 0); // not stopping on null char
 				}
 				if ((str2 - BIN_SKIP(ser2, index2)) == len) {
 					if (flags & AM_FIND_TAIL) return index + len;
@@ -481,8 +494,8 @@
 					else {
 						if (c1 != c2) break;
 					}
-					str1 += UTF8_Skip_Forward(str1, 1);
-					str2 += UTF8_Skip_Forward(str2, 1);
+					str1 += UTF8_Next_Char_Size(str1, 0); // not stopping on null char
+					str2 += UTF8_Next_Char_Size(str2, 0); // not stopping on null char
 				}
 				if (str1 == end) {
 					c1 = UTF8_Get_Codepoint(str1);

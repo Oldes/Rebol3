@@ -396,6 +396,7 @@ x*/	REBCNT Insert_Value(REBSER *series, REBCNT index, REBVAL *item, REBCNT type,
 	tail = SERIES_TAIL(dst);
 	EXPAND_SERIES_TAIL(dst, len); // sets the final tail!
 	COPY_MEM(BIN_SKIP(dst, tail), src, len);
+	STR_TERM(dst); // EXPAND_SERIES_TAIL does not reterminate!
 	return dst;
 }
 
@@ -435,6 +436,7 @@ x*/	REBCNT Insert_Value(REBSER *series, REBCNT index, REBVAL *item, REBCNT type,
 	tail = SERIES_TAIL(dst);
 	EXPAND_SERIES_TAIL(dst, len);
 	Encode_UTF8_Char(STR_SKIP(dst, tail), chr);
+	STR_TERM(dst); // EXPAND_SERIES_TAIL does not reterminate!
 	return dst;
 }
 
@@ -558,6 +560,7 @@ x*/	REBCNT Insert_Value(REBSER *series, REBCNT index, REBVAL *item, REBCNT type,
 	REBCNT tail = SERIES_TAIL(dst);
 	EXPAND_SERIES_TAIL(dst, len); // sets the final tail!
 	COPY_MEM(BIN_SKIP(dst, tail), src, len);
+	STR_TERM(dst); // EXPAND_SERIES_TAIL does not reterminate!
 	if (!IS_UTF8_SERIES(dst) && !Is_ASCII(src, len))
 		UTF8_SERIES(dst);
 	return dst;

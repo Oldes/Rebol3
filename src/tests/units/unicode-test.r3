@@ -575,6 +575,9 @@ Rebol [
 		--assert all [(change o: "ábč" "x🙂") == "č"  o == "x🙂č"]
 		--assert all [(change o: "🙂bc" "a") == "bc"  o == "abc"]
 		--assert all [(change o: next "a🙂c" "b") == "c"  o == "bc"  "abc" == head o]
+		;; number of replaced chars must be counted including null chars
+		--assert all [(change o: "ábčd" "x^@y") == "d"  o == "x^@yd"]
+		--assert all [(change/dup o: "ábčde" "x^@" 2) == "e"  o == "x^@x^@e"]
 
 		--assert all [(change o: tail "abc" "🙂") == ""  o == "🙂" (head o) == "abc🙂"]
 		--assert all [(change o: tail "ábč" "🙂") == ""  o == "🙂" (head o) == "ábč🙂"]
@@ -975,4 +978,45 @@ Rebol [
 		s: next s
 		--assert 0 = s/length
 ===end-group===
+
+===start-group=== "UTF-8 length, index and comparison"
+	--test-- "length? of UTF-8 string with null char"
+		;; length must be counted to the tail, not to the first null byte
+		s: "a^@č"
+		--assert 3 = length? s
+		--assert 3 = s/length
+		--assert 2 = length? next s
+		--assert 1 = length? next next s
+	--test-- "index? of UTF-8 string with null char"
+		s: "a^@č"
+		--assert 3 = index? next next s
+		--assert 4 = index? tail s
+	--test-- "comparison of UTF-8 strings with different length"
+		;; shorter string must not be equal to its longer prefix
+		--assert not equal? "č" "čx"
+		--assert not equal? "čx" "č"
+		--assert "č" < "čx"
+		--assert "čx" > "č"
+		--assert equal? "a^@č" "A^@č"
+		--assert not equal? "a^@č" "a^@"
+	--test-- "case-insensitive comparison of UTF-8 strings"
+		--assert "Č" = "č"
+		--assert "čÁ" = "Čá"
+		--assert not strict-equal? "Č" "č"
+		--assert not "Č" < "č"
+		--assert not "Č" > "č"
+		--assert "č" < "Čx"
+	--test-- "find in UTF-8 string with null char"
+		;; must not hang on the null char
+		--assert "x" == find "č^@x" #"x"
+		--assert "x" == find "č^@x" "x"
+		--assert "^@x" == find "č^@x" "^@x"
+		--assert "x" == find/tail "č^@x" "^@"
+		--assert "x" == find "č^@x" charset "x"
+		--assert "<x>" == find "č^@<x>" <x>
+		--assert "^@x^@" == find/last "č^@x^@" "^@x"
+	--test-- "insert/part from UTF-8 string with null char"
+		--assert "č^@x" == head insert/part "" "č^@xy" 3
+===end-group===
+
 ~~~end-file~~~
