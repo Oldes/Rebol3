@@ -68,7 +68,7 @@ make-wasm: [
 		"-sALLOW_MEMORY_GROWTH=1"
 		"-sSTACK_SIZE=4194304"
 		"-sEXPORTED_FUNCTIONS=_r3_init,_r3_do,_malloc,_free"
-		"-sEXPORTED_RUNTIME_METHODS=stringToNewUTF8,UTF8ToString"
+		"-sEXPORTED_RUNTIME_METHODS=stringToNewUTF8,UTF8ToString,FS" ;; FS used by the page to upload files
 		"-sINVOKE_RUN=0"  ;; there is no main, r3_init is called from JS
 	;	"-sASSERTIONS=2"  ;; debug builds
 	]

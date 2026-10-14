@@ -90,6 +90,12 @@
 		padding: 11px 18px; font: inherit; font-weight: 600; cursor: pointer;
 	}
 	button:disabled { opacity: .5; cursor: default; }
+	button.secondary {
+		background: var(--panel); color: var(--ink);
+		border: 1px solid var(--line); font-weight: 400;
+	}
+	/* files dragged over the console */
+	#out.drop { outline: 2px dashed var(--accent); outline-offset: -6px; }
 	.hint { color: var(--muted); font-size: 13px; margin-top: 8px; }
 	.examples { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 0; }
 	.examples button {
@@ -135,11 +141,13 @@
 	<form id="form">
 		<textarea id="src" class="mono" rows="2" spellcheck="false"
 			aria-label="Rebol code" placeholder="Type Rebol code, e.g.  print {Hello Rebol}" disabled></textarea>
+		<button id="upload" type="button" class="secondary" title="Copy files from your computer to %/uploads/" disabled>Upload</button>
 		<button id="run" type="submit" disabled>Do</button>
+		<input id="files" type="file" multiple hidden>
 	</form>
-	<div class="hint">Enter runs the code, Shift+Enter adds a new line, ↑/↓ recall history.</div>
+	<div class="hint">Enter runs the code, Shift+Enter adds a new line, ↑/↓ recall history. Drop files on the console to upload them.</div>
 	<div class="examples" id="examples"></div>
-	<p class="note">This is a limited Rebol/Base build: some functions are not available, native extensions cannot be imported, <code>call</code> and keyboard input (<code>read-key</code>) do not work, and files are kept in memory only. Network reads work from this site and from servers that allow cross-origin requests (CORS), for example <code>read https://raw.githubusercontent.com/...</code>.</p>
+	<p class="note">This is a limited Rebol/Base build: some functions are not available, native extensions cannot be imported, <code>call</code> and keyboard input (<code>read-key</code>) do not work, and files are kept in memory only (use <em>Upload</em> or drop files on the console to copy your own files to <code>%/uploads/</code>). Network reads work from this site and from servers that allow cross-origin requests (CORS), for example <code>read https://raw.githubusercontent.com/...</code>.</p>
 </main>
 
 <!-- Rebol code evaluated once after the startup (only errors are printed).
@@ -160,6 +168,8 @@ prin LF
 	const src  = document.getElementById('src');
 	const run  = document.getElementById('run');
 	const form = document.getElementById('form');
+	const upload = document.getElementById('upload');
+	const files = document.getElementById('files');
 
 	const EXAMPLES = [
 		'1 + 2 * 3',
@@ -176,7 +186,7 @@ prin LF
 		'read https://rebol.tech',
 		'dom/text "h1" ajoin ["Hello From " random "Rebol" "!"]',
 		'show/header [[Name Released] ["Rebol 1" 1997] ["Rebol 2" 1999] ["Rebol 3" 2012]]',
-		'img: make image! 64x32  repeat y 32 [repeat x 64 [img/(as-pair x y): to tuple! reduce [x - 1 * 4  y - 1 * 8  160]]]  show img',
+		'img: make image! 64x32  repeat y 32 [repeat x 64 [img/(as-pair x y): as-color x - 1 * 4  y - 1 * 8  160]]  show img',
 		'show {<svg width="200" height="60"><circle cx="30" cy="30" r="25" fill="tomato"/><text x="65" y="37" font-size="20" fill="currentColor">Rebol</text></svg>}',
 		//'dom/on "h1" \'click [dom/class/toggle "h1" "hi"]  dom/style "h1" [cursor: "pointer"]',
 	];
@@ -378,7 +388,7 @@ prin LF
 			R3._r3_do(ptr);
 		} catch (e) {
 			appendAnsi('\n[runtime stopped: ' + e + ']\n', 'err');
-			src.disabled = run.disabled = true;
+			src.disabled = run.disabled = upload.disabled = true;
 		} finally {
 			if (R3) R3._free(ptr);
 		}
@@ -390,6 +400,49 @@ prin LF
 		src.value = '';
 		doCode(code);
 		focusInput();
+	});
+
+	// --- uploading files to the in-memory file system ---
+	const UPLOAD_DIR = '/uploads';
+
+	// Rebol file! literal of a path (quoted when it contains special chars)
+	const rebolFile = (path) => /[\s"%;()\[\]{}^]/.test(path) ? '%"' + path.replace(/"/g, '%22') + '"' : '%' + path;
+
+	async function uploadFiles(list) {
+		if (!R3 || !list || !list.length) return;
+		try { R3.FS.mkdir(UPLOAD_DIR); } catch (e) { /* already exists */ }
+		for (const file of list) {
+			// keep only the name (no directories), and nothing unsafe in it
+			const name = file.name.replace(/[\/\\]/g, '_') || 'unnamed';
+			const path = UPLOAD_DIR + '/' + name;
+			try {
+				R3.FS.writeFile(path, new Uint8Array(await file.arrayBuffer()));
+				appendAnsi('[uploaded ' + rebolFile(path) + ' - ' + file.size + ' bytes]\n', 'in');
+			} catch (e) {
+				appendAnsi('[upload of ' + name + ' failed: ' + e + ']\n', 'err');
+			}
+		}
+	}
+
+	upload.addEventListener('click', () => files.click());
+	files.addEventListener('change', () => {
+		uploadFiles(files.files).then(() => { files.value = ''; focusInput(); });
+	});
+
+	// Drag & drop on the console
+	const hasFiles = (e) => e.dataTransfer && Array.prototype.includes.call(e.dataTransfer.types, 'Files');
+	out.addEventListener('dragover', (e) => {
+		if (!R3 || !hasFiles(e)) return;
+		e.preventDefault();
+		e.dataTransfer.dropEffect = 'copy';
+		out.classList.add('drop');
+	});
+	out.addEventListener('dragleave', () => out.classList.remove('drop'));
+	out.addEventListener('drop', (e) => {
+		out.classList.remove('drop');
+		if (!R3 || !hasFiles(e)) return;
+		e.preventDefault();
+		uploadFiles(e.dataTransfer.files);
 	});
 
 	const ex = document.getElementById('examples');
@@ -440,7 +493,7 @@ prin LF
 		});
 		out.textContent = '';
 		R3._r3_init();
-		src.disabled = run.disabled = false;
+		src.disabled = run.disabled = upload.disabled = false;
 		focusInput();
 	}).catch((e) => {
 		out.textContent = 'Failed to load Rebol: ' + e;

@@ -172,6 +172,15 @@ async function main() {
 		r = run('3 * 3');
 		check('interpreter works after error', r.out.includes('== 9'), r);
 
+		// Uploads are written by the page through the exported FS object.
+		check('FS is exported for uploads', R3.FS && typeof R3.FS.writeFile === 'function', typeof R3.FS);
+		try { R3.FS.mkdir('/uploads'); } catch (e) {}
+		R3.FS.writeFile('/uploads/a b.bin', new Uint8Array([0, 1, 255]));
+		r = run('read %"/uploads/a b.bin"');
+		check('uploaded file is readable from Rebol', r.out.includes('#{0001FF}'), r);
+		r = run('print mold sort read %/uploads/');
+		check('uploaded file is listed', r.out.includes('%"a b.bin"'), r);
+
 		r = run('print tty?');
 		check('tty? is false (no terminal in the browser)', r.out.includes('false'), r);
 
