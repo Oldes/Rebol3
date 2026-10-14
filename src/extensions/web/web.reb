@@ -88,16 +88,23 @@ mezzanine: [
 		transcode/one js-result
 	]
 
-	html-escape: func [
+	html-escape: function/with [
 		"Escapes HTML special characters"
 		text [string!]
 	][
-		text: copy text
-		foreach [char entity] [
-			"&" "&amp;"  "<" "&lt;"  ">" "&gt;"  {"} "&quot;"
-		][	replace/all text char entity ]
-		text
-	]
+		out: copy ""
+		parse text [
+			collect into out [
+				any [
+					keep some normal-chars
+					| #"&" keep ("&amp;")
+					| #"<" keep ("&lt;")
+					| #">" keep ("&gt;")
+					| #"^"" keep ("&quot;")
+			]]
+		]
+		out
+	][  normal-chars: #(bitset! not #{000000002200000A}) ] ;= complement charset {&<>"}
 
 	html-table: function [
 		"Converts a block of rows (blocks of values) to an HTML table"
@@ -192,10 +199,10 @@ mezzanine: [
 				#(integer!) [form value]
 				#(decimal!) [
 					case [
-						value <> value  ["NaN"]
+						value <> value                  ["NaN"]
 						value =  1.#INF ["Infinity"]
 						value = -1.#INF ["-Infinity"]
-						true            [form value]
+						true                            [form value]
 					]
 				]
 			][  js-string :value ]
