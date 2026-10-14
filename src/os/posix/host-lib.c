@@ -1343,7 +1343,14 @@ stdin_pipe_err:
 **		Return -1 on error, otherwise process ID
 ***********************************************************************/
 {
+#ifdef TO_WASM
+	// There are no child processes in the browser. Emscripten does not
+	// implement wait4 and prints a warning on each call (OS_Wait calls
+	// this function in every loop).
+	return -1;
+#else
 	return waitpid(pid, status, flags == 0? WNOHANG : 0);
+#endif
 }
 
 static int Try_Browser(char *browser, REBCHR *url)
@@ -1506,8 +1513,15 @@ error:
 */	REBINT OS_Is_TTY(void)
 /*
 **		Checks whether the standard input is connected to a terminal
+**		(always false in the browser build)
 **
 ***********************************************************************/
 {
+#ifdef TO_WASM
+	// Emscripten reports stdin as a TTY, but in the browser there is no
+	// terminal to read keys from (so the security requestor would loop).
+	return 0;
+#else
 	return isatty(STDIN_FILENO);
+#endif
 }

@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- maximum-scale=1 stops iOS zooming in when the input gets focus;
+     Safari still allows pinch zoom, so accessibility is kept. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Rebol in the Browser</title>
+<style>
+	:root {
+		color-scheme: light dark; /* native scrollbars and controls follow the theme */
+		--bg: #f6f5f1; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a66;
+		--line: #dedcd5; --accent: #b3261e;
+		--mono: ui-monospace, "SF Mono", Menlo, "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace;
+		/* ANSI palette: 0-7 normal, 8-15 bright (used for SGR 30-37/90-97 and 40-47/100-107) */
+		--a0: #000000; --a1: #800000; --a2: #008000; --a3: #808000;
+		--a4: #000080; --a5: #800080; --a6: #008080; --a7: #c0c0c0;
+		--a8: #808080; --a9: #d03030; --a10: #20a020; --a11: #a0a000;
+		--a12: #3030d0; --a13: #c030c0; --a14: #10a0a0; --a15: #ffffff;
+	}
+	@media (prefers-color-scheme: dark) {
+		:root {
+			--bg: #151514; --panel: #1e1e1c; --ink: #e8e6e0; --muted: #9a988f;
+			--line: #33322f; --accent: #ef6f62;
+			--a0: #000000; --a1: #cd3131; --a2: #0dbc79; --a3: #c8c820;
+			--a4: #2472c8; --a5: #bc3fbc; --a6: #11a8cd; --a7: #c0c0c0;
+			--a8: #808080; --a9: #ff5555; --a10: #55ff55; --a11: #ffff55;
+			--a12: #5555ff; --a13: #ff55ff; --a14: #55ffff; --a15: #ffffff;
+		}
+	}
+	* { box-sizing: border-box; }
+	body {
+		margin: 0; background: var(--bg); color: var(--ink);
+		font: 15px/1.45 system-ui, sans-serif;
+	}
+	main { max-width: 960px; margin: 0 auto; padding: 24px 16px 40px; }
+	h1 { font-size: 20px; margin: 0 0 4px; }
+	h1.hi { color: var(--accent); } /* used by the dom/on example */
+	p.sub { margin: 0 0 16px; color: var(--muted); }
+	.mono { font: 14px/1.45 var(--mono); }
+	#out {
+		background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+		padding: 12px; height: 55vh; overflow: auto; margin: 0;
+		/* Never wrap: on narrow screens the output scrolls horizontally,
+		   so banners and tables keep their layout like in a terminal. */
+		white-space: pre;
+		scrollbar-color: var(--line) transparent;
+		/* Terminal-like line height, so box drawing characters (like ║)
+		   join between lines without gaps. */
+		line-height: 1.2;
+	}
+	.in { color: var(--muted); }
+	/* rich output of the `show` function */
+	#out .rich {
+		white-space: normal; margin: 4px 0;
+		font: 14px/1.45 system-ui, sans-serif;
+	}
+	#out .rich img, #out .rich canvas { display: block; max-width: 100%; height: auto; }
+	#out .rich canvas { image-rendering: pixelated; } /* keep pixels sharp when scaled */
+	/* Tables are lighter than the panel in both themes (fallbacks first,
+	   for browsers without color-mix()). */
+	#out .rich table {
+		border-collapse: collapse; border-radius: 6px; overflow: hidden;
+		background: var(--bg);
+		background: color-mix(in srgb, var(--ink) 4%, var(--panel));
+	}
+	#out .rich th, #out .rich td {
+		padding: 3px 10px; text-align: left; font: 13px var(--mono);
+		border: 1px solid var(--line);
+		border-color: color-mix(in srgb, var(--ink) 18%, var(--panel));
+	}
+	#out .rich th {
+		font-weight: 600;
+		background: color-mix(in srgb, var(--accent) 16%, var(--panel));
+	}
+	#out .rich tr:nth-child(even) td {
+		background: color-mix(in srgb, var(--ink) 9%, var(--panel));
+	}
+	.err { color: var(--a1); }
+	form { display: flex; gap: 8px; margin-top: 12px; align-items: stretch; } /* button has the height of the field */
+	textarea {
+		flex: 1; min-height: 44px; max-height: 40vh; resize: vertical;
+		background: var(--panel); color: var(--ink); border: 1px solid var(--line);
+		border-radius: 8px; padding: 10px 12px;
+	}
+	textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+	button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+	button {
+		background: var(--accent); color: #fff; border: 0; border-radius: 8px;
+		padding: 11px 18px; font: inherit; font-weight: 600; cursor: pointer;
+	}
+	button:disabled { opacity: .5; cursor: default; }
+	.hint { color: var(--muted); font-size: 13px; margin-top: 8px; }
+	.examples { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 0; }
+	.examples button {
+		/* fallbacks first, for browsers without color-mix() */
+		background: var(--panel); border: 1px solid var(--line);
+		background: color-mix(in srgb, var(--accent) 10%, var(--panel));
+		border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+		color: var(--ink); font-weight: 400; padding: 4px 10px; font-size: 13px;
+		box-shadow: 0 1px 2px color-mix(in srgb, var(--ink) 12%, transparent);
+		transition: background .12s, border-color .12s, transform .05s;
+	}
+	.examples button:hover {
+		background: color-mix(in srgb, var(--accent) 22%, var(--panel));
+		border-color: var(--accent);
+	}
+	.examples button:active { transform: translateY(1px); box-shadow: none; }
+	/* Info box about the build's limitations (distinct from the muted hint) */
+	.note {
+		margin: 20px 0 0; padding: 10px 14px;
+		background: var(--panel); color: var(--ink);
+		border: 1px solid var(--line); border-left: 3px solid var(--accent);
+		border-radius: 6px; font-size: 14px; line-height: 1.5;
+	}
+	.note code {
+		font: 13px var(--mono);
+		background: var(--bg); padding: 1px 4px; border-radius: 3px;
+	}
+	@media (max-width: 600px) {
+		main { padding: 12px 10px 24px; }
+		#out { font-size: 11px; height: 60vh; }
+		textarea { font-size: 13px; }
+		.hint { display: none; } /* keyboard shortcuts do not apply on touch screens */
+	}
+</style>
+</head>
+<body>
+<main>
+	<h1>Rebol in the Browser</h1>
+	<p class="sub"><a href="https://github.com/Oldes/Rebol3">Rebol/Base</a> compiled to WebAssembly.</p>
+
+	<pre id="out" class="mono" aria-live="polite">Loading…</pre>
+
+	<form id="form">
+		<textarea id="src" class="mono" rows="2" spellcheck="false"
+			aria-label="Rebol code" placeholder="Type Rebol code, e.g.  print {Hello Rebol}" disabled></textarea>
+		<button id="run" type="submit" disabled>Do</button>
+	</form>
+	<div class="hint">Enter runs the code, Shift+Enter adds a new line, ↑/↓ recall history.</div>
+	<div class="examples" id="examples"></div>
+	<p class="note">This is a limited Rebol/Base build: some functions are not available, native extensions cannot be imported, <code>call</code> and keyboard input (<code>read-key</code>) do not work, and files are kept in memory only. Network reads work from this site and from servers that allow cross-origin requests (CORS), for example <code>read https://raw.githubusercontent.com/...</code>.</p>
+</main>
+
+<!-- Rebol code evaluated once after the startup (only errors are printed).
+     Optional `data-args` holds command line arguments (space separated). -->
+<script type="text/rebol" id="rebol-boot" data-args="--quiet">
+secure none  ; the file system is in memory only, so allow everything
+about
+prin LF
+</script>
+<script>
+(function () {
+	'use strict';
+	// Version of r3.js/r3.wasm, used to bypass the browser cache.
+	// Increase it whenever new build files are published.
+	const R3_VERSION = '6';
+
+	const out  = document.getElementById('out');
+	const src  = document.getElementById('src');
+	const run  = document.getElementById('run');
+	const form = document.getElementById('form');
+
+	const EXAMPLES = [
+		'1 + 2 * 3',
+		'reverse "Hello"',
+		'collect [repeat i 5 [keep i * i]]',
+		'parse "aaabbb" [some "a" some "b"]',
+		'now',
+		'f: func [n] [either n < 2 [n] [(f n - 1) + f n - 2]] f 20',
+		'help sort',
+		'help system',
+		'license',
+		'stats/show', // displays internal memory info
+		'list-dir/r %/',
+		'read https://rebol.tech',
+		'dom/text "h1" ajoin ["Hello From " random "Rebol" "!"]',
+		'show/header [[Name Released] ["Rebol 1" 1997] ["Rebol 2" 1999] ["Rebol 3" 2012]]',
+		'img: make image! 64x32  repeat y 32 [repeat x 64 [img/(as-pair x y): to tuple! reduce [x - 1 * 4  y - 1 * 8  160]]]  show img',
+		'show {<svg width="200" height="60"><circle cx="30" cy="30" r="25" fill="tomato"/><text x="65" y="37" font-size="20" fill="currentColor">Rebol</text></svg>}',
+		//'dom/on "h1" \'click [dom/class/toggle "h1" "hi"]  dom/style "h1" [cursor: "pointer"]',
+	];
+
+	// --- output with ANSI SGR support ---
+	// Supported: 0 reset, 1/22 bold, 2 dim, 3/23 italic, 4/24 underline,
+	// 7/27 inverse, 9/29 strike, 30-37/90-97/39 foreground,
+	// 40-47/100-107/49 background, 38;5;n / 48;5;n (256 colors)
+	// and 38;2;r;g;b / 48;2;r;g;b (true color).
+	// Palette colors (0-15) are CSS variables, so they follow the theme.
+	const SGR_RESET = {bold: false, dim: false, italic: false, underline: false,
+	                   inverse: false, strike: false, fg: null, bg: null};
+	let sgr = Object.assign({}, SGR_RESET);
+
+	function color256(n) {
+		if (n < 16) return 'var(--a' + n + ')';
+		if (n < 232) {
+			n -= 16;
+			const v = (x) => (x ? 55 + x * 40 : 0);
+			return `rgb(${v(Math.floor(n / 36))},${v(Math.floor(n / 6) % 6)},${v(n % 6)})`;
+		}
+		const g = 8 + (n - 232) * 10;
+		return `rgb(${g},${g},${g})`;
+	}
+
+	// Reads an extended color (5;n or 2;r;g;b) starting at codes[i].
+	// Returns [color, number of codes used].
+	function extendedColor(codes, i) {
+		if (codes[i] === 5 && codes.length > i + 1) return [color256(codes[i + 1] & 255), 2];
+		if (codes[i] === 2 && codes.length > i + 3) {
+			return [`rgb(${codes[i + 1] & 255},${codes[i + 2] & 255},${codes[i + 3] & 255})`, 4];
+		}
+		return [null, codes.length - i]; // malformed: skip the rest
+	}
+
+	function applySgr(codes) {
+		for (let i = 0; i < codes.length; i++) {
+			const n = codes[i];
+			if (n === 0) sgr = Object.assign({}, SGR_RESET);
+			else if (n === 1) sgr.bold = true;
+			else if (n === 2) sgr.dim = true;
+			else if (n === 3) sgr.italic = true;
+			else if (n === 4) sgr.underline = true;
+			else if (n === 7) sgr.inverse = true;
+			else if (n === 9) sgr.strike = true;
+			else if (n === 22) sgr.bold = sgr.dim = false;
+			else if (n === 23) sgr.italic = false;
+			else if (n === 24) sgr.underline = false;
+			else if (n === 27) sgr.inverse = false;
+			else if (n === 29) sgr.strike = false;
+			else if (n >= 30 && n <= 37) sgr.fg = 'var(--a' + (n - 30) + ')';
+			else if (n >= 90 && n <= 97) sgr.fg = 'var(--a' + (n - 82) + ')';
+			else if (n === 39) sgr.fg = null;
+			else if (n >= 40 && n <= 47) sgr.bg = 'var(--a' + (n - 40) + ')';
+			else if (n >= 100 && n <= 107) sgr.bg = 'var(--a' + (n - 92) + ')';
+			else if (n === 49) sgr.bg = null;
+			else if (n === 38 || n === 48) {
+				const [c, used] = extendedColor(codes, i + 1);
+				if (c) { if (n === 38) sgr.fg = c; else sgr.bg = c; }
+				i += used;
+			}
+		}
+	}
+
+	function styleSpan(span) {
+		let fg = sgr.fg, bg = sgr.bg;
+		if (sgr.inverse) {
+			// swap colors (defaults are the panel colors)
+			fg = sgr.bg || 'var(--panel)';
+			bg = sgr.fg || 'var(--ink)';
+		}
+		const st = span.style;
+		if (fg) st.color = fg;
+		if (bg) {
+			st.backgroundColor = bg;
+			// An inline background covers only the font's content area, which
+			// is a bit lower than the line height, so thin gaps would show
+			// between lines. Extend it vertically to fill the whole line.
+			st.paddingBlock = '0.1em';
+		}
+		if (sgr.bold) st.fontWeight = '700';
+		if (sgr.dim) st.opacity = '0.6';
+		if (sgr.italic) st.fontStyle = 'italic';
+		const deco = (sgr.underline ? 'underline ' : '') + (sgr.strike ? 'line-through' : '');
+		if (deco) st.textDecoration = deco.trim();
+	}
+
+	const ANSI_RE = /\x1B\[([0-9;:?]*)([A-Za-z])/g;
+	// Old output is removed above this many nodes, so long sessions stay fast.
+	const MAX_OUTPUT_NODES = 20000;
+
+	function appendAnsi(text, cls) {
+		let last = 0, m;
+		const frag = document.createDocumentFragment();
+		const push = (s) => {
+			if (!s) return;
+			// Unstyled text needs no element - a text node is much cheaper.
+			if (!cls && !sgr.fg && !sgr.bg && !sgr.bold && !sgr.dim && !sgr.italic
+			    && !sgr.underline && !sgr.strike && !sgr.inverse) {
+				frag.appendChild(document.createTextNode(s));
+				return;
+			}
+			const span = document.createElement('span');
+			if (cls) span.className = cls;
+			styleSpan(span);
+			span.textContent = s;
+			frag.appendChild(span);
+		};
+		ANSI_RE.lastIndex = 0;
+		while ((m = ANSI_RE.exec(text))) {
+			push(text.slice(last, m.index));
+			last = ANSI_RE.lastIndex;
+			if (m[2] !== 'm') continue; // ignore non-color sequences (cursor moves etc.)
+			const params = m[1].replace(/:/g, ';');
+			applySgr(params === '' ? [0] : params.split(';').map((x) => parseInt(x, 10) || 0));
+		}
+		push(text.slice(last));
+		out.appendChild(frag);
+		trimOutput();
+	}
+
+	function trimOutput() {
+		let extra = out.childNodes.length - MAX_OUTPUT_NODES;
+		while (extra-- > 0) out.removeChild(out.firstChild);
+		out.scrollTop = out.scrollHeight;
+	}
+
+	// Rich output from the `show` function. Kinds:
+	//   "html"         - bytes are UTF-8 HTML source
+	//   "image"        - bytes are encoded image data (PNG, JPEG, GIF, SVG...)
+	//   "rgba:<width>" - bytes are raw RGBA pixels of an image! value
+	function appendRich(kind, bytes) {
+		const box = document.createElement('div');
+		box.className = 'rich';
+		if (kind.startsWith('rgba:')) {
+			const width = parseInt(kind.slice(5), 10) || 0;
+			const height = width ? Math.floor(bytes.length / 4 / width) : 0;
+			const canvas = document.createElement('canvas');
+			canvas.width = width;
+			canvas.height = height;
+			if (width && height) {
+				const pixels = new Uint8ClampedArray(bytes.buffer, bytes.byteOffset, width * height * 4);
+				canvas.getContext('2d').putImageData(new ImageData(pixels, width, height), 0, 0);
+			}
+			box.appendChild(canvas);
+		} else if (kind === 'image') {
+			// Raster formats are recognized by the browser itself,
+			// only SVG (text starting with "<") needs its type.
+			let i = 0;
+			while (i < bytes.length && bytes[i] <= 32) i++;
+			const type = bytes[i] === 60 ? 'image/svg+xml' : '';
+			const url = URL.createObjectURL(new Blob([bytes], {type}));
+			const img = document.createElement('img');
+			img.alt = '';
+			img.onload = () => { URL.revokeObjectURL(url); out.scrollTop = out.scrollHeight; };
+			img.onerror = () => { URL.revokeObjectURL(url); img.replaceWith('[invalid image]'); };
+			img.src = url;
+			box.appendChild(img);
+		} else {
+			box.innerHTML = new TextDecoder().decode(bytes);
+		}
+		out.appendChild(box);
+		trimOutput();
+	}
+
+	// --- input history ---
+	const history = [];
+	let hpos = 0;
+	let historyDraft = ''; // unfinished input, restored after browsing the history
+
+	src.addEventListener('keydown', (e) => {
+		if (e.key === 'Enter' && !e.shiftKey) {
+			e.preventDefault();
+			form.requestSubmit();
+		} else if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !src.value.includes('\n')) {
+			if (!history.length) return;
+			e.preventDefault();
+			if (e.key === 'ArrowUp' && hpos === history.length) historyDraft = src.value;
+			hpos = Math.max(0, Math.min(history.length, hpos + (e.key === 'ArrowUp' ? -1 : 1)));
+			src.value = hpos === history.length ? historyDraft : history[hpos];
+		}
+	});
+
+	let R3 = null;
+
+	// On touch screens focusing the field opens the virtual keyboard,
+	// so it is focused only when the user taps it.
+	const TOUCH = window.matchMedia('(pointer: coarse)').matches;
+	const focusInput = () => { if (!TOUCH) src.focus(); };
+
+	function doCode(code) {
+		if (!R3 || !code.trim()) return;
+		history.push(code);
+		hpos = history.length;
+		sgr = Object.assign({}, SGR_RESET);
+		appendAnsi('>> ' + code.replace(/\n/g, '\n   ') + '\n', 'in');
+		const ptr = R3.stringToNewUTF8(code);
+		try {
+			R3._r3_do(ptr);
+		} catch (e) {
+			appendAnsi('\n[runtime stopped: ' + e + ']\n', 'err');
+			src.disabled = run.disabled = true;
+		} finally {
+			if (R3) R3._free(ptr);
+		}
+	}
+
+	form.addEventListener('submit', (e) => {
+		e.preventDefault();
+		const code = src.value;
+		src.value = '';
+		doCode(code);
+		focusInput();
+	});
+
+	const ex = document.getElementById('examples');
+	for (const code of EXAMPLES) {
+		const b = document.createElement('button');
+		b.type = 'button';
+		b.className = 'mono';
+		b.textContent = code;
+		b.addEventListener('click', () => { doCode(code); focusInput(); });
+		ex.appendChild(b);
+	}
+
+	function measureCols() {
+		const probe = document.createElement('span'); // inherits the output font
+		probe.style.visibility = 'hidden';
+		probe.textContent = 'M'.repeat(10);
+		out.appendChild(probe);
+		const w = probe.getBoundingClientRect().width / 10;
+		probe.remove();
+		// At least 80 columns: narrower screens scroll instead of wrapping.
+		return Math.max(80, Math.floor((out.clientWidth - 24) / w));
+	}
+
+	const boot = document.getElementById('rebol-boot');
+
+	function start() { createRebol({
+		// stderr is shown like stdout (as in a terminal); colors come only
+		// from the ANSI sequences Rebol prints.
+		onRebolOutput: (text) => appendAnsi(text, null),
+		onRebolInput:  () => window.prompt('Rebol is asking for input:'),
+		onRebolShow:   appendRich,
+		consoleCols: 80,
+		rebolBoot: boot ? boot.textContent : '',
+		rebolArgs: boot ? (boot.dataset.args || '').split(/\s+/).filter(Boolean) : [],
+		// Load r3.wasm with the same version as r3.js (no edits of the generated r3.js).
+		locateFile: (path, prefix) => prefix + path + '?v=' + R3_VERSION,
+	}).then((mod) => {
+		R3 = mod;
+		R3.consoleCols = measureCols();
+		// Measure at most once per frame while resizing.
+		let resizeFrame = 0;
+		window.addEventListener('resize', () => {
+			if (resizeFrame) cancelAnimationFrame(resizeFrame);
+			resizeFrame = requestAnimationFrame(() => {
+				resizeFrame = 0;
+				R3.consoleCols = measureCols();
+			});
+		});
+		out.textContent = '';
+		R3._r3_init();
+		src.disabled = run.disabled = false;
+		focusInput();
+	}).catch((e) => {
+		out.textContent = 'Failed to load Rebol: ' + e;
+	}); }
+
+	const loader = document.createElement('script');
+	loader.src = 'r3.js?v=' + R3_VERSION;
+	loader.onload = start;
+	loader.onerror = () => { out.textContent = 'Failed to load r3.js'; };
+	document.body.appendChild(loader);
+})();
+</script>
+</body>
+</html>
