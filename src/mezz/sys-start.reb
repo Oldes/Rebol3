@@ -107,7 +107,8 @@ start: func [
 	unless exists? boot [
 		boot: find-in-path second split-path boot
 		unless boot [
-			sys/log/error 'REBOL "Path to executable was not resolved!"
+			;; WebAssebly builds does not have any executable!
+			sys/log/debug 'REBOL "Path to executable was not resolved!"
 		]
 	]
 	;-  3. /home - preferably one of environment variables or current starting dir

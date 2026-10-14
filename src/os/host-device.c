@@ -69,9 +69,18 @@
 extern REBDEV Dev_StdIO;
 extern REBDEV Dev_File;
 extern REBDEV Dev_Event;
+extern REBDEV Dev_Checksum;
+#ifdef NO_NETWORK_DEVICES
+// For example in the browser (TO_WASM). Opening a network port
+// fails with RDE_NO_DEVICE.
+#define DEVICE_PTR_NET 0
+#define DEVICE_PTR_DNS 0
+#else
 extern REBDEV Dev_Net;
 extern REBDEV Dev_DNS;
-extern REBDEV Dev_Checksum;
+#define DEVICE_PTR_NET &Dev_Net
+#define DEVICE_PTR_DNS &Dev_DNS
+#endif
 #ifdef INCLUDE_CLIPBOARD
 extern REBDEV Dev_Clipboard;
 #define DEVICE_PTR_CLIPBOARD &Dev_Clipboard
@@ -114,8 +123,8 @@ REBDEV *Devices[RDI_LIMIT] =
 	0,
 	&Dev_File,
 	&Dev_Event,
-	&Dev_Net,
-	&Dev_DNS,
+	DEVICE_PTR_NET,
+	DEVICE_PTR_DNS,
 	0,//&Dev_Checksum,
 	DEVICE_PTR_CLIPBOARD,
 	DEVICE_PTR_MIDI,
@@ -245,6 +254,7 @@ static int Poll_Default(REBDEV *dev)
 
 	for (d = RDI_NET; d <= RDI_DNS; d++) {
 		dev = Devices[d];
+		if (!dev) continue; // not included (NO_NETWORK_DEVICES)
 		prior = &dev->pending;
 		// Scan the pending requests, mark the one we got:
 		for (req = *prior; req; req = *prior) {

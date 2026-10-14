@@ -1,0 +1,84 @@
+;-    .-.                                                                       
+;-   /'v'\   SISKIN-Builder project file                                        
+;-  (/uOu\)  https://github.com/Siskin-framework/Builder/                       
+;-===="="=======================================================================
+nest:   %rebol3.nest
+
+product: Wasm
+
+
+;- WebAssembly (browser) -------------------------------------------------------
+;; Requires Emscripten (emcc in PATH, e.g. after: source emsdk_env.sh).
+;; Base only, synchronous: no networking, no shared libraries, no read-key.
+;; Output: r3.js + r3.wasm (load with `createRebol(Module)`), see %wasm/
+target-wasm: [
+	os:       wasm
+	sys:      emscripten
+	platform: Wasm
+	vendor:   unknown
+	compiler: emcc
+	arch:     wasm32
+	strip:    off
+	upx:      off
+]
+
+include-ext-web: [
+	;; Browser bridge, used only by the wasm build (needs Emscripten).
+	clean: %extensions/web/web.c ;; always recompile (contains Rebol code)
+	host-files: [
+		%extensions/web/web.c
+		%extensions/web/web-commands.c
+		%extensions/web/gen-web.c
+	]
+	do %make/tools/make-extension.r3 "${NEST_ROOT}/src/extensions/web/web.reb"
+]
+
+make-wasm: [
+	output: %wasm/
+	;; replace the platform host files collected from the build machine
+	host-files: _
+	host-files: [
+		%os/host-args.c
+		%os/host-device.c
+		%os/host-stdio.c
+		%os/posix/host-lib.c
+		%os/posix/dev-file.c
+		%os/wasm/dev-stdio.c
+		%os/wasm/dev-event.c
+		%os/wasm/host-wasm.c  ;; entry points r3_init/r3_do (no main)
+	]
+	:include-mezz-date        ;; to-date is used in http/https schemes
+	:include-native-png-codec ;; at least one image codec
+	:include-ext-web          ;; http/https schemes using the browser
+
+	files: :core-files
+	files: :host-files
+
+	clean: %core/b-init.c ;make-boot.reb modifies embedded native code, so b-init.c must be always recompiled
+	clean: %os/wasm/host-wasm.c
+
+	define: {REBOL_OPTIONS_FILE=\"gen-config.h\"} ;@@ TODO: should be auto-escaped!
+	define: UNICODE
+	defines: [REB_EXE TO_WASM]
+	cflags:  -Wno-pointer-sign
+	lflags: only [
+		"-sMODULARIZE=1"
+		"-sEXPORT_NAME=createRebol"
+		"-sENVIRONMENT=web,node"
+		"-sALLOW_MEMORY_GROWTH=1"
+		"-sSTACK_SIZE=4194304"
+		"-sEXPORTED_FUNCTIONS=_r3_init,_r3_do,_malloc,_free"
+		"-sEXPORTED_RUNTIME_METHODS=stringToNewUTF8,UTF8ToString,FS" ;; FS used by the page to upload files
+		"-sINVOKE_RUN=0"  ;; there is no main, r3_init is called from JS
+	;	"-sASSERTIONS=2"  ;; debug builds
+	]
+	do %make/pre-make.r3 "$NEST_SPEC"
+]
+
+eggs: only [
+	"Rebol/Wasm (browser)" [
+		name:   %r3.js
+		:target-wasm
+		:make-wasm
+	]
+]
