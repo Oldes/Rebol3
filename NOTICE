@@ -77,35 +77,3 @@ Credits for Non-REBOL orginated C files and modules
 * xxHash (optional):
   Copyright (C) 2012-2023 Yann Collet - https://github.com/Cyan4973/xxHash
   BSD 2-Clause License
-
-Credits for currently deprecated and or unused code
----------------------------------------------------
-
-* MD5: 
-  This software contains code derived from the RSA Data Security
-  Inc. MD5 Message-Digest Algorithm, including various
-  modifications by Spyglass Inc., Carnegie Mellon University, and
-  Bell Communications Research, Inc (Bellcore).
-
-* SHA1:
-  Copyright 1995-1998 Eric Young (eay@cryptsoft.com)
-  All rights reserved.
-
-* SHA256/384/512:
-  Copyright (c) 2000-2001, Aaron D. Gifford - http://www.aarongifford.com/
-
-* ECDH:
-  Copyright (c) 2014, Kenneth MacKay - https://github.com/kmackay/micro-ecc
-  All rights reserved.
-
-* CHACHA20:
-  Copyright (c) 2014, insane coder - http://chacha20.insanecoding.org/
-  Copyright (c) 2016-2018, Eduard Suica
-
-* POLY1305:
-  Daniel Bernstein (http://cr.yp.to/mac.html)
-  Andrew Moon (https://github.com/floodyberry/poly1305-donna)
-
-* RC4, AES, DH:
-  Copyright (c) 2007, Cameron Rich
-  All rights reserved.

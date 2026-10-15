@@ -204,7 +204,6 @@ core-files: [
 	%core/m-series.c
 ;	%core/n-audio.c         ;not implemented
 	%core/n-control.c
-;	%core/n-crypt.c         ;optional, use: include-cryptography
 	%core/n-data.c
 ;	%core/n-draw.c          ;old source
 ;	%core/n-graphics.c      ;old source
@@ -264,13 +263,9 @@ core-files: [
 	%core/t-utype.c
 	%core/t-vector.c
 	%core/t-word.c
-;	%core/u-aes.c             ;optional, use: include-cryptography
-;	%core/u-bigint.c ;needed for RSA which is needed in TLS protocol (HTTPS)
 ;	%core/u-bmp.c             ;optional, use: include-native-bmp-codec
 ;	%core/u-bincode.c         ;optional, but required in many core functions
-;	%core/u-chacha20.c        ;optional, use: include-cryptography
 	%core/u-compress.c
-;	%core/u-dh.c              ;optional, use: include-cryptography
 ;	%core/u-dialect.c         ;optional, use: include-dialecting (delect)
 ;	%core/u-gif.c             ;optional, use: include-native-gif-codec
 ;	%core/u-iconv.c           ;optional, use: include-iconv
@@ -279,10 +274,7 @@ core-files: [
 ;	%core/u-lzma.c            ;optional, use: include-lzma-compression
 	%core/u-parse.c
 ;	%core/u-png.c             ;optional, use: include-native-png-codec
-;	%core/u-poly1305.c        ;optional, use: include-cryptography
 ;	%core/u-rc4.c             ;optional, use: include-cryptography
-;	%core/u-rsa.c             ;optional, use: include-cryptography
-;	%core/u-uECC.c            ;optional, use: include-cryptography
 ;	%core/u-wav.c             ;optional, use: include-native-wav-codec
 
 	%core/u-mbedtls.c
@@ -294,11 +286,6 @@ core-files: [
 	%core/mbedtls/sha512.c
 ;	%core/mbedtls/md4.c               ;use: include-optional-checksums
 	%core/mbedtls/md5.c
-
-;- deprecated checksum implementations replaced by mbedtls
-;	%core/deprecated/u-sha1.c
-;	%core/deprecated/u-sha2.c
-;	%core/deprecated/u-md5.c
 ]
 
 host-files: [
@@ -624,23 +611,6 @@ include-cipher-mode-cbc: [
 	config: MBEDTLS_CIPHER_MODE_CBC
 ]
 
-include-deprecated-cipher-aes: [
-	; costs cca 5kB uncompressed
-	config: INCLUDE_AES_DEPRECATED
-	include: %src/include/deprecated/
-	core-files: %core/deprecated/u-aes.c
-	core-files: %core/deprecated/n-crypt-aes.c
-]
-
-include-deprecated-cipher-chacha20: [
-	; costs cca 10kB uncompressed
-	config: INCLUDE_CHACHA20POLY1305_DEPRECATED
-	include: %src/include/deprecated/
-	core-files: %core/deprecated/u-chacha20.c
-	core-files: %core/deprecated/u-poly1305.c
-	core-files: %core/deprecated/n-crypt-chacha.c
-]
-
 include-rsa: [
 	; costs cca 12kB uncompressed
 	config: INCLUDE_RSA
@@ -758,18 +728,6 @@ include-cryptography-bulk: [
 	:include-cipher-camelia
 	:include-cipher-chacha20
 	:include-cipher-chachapoly
-]
-
-include-cryptography-deprecated: [
-	;@@  This should not be used anymore, but keeping it here just in case...
-	%core/deprecated/u-bigint.c ;needed for RSA abd DH which is needed in TLS protocol (HTTPS)
-	%core/deprecated/u-dh.c
-	%core/deprecated/u-poly1305.c
-	%core/deprecated/u-rsa.c
-	%core/deprecated/u-uECC.c
-
-	:include-deprecated-cipher-chacha20
-	:include-deprecated-cipher-aes
 ]
 
 ;- native additional checksums:                                                 
