@@ -16,7 +16,7 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v5
     - name: Install Siskin Builder
-      uses: oldes/install-siskin@v0.22.5
+      uses: oldes/install-siskin@v0.23.0
     - name: Set env var using workspace path
       run: |
         echo "SISKIN_INSTALL=$GITHUB_WORKSPACE/install" >> $GITHUB_ENV
@@ -71,7 +71,7 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v5
     - name: Install Siskin Builder
-      uses: oldes/install-siskin@v0.22.5
+      uses: oldes/install-siskin@v0.23.0
     - name: Set env var using workspace path
       run: |
         echo "SISKIN_INSTALL=$GITHUB_WORKSPACE/install" >> $GITHUB_ENV
@@ -107,7 +107,7 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v5
     - name: Install Siskin Builder
-      uses: oldes/install-siskin@v0.22.5
+      uses: oldes/install-siskin@v0.23.0
     - name: Set env var using workspace path
       run: |
         echo "SISKIN_INSTALL=$GITHUB_WORKSPACE/install" >> $GITHUB_ENV

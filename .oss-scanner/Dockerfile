@@ -4,7 +4,7 @@
 FROM ubuntu:24.04
 
 ARG DEBIAN_FRONTEND=noninteractive
-ARG SISKIN_VERSION=0.22.5
+ARG SISKIN_VERSION=0.23.0
 ARG REBOL_REPO=https://github.com/Oldes/Rebol3.git
 ARG REBOL_BRANCH=matrix
 
