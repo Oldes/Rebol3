@@ -32,7 +32,7 @@
 **
 **	  The process consists of two stages:
 **
-**		MARK -	Mark all series and gobs ("collectible values")
+**		MARK -	Mark all series ("collectible values")
 *				that can be found in:
 **
 **				Root Block: special structures and buffers
@@ -112,42 +112,6 @@ extern REBCNT Dev_Count;
 
 static void Mark_Series(REBSER *series, REBCNT depth);
 static void Mark_Value(REBVAL *val, REBCNT depth);
-
-/***********************************************************************
-**
-*/	static void Mark_Gob(REBGOB *gob, REBCNT depth)
-/*
-***********************************************************************/
-{
-	REBGOB **pane;
-	REBCNT i;
-
-	if (IS_GOB_MARK(gob)) return;
-
-	MARK_GOB(gob);
-
-	if (GOB_PANE(gob)) {
-		MARK_SERIES(GOB_PANE(gob));
-		pane = GOB_HEAD(gob);
-		for (i = 0; i < GOB_TAIL(gob); i++, pane++) {
-			Mark_Gob(*pane, depth);
-		}
-	}
-
-	if (GOB_PARENT(gob)) Mark_Gob(GOB_PARENT(gob), depth);
-
-	if (GOB_CONTENT(gob)) {
-		if (GOB_TYPE(gob) >= GOBT_IMAGE && GOB_TYPE(gob) <= GOBT_STRING) {
-			MARK_SERIES(GOB_CONTENT(gob));
-		} else if (GOB_TYPE(gob) >= GOBT_DRAW && GOB_TYPE(gob) <= GOBT_EFFECT) {
-			CHECK_MARK(GOB_CONTENT(gob), depth);
-		}
-	}
-
-	if (GOB_DATA(gob) && GOB_DTYPE(gob) && GOB_DTYPE(gob) != GOBD_INTEGER) {
-		CHECK_MARK(GOB_DATA(gob), depth);
-	}
-}
 
 /***********************************************************************
 **
@@ -502,10 +466,6 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 		Mark_Struct(&VAL_STRUCT(val), depth);
 		break;
 
-	case REB_GOB:
-		Mark_Gob(VAL_GOB(val), depth);
-		break;
-
 	case REB_EVENT:
 		Mark_Event(val, depth);
 		break;
@@ -569,44 +529,6 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 
 	return count;
 }
-
-/***********************************************************************
-**
-*/	static REBCNT Sweep_Gobs(void)
-/*
-**		Free all unmarked gobs.
-**
-**		Scans all gobs in all segments that are part of the
-**		GOB_POOL. Free gobs that have not been marked.
-**
-***********************************************************************/
-{
-	REBSEG	*seg;
-	REBGOB	*gob;
-	REBCNT  n;
-	REBCNT	count = 0;
-
-	for (seg = Mem_Pools[GOB_POOL].segs; seg; seg = seg->next) {
-		gob = (REBGOB *) (seg + 1);
-		for (n = Mem_Pools[GOB_POOL].units; n > 0; n--) {
-			SKIP_WALL_TYPE(gob, REBGOB);
-			MUNG_CHECK(GOB_POOL, gob, sizeof(*gob));
-			if (IS_GOB_USED(gob)) {
-				if (IS_GOB_MARK(gob))
-					UNMARK_GOB(gob);
-				else {
-					Free_Gob(gob);
-					count++;
-				}
-			}
-			gob++;
-			SKIP_WALL_TYPE(gob, REBGOB);
-		}
-	}
-
-	return count;
-}
-
 
 /***********************************************************************
 **
@@ -735,7 +657,6 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 	Sweep_Timers();
 	
 	count = Sweep_Series();
-	count += Sweep_Gobs();
 	count += Sweep_Handles();
 
 	// Check memory pool segments.
@@ -862,7 +783,6 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 	Free_Series(GC_Protect);
 	Free_Series(GC_Series);
 	Sweep_Series();
-	Sweep_Gobs();
 	Free_Mem(GC_Infants, sizeof(REBSER*) * (MAX_SAFE_SERIES + 2));
 	Free_Mem(Prior_Expand, sizeof(REBSER*) * MAX_EXPAND_LIST);
 }

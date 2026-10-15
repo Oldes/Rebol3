@@ -205,8 +205,6 @@ core-files: [
 ;	%core/n-audio.c         ;not implemented
 	%core/n-control.c
 	%core/n-data.c
-;	%core/n-draw.c          ;old source
-;	%core/n-graphics.c      ;old source
 	%core/n-hash.c
 ;	%core/n-image.c         ;optional, use: include-image-natives
 	%core/n-io.c
@@ -244,7 +242,6 @@ core-files: [
 	%core/t-decimal.c
 	%core/t-event.c
 	%core/t-function.c
-	%core/t-gob.c
 	%core/t-handle.c
 	%core/t-image.c
 	%core/t-integer.c
@@ -405,7 +402,6 @@ config: [ ;- this is list of configuration (optional) defines
 	INCLUDE_TASK    ;- tasks are not implemented yet, so include it only on demand
 
 	;*** Other (not recommanded) options **************************************/
-	;HAS_WIDGET_GOB  ;- used in t-gob.c
 	;EXCLUDE_CHACHA20POLY1305 ; don't include chacha20 and poly1305 cipher/authentication code
 	;USE_EMPTY_HASH_AS_NONE   ; a single # means NONE, else error; Used in l-scan.c file
 	;DO_NOT_NORMALIZE_MAP_KEYS

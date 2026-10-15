@@ -108,7 +108,6 @@ const REBPOOLSPEC Mem_Pool_Spec[MAX_POOLS] =
 	DEF_POOL(MEM_BIG_SIZE*4,  8),	// 4K
 
 	DEF_POOL(sizeof(REBSER), 4096),	// Series headers
-	DEF_POOL(sizeof(REBGOB), 128),	// Gobs
 	DEF_POOL(sizeof(REBHOB), 256),	// Handle objects
 	DEF_POOL(1, 1),	// Just used for tracking main memory
 };
@@ -754,21 +753,6 @@ clear_header:
 	}
 */
 }
-
-
-/***********************************************************************
-**
-*/	void Free_Gob(REBGOB *gob)
-/*
-**		Free a gob, returning its memory for reuse.
-**
-***********************************************************************/
-{
-	FREE_GOB(gob);
-
-	Free_Node(GOB_POOL, (REBNOD *)gob);
-}
-
 
 /***********************************************************************
 **

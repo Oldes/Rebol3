@@ -768,7 +768,7 @@ tenth: native [
 
 last: native [
 	{Returns the last value of a series.}
-	value [series! tuple! gob!]
+	value [series! tuple!]
 ]
 
 ;-- Math Natives - nat_math.c
@@ -1034,18 +1034,6 @@ limit-usage: native [
 selfless?: native [
 	"Returns true if the context doesn't bind 'self."
 	context [any-word! any-object!] "A reference to the target context"
-]
-
-map-event: native [
-	"Returns event with inner-most graphical object and coordinate."
-	event [event!]
-]
-
-map-gob-offset: native [
-	"Translates a gob and offset to the deepest gob and offset in it, returned as a block."
-	gob [gob!] "Starting object"
-	xy [pair!] "Staring offset"
-	/reverse "Translate from deeper gob to top gob."
 ]
 
 as-pair: native [

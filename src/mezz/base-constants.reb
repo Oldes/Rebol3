@@ -62,7 +62,7 @@ abs: :absolute
 empty?: make :tail? [
 	[
 		{Returns TRUE if empty or NONE, or for series if index is at or beyond its tail.}
-		series [series! object! gob! port! bitset! typeset! map! none!]
+		series [series! object! port! bitset! typeset! map! none!]
 	]
 ]
 ---: :comment

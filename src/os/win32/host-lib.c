@@ -143,7 +143,7 @@ static size_t Temp_Buffer_Size = 0;
 X*/	REBOOL As_OS_Str(REBSER *series, REBCHR **string)
 /*
 **	If necessary, convert a string series to Win32 wide-chars.
-**  (Handy for GOB/TEXT handling).
+**  (Handy for TEXT handling).
 **  If the string series is empty the resulting string is set to NULL
 **
 **  Function returns:

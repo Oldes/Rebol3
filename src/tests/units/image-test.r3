@@ -17,9 +17,6 @@ Rebol [
 	--test-- "make image using pair and RGBA tuple"
 		--assert image? img: make image! [2x2 255.0.0.10]
 		--assert 255.0.0.10 = img/1
-	--test-- "make image from gob"
-	;@@ https://github.com/Oldes/Rebol-issues/issues/12
-		--assert-er try [image? to image! make gob! []]
 	--test-- "maximum limit"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/1660
 		--assert all [

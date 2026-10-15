@@ -62,8 +62,8 @@ extern const REBYTE Str_Banner[];
 
 	VAL_SET(&val, 123);
 #ifdef WATCH_BOOT
-	printf("TYPE(123)=%d val=%u dat=%u gob=%u\n",
-		VAL_TYPE(&val), (REBCNT)sizeof(REBVAL), (REBCNT)sizeof(REBDAT), (REBCNT)sizeof(REBGOB));
+	printf("TYPE(123)=%d val=%u dat=%u\n",
+		VAL_TYPE(&val), (REBCNT)sizeof(REBVAL), (REBCNT)sizeof(REBDAT));
 #endif
 
 #ifdef SHOW_SIZEOFS
@@ -93,7 +93,6 @@ extern const REBYTE Str_Banner[];
 	printf("%u %s\n", (REBCNT)sizeof(REBLIB), "library");
 	printf("%u %s\n", (REBCNT)sizeof(REBROT), "routine");
 	printf("%u %s\n", (REBCNT)sizeof(REBSTU), "structure");
-	printf("%u %s\n", (REBCNT)sizeof(REBGOB), "gob");
 	printf("%u %s\n", (REBCNT)sizeof(REBGBO), "gbo");
 	printf("%u %s\n", (REBCNT)sizeof(REBUDT), "utype");
 	printf("%u %s\n", (REBCNT)sizeof(REBDCI), "deci");
@@ -105,10 +104,8 @@ extern const REBYTE Str_Banner[];
 	ASSERT(VAL_TYPE(&val) == 123,  RP_REBVAL_ALIGNMENT);
 	if (sizeof(void *) == 8) {
 		ASSERT(sizeof(REBVAL) == 32,   RP_REBVAL_ALIGNMENT);
-		//ASSERT1(sizeof(REBGOB) == 84,  RP_BAD_SIZE);
 	} else {
 		ASSERT(sizeof(REBVAL) == 16,   RP_REBVAL_ALIGNMENT);
-		//ASSERT1(sizeof(REBGOB) == 64,  RP_BAD_SIZE);
 	}
 	STATIC_ASSERT(sizeof(REBDAT) == 4); // RP_BAD_SIZE
 }

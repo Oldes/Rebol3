@@ -519,10 +519,6 @@ enum {
 **
 ***********************************************************************/
 
-#pragma pack()
-#include "reb-gob.h"
-#pragma pack(4)
-
 typedef struct Reb_Series_Ref
 {
 	REBSER	*series;
@@ -1042,23 +1038,6 @@ typedef struct Reb_Error {
 
 /***********************************************************************
 **
-**	GOBS - Graphic Objects
-**
-***********************************************************************/
-
-typedef struct Reb_Gob {
-	REBGOB *gob;
-	REBCNT index;
-} REBGBO;
-
-#define	VAL_GOB(v)			((v)->data.gob.gob)
-#define	VAL_GOB_INDEX(v)	((v)->data.gob.index)
-#define SET_GOB(v,g)		VAL_SET(v, REB_GOB), VAL_GOB(v)=g, VAL_GOB_INDEX(v)=0
-
-typedef struct rebol_compositor_ctx REBCMP; // Rebol compositor context
-
-/***********************************************************************
-**
 **	FUNCTIONS - Natives, actions, operators, and user functions
 **
 ***********************************************************************/
@@ -1469,7 +1448,6 @@ typedef struct Reb_All {
 		REBLIB  library;
 		REBROT  routine;
 		REBSTU  structure;
-		REBGBO	gob;
 		REBUDT  utype;
 		REBDCI  deci;
 		REBHAN  handle;

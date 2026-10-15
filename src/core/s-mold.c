@@ -1498,17 +1498,6 @@ STOID Mold_Error(REBVAL *value, REB_MOLD *mold, REBFLG molded)
 		else
 			Form_Block_Series(VAL_SERIES(value), VAL_INDEX(value), mold, 0);
 		break;
-
-	case REB_GOB:
-	{
-		REBSER *blk;
-		Pre_Mold(value, mold);
-		blk = Gob_To_Block(VAL_GOB(value));
-		Mold_Block_Series(mold, blk, 0, 0);
-		End_Mold(mold);
-	}
-		break;
-
 	
 	case REB_EVENT:
 		Mold_Event(value, mold);

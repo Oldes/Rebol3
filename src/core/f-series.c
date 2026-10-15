@@ -315,9 +315,6 @@ chkMoney:
 	case REB_EVENT:
 		return Cmp_Event(s, t);
 
-	case REB_GOB:
-		return Cmp_Gob(s, t);
-
 	case REB_TUPLE:
 		return Cmp_Tuple(s, t);
 

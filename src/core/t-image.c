@@ -1285,19 +1285,6 @@ find_none:
 
 	case A_TO:
 		if (IS_IMAGE(arg)) goto makeCopy;
-		else if (IS_GOB(arg)) {
-			//originally it was returning image without content when conversion failed!
-			//value = Make_Image(ROUND_TO_INT(GOB_W(VAL_GOB(arg))), ROUND_TO_INT(GOB_H(VAL_GOB(arg))));
-#ifndef REB_VIEW
-			//TODO: remove this once OS_Gob_To_Image will be for all systems
-			Trap0(RE_FEATURE_NA);
-#else
-			series = OS_Gob_To_Image(VAL_GOB(arg));
-#endif
-			if (!series) Trap_Make(REB_IMAGE, arg);
-			SET_IMAGE(value, series);
-			break;
-		}
 		else if (IS_BINARY(arg)) {
 			diff = VAL_LEN(arg) / 4;
 			if (diff == 0) Trap_Make(REB_IMAGE, arg);

@@ -801,7 +801,6 @@ Rebol [
 		--assert datatype? transcode/one {#(error!)}
 		--assert datatype? transcode/one {#(task!)}
 		--assert datatype? transcode/one {#(port!)}
-		--assert datatype? transcode/one {#(gob!)}
 		--assert datatype? transcode/one {#(event!)}
 		--assert datatype? transcode/one {#(handle!)}
 		--assert datatype? transcode/one {#(struct!)}

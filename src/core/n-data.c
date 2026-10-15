@@ -975,10 +975,6 @@ static int Do_Ordinal(REBVAL *ds, REBINT n)
 		else VAL_INDEX(val) = 0;
 	}
 	else if (IS_TUPLE(val)) t = VAL_TUPLE_LEN(val);
-	else if (IS_GOB(val)) {
-		t = GOB_PANE(VAL_GOB(val)) ? GOB_TAIL(VAL_GOB(val)) : 0;
-		VAL_GOB_INDEX(val) = 0;
-	}
 	else t = 0; // let the action throw the error
 	DS_PUSH_INTEGER(t);
 	return action(ds, A_PICK);
@@ -1000,14 +996,11 @@ static int Do_Ordinal(REBVAL *ds, REBINT n)
 	if (ANY_SERIES(value)) {
 		tail = VAL_TAIL(value);
 	}
-	else if (IS_GOB(value)) {
-		tail = GOB_PANE(VAL_GOB(value)) ? GOB_TAIL(VAL_GOB(value)) : 0;
-	}
 	else
 		Trap_Arg(D_ARG(1)); // !! need better msg
 
 	*D_ARG(1) = *value;
-	index = VAL_INDEX(value); // same for VAL_GOB_INDEX
+	index = VAL_INDEX(value);
 	if (index < tail) {
 		VAL_INDEX(value) += IS_UTF8_STRING(value) ? UTF8_Next_Char_Size(VAL_BIN_HEAD(value), index) : 1;
 	}
@@ -1202,132 +1195,3 @@ static int Do_Ordinal(REBVAL *ds, REBINT n)
 	return R_RET;
 }
 #endif
-
-
-/***********************************************************************
-**
-*/	static REBGOB *Map_Gob_Inner(REBGOB *gob, REBXYF *offset)
-/*
-**		Map a higher level gob coordinate to a lower level.
-**		Returns GOB and sets new offset pair.
-**
-***********************************************************************/
-{
-	REBD32 xo = offset->x;
-	REBD32 yo = offset->y;
-	REBINT n;
-	REBINT len;
-	REBGOB **gop;
-	REBD32 x = 0;
-	REBD32 y = 0;
-	REBINT max_depth = 1000; // avoid infinite loops
-
-	while (GOB_PANE(gob) && (max_depth-- > 0)) {
-		len = GOB_TAIL(gob);
-		gop = GOB_HEAD(gob) + len - 1;
-		for (n = 0; n < len; n++, gop--) {
-			if (
-				(xo >= x + GOB_X(*gop)) &&
-				(xo <  x + GOB_X(*gop) + GOB_W(*gop)) &&
-				(yo >= y + GOB_Y(*gop)) &&
-				(yo <  y + GOB_Y(*gop) + GOB_H(*gop))
-			){
-				x += GOB_X(*gop);
-				y += GOB_Y(*gop);
-				gob = *gop;
-				break;
-			}
-		}
-		if (n >= len) break; // not found
-	}
-
-	offset->x -= x;
-	offset->y -= y;
-
-	return gob;
-}
-
-
-/***********************************************************************
-**
-*/	REBNATIVE(map_event)
-/*
-***********************************************************************/
-{
-	REBVAL *val = D_ARG(1);
-	REBGOB *gob = NULL;
-	REBXYF xy;
-
-	//O: handle drop_file this way? Or maybe just don't use EVF_HAS_XY?
-	//gob = (VAL_EVENT_TYPE(val) == EVT_DROP_FILE) ? Gob_Root : VAL_EVENT_SER(val);
-//	if (GET_FLAG(VAL_EVENT_FLAGS(val), EVF_HAS_DATA)) {
-//		CLR_FLAG(VAL_EVENT_FLAGS(val), EVF_HAS_DATA);
-//#ifdef REB_VIEW
-//		gob = OS_Get_Gob_Root();
-//#endif
-//	} else {
-		gob = VAL_EVENT_SER(val);
-//	}
-
-	if (gob && GET_FLAG(VAL_EVENT_FLAGS(val), EVF_HAS_XY)) {
-		xy.x = (REBD32)VAL_EVENT_X(val);
-		xy.y = (REBD32)VAL_EVENT_Y(val);
-		VAL_EVENT_SER(val) = Map_Gob_Inner(gob, &xy);
-		SET_EVENT_XY(val, ROUND_TO_INT(xy.x), ROUND_TO_INT(xy.y));
-	}
-	return R_ARG1;
-}
-
-
-/***********************************************************************
-**
-*/	static void Return_Gob_Pair(REBVAL *ds, REBGOB *gob, REBD32 x, REBD32 y)
-/*
-***********************************************************************/
-{
-	REBSER *blk;
-	REBVAL *val;
-
-	blk = Make_Block(2);
-	Set_Series(REB_BLOCK, ds, blk);
-	val = Append_Value(blk);
-	SET_GOB(val, gob);
-	val = Append_Value(blk);
-	VAL_SET(val, REB_PAIR);
-	VAL_PAIR_X(val) = x;
-	VAL_PAIR_Y(val) = y;
-}
-
-
-/***********************************************************************
-**
-*/	REBNATIVE(map_gob_offset)
-/*
-***********************************************************************/
-{
-	REBGOB *gob = VAL_GOB(D_ARG(1));
-	REBD32 xo = VAL_PAIR_X(D_ARG(2));
-	REBD32 yo = VAL_PAIR_Y(D_ARG(2));
-
-	if (D_REF(3)) { // reverse
-		REBINT max_depth = 1000; // avoid infinite loops
-		while (GOB_PARENT(gob) && (max_depth-- > 0) &&
-			!GET_GOB_FLAG(gob, GOBF_WINDOW)){
-			xo += GOB_X(gob);
-			yo += GOB_Y(gob);
-			gob = GOB_PARENT(gob);
-		}
-	}
-	else {
-		REBXYF xy;
-		xy.x = VAL_PAIR_X(D_ARG(2));
-		xy.y = VAL_PAIR_Y(D_ARG(2));
-		gob = Map_Gob_Inner(gob, &xy);
-		xo = xy.x;
-		yo = xy.y;
-	}
-
-	Return_Gob_Pair(ds, gob, xo, yo);
-
-	return R_RET;
-}

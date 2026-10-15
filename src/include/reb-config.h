@@ -125,7 +125,6 @@ Special internal defines used by RT, not Host-Kit developers:
 #define INLINE __inline			// name used for it
 
 #ifdef REB_VIEW
-#define HAS_WIDGET_GOB			// supports it
 // use native image codecs only in VIEW version so far
 #if !defined(INCLUDE_IMAGE_OS_CODEC)
 #define INCLUDE_IMAGE_OS_CODEC

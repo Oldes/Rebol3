@@ -631,17 +631,6 @@ Rebol [
 
 ===end-group===
 
-===start-group=== "mold gob!"
-
-	--test-- "mold gob!"
-		--assert "make gob! [offset: 0x0 size: 100x100]" = mold make gob! []
-
-	--test-- "mold/all gob!"
-	;@@ https://github.com/Oldes/Rebol-issues/issues/989
-		--assert "#(gob! [offset: 0x0 size: 100x100])" = mold/all make gob! []
-
-===end-group===
-
 ===start-group=== "mold unset!"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/567
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2508
