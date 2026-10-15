@@ -72,7 +72,7 @@ make-workflow: function/with [spec] [
 		branches: _
 		paths:    _
 		action-checkout: "actions/checkout@v5"
-		action-upload:   "actions/upload-artifact@v5"
+		action-upload:   "actions/upload-artifact@v6"
 		action-siskin:   "oldes/install-siskin@v0.23.0"
 		steps: ""
 		flags: "--gzip"

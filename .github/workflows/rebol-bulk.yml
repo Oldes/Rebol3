@@ -58,7 +58,7 @@ jobs:
     - name: "[TEST] rebol3-bulk-windows-arm64 ./src/tests/test-extension-blend2d.r3"
       run: ./rebol3-bulk-windows-arm64 -s ./src/tests/test-extension-blend2d.r3
 
-    - uses: actions/upload-artifact@v5
+    - uses: actions/upload-artifact@v6
       with:
         name: Rebol/Bulk CI-${{github.run_id}}-windows
         path: ./rebol3-*.exe
@@ -94,7 +94,7 @@ jobs:
     - name: "[TEST] rebol3-bulk-linux-x64 ./src/tests/test-extension-blend2d.r3"
       run: ./rebol3-bulk-linux-x64 -s ./src/tests/test-extension-blend2d.r3
 
-    - uses: actions/upload-artifact@v5
+    - uses: actions/upload-artifact@v6
       with:
         name: Rebol/Bulk CI-${{github.run_id}}-linux
         path: ./rebol3-*.gz
@@ -134,7 +134,7 @@ jobs:
     - name: "[TEST] rebol3-bulk-macos-x64 ./src/tests/test-extension-blend2d.r3"
       run: ./rebol3-bulk-macos-x64 -s ./src/tests/test-extension-blend2d.r3
 
-    - uses: actions/upload-artifact@v5
+    - uses: actions/upload-artifact@v6
       with:
         name: Rebol/Bulk CI-${{github.run_id}}-macos
         path: ./rebol3-*.gz
