@@ -2,6 +2,7 @@
 ;-   /'v'\   SISKIN-Builder project file                                        
 ;-  (/uOu\)  https://github.com/Siskin-framework/Builder/                       
 ;-===="="=======================================================================
+needs: [siskin 0.22.5] ;; because uses expand environmental variable in commands
 
 name:     %Rebol
 group:    %rebol
@@ -12,8 +13,6 @@ strip:    on
 root:     %../
 source:   %src/
 include:  %src/include/
-temp:     %make/tmp/
-;output:   %build/
 
 stack-size: 4194304 ;= 4MB (4 * 1024 * 1024)
 optimize:   2
