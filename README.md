@@ -6,7 +6,7 @@
 [![Zulip](https://img.shields.io/badge/zulip-join_chat-brightgreen.svg)](https://rebol.zulipchat.com/)
 [![Chocolatey](https://raw.githubusercontent.com/Oldes/media/master/install-from-choco.svg)](https://chocolatey.org/packages/rebol3)
 [![Replit](https://raw.githubusercontent.com/Oldes/media/master/try-on-replit.svg)](https://replit.com/@Oldes/Rebol-3140?v=1)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Oldes/Rebol3)
+[![Ask DeepWiki](https://raw.githubusercontent.com/Oldes/media/refs/heads/master/deepwiki-badge.svg)](https://deepwiki.com/Oldes/Rebol3)
 
 # Rebol [R3] Source Code Distribution
 
