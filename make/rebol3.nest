@@ -310,7 +310,6 @@ host-files-view: [
 	#if Windows? [
 		%os/win32/sys-utils.c
 		%os/win32/sys-codecs.cpp
-		%os/win32/sys-d2d.cpp
 	]
 ]
 
