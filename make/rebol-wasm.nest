@@ -12,6 +12,7 @@ product: Wasm
 ;; Base only, synchronous: no networking, no shared libraries, no read-key.
 ;; Output: r3.js + r3.wasm (load with `createRebol(Module)`), see %wasm/
 target-wasm: [
+	set-env SISKIN_ARCH: "wasm"
 	os:       wasm
 	sys:      emscripten
 	platform: Wasm
