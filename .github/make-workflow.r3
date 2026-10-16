@@ -43,13 +43,16 @@ make-workflow: function/with [spec] [
 			]
 			append ctx/steps LF
 		]
-		foreach [title target] ctx/targets [
+		foreach arch ctx/arch [
+			target: ajoin [%rebol3-bulk- host #"-" arch]
+			title:  ajoin ["Rebol/Bulk " arch]
 			unless find ctx/no-test target [ append apps target ]
 			emit-step [
 				"    - name: ^"[BUILD] " title {"^/}
-				"      run: ./siskin make/rebol3.nest -o ./ " ctx/FLAGS SP target LF
+				"      run: ./siskin make/rebol3.nest -o ./ " ctx/FLAGS " --arch " arch SP target LF
 			]
 		]
+
 		foreach test-app apps [
 			append ctx/steps LF
 			foreach test ctx/tests [
