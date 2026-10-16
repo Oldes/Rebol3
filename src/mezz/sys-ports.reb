@@ -3,7 +3,7 @@ REBOL [
 	Title: "REBOL 3 Boot Sys: Port and Scheme Functions"
 	Rights: {
 		Copyright 2012 REBOL Technologies
-		Copyright 2012-2023 Rebol Open Source Contributors
+		Copyright 2012-2026 Rebol Open Source Contributors
 		REBOL is a trademark of REBOL Technologies
 	}
 	License: {
@@ -386,12 +386,10 @@ init-schemes: func [
 	] 'file
 
 	make-scheme [
-		title: "GUI Events"
-		name: 'event
-		awake: func [event] [
-			print ["Default GUI event/awake:" event/type]
-			true
-		]
+		title: "Timer"
+		name: 'timer
+		spec: system/standard/port-spec-timer
+		awake: func [event] [true]
 	]
 
 	make-scheme [
@@ -515,7 +513,6 @@ init-schemes: func [
 
 
 	system/ports/system:   open [scheme: 'system]
-	system/ports/event:    open [scheme: 'event]
 	system/ports/input:
 	system/ports/output:   open [scheme: 'console]
 	system/ports/callback: open [scheme: 'callback]

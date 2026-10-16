@@ -29,7 +29,7 @@ exists?: func [
 
 size?: func [
 	{Returns the size of a file or vector (bits per value).}
-	target [file! url! port! vector!]
+	target [file! url! port! vector! image!]
 ][
 	query target 'size
 ]

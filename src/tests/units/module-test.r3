@@ -141,6 +141,10 @@ modules-dir: system/options/modules
 			error? err: try [module [type: :print][]]
 			err/id = 'wrong-type
 		]
+		--assert all [
+			error? err: try [module compose [type: (:print)][]]
+			err/id = 'wrong-type
+		]
 	--test-- "make module! integer!" ; not allowed
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1551
 	;@@ https://github.com/Oldes/Rebol-issues/issues/926

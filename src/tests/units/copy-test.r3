@@ -44,7 +44,6 @@ not-copyable-data: make object! [
 	time:     1:1:1
 	logic:    #(true)
 	none:     #(none)
-	gob:      #(gob![size: 20x20])
 	word:     'foo
 	lit-word: quote 'foo
 	set-word: quote foo:

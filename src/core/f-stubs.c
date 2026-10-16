@@ -595,7 +595,7 @@
 {
 	if (VAL_INDEX(value) >= VAL_TAIL(value)) return 0;
 	if (IS_UTF8_STRING(value)) {
-		return Length_As_UTF8_Code_Points(VAL_BIN_DATA(value));
+		return UTF8_Length(VAL_BIN_DATA(value), VAL_TAIL(value) - VAL_INDEX(value));
 	}
 	return VAL_TAIL(value) - VAL_INDEX(value);
 }

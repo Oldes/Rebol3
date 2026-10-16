@@ -12,13 +12,6 @@ REBOL [
 	}
 ]
 
-empty?: make :tail? [
-	[
-		{Returns TRUE if empty or NONE, or for series if index is at or beyond its tail.}
-		series [series! object! gob! port! bitset! typeset! map! none!]
-	]
-]
-
 offset?: func [
 	"Returns the offset between two series positions."
 	series1 [series!]
@@ -37,7 +30,7 @@ offset?: func [
 
 last?: single?: func [
 	"Returns TRUE if the series length is 1."
-	series [series! port! map! tuple! bitset! object! gob! any-word!]
+	series [series! port! map! tuple! bitset! object! any-word!]
 ][
 	1 = length? series
 ]
@@ -295,7 +288,7 @@ reword: func [
 
 move: func [
 	"Move a value or span of values in a series."
-	source [series! gob!] "Source series (modified)"
+	source [series!] "Source series (modified)"
 	offset [integer!] "Offset to move by, or index to move to"
 	/part "Move part of a series"
 	length [integer!] "The length of the part to move"
