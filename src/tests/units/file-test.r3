@@ -124,6 +124,27 @@ if find [Linux macOS] system/platform [
 
 ===end-group===
 
+
+===start-group=== "home directory (~)"
+	home: dirize to-rebol-file get-env either system/platform = 'Windows ["USERPROFILE"]["HOME"]
+--test-- "to-local-file with ~"
+	--assert (to-local-file home) = to-local-file %~
+	--assert (to-local-file home) = to-local-file %~/
+	--assert (to-local-file home/foo) = to-local-file %~/foo
+	--assert "~foo" = to-local-file %~foo  ;; only %~ and %~/ are expanded
+	--assert (to-local-file/full join what-dir %~) = to-local-file/full %./~
+--test-- "query %~"
+	--assert home = query %~ 'name
+	--assert 'dir = query %~ 'type
+	--assert did exists? %~/
+--test-- "change-dir %~"
+	dir: what-dir
+	change-dir %~
+	--assert home = what-dir
+	change-dir dir
+===end-group===
+
+
 ===start-group=== "invalid paths with colon"
 --test-- "colon not used as a volume separator"
 	if system/platform = 'Windows [

@@ -33,6 +33,37 @@
 
 #define FN_PAD 2	// pad file name len for adding /, /*, and /?
 
+/***********************************************************************
+**
+*/	static REBYTE *Get_Home_Dir(REBCNT *len)
+/*
+**		Returns UTF-8 encoded user's home directory or NULL.
+**		Result must be released using FREE_MEM.
+**
+***********************************************************************/
+{
+#ifdef TO_WINDOWS
+	REBCHR *name = (REBCHR*)L"USERPROFILE";
+#else
+	REBCHR *name = (REBCHR*)"HOME";
+#endif
+	REBYTE *utf8 = NULL;
+	REBCHR *buf;
+	REBINT size = OS_Get_Env(name, (REBCHR*)0, 0); // incl. terminator
+	if (size <= 1) return NULL; // missing, error or empty
+
+	buf = MAKE_STR(size);
+	if (!buf) return NULL;
+	OS_Get_Env(name, buf, size);
+#ifdef TO_WINDOWS
+	*len = OS_Wide_To_Multibyte((REBU16*)buf, &utf8, size - 1);
+	FREE_MEM(buf);
+#else
+	utf8 = (REBYTE*)buf;
+	*len = size - 1;
+#endif
+	return utf8;
+}
 
 /***********************************************************************
 **
@@ -216,8 +247,30 @@
 		n = SERIES_TAIL(dst);
 	}
 
+	// %~ or %~/... => user's home directory (literal ~ file is accessible as %./~)
+	if (src[0] == '~' && (len == 1 || src[1] == '/')) {
+		lpath = Get_Home_Dir(&l);
+		if (lpath && l > 0) {
+			dst = Make_Binary(l + len + FN_PAD);
+			Append_Bytes_Len(dst, lpath, l);
+			FREE_MEM(lpath);
+			if (OS_DIR_SEP != STR_LAST(dst)[0]) {
+				EXPAND_SERIES_TAIL(dst, 1);
+				*STR_LAST(dst) = OS_DIR_SEP;
+				*STR_TAIL(dst) = 0;
+			}
+			out = STR_HEAD(dst);
+			n = SERIES_TAIL(dst);
+			i = (len > 1) ? 2 : 1; // skip ~ and its /
+			goto segments;
+		}
+		if (lpath) FREE_MEM(lpath);
+		l = 0; // no home => treat ~ literally
+	}
+
 	// Prescan each file segment for: . .. directory names:
 	// (Note the top of this loop always follows / or start)
+segments:
 	while (i < len) {
 		if (full) {
 			// Peek for: . ..
