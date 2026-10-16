@@ -51,6 +51,10 @@ make-wasm: [
 	:include-native-png-codec ;; at least one image codec
 	:include-ext-web          ;; http/https schemes using the browser
 
+
+	:include-ext-blend2d
+	libraries: [%$SISKIN_INSTALL/wasm/lib/ %blend2d]
+
 	files: :core-files
 	files: :host-files
 
