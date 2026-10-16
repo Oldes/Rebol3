@@ -194,14 +194,14 @@ COMMAND cmd_xtest_cec1(RXIFRM *frm, void *ctx) {
 //== plain handles ============================================================
 
 COMMAND cmd_xtest_hndl1(RXIFRM *frm, void *ctx) {
-	RXA_HANDLE(frm, 1) = (void*)42;
+	RXA_HANDLE(frm, 1) = (void*)(intptr_t)42;
 	RXA_HANDLE_TYPE(frm, 1) = AS_WORD("xtest_plain");
 	RXA_TYPE(frm, 1) = RXT_HANDLE;
 	return RXR_VALUE;
 }
 
 COMMAND cmd_xtest_hndl2(RXIFRM *frm, void *ctx) {
-	i64 i = (i64)RXA_HANDLE(frm, 1);
+	i64 i = (i64)(intptr_t)RXA_HANDLE(frm, 1);
 	RXA_INT64(frm, 1) = i;
 	RXA_TYPE(frm, 1) = RXT_INTEGER;
 	return RXR_VALUE;
