@@ -3,7 +3,7 @@ REBOL [
 	Title: "Generate headers and boot code"
 	Rights: {
 		Copyright 2012 REBOL Technologies
-		Copyright 2012-2021 Rebol Open Source Contributors
+		Copyright 2012-2026 Rebol Open Source Contributors
 		REBOL is a trademark of REBOL Technologies
 	}
 	License: {
@@ -23,10 +23,12 @@ do %tools/form-header.reb
 do %tools/utils.reb
 
 args: system/script/args
-
-spec-file: try/with [
-	to-rebol-file either block? args [first args][args]
-][ clean-path %spec-core.reb ]
+if block? args [args: first args]   ;; `first []` is none
+spec-file: either args [
+	try/with [ to-rebol-file args ][
+		do error ["Invalid spec file:" mold args]
+	]
+][	clean-path %spec-core.reb ]
 
 unless 'file = exists? spec-file [
 	do error ["Spec file not found:" mold spec-file]
