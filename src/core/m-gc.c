@@ -198,7 +198,9 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 	else if (IS_EVENT_MODEL(value, EVM_HANDLE)) {
 		// Same as Mark_Value's REB_HANDLE case: the handle context, and
 		// anything it keeps in its series, must outlive the event.
-		if (NZ(hob = VAL_EVENT_HOB(value)) && IS_USED_HOB(hob)) {
+		// A released hob must stay marked as well, so its node is not reused
+		// while the event still refers to it.
+		if (NZ(hob = VAL_EVENT_HOB(value)) && IS_ALLOCATED_HOB(hob)) {
 			MARK_HOB(hob);
 			if (hob->series) Mark_Series(hob->series, depth);
 		}
@@ -551,7 +553,9 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 		for (n = Mem_Pools[HOB_POOL].units; n > 0; n--) {
 			SKIP_WALL_TYPE(hob, REBHOB);
 			MUNG_CHECK(HOB_POOL, hob, sizeof(*hob));
-			if (IS_USED_HOB(hob)) {
+			// Released hobs are swept too - their node is returned to the
+			// pool only now, when no value refers to it any more.
+			if (IS_ALLOCATED_HOB(hob)) {
 				//printf("sweep hob: %p\n", hob);
 				if (IS_MARK_HOB(hob))
 					UNMARK_HOB(hob);

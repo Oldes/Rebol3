@@ -1222,10 +1222,14 @@ RL_API void RL_Free_Handle_Context(REBHOB *hob)
 **		nothing
 **	Arguments:
 **		hob - handle's context
+**	Notes:
+**		The resources are released now, but the context itself stays
+**		allocated until no value refers to it. A released handle can
+**		therefore never be mistaken for a handle created later.
 **
 ***********************************************************************/
 {
-	Free_Hob(hob);
+	Release_Hob(hob);
 }
 
 

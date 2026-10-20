@@ -1144,6 +1144,7 @@ enum Handle_Flags {
 	HANDLE_CONTEXT_MARKED = 1 << 3,  // used in handle's context (HOB)
 	HANDLE_CONTEXT_USED   = 1 << 4,  // --//--
 	HANDLE_CONTEXT_LOCKED = 1 << 5,  // so Rebol will not GC the handle if C side still depends on it
+	HANDLE_CONTEXT_RELEASED = 1 << 6, // released explicitly; the HOB stays allocated until GC finds it unreferenced
 };
 
 /***********************************************************************
@@ -1218,6 +1219,11 @@ typedef struct Reb_Handle {
 #define IS_USED_HOB(h)         ((h)->flags &   HANDLE_CONTEXT_USED)   // used to detect if handle's context is still valid
 #define     USE_HOB(h)         ((h)->flags |=  HANDLE_CONTEXT_USED | HANDLE_CONTEXT_MARKED)
 #define   UNUSE_HOB(h)         ((h)->flags &= ~HANDLE_CONTEXT_USED)
+// A released HOB is no longer valid (not USED), but it is not returned to the
+// pool while any value may still refer to it - otherwise the next new handle
+// would get the same address and the stale value would see it as its own.
+#define IS_RELEASED_HOB(h)     ((h)->flags &   HANDLE_CONTEXT_RELEASED)
+#define IS_ALLOCATED_HOB(h)    ((h)->flags &  (HANDLE_CONTEXT_USED | HANDLE_CONTEXT_RELEASED))
 #define IS_MARK_HOB(h)         ((h)->flags &  (HANDLE_CONTEXT_MARKED | HANDLE_CONTEXT_LOCKED)) // GC marks still used handles, so these are not released
 #define    MARK_HOB(h)         ((h)->flags |=  HANDLE_CONTEXT_MARKED)
 #define  UNMARK_HOB(h)         ((h)->flags &= ~HANDLE_CONTEXT_MARKED)
@@ -1474,4 +1480,3 @@ typedef struct Reb_All {
 #pragma pack()
 
 #endif // value.h
-

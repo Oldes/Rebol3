@@ -756,18 +756,20 @@ clear_header:
 
 /***********************************************************************
 **
-*/	int Free_Hob(REBHOB *hob)
+*/	static REBFLG Release_Hob_Data(REBHOB *hob)
 /*
-**		Free a hob, returning its memory for reuse.
+**		Release the resources of a used hob (free callback, data block,
+**		series) and mark it unused. The node itself is NOT returned to
+**		the pool. Returns FALSE when the hob was not used, or when the
+**		extension keeps it alive by leaving it marked.
 **
 ***********************************************************************/
 {
 	REBHSP spec;
-	REBCNT idx = hob->index;
 
-	if( !IS_USED_HOB(hob) || hob->data == NULL ) return 0;
+	if (!IS_USED_HOB(hob) || hob->data == NULL) return FALSE;
 
-	spec = PG_Handles[idx];
+	spec = PG_Handles[hob->index];
 	//printf("HOB %p free mem: %p %i\n", hob, hob->data, spec.flags);
 
 	if (spec.free) {
@@ -775,7 +777,7 @@ clear_header:
 			spec.free((void*)hob);
 			// Although there are no references, the extension may still need the handle.
 			// If extension marks the hob, do not free it now.
-			if (IS_MARK_HOB(hob)) return 0;
+			if (IS_MARK_HOB(hob)) return FALSE;
 		}
 		else {
 			spec.free(hob->data);
@@ -787,10 +789,47 @@ clear_header:
 		if (spec.size > sizeof(void*)) {
 			Free_Managed_CMem(hob->data);
 		}
+		hob->data = NULL;
 	}
+	hob->series = NULL; // nothing is kept alive by a released handle
 	UNUSE_HOB(hob);
+	return TRUE;
+}
+
+
+/***********************************************************************
+**
+*/	int Free_Hob(REBHOB *hob)
+/*
+**		Free a hob, returning its memory for reuse.
+**		Only for hobs which no value refers to (GC sweep, shutdown).
+**		To release a handle on request, use Release_Hob.
+**
+***********************************************************************/
+{
+	if (IS_USED_HOB(hob)) {
+		if (!Release_Hob_Data(hob)) return 0;
+	}
+	else if (!IS_RELEASED_HOB(hob)) return 0; // already in the pool
+
+	hob->flags = 0;
 	Free_Node(HOB_POOL, (REBNOD *)hob);
 	return 1;
+}
+
+
+/***********************************************************************
+**
+*/	void Release_Hob(REBHOB *hob)
+/*
+**		Release a handle's resources on request (e.g. from an extension).
+**		Values may still refer to the hob, so its node stays allocated
+**		(flagged as released) until the GC finds it unreferenced. Until
+**		then the address cannot be given to a new handle.
+**
+***********************************************************************/
+{
+	if (Release_Hob_Data(hob)) hob->flags |= HANDLE_CONTEXT_RELEASED;
 }
 
 
