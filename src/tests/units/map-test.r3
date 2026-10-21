@@ -430,6 +430,31 @@ Rebol [
 		--assert [ab: 1      ]  = to block! remove/key m 'AB
 		--assert 1 = length? m
 
+	--test-- "put after remove/key"
+	;@@ https://github.com/Oldes/Rebol-issues/issues/2722
+		;; small map (linear search, no hash table)
+		m: make map! 100
+		put m 'a [1]
+		remove/key m 'a
+		--assert [2] = put m 'a [2]
+		--assert 1 = length? m
+		--assert [a] = keys-of m
+		--assert [2] = m/a
+		--assert not empty? m
+		;; same using path set
+		m: make map! [a: 1 b: 2]
+		remove/key m 'a
+		m/a: 3
+		--assert all [m/a = 3 m/b = 2]
+		;; large map (hashed)
+		m: make map! []
+		repeat i 20 [put m join "k" i i]
+		remove/key m "k1"
+		--assert 19 = length? m
+		put m "k1" 100
+		--assert 20 = length? m
+		--assert 100 = m/("k1")
+
 ===end-group===
 
 ===start-group=== "remove-each with map!"

@@ -312,6 +312,7 @@
 				// Key already exists so update the value, if needed...
 				if (val) {
 					set = BLK_SKIP(series, hash);
+					VAL_CLR_OPT(set - 1, OPTS_HIDE); // clear HIDE flag in case it was removed key
 					*set = *val;
 				}
 				// Return 
