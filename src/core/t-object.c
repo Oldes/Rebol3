@@ -503,9 +503,14 @@ static REBSER *Trim_Object(REBSER *obj)
 			if (IS_DATATYPE(arg)) types |= TYPESET(VAL_DATATYPE(arg));
 			else types |= VAL_TYPESET(arg);
 		}
-		obj = Copy_Block(VAL_OBJ_FRAME(value), 0);
+		src_obj = VAL_OBJ_FRAME(value);
+		obj = Copy_Block(src_obj, 0);
 		VAL_OBJ_FRAME(value) = obj;
-		if (types != 0) Copy_Deep_Values(obj, 1, SERIES_TAIL(obj), types);
+		if (types != 0) {
+			// Register the root, so self references are redirected to the copy
+			REB_COPY_LOOP root = {src_obj, obj, NULL};
+			Copy_Deep_Values_Loop(obj, 1, SERIES_TAIL(obj), types, (types & CP_DEEP) ? &root : NULL);
+		}
 		break; // returns value
 	}
 	case A_SELECT:

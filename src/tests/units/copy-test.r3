@@ -332,6 +332,22 @@ not-copyable-data: make object! [
 		--assert not same? o1/o/s o8/o/s
 		--assert not same? o1/o/o o8/o/o
 
+	--test-- "copy/deep/types object with self reference"
+		cto2-o: make object! [x: _]
+		cto2-o/x: cto2-o
+		--assert object? cto2-c: attempt [copy/deep/types cto2-o object!]
+		--assert not same? cto2-c cto2-o
+		--assert same? cto2-c cto2-c/x
+		--assert same? cto2-o cto2-o/x    ;; original untouched
+
+	--test-- "copy/deep/types object with nested object referencing parent"
+		cto3-o: make object! [x: _]
+		cto3-o/x: make object! [p: _]
+		cto3-o/x/p: cto3-o
+		--assert object? cto3-c: attempt [copy/deep/types cto3-o object!]
+		--assert not same? cto3-c/x cto3-o/x
+		--assert same? cto3-c cto3-c/x/p
+
 	--test-- "copy-types-1"
 		cto1-o: make object! [s: "s" b: [1 2] f: func [][s]]
 		cto1-c: copy/types cto1-o block!
