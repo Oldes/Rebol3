@@ -1,11 +1,14 @@
 REBOL [
 	Title:   "Universal Rebol extension code generator"
 	Name:    make-extension
-	Version: 0.5.0
+	Version: 0.7.0
 	Author:  @Oldes
 	Purpose: {
 		Generates the C header and command-table sources of a Rebol
-		extension from a declarative specification file.
+		extension from a declarative specification file, and refreshes the
+		reference sections of the extension's README from the very same
+		file, so the documentation cannot drift away from the commands and
+		handles which are actually built.
 
 		The specification is data only (never evaluated) - see
 		`src/extensions/<name>/<name>.reb`.
@@ -13,6 +16,21 @@ REBOL [
 		Mezzanine code may be written inline in the spec's `mezzanine:`
 		field, or kept in separate Rebol files listed in `reb-include:`
 		and merged into the module at generation time.
+
+		Everything above the README's "## Extension commands:" heading is
+		hand written and left untouched. A README which does not exist is
+		reported and skipped, not created.
+
+		Usage:
+			r3 make-extension.r3 src/foo.reb                            ;== no doc
+			r3 make-extension.r3 src/foo.reb --readme                   ;== defaults to README.md
+			r3 make-extension.r3 src/foo.reb --readme foo.md            ;== custom file
+			r3 make-extension.r3 src/foo.reb --commands                 ;== defaults to Commands.md
+			r3 make-extension.r3 src/foo.reb --commands docs/Commands.md
+
+		NOTE: the README part used to live in a separate make-readme.r3
+		script; it is merged here so that the specification is loaded once
+		and a build cannot regenerate one without the other.
 	}
 ]
 
@@ -62,7 +80,28 @@ to-c-string: func [
 	out
 ]
 
-;-- main -----------------------------------------------------------------------
+raw-block: function [
+	"Returns the source text of a top level `name: [...]` field, comments included"
+	source [string!]
+	name   [string!]
+][
+	unless all [
+		start: find/tail source ajoin [LF name]
+		start: find start #"["
+	][	return none ]
+	pos: next start
+	depth: 1
+	while [all [depth > 0  not tail? pos]][
+		switch pos/1 [
+			#"["  [++ depth]
+			#"]"  [-- depth]
+			#";"  [pos: any [find pos LF  tail pos]]
+			#"^"" [pos: any [find next pos #"^""  tail pos]]
+		]
+		pos: next pos
+	]
+	trim/auto copy/part next start (index? pos) - (index? next start) - 1
+]
 
 handle-words: function [
 	"Collects path-accessor words from handle specifications"
@@ -88,16 +127,168 @@ handle-words: function [
 	out
 ]
 
+;-- command reference ----------------------------------------------------------
+
+commands-doc: function [
+	"Formats the `commands:` block as markdown"
+	commands [block!]
+][
+	out: copy ""
+	hdr: copy ""
+	arg: copy ""
+	cmd: desc: a: t: s: r: none
+
+	parse commands [
+		any [
+			set cmd set-word! into [
+				(
+					clear hdr clear arg r: none
+					append hdr ajoin [LF LF "#### `" to word! cmd "`"]
+				)
+				set desc opt string!
+				any [
+					set a word!
+					set t opt block!
+					set s opt string!
+					(
+						;; only the arguments before the first refinement
+						;; belong to the command's signature
+						unless r [append hdr ajoin [" `:" a "`"]]
+						append arg ajoin [LF "* `" a "`"]
+						if t [append arg ajoin [" `" mold t "`"]]
+						if s [append arg ajoin [" " s]]
+					)
+					|
+					set r refinement!
+					set s opt string!
+					(
+						append arg ajoin [LF "* `/" r "`"]
+						if s [append arg ajoin [" " s]]
+					)
+				]
+				(
+					append out hdr
+					append out LF
+					append out any [desc ""]
+					append out arg
+				)
+			]
+		]
+	]
+	out
+]
+
+;-- handle reference -----------------------------------------------------------
+
+handles-doc: function [
+	"Formats the `handles:` block as markdown"
+	handles [block!]
+][
+	out: copy ""
+	foreach [name spec] handles [
+		append out ajoin [
+			LF LF "#### __" uppercase form to word! name "__ - " spec/1 LF
+			LF "```rebol"
+			LF ";Refinement       Gets                Sets                          Description"
+		]
+		foreach [key gets sets desc] next spec [
+			append out ajoin [
+				LF
+				#"/" pad key 17
+				pad mold gets 20
+				pad mold sets 30
+				#"^"" desc #"^""
+			]
+		]
+		append out "^/```"
+	]
+	out
+]
+
+;-- README ---------------------------------------------------------------------
+
+build-doc: function [
+	"Returns the generated reference from an already loaded specification"
+	spec   [object!] "The specification, as constructed by build-extension"
+	source [string!] "Raw text of the specification file"
+][
+	doc: ajoin [
+		"^/## Extension commands:^/"
+		commands-doc any [field spec 'commands []]
+	]
+
+	;; Only extensions which declare handles get the accessor reference - an
+	;; empty section under that heading says nothing.
+	if all [handles: field spec 'handles  not empty? handles][
+		append doc ajoin [
+			LF LF
+			LF "## Used handles and its getters / setters"
+			handles-doc handles
+		]
+	]
+
+	;; The mezzanine is taken as raw text, not as data, so that the comments
+	;; explaining the values survive into the documentation.
+	if mezz: raw-block source "mezzanine:" [
+		append doc ajoin [
+			LF LF
+			LF "## Other extension values:"
+			LF "```rebol"
+			LF trim/tail mezz
+			LF "```"
+		]
+	]
+	append doc LF
+]
+
+build-readme: function [
+	"Rewrites the generated part of a README from an already loaded specification"
+	readme [file!]   "README to update"
+	spec   [object!] "The specification, as constructed by build-extension"
+	source [string!] "Raw text of the specification file"
+][
+	text: read/string readme
+	if found: find text "^/## Extension commands:^/" [ clear found ]
+	append text build-doc spec source
+	write readme text
+
+	print ["README updated:" mold readme]
+	readme
+]
+
+build-commands: function [
+	"Writes the generated reference into a standalone file, replacing it whole"
+	target [file!]   "File to write (created when missing)"
+	spec   [object!] "The specification, as constructed by build-extension"
+	source [string!] "Raw text of the specification file"
+][
+	write target ajoin [
+		"<!-- auto-generated by make-extension.r3, do not modify! -->^/"
+		build-doc spec source
+	]
+	print ["Commands written:" mold target]
+	target
+]
+
+;-- main -----------------------------------------------------------------------
+
 build-extension: function [
 	"Generates extension C sources from a specification file"
 	file [file!] "Extension specification"
 	/into
 	 dir  [file!] "Output directory (default: the spec's own directory)"
+	/readme       "Updates the generated part of a README"
+	 rme  [file! none!] "Target (default: %README.md above the spec)"
+	/commands-md  "Writes the reference into a standalone file"
+	 md   [file! none!] "Target (default: %Commands.md above the spec)"
 ][
+	;; the raw text is kept as well - the README generator reads the
+	;; `mezzanine:` block from it, comments and layout included
+	source: read/string file
 	src:  load/header file
 	hdr:  take src
 	spec: construct src
-	?? spec
+	;?? spec
 
 	unless dir [dir: first split-path file]
 
@@ -129,7 +320,10 @@ build-extension: function [
 	;; what lets the build collect it without a per-extension declaration.
 	os-init-name: ajoin ["OS_Init_Ext_" ext-cap1]
 	init-block-name: ajoin [ext-id "_init_block"]
-	cmd-max:      ajoin ["CMD_" ext-caps "_MAX"]
+	;; Double underscore, so the terminator cannot collide with a command
+	;; named `max` (CMD_<EXT>_MAX); only `_max` or `-max` could reach it,
+	;; and the duplicate check below catches that.
+	cmd-max:      ajoin ["CMD_" ext-caps "__MAX"]
 	header-file:  ajoin [%gen- ext-name %.h]
 	table-file:   ajoin [%gen- ext-name %.c]
 
@@ -399,17 +593,55 @@ int $call-name(int cmd, RXIFRM *frm, void *ctx) {
 	write rejoin [dir header-file] reword header-template vars
 	write rejoin [dir table-file]  reword table-template  vars
 
-	;; TODO: README generation from `handles:` plus tagged comments read
-	;; from the raw spec text (deferred - see notes).
+	;-- documentation -----------------------------------------------------------
+	;; The same specification which produced the sources above also carries
+	;; the command and handle reference, so both can be refreshed in one go.
+	case [
+		commands-md [
+			unless md [
+				md: clean-path rejoin [first split-path clean-path file %../Commands.md]
+			]
+			rme: build-commands md spec source
+		]
+		readme [
+			? rme
+			unless rme [
+				rme: clean-path rejoin [first split-path clean-path file %../README.md]
+			]
+			? rme
+			either probe exists? rme [
+				build-readme rme spec source
+			][
+				print ["README not found, skipping:" mold rme]
+				rme: none
+			]
+		]
+	]
 
-	reduce [header-file table-file]
+	reduce [header-file table-file rme]
 ]
 
-src: none
+;-- command line ---------------------------------------------------------------
+
+args: any [system/script/args []]
+src:  none
+
+;; the optional file following a switch (anything not being another switch)
+file-after: func [pos [block!]][
+	all [pos: pos/2  not find/match pos "--"  to-real-file pos]
+]
 
 if all [
-	probe src: first system/script/args
-	probe src: attempt [to-real-file src]
+	src: first args
+	src: attempt [to-real-file src]
 ][
-	build-extension src
+	case [
+		pos: any [find args '--commands find args "--commands"]
+			[build-extension/commands-md src file-after pos]
+		pos: any [find args '--readme   find args "--readme"  ]
+			[build-extension/readme      src file-after pos]
+		true
+			[build-extension src]
+	]
 ]
+
