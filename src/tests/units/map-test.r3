@@ -194,6 +194,24 @@ Rebol [
 	--assert not equal? #[a: 1 b: 2] :m
 
 
+	--test-- "equal? on self-referencing maps"
+		eqm1-a: #[x: 1]  eqm1-a/self: eqm1-a
+		eqm1-b: #[x: 1]  eqm1-b/self: eqm1-b
+		--assert attempt [equal? eqm1-a eqm1-b]
+		--assert attempt [equal? eqm1-a eqm1-a]  ;; same series, short-circuits
+		eqm1-b/x: 2
+		--assert not attempt [equal? eqm1-a eqm1-b]
+
+	--test-- "equal? on copied self-referencing map"
+		eqm2-m: #[]  eqm2-m/self: eqm2-m
+		eqm2-c: copy/deep/types eqm2-m map!
+		--assert attempt [equal? eqm2-c eqm2-m]
+
+	--test-- "equal? on self-referencing blocks"
+		eqb1-a: [1]  append/only eqb1-a eqb1-a
+		eqb1-b: [1]  append/only eqb1-b eqb1-b
+		--assert attempt [equal? eqb1-a eqb1-b]
+
 ===end-group===
 
 

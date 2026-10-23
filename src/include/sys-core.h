@@ -113,6 +113,12 @@ typedef struct reb_copy_loop {
 	struct reb_copy_loop *prev;
 } REB_COPY_LOOP;
 
+typedef struct reb_cmp_loop {
+	REBSER *a, *b;      // series being compared
+	REBCNT ai, bi;      // and their indexes
+	struct reb_cmp_loop *prev;
+} REB_CMP_LOOP;
+
 #include "reb-file.h"
 #include "reb-filereq.h"
 #include "reb-math.h"

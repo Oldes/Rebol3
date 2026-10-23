@@ -211,20 +211,44 @@ is_true:
 
 /***********************************************************************
 **
-*/	REBINT Cmp_Block(REBVAL *sval, REBVAL *tval, REBFLG is_case)
+*/	REBFLG In_Cmp_Loop(REB_CMP_LOOP *loop, REBVAL *a, REBVAL *b)
+/*
+**		Returns TRUE if the pair of series values is already being
+**		compared (circular reference).
+**
+***********************************************************************/
+{
+	REBSER *sa = VAL_SERIES(a), *sb = VAL_SERIES(b);
+	REBCNT ia = VAL_INDEX(a), ib = VAL_INDEX(b);
+	for (; loop; loop = loop->prev) {
+		if ((loop->a == sa && loop->b == sb && loop->ai == ia && loop->bi == ib)
+		 || (loop->a == sb && loop->b == sa && loop->ai == ib && loop->bi == ia))
+			return TRUE;
+	}
+	return FALSE;
+}
+
+
+/***********************************************************************
+**
+*/	REBINT Cmp_Block_Loop(REBVAL *sval, REBVAL *tval, REBFLG is_case, REB_CMP_LOOP *loop)
 /*
 **		Compare two blocks and return the difference of the first
 **		non-matching value.
+**		A pair of blocks already being compared is considered equal.
 **
 ***********************************************************************/
 {
 	REBVAL	*s;
 	REBVAL	*t;
 	REBINT	diff;
+	REB_CMP_LOOP node;
 
 	if ((VAL_SERIES(sval)==VAL_SERIES(tval))&&
 	 (VAL_INDEX(sval)==VAL_INDEX(tval)))
 		 return 0;
+
+	if (In_Cmp_Loop(loop, sval, tval)) return 0;
 
 	REBLEN len = VAL_TAIL(sval) >= VAL_INDEX(sval) ? VAL_TAIL(sval) - VAL_INDEX(sval) : 0;
 
@@ -235,12 +259,28 @@ is_true:
 
 	CHECK_STACK(&s);
 
+	node.a  = VAL_SERIES(sval);
+	node.b  = VAL_SERIES(tval);
+	node.ai = VAL_INDEX(sval);
+	node.bi = VAL_INDEX(tval);
+	node.prev = loop;
+
 	while (len--> 0) {
-		if ((diff = Cmp_Value(s, t, is_case)) != 0)
+		if ((diff = Cmp_Value_Loop(s, t, is_case, &node)) != 0)
 			return diff;
 		s++, t++;
 	}
 	return 0;// VAL_TYPE(s) - VAL_TYPE(t);
+}
+
+
+/***********************************************************************
+**
+*/	REBINT Cmp_Block(REBVAL *sval, REBVAL *tval, REBFLG is_case)
+/*
+***********************************************************************/
+{
+	return Cmp_Block_Loop(sval, tval, is_case, NULL);
 }
 
 
@@ -251,6 +291,19 @@ is_true:
 **		Compare two values and return the difference.
 **
 **		is_case TRUE for case sensitive compare
+**
+***********************************************************************/
+{
+	return Cmp_Value_Loop(s, t, is_case, NULL);
+}
+
+
+/***********************************************************************
+**
+*/	REBINT Cmp_Value_Loop(REBVAL *s, REBVAL *t, REBFLG is_case, REB_CMP_LOOP *loop)
+/*
+**		Same as Cmp_Value, with a chain of series being compared
+**		(circularity detection).
 **
 ***********************************************************************/
 {
@@ -331,7 +384,7 @@ chkMoney:
 	case REB_SET_PATH:
 	case REB_GET_PATH:
 	case REB_LIT_PATH:
-		return Cmp_Block(s, t, is_case);
+		return Cmp_Block_Loop(s, t, is_case, loop);
 
 	case REB_STRING:
 	case REB_FILE:

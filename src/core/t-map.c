@@ -83,8 +83,18 @@
 **
 */	REBINT Cmp_Map(REBVAL* sval, REBVAL* tval, REBFLG is_case)
 /*
+***********************************************************************/
+{
+	return Cmp_Map_Loop(sval, tval, is_case, NULL);
+}
+
+/***********************************************************************
+**
+*/	REBINT Cmp_Map_Loop(REBVAL* sval, REBVAL* tval, REBFLG is_case, REB_CMP_LOOP *loop)
+/*
 **		Compare two maps and return 0 if maps have same keys and equal values.
 **		Keys may be in different order!
+**		A pair of maps already being compared is considered equal.
 **
 ***********************************************************************/
 {
@@ -94,16 +104,18 @@
 	REBSER* hser;
 	REBCNT* hashes = NULL;
 	REBCNT  slen, tlen;
+	REB_CMP_LOOP node;
 
 	if (VAL_SERIES(sval) == VAL_SERIES(tval))
 		return 0;
+
+	if (In_Cmp_Loop(loop, sval, tval)) return 0;
 
 	// Compare real map lengths (ignoring deleted values)
 	slen = Length_Map(VAL_SERIES(sval));
 	tlen = Length_Map(VAL_SERIES(tval));
 	if (slen != tlen) return -1;
 
-	hser = VAL_SERIES(tval)->series;
 	if (VAL_TAIL(sval) < VAL_TAIL(tval)) {
 		// Make sure that the larger map will be on the left side!
 		val = sval;	sval = tval; tval = val;
@@ -111,6 +123,11 @@
 
 	hser = VAL_SERIES(tval)->series;
 	if (hser) hashes = (REBCNT*)hser->data;
+
+	node.a  = VAL_SERIES(sval);
+	node.b  = VAL_SERIES(tval);
+	node.ai = node.bi = 0;
+	node.prev = loop;
 
 	// Traverse all keys of the left map and compare values if found in the second map
 	for (key = VAL_BLK(sval); NOT_END(key) && NOT_END(key + 1); key += 2) {
@@ -124,7 +141,7 @@
 			if (VAL_MAP_REMOVED(VAL_BLK_SKIP(tval,idx))) return -1;
 		}
 		// compare both values
-		if (Cmp_Value(key + 1, VAL_BLK_SKIP(tval, idx + 1), is_case) != 0) return -1;
+		if (Cmp_Value_Loop(key + 1, VAL_BLK_SKIP(tval, idx + 1), is_case, &node) != 0) return -1;
 	}
 	return 0;
 }
