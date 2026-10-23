@@ -1451,6 +1451,13 @@ REBFLG Get_Image_Source(REBVAL *val, REBYTE **data, REBCNT *len)
 	REBCNT sym;
 	REBYTE *bin;  // raw data of a binary or vector argument
 	REBCNT blen;  // and their length in bytes
+	// Read now, while `data` is still an image: when the previous step of
+	// the path returned its result in pvs->store (a handle accessor does),
+	// `data` IS pvs->store - the very cell a getter below writes its answer
+	// into. Writing a pair there overwrites the series pointer, and any
+	// VAL_IMAGE_* read of `data` after that follows a float as a pointer.
+	REBCNT wide = VAL_IMAGE_WIDE(data);
+	REBCNT high = VAL_IMAGE_HIGH(data);
 
 	if(pvs->path && !IS_END(pvs->path+1)) val = NULL;
 
@@ -1470,14 +1477,16 @@ REBFLG Get_Image_Source(REBVAL *val, REBYTE **data, REBCNT *len)
 
 			case SYM_SIZE:
 				VAL_SET(val, REB_PAIR);
-				VAL_PAIR_X(val) = (REBD32)VAL_IMAGE_WIDE(data);
-				VAL_PAIR_Y(val) = (REBD32)VAL_IMAGE_HIGH(data);
+				VAL_PAIR_X(val) = (REBD32)wide;
+				VAL_PAIR_Y(val) = (REBD32)high;
 				break;
 			case SYM_WIDTH:
 				SET_INTEGER(val, VAL_IMAGE_WIDE(data));
+				SET_INTEGER(val, wide);
 				break;
 			case SYM_HEIGHT:
 				SET_INTEGER(val, VAL_IMAGE_HIGH(data));
+				SET_INTEGER(val, high);
 				break;
 
 			case SYM_RGB:
