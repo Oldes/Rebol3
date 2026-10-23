@@ -332,6 +332,65 @@ not-copyable-data: make object! [
 		--assert not same? o1/o/s o8/o/s
 		--assert not same? o1/o/o o8/o/o
 
+	--test-- "copy-types-1"
+		cto1-o: make object! [s: "s" b: [1 2] f: func [][s]]
+		cto1-c: copy/types cto1-o block!
+		--assert not same? cto1-o/b cto1-c/b
+		--assert same? cto1-o/s cto1-c/s
+		--assert same? :cto1-o/f :cto1-c/f     ;; function not cloned
+		cto1-c/s: "t"
+		--assert "s" = do [cto1-c/f]           ;; copy does not rebind
+		cto1-m: make cto1-o []
+		cto1-m/s: "t"
+		--assert "t" = do [cto1-m/f]           ;; make rebinds
+		--assert "s" = do [cto1-o/f]           ;; original untouched
+
+	--test-- "copy-types-2"
+		cto2-o: make object! [s: "s" b: [1 2]]
+		cto2-c: copy/deep/types cto2-o string!
+		--assert not same? cto2-o/s cto2-c/s
+		--assert same? cto2-o/b cto2-c/b
+
+	--test-- "copy-types-3"								;-- nested object!, one level
+		cto3-o: make object! [sub: make object! [z: [3]]]
+		cto3-c: copy/types cto3-o object!
+		--assert not same? cto3-o/sub cto3-c/sub
+		--assert same? cto3-o/sub/z cto3-c/sub/z
+		cto3-c/sub/z: [4]
+		--assert [3] = cto3-o/sub/z
+
+	--test-- "copy-types-4"								;-- nested object!, deep
+		cto4-o: make object! [sub: make object! [z: [3] m: #[k: "v"]]]
+		cto4-c: copy/deep/types cto4-o union series! make typeset! [object! map!]
+		--assert not same? cto4-o/sub cto4-c/sub
+		--assert not same? cto4-o/sub/z cto4-c/sub/z
+		--assert not same? cto4-o/sub/m cto4-c/sub/m
+		--assert "v" = select cto4-c/sub/m 'k
+
+	--test-- "copy-types-5"								;-- non-copyable types only
+		cto5-o: make object! [s: "s" b: [1]]
+		cto5-c: copy/types cto5-o integer!
+		--assert not same? cto5-o cto5-c
+		--assert same? cto5-o/s cto5-c/s
+		--assert same? cto5-o/b cto5-c/b
+
+	--test-- "copy-types-6"								;-- cycle
+		cto6-o: make object! [p: _]
+		cto6-o/p: cto6-o
+		--assert same? cto6-o cto6-o/p
+		--assert all [
+			object? attempt [cto6-c: copy/deep/types cto6-o object!]
+			not same? cto6-o cto6-c
+			not same? cto6-o cto6-c/p
+		]
+
+	--test-- "copy-types-7"								;-- error!
+		cto7-e: try [1 / 0]
+		cto7-c: copy/types reduce [cto7-e] error!
+		--assert error? cto7-c/1
+		--assert not same? cto7-e cto7-c/1
+		--assert cto7-c/1/id = 'zero-divide
+
 ===end-group===
 
 
