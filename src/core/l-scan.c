@@ -691,14 +691,14 @@ new_line:
 ***********************************************************************/
 {
 	REBYTE term = 0;
-	const REBYTE *invalid = cb_cast(":;()[]\"^");
+	const REBYTE *invalid = cb_cast(";()[]\"^");
 
 	if (*cp == '%') cp++, len--;
 	if (*cp == '"') {
 		cp++;
 		len--;
 		term = '"';
-		invalid = cb_cast(":;\"");
+		invalid = cb_cast(";\"");
 	}
 	cp = Scan_Item(cp, cp + len, term, invalid, NULL);
 	if (cp)
@@ -1987,7 +1987,9 @@ extern REBSER *Scan_Full_Block(SCAN_STATE *scan_state, REBYTE mode_char);
 			if (*ep == '/') {
 				ep++;
 				scan_state->begin = ep;  // skip next /
-				if (*ep != '(' && IS_LEX_DELIMIT(*ep)) {
+				// Allowed delimiters after `/` are only: `(` for a paren
+				// and `"` for a simple (single line) string (like in Red)
+				if (*ep != '(' && *ep != '"' && IS_LEX_DELIMIT(*ep)) {
 					token = TOKEN_PATH;
 					goto syntax_error;
 				}

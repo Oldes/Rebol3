@@ -1303,6 +1303,79 @@
 
 /***********************************************************************
 **
+*/	void Query_Fields(REBVAL *value, REBVAL *field, REBVAL *spec, REB_QUERY_FN query_field, void *ctx, REBVAL *ret)
+/*
+**		Shared QUERY/REFLECT for datatypes with an info object
+**		in system/standard (`info` is its STD_*_INFO index).
+**
+**		field:
+**			word!   - one field (or `words`, `spec`)
+**			block!  - [year :month] -> [year: 2026 10]
+**			          (get-words return only the value; the block itself is not modified)
+**			none!   - names of all fields
+**			other   - (object!) object with all fields filled
+**
+***********************************************************************/
+{
+	REBVAL *word, *out;
+	REBVAL tmp;
+	REBSER *ser;
+	REBCNT n;
+
+	if (!IS_OBJECT(spec)) Trap_Arg(spec);
+
+	if (IS_WORD(field)) {
+		switch (VAL_WORD_CANON(field)) {
+		case SYM_WORDS:
+			Set_Block(ret, Get_Object_Words(spec));
+			return;
+		case SYM_SPEC:
+			*ret = *value;
+			return;
+		}
+		if (!query_field(value, field, ret, ctx))
+			Trap_Reflect(VAL_TYPE(value), field);
+	}
+	else if (IS_BLOCK(field)) {
+		ser = Make_Block(2 * VAL_BLK_LEN(field));
+		SAVE_SERIES(ser); // fields may allocate (e.g. vector median)
+		for (word = VAL_BLK_DATA(field); NOT_END(word); word++) {
+			if (!ANY_WORD(word)) Trap1(RE_INVALID_ARG, word);
+			if (!IS_GET_WORD(word)) {
+				out = Append_Value(ser);
+				*out = *word;
+				VAL_TYPE(out) = REB_SET_WORD;
+				VAL_SET_LINE(out);
+			}
+			tmp = *word;
+			VAL_TYPE(&tmp) = REB_WORD;
+			out = Append_Value(ser);
+			if (!query_field(value, &tmp, out, ctx))
+				Trap1(RE_INVALID_ARG, word);
+		}
+		UNSAVE_SERIES(ser);
+		Set_Series(REB_BLOCK, ret, ser);
+	}
+	else if (IS_NONE(field)) {
+		Set_Block(ret, Get_Object_Words(spec));
+	}
+	else {
+		ser = CLONE_OBJECT(VAL_OBJ_FRAME(spec));
+		SAVE_SERIES(ser);
+		word = BLK_HEAD(VAL_OBJ_WORDS(spec));
+		for (n = 0; NOT_END(word); word++, n++) {
+			tmp = *word;
+			VAL_TYPE(&tmp) = REB_WORD;
+			query_field(value, &tmp, OFV(ser, n), ctx);
+		}
+		UNSAVE_SERIES(ser);
+		SET_OBJECT(ret, ser);
+	}
+}
+
+
+/***********************************************************************
+**
 */  void Set_Var(REBVAL *word, REBVAL *value)
 /*
 **      Set the word (variable) value. (Use macro when possible).

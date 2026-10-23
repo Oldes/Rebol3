@@ -44,7 +44,6 @@ not-copyable-data: make object! [
 	time:     1:1:1
 	logic:    #(true)
 	none:     #(none)
-	gob:      #(gob![size: 20x20])
 	word:     'foo
 	lit-word: quote 'foo
 	set-word: quote foo:
@@ -193,6 +192,45 @@ not-copyable-data: make object! [
 		--assert not same? m1/m/o m8/m/o
 		--assert not same? m1/o/s m8/o/s
 		--assert not same? m1/o/o m8/o/o
+
+	--test-- "copy/types map string!"
+		ctm1-m: #[a: "x" b: "y" c: #[d: "z"]]
+		remove/key ctm1-m 'b
+		ctm1-c: copy/types ctm1-m string!
+		--assert 2 = length? ctm1-c
+		--assert "x" = select ctm1-c 'a
+		--assert not same? ctm1-m/a ctm1-c/a
+		--assert same? ctm1-m/c ctm1-c/c
+
+	--test-- "copy/types map map!"
+		ctm2-m: #[c: #[d: "z"]]
+		ctm2-c: copy/types ctm2-m map!
+		--assert not same? ctm2-m/c ctm2-c/c
+		--assert same? ctm2-m/c/d ctm2-c/c/d
+		ctm2-c: copy/deep/types ctm2-m union series! make typeset! [map!]
+		--assert not same? ctm2-m/c/d ctm2-c/c/d
+
+	--test-- "copy/deep/types map with self reference"
+		ctm3-m: #[]
+		ctm3-m/self: ctm3-m
+		--assert all [
+			;@@ In Red this throws an error:
+			not error? ctm3-c: try [copy/deep/types ctm3-m map!]
+			not same? ctm3-m ctm3-c
+			same? ctm3-c ctm3-c/self
+		]
+
+	--test-- "copy/deep/types nested map referencing parent"
+		ctm4-m: #[]
+		ctm4-m/a: #[]
+		ctm4-m/a/p: ctm4-m
+		--assert all [
+			;@@ In Red this throws an error:
+			map? ctm4-c: try [copy/deep/types ctm4-m map!]
+			not same? ctm4-c/a ctm4-m/a
+			same? ctm4-c ctm4-c/a/p
+		]
+
 ===end-group===
 
 
@@ -293,6 +331,82 @@ not-copyable-data: make object! [
 		--assert not same? o1/m/o o8/m/o
 		--assert not same? o1/o/s o8/o/s
 		--assert not same? o1/o/o o8/o/o
+
+	--test-- "copy/deep/types object with self reference"
+		cto2-o: make object! [x: _]
+		cto2-o/x: cto2-o
+		--assert object? cto2-c: attempt [copy/deep/types cto2-o object!]
+		--assert not same? cto2-c cto2-o
+		--assert same? cto2-c cto2-c/x
+		--assert same? cto2-o cto2-o/x    ;; original untouched
+
+	--test-- "copy/deep/types object with nested object referencing parent"
+		cto3-o: make object! [x: _]
+		cto3-o/x: make object! [p: _]
+		cto3-o/x/p: cto3-o
+		--assert object? cto3-c: attempt [copy/deep/types cto3-o object!]
+		--assert not same? cto3-c/x cto3-o/x
+		--assert same? cto3-c cto3-c/x/p
+
+	--test-- "copy-types-1"
+		cto1-o: make object! [s: "s" b: [1 2] f: func [][s]]
+		cto1-c: copy/types cto1-o block!
+		--assert not same? cto1-o/b cto1-c/b
+		--assert same? cto1-o/s cto1-c/s
+		--assert same? :cto1-o/f :cto1-c/f     ;; function not cloned
+		cto1-c/s: "t"
+		--assert "s" = do [cto1-c/f]           ;; copy does not rebind
+		cto1-m: make cto1-o []
+		cto1-m/s: "t"
+		--assert "t" = do [cto1-m/f]           ;; make rebinds
+		--assert "s" = do [cto1-o/f]           ;; original untouched
+
+	--test-- "copy-types-2"
+		cto2-o: make object! [s: "s" b: [1 2]]
+		cto2-c: copy/deep/types cto2-o string!
+		--assert not same? cto2-o/s cto2-c/s
+		--assert same? cto2-o/b cto2-c/b
+
+	--test-- "copy-types-3"								;-- nested object!, one level
+		cto3-o: make object! [sub: make object! [z: [3]]]
+		cto3-c: copy/types cto3-o object!
+		--assert not same? cto3-o/sub cto3-c/sub
+		--assert same? cto3-o/sub/z cto3-c/sub/z
+		cto3-c/sub/z: [4]
+		--assert [3] = cto3-o/sub/z
+
+	--test-- "copy-types-4"								;-- nested object!, deep
+		cto4-o: make object! [sub: make object! [z: [3] m: #[k: "v"]]]
+		cto4-c: copy/deep/types cto4-o union series! make typeset! [object! map!]
+		--assert not same? cto4-o/sub cto4-c/sub
+		--assert not same? cto4-o/sub/z cto4-c/sub/z
+		--assert not same? cto4-o/sub/m cto4-c/sub/m
+		--assert "v" = select cto4-c/sub/m 'k
+
+	--test-- "copy-types-5"								;-- non-copyable types only
+		cto5-o: make object! [s: "s" b: [1]]
+		cto5-c: copy/types cto5-o integer!
+		--assert not same? cto5-o cto5-c
+		--assert same? cto5-o/s cto5-c/s
+		--assert same? cto5-o/b cto5-c/b
+
+	--test-- "copy-types-6"								;-- cycle
+		cto6-o: make object! [p: _]
+		cto6-o/p: cto6-o
+		--assert same? cto6-o cto6-o/p
+		--assert all [
+			object? attempt [cto6-c: copy/deep/types cto6-o object!]
+			not same? cto6-o cto6-c
+			not same? cto6-o cto6-c/p
+		]
+
+	--test-- "copy-types-7"								;-- error!
+		cto7-e: try [1 / 0]
+		cto7-c: copy/types reduce [cto7-e] error!
+		--assert error? cto7-c/1
+		--assert not same? cto7-e cto7-c/1
+		--assert cto7-c/1/id = 'zero-divide
+
 ===end-group===
 
 
@@ -413,6 +527,13 @@ not-copyable-data: make object! [
 		--assert not same? b1/o/u b8/o/u
 		--assert not same? b1/o/b b8/o/b
 		--assert not same? b1/o/o b8/o/o
+
+	--test-- "copy/deep block with self reference"
+		cdb1-b: [1]
+		append/only cdb1-b cdb1-b
+		--assert block? cdb1-c: copy/deep cdb1-b
+		--assert not same? cdb1-c cdb1-b
+		--assert same? cdb1-c cdb1-c/2
 ===end-group===
 
 

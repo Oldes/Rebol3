@@ -98,7 +98,6 @@ REBOL [
 	task        self        object      +        +       *      *   object  
 	port        self        port        object   object  object -	object
 
-	gob         self        gob         *        *       *      *   -  
 	event       self        event       *        *       *      *   -  
 	handle      self        handle      -        -       *      -   -
 	struct      self        struct      *        *       *      *   -  

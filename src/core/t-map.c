@@ -83,8 +83,18 @@
 **
 */	REBINT Cmp_Map(REBVAL* sval, REBVAL* tval, REBFLG is_case)
 /*
+***********************************************************************/
+{
+	return Cmp_Map_Loop(sval, tval, is_case, NULL);
+}
+
+/***********************************************************************
+**
+*/	REBINT Cmp_Map_Loop(REBVAL* sval, REBVAL* tval, REBFLG is_case, REB_CMP_LOOP *loop)
+/*
 **		Compare two maps and return 0 if maps have same keys and equal values.
 **		Keys may be in different order!
+**		A pair of maps already being compared is considered equal.
 **
 ***********************************************************************/
 {
@@ -94,16 +104,18 @@
 	REBSER* hser;
 	REBCNT* hashes = NULL;
 	REBCNT  slen, tlen;
+	REB_CMP_LOOP node;
 
 	if (VAL_SERIES(sval) == VAL_SERIES(tval))
 		return 0;
+
+	if (In_Cmp_Loop(loop, sval, tval)) return 0;
 
 	// Compare real map lengths (ignoring deleted values)
 	slen = Length_Map(VAL_SERIES(sval));
 	tlen = Length_Map(VAL_SERIES(tval));
 	if (slen != tlen) return -1;
 
-	hser = VAL_SERIES(tval)->series;
 	if (VAL_TAIL(sval) < VAL_TAIL(tval)) {
 		// Make sure that the larger map will be on the left side!
 		val = sval;	sval = tval; tval = val;
@@ -111,6 +123,11 @@
 
 	hser = VAL_SERIES(tval)->series;
 	if (hser) hashes = (REBCNT*)hser->data;
+
+	node.a  = VAL_SERIES(sval);
+	node.b  = VAL_SERIES(tval);
+	node.ai = node.bi = 0;
+	node.prev = loop;
 
 	// Traverse all keys of the left map and compare values if found in the second map
 	for (key = VAL_BLK(sval); NOT_END(key) && NOT_END(key + 1); key += 2) {
@@ -124,7 +141,7 @@
 			if (VAL_MAP_REMOVED(VAL_BLK_SKIP(tval,idx))) return -1;
 		}
 		// compare both values
-		if (Cmp_Value(key + 1, VAL_BLK_SKIP(tval, idx + 1), is_case) != 0) return -1;
+		if (Cmp_Value_Loop(key + 1, VAL_BLK_SKIP(tval, idx + 1), is_case, &node) != 0) return -1;
 	}
 	return 0;
 }
@@ -312,6 +329,7 @@
 				// Key already exists so update the value, if needed...
 				if (val) {
 					set = BLK_SKIP(series, hash);
+					VAL_CLR_OPT(set - 1, OPTS_HIDE); // clear HIDE flag in case it was removed key
 					*set = *val;
 				}
 				// Return 
@@ -448,13 +466,15 @@ new_entry:
 
 /***********************************************************************
 **
-*/	REBSER *Copy_Map(REBVAL *val, REBU64 types)
+*/	REBSER *Copy_Map_Loop(REBVAL *val, REBU64 types, REB_COPY_LOOP *loop)
 /*
 **		Copy the given map's key/value pairs. Don't hash until necessary.
+**		Loop is a chain of series being copied (circularity detection).
 **
 ***********************************************************************/
 {
 	REBSER *series;
+	REB_COPY_LOOP node;
 	ASSERT1(IS_MAP(val) || IS_BLOCK(val) || IS_PAREN(val), RP_INTERNAL);
 	series = Make_Map(VAL_BLK_LEN(val) / 2);
 	if (IS_MAP(val)) {
@@ -468,9 +488,25 @@ new_entry:
 		// There may be duplicates, so we must append each key/value pair.
 		Append_Map(series, val, UNKNOWN);
 	}
-	if (types != 0) Copy_Deep_Values(series, 0, SERIES_TAIL(series), types);
-	//Rehash_Hash(series); // It will be rehashed only when needed.
+	if (types != 0) {
+		if (IS_MAP(val)) {
+			node.src  = VAL_SERIES(val);
+			node.dst  = series;
+			node.prev = loop;
+			loop = &node;
+		}
+		Copy_Deep_Values_Loop(series, 0, SERIES_TAIL(series), types, loop);
+	}
 	return series;
+}
+
+/***********************************************************************
+**
+*/	REBSER *Copy_Map(REBVAL *val, REBU64 types)
+/*
+***********************************************************************/
+{
+	return Copy_Map_Loop(val, types, NULL);
 }
 
 /***********************************************************************

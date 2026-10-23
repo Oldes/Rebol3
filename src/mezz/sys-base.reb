@@ -221,8 +221,8 @@ make-module*: func [
 		spec object!
 		body block!
 		mixins [object! none!]
-		spec/name [any-word! none!]
-		spec/type [any-word! none!]
+		spec/name [word! lit-word! none!]
+		spec/type [word! lit-word! none!]
 		spec/version [tuple! none!]
 		spec/options [block! none!]
 	]

@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2022 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -123,6 +123,10 @@ static REBOOL Nonblocking_Mode(SOCKET sock)
 	// Initialize Windows Socket API with given VERSION.
 	// It is ok to call twice, as long as WSACleanup twice.
 	if (WSAStartup(MAKEWORD(2, 2), &wsaData)) return DR_ERROR;
+	// Async DNS (WSAAsyncGetHost*) posts its result to the hidden window
+	// created by the event device, so it must exist before any lookup.
+	// (It is a no-op when the event device is already initialized.)
+	OS_Call_Device(RDI_EVENT, RDC_INIT);
 #endif
 	SET_FLAG(dev->flags, RDF_INIT);
 	return DR_DONE;

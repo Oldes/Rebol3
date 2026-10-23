@@ -194,6 +194,24 @@ Rebol [
 	--assert not equal? #[a: 1 b: 2] :m
 
 
+	--test-- "equal? on self-referencing maps"
+		eqm1-a: #[x: 1]  eqm1-a/self: eqm1-a
+		eqm1-b: #[x: 1]  eqm1-b/self: eqm1-b
+		--assert attempt [equal? eqm1-a eqm1-b]
+		--assert attempt [equal? eqm1-a eqm1-a]  ;; same series, short-circuits
+		eqm1-b/x: 2
+		--assert not attempt [equal? eqm1-a eqm1-b]
+
+	--test-- "equal? on copied self-referencing map"
+		eqm2-m: #[]  eqm2-m/self: eqm2-m
+		eqm2-c: copy/deep/types eqm2-m map!
+		--assert attempt [equal? eqm2-c eqm2-m]
+
+	--test-- "equal? on self-referencing blocks"
+		eqb1-a: [1]  append/only eqb1-a eqb1-a
+		eqb1-b: [1]  append/only eqb1-b eqb1-b
+		--assert attempt [equal? eqb1-a eqb1-b]
+
 ===end-group===
 
 
@@ -429,6 +447,31 @@ Rebol [
 		--assert 2 = length? m
 		--assert [ab: 1      ]  = to block! remove/key m 'AB
 		--assert 1 = length? m
+
+	--test-- "put after remove/key"
+	;@@ https://github.com/Oldes/Rebol-issues/issues/2722
+		;; small map (linear search, no hash table)
+		m: make map! 100
+		put m 'a [1]
+		remove/key m 'a
+		--assert [2] = put m 'a [2]
+		--assert 1 = length? m
+		--assert [a] = keys-of m
+		--assert [2] = m/a
+		--assert not empty? m
+		;; same using path set
+		m: make map! [a: 1 b: 2]
+		remove/key m 'a
+		m/a: 3
+		--assert all [m/a = 3 m/b = 2]
+		;; large map (hashed)
+		m: make map! []
+		repeat i 20 [put m join "k" i i]
+		remove/key m "k1"
+		--assert 19 = length? m
+		put m "k1" 100
+		--assert 20 = length? m
+		--assert 100 = m/("k1")
 
 ===end-group===
 

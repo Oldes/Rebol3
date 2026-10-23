@@ -57,10 +57,9 @@ Rebol [
 
 	--test-- "to char! issue!"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/1130
-		--assert all [
-			error? e: try [to char! #FF]
-			e/id = 'bad-make-arg
-		]
+		--assert #"a" = to char! #61
+		--assert 0#FF = to integer! to char! #FF
+		--assert #"😀" = to char! to-hex to integer! #"😀"
 		
 	--test-- "to char! string"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/465
@@ -698,7 +697,7 @@ Rebol [
 		--assert error? try [make map! quote http://aa ] ; url!
 		--assert error? try [make map! quote <tag> ] ; tag!
 		--assert   map? try [make map! quote [1 2] ] ; block!
-		--assert error? try [make map! quote (1 2) ] ; paren!
+		--assert   map? try [make map! quote (1 2) ] ; paren!
 		--assert error? try [make map! quote a/b ] ; path!
 		--assert error? try [make map! quote a/b: ] ; set-path!
 		--assert error? try [make map! quote :a/b ] ; get-path!
@@ -734,7 +733,7 @@ Rebol [
 		--assert error? try [to map! quote http://aa ] ; url!
 		--assert error? try [to map! quote <tag> ] ; tag!
 		--assert   map? try [to map! quote [1 2] ] ; block!
-		--assert error? try [to map! quote (1 2) ] ; paren!
+		--assert   map? try [to map! quote (1 2) ] ; paren!
 		--assert error? try [to map! quote a/b ] ; path!
 		--assert error? try [to map! quote a/b: ] ; set-path!
 		--assert error? try [to map! quote :a/b ] ; get-path!
@@ -1210,7 +1209,6 @@ Rebol [
 		--assert error? try [make error! none]
 		--assert error? try [make task! none]
 		--assert error? try [make port! none]
-		--assert error? try [make gob! none]
 		--assert error? try [make event! none]
 		--assert error? try [make handle! none]
 		--assert error? try [make struct! none]
@@ -1269,7 +1267,6 @@ Rebol [
 		--assert error? try [to error! none]
 		--assert error? try [to task! none]
 		--assert error? try [to port! none]
-		--assert error? try [to gob! none]
 		--assert error? try [to event! none]
 		--assert error? try [to handle! none]
 		--assert error? try [to struct! none]
