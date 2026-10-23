@@ -192,6 +192,45 @@ not-copyable-data: make object! [
 		--assert not same? m1/m/o m8/m/o
 		--assert not same? m1/o/s m8/o/s
 		--assert not same? m1/o/o m8/o/o
+
+	--test-- "copy/types map string!"
+		ctm1-m: #[a: "x" b: "y" c: #[d: "z"]]
+		remove/key ctm1-m 'b
+		ctm1-c: copy/types ctm1-m string!
+		--assert 2 = length? ctm1-c
+		--assert "x" = select ctm1-c 'a
+		--assert not same? ctm1-m/a ctm1-c/a
+		--assert same? ctm1-m/c ctm1-c/c
+
+	--test-- "copy/types map map!"
+		ctm2-m: #[c: #[d: "z"]]
+		ctm2-c: copy/types ctm2-m map!
+		--assert not same? ctm2-m/c ctm2-c/c
+		--assert same? ctm2-m/c/d ctm2-c/c/d
+		ctm2-c: copy/deep/types ctm2-m union series! make typeset! [map!]
+		--assert not same? ctm2-m/c/d ctm2-c/c/d
+
+	--test-- "copy/deep/types map with self reference"
+		ctm3-m: #[]
+		ctm3-m/self: ctm3-m
+		--assert all [
+			;@@ In Red this throws an error:
+			not error? ctm3-c: try [copy/deep/types ctm3-m map!]
+			not same? ctm3-m ctm3-c
+			same? ctm3-c ctm3-c/self
+		]
+
+	--test-- "copy/deep/types nested map referencing parent"
+		ctm4-m: #[]
+		ctm4-m/a: #[]
+		ctm4-m/a/p: ctm4-m
+		--assert all [
+			;@@ In Red this throws an error:
+			map? ctm4-c: try [copy/deep/types ctm4-m map!]
+			not same? ctm4-c/a ctm4-m/a
+			same? ctm4-c ctm4-c/a/p
+		]
+
 ===end-group===
 
 
@@ -292,6 +331,7 @@ not-copyable-data: make object! [
 		--assert not same? o1/m/o o8/m/o
 		--assert not same? o1/o/s o8/o/s
 		--assert not same? o1/o/o o8/o/o
+
 ===end-group===
 
 
@@ -412,6 +452,13 @@ not-copyable-data: make object! [
 		--assert not same? b1/o/u b8/o/u
 		--assert not same? b1/o/b b8/o/b
 		--assert not same? b1/o/o b8/o/o
+
+	--test-- "copy/deep block with self reference"
+		cdb1-b: [1]
+		append/only cdb1-b cdb1-b
+		--assert block? cdb1-c: copy/deep cdb1-b
+		--assert not same? cdb1-c cdb1-b
+		--assert same? cdb1-c cdb1-c/2
 ===end-group===
 
 

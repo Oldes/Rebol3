@@ -449,13 +449,15 @@ new_entry:
 
 /***********************************************************************
 **
-*/	REBSER *Copy_Map(REBVAL *val, REBU64 types)
+*/	REBSER *Copy_Map_Loop(REBVAL *val, REBU64 types, REB_COPY_LOOP *loop)
 /*
 **		Copy the given map's key/value pairs. Don't hash until necessary.
+**		Loop is a chain of series being copied (circularity detection).
 **
 ***********************************************************************/
 {
 	REBSER *series;
+	REB_COPY_LOOP node;
 	ASSERT1(IS_MAP(val) || IS_BLOCK(val) || IS_PAREN(val), RP_INTERNAL);
 	series = Make_Map(VAL_BLK_LEN(val) / 2);
 	if (IS_MAP(val)) {
@@ -469,9 +471,25 @@ new_entry:
 		// There may be duplicates, so we must append each key/value pair.
 		Append_Map(series, val, UNKNOWN);
 	}
-	if (types != 0) Copy_Deep_Values(series, 0, SERIES_TAIL(series), types);
-	//Rehash_Hash(series); // It will be rehashed only when needed.
+	if (types != 0) {
+		if (IS_MAP(val)) {
+			node.src  = VAL_SERIES(val);
+			node.dst  = series;
+			node.prev = loop;
+			loop = &node;
+		}
+		Copy_Deep_Values_Loop(series, 0, SERIES_TAIL(series), types, loop);
+	}
 	return series;
+}
+
+/***********************************************************************
+**
+*/	REBSER *Copy_Map(REBVAL *val, REBU64 types)
+/*
+***********************************************************************/
+{
+	return Copy_Map_Loop(val, types, NULL);
 }
 
 /***********************************************************************

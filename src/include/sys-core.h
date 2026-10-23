@@ -107,6 +107,12 @@ typedef struct rebol_mold {
 	REBCNT limit;       // optional length limit of the result (-1 = no limit)
 } REB_MOLD;
 
+typedef struct reb_copy_loop {
+	REBSER *src;        // series being copied
+	REBSER *dst;        // its copy
+	struct reb_copy_loop *prev;
+} REB_COPY_LOOP;
+
 #include "reb-file.h"
 #include "reb-filereq.h"
 #include "reb-math.h"
