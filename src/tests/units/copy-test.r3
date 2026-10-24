@@ -348,6 +348,13 @@ not-copyable-data: make object! [
 		--assert not same? cto3-c/x cto3-o/x
 		--assert same? cto3-c cto3-c/x/p
 
+	--test-- "copy/deep does not copy nested objects by default"
+		cto4-o: make object! [x: _]
+		cto4-o/x: cto4-o
+		--assert object? cto4-c: attempt [copy/deep cto4-o]
+		--assert not same? cto4-c cto4-o
+		--assert same? cto4-c/x cto4-o     ;; nested object shared, not redirected
+
 	--test-- "copy-types-1"
 		cto1-o: make object! [s: "s" b: [1 2] f: func [][s]]
 		cto1-c: copy/types cto1-o block!
