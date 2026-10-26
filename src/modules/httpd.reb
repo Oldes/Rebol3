@@ -2,28 +2,35 @@ Rebol [
 	Title:  "HTTPd Scheme"
 	Type:    module
 	Name:    httpd
-	Date:    22-Jul-2024
-	Version: 0.9.4
+	Date:    21-Oct-2026
+	Version: 0.12.0
 	Author: ["Andreas Bolka" "Christopher Ross-Gill" "Oldes"]
-	Exports: [serve-http http-server decode-target to-CLF-idate]
+	Exports: [serve-http http-server decode-target to-CLF-idate make-password-hash]
 	Home:    https://github.com/Oldes/Rebol-HTTPd
 	Rights:  http://opensource.org/licenses/Apache-2.0
 	Purpose: {
 		A Tiny Webserver Scheme for Rebol 3 (Oldes' branch)
 		Features:
-		* handle basic POST, GET and HEAD methods
-		* send large files in chunks (using a file port)
-		* using _actors_ for main actions which may be customized
-		* implemented `keep-alive` behaviour
-		* sends `Not modified` response if file was not modified in given time
-		* client can stop the server
+		* serve static files (GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS); large files sent in chunks
+		* customizable request handling using _actors_ (per server)
+		* decoded request bodies (form-urlencoded, multipart, JSON, text),
+		  chunked uploads and `Expect: 100-continue`
+		* optional file upload (PUT) and removal (DELETE) in allowed locations
+		* authentication using Bearer tokens or Basic auth (PBKDF2 password hashes)
+		* keep-alive (HTTP/1.1 and HTTP/1.0) and pipelined requests
+		* RSP (Rebol Server Pages)
+		* WebSocket connections (text/binary messages, ping/pong)
+		* request paths restricted to the root; request size limits
+		* client can stop the server and return data (useful for OAuth2)
 	}
 	TODO: {
 		* support for multidomain serving using `Host` header field
-		* add support for other methods - PUT, DELETE, TRACE, CONNECT, OPTIONS?
-		* better error handling
+		* assembling fragmented WebSocket messages
+		* optional `Origin` check for WebSocket upgrades
+		* request body charsets other than UTF-8
+		* range requests (206 Partial Content), response compression
 	}
-	Usage: {Check %server-test.r3 script how to start a simple server}
+	Usage: {See README.md and %server-test.r3 script how to start a server}
 	History: [
 		04-Nov-2009 "Andreas Bolka" {A Tiny HTTP Server
 		https://github.com/earl/rebol3/blob/master/scripts/shttpd.r}
@@ -36,8 +43,10 @@ Rebol [
 		09-Jan-2023 "Oldes" {New home: https://github.com/Oldes/Rebol-HTTPd}
 		09-May-2023 "Oldes" {Root-less configuration possibility (default)}
 		14-Dec-2023 "Oldes" {Deprecated the `http-server` function in favor of `serve-http` with a different configuration input}
+		06-Mar-2025 "Oldes" {Initial implementation of RSP (Rebol Server Pages)}
+		21-Oct-2026 "Oldes" {Security and protocol fixes: path checks, request limits, chunked uploads, 100-continue, pipelining, HTTP/1.0 keep-alive, WebSocket ping and binary frames, per-server actors, request-local RSP variables}
 	]
-	Needs: [3.11.0 mime-types]
+	Needs: [3.16.0 mime-types] ; uses #(...) construction syntax
 ]
 
 append system/options/log [httpd: 1]
@@ -48,43 +57,38 @@ append system/options/log [httpd: 1]
 ;@@ move elsewhere and with different name?
 
 decode-target: wrap [
-	control: charset [#"?" #"&" #"=" #"#"]
-	chars: complement control
+	path-chars: complement charset "?#"
+	key-chars:  complement charset "&=#"
+	val-chars:  complement charset "&#"
 	func [
 		"Splits target into file part and key/pair query values if any"
 		target [file! string! binary! none!]
-		/local key val
+		/query "Target is only a query string (like form-urlencoded data)"
+		/local bin key val
 	][
 		
 		result: object [file: none values: make block! 8 fragment: none original: target]
 		unless target [return result]
-		parse to binary! target [
-			opt [
-				copy val any chars (result/file: val) [
-					  #"?" 
-					| #"#" copy val to end (result/fragment: dehex val)
-					| end
-				] 
-			]
+		bin: to binary! target
+		unless query [
+			;; path ends only at `?` or `#`; `=` and `&` are valid in file names
+			parse bin [copy val any path-chars opt #"?" bin:]
+			result/file: to file! dehex val
+		]
+		parse bin [
 			any [
-				copy key some chars #"=" copy val any chars (
-					unless empty? val [
-						append result/values to set-word! to string! dehex key
-						append result/values to string! dehex val
-					]
-				) opt #"&"
+				copy key some key-chars [#"=" copy val any val-chars | (val: none)] (
+					key: to string! dehex/uri key
+					;; keys which are not valid words are kept as strings
+					append result/values any [attempt [to set-word! key] key]
+					append result/values either val [to string! dehex/uri val][copy ""]
+				)
+				| #"=" any val-chars ;; pair without a key
 				| #"&"
-				| #"#" copy val to end (result/fragment: dehex val)
+				| #"#" copy val to end (result/fragment: to string! dehex val)
 			]
 		]
-		result/file: to file! dehex either all [
-			none?  result/file
-			empty? result/values
-			none?  result/fragment
-		][
-			target
-		][	any [result/file %""] ]
-		new-line/skip result/values true 2 
+		new-line/skip result/values true 2
 		result
 	]
 ]
@@ -193,6 +197,128 @@ to-CLF-idate: func [
 	]
 ]
 
+make-password-hash: function [
+	"Returns a salted PBKDF2 hash of a password (for `users` in the auth config)"
+	password [string!]
+	/iterations count [integer!] "Default 100000"
+][
+	count: any [count 100000]
+	salt: make binary! 16
+	loop 16 [append salt (random/secure 256) - 1]
+	ajoin [
+		"pbkdf2-sha256$" count #"$" enbase salt 64 #"$"
+		enbase pbkdf2 password salt count 32 'sha256 64
+	]
+]
+
+pbkdf2: function [
+;@@ https://github.com/Oldes/Rebol-PBKDF2
+    pass   [any-string! binary!] "Password"
+    salt   [any-string! binary!] "Salt value"
+    count  [integer!] "Number of iterations"
+    length [integer!] "Requested length of the result (key) in bytes"
+    method [word!]    "Checksum method to be used [sha1 sha256...]"
+][
+    ;; Convert input password and salt to binary format
+    pass: to binary! pass
+    salt: to binary! salt
+    ;; Initialize output buffer for the derived key
+    output: make binary! length
+    ;; Initialize last block with the salt
+    last: copy salt
+    ;; Determine the length of the hash output for the selected method
+    hash-len: select [sha1 20 sha224 28 sha256 32 sha384 48 sha512 64] :method
+    ;; Calculate the number of hash blocks needed to meet the requested length
+    block-cnt: round/ceiling (length / hash-len)
+
+    repeat i block-cnt [
+        ;; Write the salt and block index (as big-endian 32-bit) into last
+        binary/write last [BYTES :salt UI32BE :i]
+        ;; Compute the first hash value (U1) using the password
+        last: xorsum: checksum/with last method pass
+        ;; Perform additional iterations (U2, U3, ..., Ucount)
+        repeat j (count - 1) [
+            ;; Compute the next hash in the chain and XOR it with previous results
+            xorsum: xorsum xor (last: checksum/with last method pass)
+        ]
+        ;; Append the derived key fragment to the output buffer
+        append output xorsum
+    ]
+    ;; Crop the output to match the exact requested key length
+    copy/part output length
+]
+
+rsp-context: context [
+	ctx:  none
+	app:  none ;= shared application context (write via path: app/x: ...)
+	page: none ;= request-local context for page set-words
+	print:   func[value][append append ctx/out/content value LF]
+	prin:    func[value][append ctx/out/content value]
+	probe:   func[value][append ctx/out/content mold value]
+	include: func[path [file!] /local dir parts res][
+		dir: what-dir
+		parts: split-path path
+		change-dir parts/1
+		set/any 'res try [process/include parts/2 ctx]
+		change-dir dir
+		if error? :res [do :res] ;; re-throw after restoring the directory
+		() ;= unset!
+	]
+	process: function[data [file! binary! string!] ctx [object!] /include /local res][
+		self/ctx: ctx
+		out: ctx/out/content
+		unless include [
+			clear out
+			self/app:  ctx/config/app
+			self/page: make object! [] ;; fresh per request, shared with includes
+		]
+		if file? data [data: read/string data]
+		parse data [any [
+			s: to "<%" e: (append out copy/part s e) 
+			2 skip [
+				#"@" copy code: to "%>" 2 skip (
+					try/with [
+						unless all [
+							file? file: transcode/one code
+							exists? file
+						][
+							do make error! ajoin ["RSP include not found: " mold :file]
+						]
+						append out read/string file
+					] :probe
+				)
+				|
+				set get?: opt [#"=" | #"@"] copy code: to "%>" 2 skip (
+					try/with [
+						code: transcode code
+						;; page set-words are request-local (added to page in one call)
+						unless empty? words: collect-words/set/deep/ignore code words-of page [
+							vals: clear []
+							foreach w words [repend vals [to set-word! w #(none)]]
+							append page vals
+						]
+						bind code lib          ;; library
+						if app [bind code app] ;; app values shadow library
+						bind code self         ;; RSP context (print, include, app...)
+						bind code page         ;; request-local set-words win
+					] :probe
+					catch/all/quit [
+						set/any 'res try/with :code :lib/probe
+						if get? [append out :res]
+					]
+				)
+			]
+			| s: to end e: (append out copy/part s e)
+		]]
+		out
+	]
+]
+protect rsp-context
+unprotect in rsp-context 'ctx
+unprotect in rsp-context 'app
+unprotect in rsp-context 'page
+
+
 ;------------------------------------------------------------------------
 ;-- Scheme definition:                                                 --
 ;------------------------------------------------------------------------
@@ -213,16 +339,27 @@ sys/make-scheme [
 				subport/extra: make object! [
 					parent: port
 					config: none
+					actor:  none
 					clients: make block! 16
 				]
+				;; per-server copy of default actors (customized by serve-http)
+				actor: subport/extra/actor: make port/scheme/actor []
 				subport/extra/config:
 				config: make map! reduce/no-set [
 					root:        none
 					index:       [%index.html %index.htm]
 					keep-alive:  true
 					list-dir?:   true
+					allow-put:   false ; TRUE, or block of allowed paths (relative to root) like [%/upload/]
+					allow-delete: false ; TRUE, or block of allowed paths (relative to root) like [%/upload/]
 					server-name: "Rebol3-HTTPd"
 					trust-ips:   [127.0.0.1]
+					follow-symlinks?: false
+					max-header-size:    32768    ; bytes, NONE = unlimited
+					max-content-length: 10485760 ; bytes (10MB), NONE = unlimited
+					max-websocket-frame: 1048576 ; bytes (1MB), NONE = unlimited
+					header-timeout: 0:0:10 ; complete request header must arrive in time, NONE = unlimited
+					body-timeout:   0:1:0  ; complete request body must arrive in time, NONE = unlimited
 				]
 			]
 			port/state: port/extra/subport/extra/clients
@@ -230,26 +367,96 @@ sys/make-scheme [
 			port
 		]
 
-		Close: func [port [port!]][
+		Close: func [port [port!] /local ctx file][
 			log-more ["Closing server at port:^[[22m" port/spec/port]
-			close port/extra/subport
+			ctx: port/extra
+			close ctx/subport
+			;; closing log ports if there are any
+			if port? file: ctx/config/log-access [ close file ctx/config/log-access: none]
+			if port? file: ctx/config/log-errors [ close file ctx/config/log-errors: none]
+			port/extra: none
+			port
 		]
 
 		On-Accept: func [ctx [object!]][ true ]
 		On-Header: func [ctx [object!]][] ;= placeholder; user can use it for early request processing
 
+		On-Auth: func [
+			"Verifies request credentials; returns the user name, or NONE when not accepted"
+			ctx [object!]
+			/local auth value type cred key user pass stored
+		][
+			auth: ctx/config/auth
+			unless string? value: select ctx/inp/header 'Authorization [return none]
+			unless parse value [copy type: to #" " some #" " copy cred: to end][return none]
+			switch type [
+				"Bearer" [
+					if block? auth/tokens [
+						cred: checksum cred 'sha256
+						foreach [user stored] auth/tokens [
+							if stored == cred [return user]
+						]
+					]
+				]
+				"Basic" [
+					if block? auth/users [
+						;; PBKDF2 is slow by design, so verified credentials are cached
+						key: checksum value 'sha256
+						if user: auth/cache/:key [return user]
+						all [
+							cred: attempt [to string! debase cred 64]
+							parse cred [copy user: to #":" skip copy pass: to end]
+							stored: select/case auth/users user
+							Verify-Password pass stored
+							(
+								if 1000 < length? auth/cache [clear auth/cache]
+								put auth/cache key user
+							)
+							return user
+						]
+					]
+				]
+			]
+			;= none
+		]
+
 		On-Get: func [
 			ctx [object!]
-			/local target path info index modified If-Modified-Since
+			/local target path info index modified If-Modified-Since follow loc
 		][
 			target: ctx/inp/target
 			unless ctx/config/root [
-				Actor/On-Not-Found ctx target
+				ctx/actor/On-Not-Found ctx target
 				exit
 			]
-			target/file: path: join ctx/config/root next clean-path/only target/file
+			follow: ctx/config/follow-symlinks?
+			unless path: Safe-Path/:follow ctx/config/root target/file [
+				ctx/actor/On-Not-Found ctx target
+				exit
+			]
+			target/file: path
+			;; directory requested without trailing slash -> redirect, so relative links work
+			if all [
+				'dir = exists? path
+				#"/" <> last path
+			][
+				loc: to string! ctx/inp/target/original
+				insert any [find loc #"?" tail loc] #"/"
+				ctx/out/status: 301
+				ctx/out/header/Location: loc
+				exit
+			]
 			ctx/out/header/Date: to-idate/gmt now
 			ctx/out/status: 200
+
+			if all [
+				ctx/config/rsp
+				%.rsp == skip tail ctx/inp/target/file -4
+			][
+				Process-RSP ctx
+				exit
+			]
+
 			either exists? path [
 				if dir? path [
 					foreach file ctx/config/index [
@@ -261,7 +468,7 @@ sys/make-scheme [
 					]
 					if path <> index [
 						; client is requesting directory, which don't have index file
-						return Actor/On-List-Dir ctx target
+						return ctx/actor/On-List-Dir ctx target
 					]
 				]
 				info: query/mode path [date: size:]
@@ -287,7 +494,7 @@ sys/make-scheme [
 					]
 				]
 			][
-				Actor/On-Not-Found ctx target
+				ctx/actor/On-Not-Found ctx target
 			]
 		]
 
@@ -296,44 +503,149 @@ sys/make-scheme [
 			true
 		]
 
-		On-Read-Post: func[ctx [object!] /local content header length type temp][
-			;@@ TODO: handle `Expect` header: https://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.20
+		On-Read-Post: func[ctx [object!] /local path content header type temp target follow][
 			header: ctx/inp/header
-			length: select header 'Content-Length
 			unless find header 'Content-Type [
 				;make sure there is any Content-Type
 				extend header 'Content-Type "application/octet-stream"
 			]
-			either all [
-				integer? length
-				length > length? content: ctx/inp/content
-			][
-				ctx/state: 'read-data
-			][
-				ctx/state: 'data-received
-				ctx/out/status: 200
-				type: header/Content-Type: decode-content-params header/Content-Type
-				;@@ TODO: handle charset if not utf-8!
-				case [
-					type/2 = "x-www-form-urlencoded" [
-						; using full target decoder, although only values are needed
-						temp: decode-target content
-						ctx/inp/content: reduce [
-							select temp 'values   ; parsed [key value ...]
-							select temp 'original ; raw data
-						]
-					]
-					type/2 = "json" [
-						ctx/inp/content: decode 'json content
-					]
-					type/1 = "multipart" [
-						ctx/inp/content: decode-multipart-data type content
-					]
-					type/1 = "text" [
-						ctx/inp/content: to string! content
+			unless content: Read-Body ctx [exit]
+			ctx/state: 'data-received
+			ctx/out/status: 200
+			type: header/Content-Type: decode-content-params header/Content-Type
+			;@@ TODO: handle charset if not utf-8!
+			case [
+				type/2 = "x-www-form-urlencoded" [
+					; using full target decoder, although only values are needed
+					temp: decode-target/query content
+					ctx/inp/content: reduce [
+						select temp 'values   ; parsed [key value ...]
+						select temp 'original ; raw data
 					]
 				]
-				Actor/On-Post ctx
+				type/2 = "json" [
+					ctx/inp/content: decode 'json content
+				]
+				type/1 = "multipart" [
+					ctx/inp/content: decode-multipart-data type content
+				]
+				type/1 = "text" [
+					ctx/inp/content: to string! content
+				]
+			]
+			either all [
+				ctx/config/rsp
+				%.rsp == skip tail ctx/inp/target/file -4
+				ctx/config/root
+			][
+				target: ctx/inp/target
+				follow: ctx/config/follow-symlinks?
+				either path: Safe-Path/:follow ctx/config/root target/file [
+					target/file: path
+					ctx/out/header/Date: to-idate/gmt now
+					ctx/out/status: 200
+					Process-RSP ctx
+				][
+					ctx/actor/On-Not-Found ctx target
+				]
+			][
+				ctx/actor/On-Post ctx
+			]
+		]
+
+		On-Read-Put: func [ctx [object!] /local content][
+			unless content: Read-Body ctx [exit]
+			ctx/state: 'data-received
+			ctx/inp/content: content ;= raw binary
+			ctx/actor/On-Put ctx
+		]
+
+		On-Put: func [
+			"Default PUT handler: stores the body as a file in root (requires allow-put)"
+			ctx [object!]
+			/local target allow follow path dir existed?
+		][
+			target: ctx/inp/target
+			unless all [allow: ctx/config/allow-put ctx/config/root][
+				ctx/out/status: 405 ; Method Not Allowed
+				ctx/out/header/Allow: Allowed-Methods ctx
+				exit
+			]
+			unless Path-Allowed? allow target/file [
+				ctx/out/status: 403 ; Forbidden
+				exit
+			]
+			follow: ctx/config/follow-symlinks?
+			;; the file may not exist yet, so check its parent directory as well
+			unless all [
+				path: Safe-Path/:follow ctx/config/root target/file
+				dir:  Safe-Path/:follow ctx/config/root first split-path target/file
+			][
+				ctx/out/status: 403 ; Forbidden
+				exit
+			]
+			if any [
+				#"/" = last path
+				'dir = exists? path
+				'dir <> exists? dir
+			][
+				ctx/out/status: 409 ; Conflict (target is a directory or parent doesn't exist)
+				exit
+			]
+			existed?: exists? path
+			write path ctx/inp/content
+			ctx/out/status: either existed? [204][201] ; No Content | Created
+		]
+
+		On-Delete: func [
+			"Default DELETE handler: removes a file in root (requires allow-delete)"
+			ctx [object!]
+			/local target allow follow path
+		][
+			target: ctx/inp/target
+			unless all [allow: ctx/config/allow-delete ctx/config/root][
+				ctx/out/status: 405 ; Method Not Allowed
+				ctx/out/header/Allow: Allowed-Methods ctx
+				exit
+			]
+			unless Path-Allowed? allow target/file [
+				ctx/out/status: 403 ; Forbidden
+				exit
+			]
+			follow: ctx/config/follow-symlinks?
+			unless path: Safe-Path/:follow ctx/config/root target/file [
+				ctx/out/status: 403 ; Forbidden
+				exit
+			]
+			switch/default exists? path [
+				file [
+					delete path
+					ctx/out/status: 204 ; No Content
+				]
+				dir [ctx/out/status: 409] ; Conflict (directories are not deleted)
+			][
+				ctx/out/status: 404 ; Not Found
+			]
+		]
+
+		On-Options: func [
+			"Default OPTIONS handler: lists allowed methods"
+			ctx [object!]
+		][
+			ctx/out/status: 204 ; No Content
+			ctx/out/header/Allow: Allowed-Methods ctx
+		]
+
+		On-Read-Patch: func [ctx [object!] /local content][
+			;; read the body even when not handled, so the connection stays in sync
+			unless content: Read-Body ctx [exit]
+			ctx/state: 'data-received
+			either any-function? get in ctx/actor 'On-Patch [
+				ctx/inp/content: content ;= raw binary
+				ctx/actor/On-Patch ctx
+			][
+				ctx/out/status: 405 ; Method Not Allowed
+				ctx/out/header/Allow: Allowed-Methods ctx
 			]
 		]
 
@@ -343,11 +655,16 @@ sys/make-scheme [
 		][
 			switch/default ctx/inp/method [
 				"HEAD" ; same like GET, but without sending any content
-				"GET"  [ Actor/on-get  ctx ]
-				"POST" [ Actor/on-read-post ctx ]
+				"GET"     [ ctx/actor/on-get        ctx ]
+				"POST"    [ ctx/actor/on-read-post  ctx ]
+				"PUT"     [ ctx/actor/on-read-put   ctx ]
+				"PATCH"   [ ctx/actor/on-read-patch ctx ]
+				"DELETE"  [ ctx/actor/on-delete     ctx ]
+				"OPTIONS" [ ctx/actor/on-options    ctx ]
 			][
 				ctx/state: 'data-received
 				ctx/out/status: 405 ; Method Not Allowed
+				ctx/out/header/Allow: Allowed-Methods ctx
 			]
 		]
 
@@ -388,7 +705,7 @@ sys/make-scheme [
 
 		On-List-Dir: func[
 			ctx [object!] target [object!]
-			/local path dir out size date files dirs
+			/local path dir out size date files dirs name
 		][
 			unless ctx/config/list-dir? [
 				log-more ["Listing dir not allowed:^[[1m" mold target/file]
@@ -401,8 +718,8 @@ sys/make-scheme [
 			try/with [
 				out: make string! 2000
 				append out ajoin [
-					{<html><head><title>Index of } path
-					{</title></head><body bgcolor="white"><h1>Index of } path
+					{<html><head><title>Index of } Escape-HTML path
+					{</title></head><body bgcolor="white"><h1>Index of } Escape-HTML path
 					{</h1><hr><pre>^/}
 				]
 				unless empty? path [
@@ -419,9 +736,10 @@ sys/make-scheme [
 
 				foreach file files [
 					set [size date] query/mode dir/:file [:size :date]
+					name: form file
 					append out ajoin [
-						{<a href="} file {">} file {</a> }
-						pad copy "" 50 - length? file
+						{<a href="} enhex name {">} Escape-HTML name {</a> }
+						pad copy "" 50 - length? name
 						pad/with date/date  -11 #"0" #" "
 						pad/with date/hour   -2 #"0" #":"
 						pad/with date/minute -2 #"0" #" "
@@ -467,9 +785,9 @@ sys/make-scheme [
 		204 "No Content"
 		205 "Reset Content"
 		206 "Partial Content"
-		;207 "Multi-Status"
-		;208 "Already Reported"
-		;226 "IM Used"
+		207 "Multi-Status"
+		208 "Already Reported"
+		226 "IM Used"
 		300 "Multiple Choices"
 		301 "Moved Permanently"
 		302 "Found"              ;Previously "Moved temporarily"
@@ -490,44 +808,305 @@ sys/make-scheme [
 		408 "Request Timeout"
 		409 "Conflict"
 		410 "Gone"
-		;411 "Length Required"
-		;412 "Precondition Failed"
-		;413 "Payload Too Large"
-		;414 "URI Too Long"
-		;415 "Unsupported Media Type"
-		;416 "Range Not Satisfiable"
-		;417 "Expectation Failed"
-		;418 "I'm a teapot"
-		;421 "Misdirected Request"
-		;422 "Unprocessable Entity"
-		;423 "Locked"
-		;424 "Failed Dependency"
-		;426 "Upgrade Required"
-		;428 "Precondition Required"
-		;429 "Too Many Requests"
-		;431 "Request Header Fields Too Large"
-		;451 "Unavailable For Legal Reasons" ;@@ https://tools.ietf.org/html/rfc7725
+		411 "Length Required"
+		412 "Precondition Failed"
+		413 "Payload Too Large"
+		414 "URI Too Long"
+		415 "Unsupported Media Type"
+		416 "Range Not Satisfiable"
+		417 "Expectation Failed"
+		418 "I'm a teapot"
+		421 "Misdirected Request"
+		422 "Unprocessable Entity"
+		423 "Locked"
+		424 "Failed Dependency"
+		426 "Upgrade Required"
+		428 "Precondition Required"
+		429 "Too Many Requests"
+		431 "Request Header Fields Too Large"
+		451 "Unavailable For Legal Reasons" ;@@ https://tools.ietf.org/html/rfc7725
 		500 "Internal Server Error"
 		501 "Not Implemented"
 		502 "Bad Gateway"
 		503 "Service Unavailable"
 		504 "Gateway Timeout"
 		505 "HTTP Version Not Supported"
-		;506 "Variant Also Negotiates"
-		;507 "Insufficient Storage"
-		;508 "Loop Detected"
-		;510 "Not Extended"
-		;511 "Network Authentication Required"
+		506 "Variant Also Negotiates"
+		507 "Insufficient Storage"
+		508 "Loop Detected"
+		510 "Not Extended"
+		511 "Network Authentication Required"
+	]
+
+	Status-Line: func [
+		"Returns HTTP response status line"
+		version [string!] status [integer!]
+	][
+		ajoin ["HTTP/" version #" " status #" " any [status-codes/:status "Unknown"] CRLF]
+	]
+
+	Keep-Alive?: func [
+		"Returns TRUE if the client connection should be kept open after the current request"
+		ctx [object!]
+		/local ka h conn
+	][
+		all [
+			block? ka: ctx/config/keep-alive ;= [timeout max-requests] (normalized in Respond)
+			not ctx/done?                    ; server is going to stop
+			ctx/state <> 'error              ; after 413/431/500 the input stream is unreliable
+			ctx/requests + 1 < ka/2          ; limit to max requests
+			object? h: ctx/inp/header
+			conn: any [select h 'Connection ""]
+			either ctx/inp/version = "1.0" [
+				find conn "keep-alive"       ; HTTP/1.0: close unless asked to keep
+			][	not find conn "close" ]      ; HTTP/1.1: keep unless asked to close
+			true
+		]
+	]
+	
+	Safe-Path: func [
+		"Joins a request path with root; returns NONE if it could escape the root"
+		root [file!] "Must be canonical (from to-real-file)"
+		file [file!]
+		/follow "Allow symbolic links that resolve outside of root"
+		/local p full real
+	][
+		;; backslash is a separator on Windows; NUL truncates paths in the OS layer
+		if any [find file #"\" find file #"^@"] [return none]
+		p: clean-path/only file
+		foreach seg split p #"/" [
+			if ".." == to string! seg [return none]
+		]
+		if #"/" == first p [p: next p]
+		full: join root p
+		;; resolve symlinks; NONE means the file doesn't exist (POSIX) -> let caller 404
+		if all [not follow real: to-real-file full][
+			if dir? full [real: dirize real] ;; POSIX result has no trailing slash
+			unless find/match real root [return none]
+		]
+		full
+	]
+
+	Verify-Password: function [
+		"Checks a password against a hash made by `make-password-hash`"
+		pass [string!] stored [string!]
+	][
+		all [
+			parse stored [
+				"pbkdf2-" copy method: to #"$" skip
+				copy count: to #"$" skip
+				copy salt:  to #"$" skip
+				copy hash:  to end
+			]
+			attempt [
+				hash: debase hash 64
+				hash == pbkdf2 pass debase salt 64 to integer! count length? hash to word! method
+			]
+		]
+	]
+
+	Client-IP: func [
+		"Returns client's IP; X-Real-IP is used only when sent by a trusted proxy"
+		ctx [object!]
+		/local ip ips
+	][
+		either all [
+			ip: attempt [to tuple! select ctx/inp/header 'X-Real-IP]
+			4 = length? ip
+			any [none? ips: ctx/config/trust-ips find ips ctx/remote-ip]
+		][ip][ctx/remote-ip]
+	]
+
+	Auth-Blocked?: func [
+		"Returns seconds until the client's lockout ends, or NONE when not locked out"
+		ctx [object!]
+		/local auth f
+	][
+		auth: ctx/config/auth
+		all [
+			integer? auth/max-failures
+			f: auth/failures/(Client-IP ctx)
+			f/1 >= auth/max-failures
+			now < f/2
+			max 1 to integer! difference f/2 now
+		]
+	]
+
+	Auth-Failed: func [
+		"Counts a failed authentication of the client"
+		ctx [object!]
+		/local auth ip f
+	][
+		auth: ctx/config/auth
+		ip: Client-IP ctx
+		if any [none? f: auth/failures/:ip  now >= f/2][
+			if 10000 < length? auth/failures [
+				;; drop expired entries (rebuilt, so no `remove/key` is used)
+				active: make map! 64
+				foreach [key val] auth/failures [
+					if now < val/2 [active/:key: val]
+				]
+				auth/failures: active
+			]
+			auth/failures/:ip: f: reduce [0 now]
+		]
+		f/1: f/1 + 1
+		f/2: now + auth/lockout ;; each failure extends the lockout
+	]
+
+	Auth-Required?: func [
+		"Returns TRUE if the request must be authenticated"
+		ctx [object!] /local auth
+	][
+		all [
+			auth: ctx/config/auth
+			ctx/inp/method <> "OPTIONS" ;; CORS preflight never carries credentials
+			any [
+				find auth/methods to word! ctx/inp/method
+				all [block? auth/paths Path-Allowed? auth/paths ctx/inp/target/file]
+			]
+			true
+		]
+	]
+
+	Auth-Challenge: func [
+		"Returns value for the `WWW-Authenticate` response header"
+		auth [object!]
+	][
+		ajoin [
+			if auth/tokens [ajoin [{Bearer realm="} auth/realm {"}]]
+			if all [auth/tokens auth/users][", "]
+			if auth/users  [ajoin [{Basic realm="} auth/realm {", charset="UTF-8"}]]
+		]
+	]
+
+	Path-Allowed?: func [
+		"Returns TRUE if the request path is in a location allowed by an allow-put/allow-delete setting"
+		allow [logic! block! none!] "TRUE, or block of allowed paths like [%/upload/]"
+		file  [file!]
+		/local p
+	][
+		unless block? allow [return true? allow]
+		;; cleaned path, so `/upload/../x` can't pass as `/upload/`
+		p: clean-path/only file
+		foreach dir allow [
+			if find/match/case p dir [return true]
+		]
+		false
+	]
+
+	Allowed-Methods: func [
+		"Returns value for the `Allow` response header (for the requested path)"
+		ctx [object!]
+		/local file root
+	][
+		file: ctx/inp/target/file
+		root: ctx/config/root
+		ajoin [
+			"OPTIONS, GET, HEAD, POST"
+			if all [root Path-Allowed? ctx/config/allow-put    file][", PUT"]
+			if all [root Path-Allowed? ctx/config/allow-delete file][", DELETE"]
+			;; PATCH has no default behavior, so only when a handler is provided
+			if any-function? get in ctx/actor 'On-Patch [", PATCH"]
+		]
+	]
+
+	Escape-HTML: function/with [
+		"Escapes text for use in HTML content or attribute values"
+		text [any-string!]
+	][
+		out: make string! length? text
+		parse text [collect into out any [
+			keep some normal-chars
+			| #"&"  keep ("&amp;")
+			| #"<"  keep ("&lt;")
+			| #">"  keep ("&gt;")
+			| #"^"" keep ("&quot;")
+		]]
+		out
+	][
+		normal-chars: #(bitset! not #{000000002200000A}) ;= complement charset {&<>"}
+	]
+
+	Decode-Chunked: function/with [
+		"Decodes chunked transfer-encoded data; returns [body end], NONE if incomplete, or 'invalid"
+		data [binary!]
+	][
+		out: make binary! length? data
+		pos: data
+		forever [
+			if tail? pos [return none]
+			unless parse pos [copy size: 1 8 hex-digits to end][return 'invalid]
+			unless p: find/tail pos CRLF [return none] ;; size line incomplete (may have extensions)
+			n: 0 foreach c size [n: n * 16 + either c > 64 [(c and 7) + 9][c - 48]] ;; hex -> integer
+			pos: p
+			if zero? n [
+				;; optional trailer fields end with an empty line
+				return either parse pos [[#{0D0A} | thru #{0D0A0D0A}] e: to end][
+					reduce [out e]
+				][	none ] ;; incomplete
+			]
+			if (length? pos) < (n + 2) [return none]
+			append out copy/part pos n
+			pos: skip pos n
+			unless pos: find/match/tail pos #{0D0A} [return 'invalid]
+		]
+	][
+		hex-digits: #(bitset! #{000000000000FFC07E0000007E}) ;= charset "0123456789abcdefABCDEF"
+	]
+
+	Read-Body: func [
+		"Returns the complete request body, or NONE when more data is needed or on error (see ctx/state)"
+		ctx [object!]
+		/local header content length res limit
+	][
+		header:  ctx/inp/header
+		content: ctx/inp/content
+		length:  select header 'Content-Length
+		if "chunked" = select header 'Transfer-Encoding [
+			res: Decode-Chunked content
+			limit: ctx/config/max-content-length
+			case [
+				word? res [ ;; invalid chunk framing
+					ctx/state: 'error
+					ctx/out/status: 400 ; Bad Request
+					return none
+				]
+				none? res [ ;; incomplete
+					either all [limit limit < length? content][
+						ctx/state: 'error
+						ctx/out/status: 413 ; Payload Too Large
+					][	ctx/state: 'read-data ]
+					return none
+				]
+				all [limit limit < length? res/1][
+					ctx/state: 'error
+					ctx/out/status: 413
+					return none
+				]
+			]
+			ctx/body-end: res/2 ;; for pipelining
+			return res/1
+		]
+		if integer? length [
+			if length > length? content [
+				ctx/state: 'read-data
+				return none
+			]
+			;; don't include bytes of a pipelined next request
+			content: copy/part content length
+		]
+		content
 	]
 
 	Respond: function [port [port!]][
 		ctx: port/extra
 		out: ctx/out
 		unless out/status [out/status: 200] ;; expect OK response if not set
-		log-more ["Respond:^[[22m" out/status status-codes/(out/status) length? out/content]
+		log-more ["Respond:^[[22m" out/status length? out/content]
 		; send the response header
 		buffer: make binary! 1024
-		append buffer ajoin ["HTTP/" ctx/inp/version #" " out/status #" " status-codes/(out/status) CRLF]
+		append buffer Status-Line ctx/inp/version out/status
 
 		either "websocket" = out/header/upgrade [
 			ctx/inp/method: "websocket"
@@ -546,24 +1125,42 @@ sys/make-scheme [
 				]
 			]		
 
-			out/header/Content-Length: either out/content [
-				if string? out/content [
-					; must be converted to binary to have proper length if not ascii
-					out/content: to binary! out/content
+			out/header/Content-Length: case [
+				out/content [
+					if string? out/content [
+						;; must be converted to binary to have proper length if not ascii
+						out/content: to binary! out/content
+					]
+					length? out/content
 				]
-				length? out/content
-			][
-				0
+				;; HEAD on a file: keep the size set by On-Get
+				ctx/inp/method = "HEAD" [any [out/header/Content-Length 0]]
+				'else [0]
+			]
+			if ctx/inp/method = "HEAD" [
+				;; HEAD must never send a body
+				if port? out/content [close out/content]
+				out/content: none
+			]
+			if any [out/status < 200 out/status = 204][
+				;; these responses must not have a body or Content-Length
+				out/header/Content-Length: none
+				if port? out/content [close out/content]
+				out/content: none
 			]
 
-			if keep-alive: ctx/config/keep-alive [
-				if logic? keep-alive  [
+			if logic? keep-alive: ctx/config/keep-alive [
+				if keep-alive [
 					; using defaults
-					ctx/config/keep-alive:
-					keep-alive: [15 100] ; [timeout max-requests]
+					ctx/config/keep-alive: [15 100] ; [timeout max-requests]
 				]
+			]
+			either Keep-Alive? ctx [
+				keep-alive: ctx/config/keep-alive
 				ctx/out/header/Connection: "keep-alive"
 				ctx/out/header/Keep-Alive: ajoin ["timeout=" keep-alive/1 ", max=" keep-alive/2]
+			][
+				ctx/out/header/Connection: "close"
 			]
 			out/header/Server: ctx/config/server-name
 		]
@@ -593,32 +1190,25 @@ sys/make-scheme [
 
 	Write-log: function [ctx][
 		try/with [
-			remote-ip: ctx/remote-ip
-			if all [
-				;; Resolve real IP from the header...
-				ip: attempt [to tuple! ctx/inp/header/X-Real-IP]
-				4 = length? ip
-				;; ...but only if we trust the real IP used to connect
-				any [none? ips: ctx/config/trust-ips find ips remote-ip]
-				remote-ip: :ip
-			]
+			remote-ip: Client-IP ctx
+			;? ctx/inp
 			msg: ajoin [
 				remote-ip
 				{ - - [} to-CLF-idate now {] "}
-				ctx/inp/method #" "
-				to string! ctx/inp/target/original
+				any [ctx/inp/method #"-"] #" "
+				either ctx/inp/target [to string! ctx/inp/target/original][#"-"]
 				" HTTP/" ctx/inp/version {" }
 				ctx/out/status #" "
 				any [ctx/out/header/Content-Length #"-"]
 				#"^/"
 			]
-			prin msg
-			if file? file: ctx/config/log-access [
+			if :log-info [prin msg]
+			if port? file: ctx/config/log-access [
 				write/append file msg
 			]
 			if all [
 				ctx/out/status >= 400
-				file? file: ctx/config/log-errors
+				port? file: ctx/config/log-errors
 			][
 				write/append file msg
 			]
@@ -649,85 +1239,171 @@ sys/make-scheme [
 			switch event/type [
 				READ [
 					log-more ["bytes:^[[1m" length? port/data]
-					either header-end: find/tail port/data CRLF2BIN [
-						try/with [
-							if none? ctx/state [
-								with inp [
-									parse copy/part port/data header-end [
-										copy method some chars-method some space
-										copy target some chars        some space
-										"HTTP/" copy version some chars thru CRLF
-										copy header to end
-										(
-											method:  to string! method
-											target:  decode-target target
-											version: to string! version
-											header:  construct header
-											try [header/Content-Length: to integer! header/Content-Length]
-										)
-									]
-									content: header-end
-								]
-								log-more ["Request header:^[[22m" ctx/inp/method mold ctx/inp/header]
-								; on-header actor may be used for rewrite rules (redirection)
-								actor/on-header ctx
-								if ctx/out/status [
-								; if status is defined (probably redirection), than we can send a response now
-									respond port
-									break
-								]
-							]
-							actor/on-read port/extra
-						][
-							log-error system/state/last-error
+					;; first bytes of a new request: start the header deadline
+					if all [none? ctx/state none? ctx/deadline t: ctx/config/header-timeout][
+						ctx/deadline: now + t
+					]
+					header-end: find/tail port/data CRLF2BIN
+					case [
+						all [ctx/deadline now > ctx/deadline][
+							log-more ["Request timeout:^[[22m" ctx/remote]
+							inp/version: any [inp/version "1.1"]
 							ctx/state: 'error
-							ctx/out/status: 500 ; Internal Server Error
+							out/status: 408 ; Request Timeout
+							respond port
 						]
-						log-debug ["State:^[[1m" ctx/state "^[[22mstatus:^[[1m" out/status]
-						either ctx/state = 'read-data [
-							; posted data not fully read
-							read port
-						][	respond port ]
-					][
-						; request header not yet fully received
-						read port
+						all [
+							none? ctx/state ;; still reading the request header
+							limit: ctx/config/max-header-size
+							limit < either header-end [(index? header-end) - 1][length? port/data]
+						][
+							log-more ["Request header too large:^[[22m" ctx/remote]
+							inp/version: any [inp/version "1.1"]
+							ctx/state: 'error
+							out/status: 431 ; Request Header Fields Too Large
+							respond port
+						]
+						'else [
+							either header-end [
+								try/with [
+									if none? ctx/state [
+										with inp [
+											parse copy/part port/data header-end [
+												copy method some chars-method some space
+												copy target some chars        some space
+												"HTTP/" copy version some chars thru CRLF
+												copy header to end
+												(
+													method:  to string! method
+													target:  decode-target target
+													version: to string! version
+													header:  construct header
+													try [header/Content-Length: to integer! header/Content-Length]
+												)
+											]
+											content: header-end
+										]
+										log-more ["Request header:^[[22m" ctx/inp/method mold ctx/inp/header]
+										;; header complete: the body has its own deadline
+										ctx/deadline: if t: ctx/config/body-timeout [now + t]
+										either all [
+											integer? len: select inp/header 'Content-Length
+											limit: ctx/config/max-content-length
+											len > limit
+										][
+											log-more ["Request content too large:^[[22m" len]
+											ctx/state: 'error
+											out/status: 413 ; Payload Too Large
+										][
+											; on-header actor may be used for rewrite rules (redirection)
+											ctx/actor/on-header ctx
+											if all [none? ctx/out/status Auth-Required? ctx][
+												creds: select inp/header 'Authorization
+												case [
+													;; lockout applies only to login attempts, so a browser still gets the 401 challenge
+													all [creds secs: Auth-Blocked? ctx][
+														ctx/state: 'error
+														out/status: 429 ; Too Many Requests
+														out/header/Retry-After: secs
+													]
+													ctx/user: ctx/actor/On-Auth ctx [
+														;; successful login resets the failure counter
+														if f: ctx/config/auth/failures/(Client-IP ctx) [f/1: 0]
+													]
+													'else [
+														;; requests without credentials (browser's first try) are not counted
+														if creds [Auth-Failed ctx]
+														ctx/state: 'error ;; don't keep the connection, a body may follow
+														out/status: 401 ; Unauthorized
+														out/header/WWW-Authenticate: Auth-Challenge ctx/config/auth
+													]
+												]
+											]
+										]
+									]
+									; if status is already defined (probably redirection), respond without reading
+									unless ctx/out/status [ctx/actor/on-read port/extra]
+								][
+									log-error system/state/last-error
+									ctx/state: 'error
+									ctx/out/status: 500 ; Internal Server Error
+								]
+								log-debug ["State:^[[1m" ctx/state "^[[22mstatus:^[[1m" out/status]
+								either ctx/state = 'read-data [
+									; posted data not fully read
+									either all [
+										not ctx/continued?
+										inp/version = "1.1"
+										"100-continue" = select inp/header 'Expect
+									][
+										;; client waits for permission to send the body
+										ctx/continued?: true
+										ctx/state: 'continue
+										ctx/pending: head port/data ;; `write` replaces port/data
+										write port ajoin [Status-Line inp/version 100 CRLF]
+									][	read port ]
+								][
+									;; `write` replaces port/data, so keep bytes of a pipelined next request
+									if all [ctx/state <> 'error object? inp/header][
+										len: select inp/header 'Content-Length
+										end: case [
+											ctx/body-end        [ctx/body-end]
+											integer? len        [skip header-end len]
+	   										find ["POST" "PUT" "PATCH"] inp/method [tail header-end] ;; no length: all data is content
+											'else               [header-end]
+										]
+										ctx/pending: unless tail? end [copy end]
+									]
+									respond port
+								]
+							][
+								; request header not yet fully received
+								read port
+							]
+						]
 					]
 				]
 				WROTE [
-					event/type: 'CLOSE 
-					either all [
-						out
-						out/content
+					either ctx/state = 'continue [
+						;; interim `100 Continue` sent; restore received data and read the body
+						ctx/state: 'read-data
+						port/data: ctx/pending
+						ctx/pending: none
+						read port
 					][
-						case [
-							port? out/content [
-								; streaming output from port
-								buffer: copy/part out/content 32000 ;4096
-								either empty? buffer [
-									; end of stream
-									close out/content ; closing source port
-									End-Client port
-								][
-									try/with [
-										write port buffer
-									][
-										log-error  "Write failed (2)!"
-										;probe buffer
+						either all [
+							out
+							out/content
+						][
+							case [
+								port? out/content [
+									; streaming output from port
+									buffer: copy/part out/content 32000 ;4096
+									either empty? buffer [
+										; end of stream
+										close out/content ; closing source port
 										End-Client port
+									][
+										try/with [
+											write port buffer
+										][
+											log-error  "Write failed (2)!"
+											End-Client port
+										]
 									]
 								]
+								true [
+									; for now just remove the content which is written
+									; no need to chunk data manually, these are handled internaly
+									; just make sure you don't use any other `write` before receiving `wrote`
+									write port out/content
+									out/content: none
+								]
 							]
-							true [
-								; for now just remove the content which is written
-								; no need to chunk data manually, these are handled internaly
-								; just make sure you don't use any other `write` before receiving `wrote`
-								write port out/content
-								out/content: none
-							]
+						][
+							; there is no other content to write, so close connection
+							End-Client port
 						]
-					][
-						; there is no other content to write, so close connection
-						End-Client port
 					]
 					port
 				]
@@ -752,6 +1428,24 @@ sys/make-scheme [
 		true
 	]
 
+	WS-Encode-Frame: function [
+		"Encodes data as a single final, unmasked WebSocket text frame (server -> client)"
+		data [binary! string!]
+		/op "Use given opcode instead of text frame (1)"
+			code [integer!]
+	][
+		hdr:  128 or any [code 1] ;; FIN bit + opcode
+		data: to binary! data
+		len:  length? data
+		bin:  binary len + 10
+		binary/write bin case [
+			len < 126    [[UI8 :hdr UI8          :len :data]]
+			len <= 65535 [[UI8 :hdr UI8 126 UI16 :len :data]]
+			'else        [[UI8 :hdr UI8 127 UI64 :len :data]]
+		]
+		head bin/buffer
+	]
+
 	Awake-Websocket: function [
 		event [event!]
 	][
@@ -765,10 +1459,11 @@ sys/make-scheme [
 		switch event/type [
 			READ [
 				ready?: false
+				replies: make binary! 64
 				data: head port/data
 				log-more ["bytes:^[[1m" length? data]
 				try/with [
-					while [2 < length? data][
+					while [2 <= length? data][
 						final?: data/1 & 2#10000000 = 2#10000000
 						opcode: data/1 & 2#00001111
 						mask?:  data/2 & 2#10000000 = 2#10000000
@@ -779,17 +1474,28 @@ sys/make-scheme [
 						;@@ Not removing bytes until we make sure, that there is enough data!
 						case [
 							len = 126 [
-								if 2 >= length? data [break]
+								if 2 > length? data [break]
 								len: binary/read data 'UI16
 								data: skip data 2
 							]
 							len = 127 [
-								if 8 >= length? data [break]
+								if 8 > length? data [break]
 								len: binary/read data 'UI64
 								data: skip data 8
 							]
 						]
-						if (4 + length? data) < len [break]
+						;; reject oversized frames before buffering their payload
+						if all [
+							limit: ctx/config/max-websocket-frame
+							len > limit
+						][
+							log-more ["WS frame too large:^[[22m" len]
+							ctx/state: 'closing
+							write port WS-Encode-Frame/op #{03F1} 8 ;; close frame, 1009 = message too big
+							exit
+						]
+						;; mask (if any) + payload must be fully buffered before we touch it
+						if (length? data) < (len + pick [4 0] mask?) [break]
 						data: truncate data ;; removes already processed bytes from the head
 						either mask? [
 							masks:   take/part data 4
@@ -809,42 +1515,49 @@ sys/make-scheme [
 								code: to integer! take/part request-data 2
 								log-more ["WS Close reason:" as-red code]
 							]
-							actor/On-Close-Websocket ctx code
+							ctx/actor/On-Close-Websocket ctx code
 							event/type: 'CLOSE
 							Awake-Websocket event
 							exit
 						]
-						actor/On-Read-Websocket ctx final? opcode
+						case [
+							opcode = 9  [append replies WS-Encode-Frame/op ctx/inp/content 10] ;; ping -> pong
+							opcode = 10 [] ;; unsolicited pong, ignore
+							'else [
+								ctx/actor/On-Read-Websocket ctx final? opcode
+								if all [
+									series? content: ctx/out/content
+									not empty? content
+								][
+									append replies WS-Encode-Frame/op content either binary? content [2][1]
+									clear content
+								]
+							]
+						]
 					]
 				][
 					log-error system/state/last-error
 				]
 				either ready? [
-					;; there was complete input...
-					write port either all [
-						series? content: ctx/out/content
-						not empty? content
-					][
-						content: to binary! content
-						clear ctx/out/content
-						len: length? content
-						;print len
-						;prin "out: " ? content
-						bin: binary len
-						binary/write bin case [
-							len < 127                     [ [UI8 129 UI8          :len :content] ]
-							all [ len > 126 len <= 65535 ][ [UI8 129 UI8 126 UI16 :len :content] ]
-							len > 65535                   [ [UI8 129 UI8 127 UI64 :len :content] ]	  
-						]
-						head bin/buffer
-					][	"" ]
+					;; `write` replaces port/data, so keep any unprocessed (partial frame) bytes
+					ctx/pending: head port/data
+					write port either empty? replies [""][replies]
 				][
 					;; needs more data!
 					read port
 				]
 			]
 			WROTE [
-				read port
+				either ctx/state = 'closing [
+					;; close frame sent, drop the connection
+					Awake-Websocket make event! [type: 'CLOSE port: port]
+				][
+					if ctx/pending [
+						port/data: ctx/pending ;; next read appends to the partial frame
+						ctx/pending: none
+					]
+					read port
+				]
 			]
 			CLOSE [
 				log-more ["Closing:^[[22m" ctx/remote]
@@ -855,10 +1568,10 @@ sys/make-scheme [
 	]
 
 
-	New-Client: func[port [port!] /local client info err][
+	New-Client: func[port [port!] /local client info err ctx][
 		client: first port
 		info: query/mode client [remote-ip: remote-port: local-ip: local-port:]
-		client/extra: make object! [
+		client/extra: ctx: context [
 			state: none
 			parent: port
 			remote-ip: info/remote-ip
@@ -869,7 +1582,6 @@ sys/make-scheme [
 				target:
 				header:
 				content: none
-				started: stats/timer
 			]
 			out: object [
 				Status: none
@@ -878,14 +1590,22 @@ sys/make-scheme [
 				Content: none
 			]
 			config: none
+			actor: none
 			timeout: none
 			done?: none
 			requests: 0   ; number of already served requests per connection
+			pending: none ; unprocessed input bytes to restore after a write
+			continued?: none ; `100 Continue` already sent for the current request
+			body-end: none   ; end of a chunked request body (for pipelining)
+			user: none       ; authenticated user (set by On-Auth)
+			deadline: none   ; time by which the current request header/body must be received
+			started: stats/timer
 		]
 		;? port
-		client/extra/config: port/extra/config
+		ctx/config: port/extra/config
+		ctx/actor:  port/extra/actor
 		
-		unless Actor/On-Accept client/extra [
+		unless ctx/actor/On-Accept ctx [
 			; connection not allowed
 			log-more ["Client not accepted:^[[22m" info/remote-ip]
 			close client
@@ -894,9 +1614,11 @@ sys/make-scheme [
 		client/awake: :Awake-Client
 		append port/extra/clients client
 
-		log-more ["New client:^[[1;31m" client/extra/remote]
+
+
+		log-more ["New client:^[[1;31m" ctx/remote]
 		try/with [read client][
-			log-error ["Failed to read new client:" client/extra/remote]
+			log-error ["Failed to read new client:" ctx/remote]
 			log-error system/state/last-error
 		]
 	]
@@ -908,10 +1630,8 @@ sys/make-scheme [
 		keep-alive: ctx/config/keep-alive
 		
 		either all [
-			keep-alive
 			open? port
-			ctx/requests <= keep-alive/2 ; limit to max requests
-			"close" <> select port/extra/inp/Header 'Connection ; client don't want or cannot handle persistent connection
+			Keep-Alive? ctx
 		][
 			ctx/requests: ctx/requests + 1
 			log-more ["Keep-alive:^[[22m" ctx/remote "requests:" ctx/requests]
@@ -919,18 +1639,29 @@ sys/make-scheme [
 			foreach v ctx/inp [ctx/inp/:v: none]
 			foreach v ctx/out [ctx/out/:v: none]
 			ctx/out/Header: make map! 12
-			ctx/state: none
+			ctx/state: ctx/continued?: ctx/body-end: ctx/user: ctx/deadline: none
 			; set new timeout
 			ctx/timeout: now + to time! ctx/config/keep-alive/1 
-			read port
+			either pending: ctx/pending [
+				ctx/pending: none
+				port/data: pending
+				either find pending #{0D0A0D0A} [
+					;; complete pipelined request already received
+					Awake-Client make event! [type: 'read port: port]
+				][	read port ]
+			][	read port ]
 		][
 			; close client connection
 			Awake-Client make event! [type: 'CLOSE port: port]
 			;try [remove find clients port]
 		]
 		log-debug ["Ports open:" length? clients]
-		if all [ctx/done? zero? length? clients][
+		if ctx/done? [
 			log-more "Server's job done, closing initiated"
+			;; close remaining (idle) connections, so they don't block the stop
+			foreach client copy clients [
+				Awake-Client make event! [type: 'CLOSE port: client]
+			]
 			ctx/parent/data: ctx/done?
 			Awake-Server make event! [type: 'CLOSE port: ctx/parent]
 		]
@@ -954,6 +1685,27 @@ sys/make-scheme [
 					]
 				]
 			]
+		]
+	]
+
+	Process-RSP: func[ctx [object!] /local dir path res][
+		log-more ["RSP input:^[[1m" mold ctx/inp/target/file]
+		path: ctx/inp/target/file
+		unless exists? path [
+			ctx/actor/On-Not-Found ctx ctx/inp/target
+			exit
+		]
+		dir: what-dir
+		ctx/out/content: make string! 1000
+		change-dir first split-path path
+		set/any 'res try [rsp-context/process path ctx]
+		change-dir dir
+		if error? :res [
+			ctx/out/content: none ;; don't send partial output with the 500 response
+			do :res
+		]
+		unless ctx/out/header/Content-Type [
+			ctx/out/header/Content-Type: "text/html; charset=UTF-8"
 		]
 	]
 
@@ -988,7 +1740,7 @@ sys/make-scheme [
 		]
 		system/options/log/httpd: verbose
 	]
-	set-verbose 1
+	set-verbose system/options/log/httpd
 ]
 
 http-server: function [
@@ -1001,7 +1753,9 @@ http-server: function [
 	/no-wait "Will not enter wait loop"
 ][
 	sys/log/error 'HTTPD "`http-server` function is deprecated, use `serve-http` instead!"
-	spec: either config [[]][to block! spec]
+	spec: either config [
+		either block? spec [copy spec][to block! spec]
+	][	copy [] ]
 	if actor [extend spec 'actor actions]
 	extend spec 'port port
 	serve-http/:no-wait spec
@@ -1014,18 +1768,18 @@ serve-http: function [
 ][
 	case [
 		integer? port: spec [
-			spec: reduce/no-set [port: spec root: what-dir]
+			spec: make map! reduce/no-set [port: spec root: dirize to-real-file what-dir]
 		]
 		file? spec [
 			root: dirize to-real-file clean-path spec
 			port: 8000
-			spec: reduce/no-set [port: port root: root]
+			spec: make map! reduce/no-set [port: port root: root]
 		]
 		'else [
 			unless block? spec [spec: body-of spec]
-			spec: reduce/no-set spec
-			port: any [select spec 'port 8000] ;; default port
-			root: select spec 'root
+			spec: make map! reduce/no-set spec
+			port: any [spec/port 8000] ;; default port
+			root: spec/root
 			if string? root [root: to-rebol-file root]
 			if file?   root [
 				;; to-real-file returns none when file does not exists on Posix
@@ -1038,20 +1792,54 @@ serve-http: function [
 					none
 				]
 			]
+			if object? spec/app [
+				spec/rsp: rsp-context
+			]
 		]
 	]
 
 	server: open join httpd://: :port
 	sys/log/info 'HTTPD ["Listening on port:" :port "with root directory:" as-green spec/root]
 	
-	if actions: select spec 'actor [
-		append server/actor either block? actions [
+	if actions: spec/actor [
+		append server/extra/actor either block? actions [
 			bind actions server/scheme
 			reduce/no-set actions
 		][	bind body-of actions server/scheme ]
-		remove/part find spec 'actor 2 ;; not including actor in the config
+		spec/actor: none ;; not including actor in the config
 	]
-	append server/extra/config spec
+	append config: server/extra/config body-of spec
+
+	if block? config/auth [
+		config/auth: make object! compose [
+			realm:   (config/server-name)
+			tokens:  none ;= [name sha256-hash ...]
+			users:   none ;= [name pbkdf2-hash ...]
+			methods: [PUT PATCH DELETE]
+			paths:   none ;= [%/private/ ...] all methods require auth there
+			max-failures: 5      ;= failed attempts per IP before lockout, NONE = no limit
+			lockout:      0:5:0  ;= lockout duration (extended by each failure)
+			(config/auth)
+			cache:    make map! 16
+			failures: make map! 16
+		]
+		foreach [name hash] any [config/auth/tokens []][
+			unless binary? hash [cause-error 'script 'invalid-arg reduce [hash]]
+		]
+		foreach [name hash] any [config/auth/users []][
+			unless string? hash [cause-error 'script 'invalid-arg reduce [hash]]
+		]
+	]
+
+	if file? file: config/log-access [
+		new: not exists? file
+		config/log-access: open/:new/write/seek file
+	]
+	if file? file: config/log-errors [
+		new: not exists? file
+		config/log-errors: open/:new/write/seek file
+	] 
+
 	unless no-wait [
 		forever [
 			p: wait [server server/extra/subport 15]
