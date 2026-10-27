@@ -9,7 +9,6 @@ Rebol [
 ~~~start-file~~~ "port-net"
 
 
-
 ;- "HTTP scheme" moved to %port-http-test.r3
 
 ===start-group=== "Listen port in use"
@@ -255,6 +254,26 @@ Rebol [
 			[local-ip: 0.0.0.0 local-port: 0] = query port [local-ip local-port]
 		]
 		try [close port]
+
+	;@@ https://github.com/Oldes/Rebol-issues/issues/2103
+	--test-- "wait/all returns only waked ports"
+		srv: open tcp://:45123
+		srv/awake: func [event][true]
+		cli: open tcp://127.0.0.1:45123
+		cli/awake: func [event][true]
+		res: wait/all [srv cli 2]
+		--assert block? res
+		--assert not empty? res
+		--assert parse res [some port!]   ;; no timeout value in the result
+		close cli close srv
+
+	--test-- "wait with timeout before ports"
+		srv: open tcp://:45123
+		srv/awake: func [event][true]
+		cli: open tcp://127.0.0.1:45123
+		cli/awake: func [event][true]
+		--assert port? wait [2 cli]
+		close cli close srv
 ===end-group===
 
 

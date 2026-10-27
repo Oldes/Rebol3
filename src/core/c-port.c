@@ -316,12 +316,13 @@ xx*/	REBINT Wait_Device(REBREQ *req, REBCNT timeout)
 		val = BLK_SKIP(ports, n);
 		if (IS_PORT(val)) {
 			ASSERT(VAL_TAIL(waked) != 0, RP_IO_ERROR);
-			if (VAL_TAIL(waked) == Find_Block_Simple(VAL_SERIES(waked), 0, val)) {//not found
-				Remove_Series(ports, n, 1);
+			if (VAL_TAIL(waked) != Find_Block_Simple(VAL_SERIES(waked), 0, val)) {
+				n++; // waked port; keep it
 				continue;
 			}
 		}
-		n++;
+		// remove not waked ports and any non-port values (timeout, none...)
+		Remove_Series(ports, n, 1);
 	}
 	//clear waked list
 	RESET_SERIES(VAL_SERIES(waked));
