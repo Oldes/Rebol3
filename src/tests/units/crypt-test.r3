@@ -222,6 +222,11 @@ sY29ouezv4Xz2PuMch5VGPP+CDqzCM4loWgV
 	--assert 1999-12-31/23:59:59 = system/codecs/utc-time/decode/generalized copy #{31393939313233313233353935395A}
 	--assert 2026-10-27/15:41:54.5 = system/codecs/utc-time/decode/generalized copy "20261027154154.5Z"
 
+--test-- "utc-time codec century (RFC 5280)"
+	--assert 1998-06-01/12:00 = system/codecs/utc-time/decode copy "980601120000Z"
+	--assert 1950-01-01/0:00  = system/codecs/utc-time/decode copy "500101000000Z"
+	--assert 2049-12-31/23:59:59 = system/codecs/utc-time/decode copy "491231235959Z"
+	--assert 2026-10-27/16:52:47 = system/codecs/utc-time/decode copy #{3236313032373136353234375A}
 
 ===end-group===
 
