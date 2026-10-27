@@ -242,16 +242,10 @@ register-codec [
 
 				;-- signature:
 				AlgorithmIdentifier (
-					; MUST be same like result/algorithm!
-					either *blk <> result/algorithm [
-						print "Invalid certificate! Signature alrgorithm mischmasch."
-						? result/algorithm
-						? *blk
-						result/algorithm: none
-					][
-						if 1 = length? result/algorithm [
-							result/algorithm: first result/algorithm
-						]
+					;; MUST be the same as the tbsCertificate signature algorithm (RFC 5280 4.1.1.2)
+					if *blk <> result/algorithm [return none]
+					if 1 = length? result/algorithm [
+						result/algorithm: first result/algorithm
 					]
 				)
 				'BIT_STRING set *val binary! ( result/signature: *val )

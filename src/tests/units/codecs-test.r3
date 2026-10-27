@@ -371,6 +371,21 @@ if find codecs 'crt [
 			--assert all [error? e: try [decode 'crt #{3003020101}] e/id = 'no-codec]
 			--assert object? decode 'crt crt-ec      ;; still decodes a valid one
 
+		crt-alg-mismatch: debase {
+		MIIBzTCCAXOgAwIBAgIUYVXD/RVHa3T8f9wkYslOVVhXtP8wCgYIKoZIzj0EAwIwFTETMBEGA1UE
+		AwwKdGVzdC5sb2NhbDAeFw0yNjEwMjcxNTQxNTRaFw0zNjEwMjQxNTQxNTRaMBUxEzARBgNVBAMM
+		CnRlc3QubG9jYWwwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAASqbqVW+eCg00JcBxQFVwBepoh+
+		5sPVuq9RkQwdiyJEoWDTz22EeEItEoRY1hCSnC2/HIYZbpabQG10Zaj5VTvdo4GgMIGdMB0GA1Ud
+		DgQWBBQoyjJq3pMwi0X8DP7Vl7AROCmmwTAfBgNVHSMEGDAWgBQoyjJq3pMwi0X8DP7Vl7AROCmm
+		wTAPBgNVHRMBAf8EBTADAQH/MB0GA1UdJQQWMBQGCCsGAQUFBwMBBggrBgEFBQcDAjArBgNVHREE
+		JDAiggp0ZXN0LmxvY2Fsgg53d3cudGVzdC5sb2NhbIcEfwAAATAKBggqhkjOPQQDAwNIADBFAiEA
+		4BC0ExXYjA4Q6zQE/JO+8GOT5kUUGRAYXKIoVkrPHfACIHbTdp2phL/711mFuxvNBwlfh1xCvAfG
+		Z8HndTx6XGxY} 64
+		--test-- "CRT signature algorithm mismatch"
+			--assert none? crt-decode crt-alg-mismatch
+			--assert all [error? e: try [decode 'crt crt-alg-mismatch] e/id = 'no-codec]
+			--assert 'ecdsa-with-SHA256 = select decode 'crt crt-ec 'algorithm
+
 	===end-group===
 	codecs/crt/verbose: 0
 ]
