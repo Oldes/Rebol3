@@ -1611,8 +1611,10 @@ RL_API REBCNT RL_Decode_UTF8_Char(const REBYTE *str, REBCNT *len)
 **		port   - port frame, as received in a port! command argument
 **		device - device id from RL_Register_Device
 **	Notes:
-**		The state is sized sizeof(REBREQ) for every device (see
-**		Init_Ports), so a device needing more must keep it behind
+**		The state holds the port's request followed by a second request
+**		used internally by net ports for WRITE (see PORT_STATE_REQS in
+**		c-port.c). The returned request is the first one; it has the size
+**		sizeof(REBREQ), so a device needing more must keep it behind
 **		req->handle, the way dev-midi.c does.
 **
 **		Allocating the handle can trap on out of memory, which longjmps
