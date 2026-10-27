@@ -305,7 +305,7 @@ if find codecs 'crt [
 			--assert block? crt/extensions  ;; parsing continued past the IDs
 		--test-- "CRT tbs hash with 3-byte tbsCertificate header"
 			crt: decode 'crt crt-v1
-			--assert crt/fingerprint = #{C8115F714335EC78E10FFD5A147DB97EA06C5C6C12259A15BA64BE6D93FEE6D2}
+			--assert crt/tbs-hash = #{C8115F714335EC78E10FFD5A147DB97EA06C5C6C12259A15BA64BE6D93FEE6D2}
 
 		crt-mv: debase {
 		MIIBljCCATsCFF0A3WQ/x+TQKEIZjLorKiD8RLyEMAoGCCqGSM49BAMCME0xMDALBgNVBAsTBFVu
@@ -351,7 +351,7 @@ if find codecs 'crt [
 		--test-- "CRT ecdsa-with-SHA1 and EV subject attributes"
 			crt: decode 'crt crt-ev
 			--assert crt/algorithm = 'ecdsa-with-SHA1
-			--assert crt/fingerprint = #{E3E512A465154404D9E515518417FDE64796C3F8}
+			--assert crt/tbs-hash = #{E3E512A465154404D9E515518417FDE64796C3F8}
 			--assert crt/subject = [
 				jurisdictionCountryName: "CZ"
 				businessCategory: "Private Organization"
@@ -402,6 +402,13 @@ if find codecs 'crt [
 			crt: decode 'crt crt-crit-false
 			--assert not first select crt/extensions 'basicConstraints
 			--assert block? select crt/extensions 'subjectAltName  ;; following extensions still decoded
+
+		--test-- "CRT fingerprint is SHA-256 of the whole certificate"
+			crt: decode 'crt crt-ec
+			--assert crt/fingerprint = #{12A1F7514BD1264B0989B9447FE00DD10BA9AFDFBA55D2F0949A6A58EA715F27}
+			--assert crt/fingerprint = checksum crt-ec 'sha256
+			crt: decode 'crt crt-v1
+			--assert crt/fingerprint = #{14B73035D547DAEF0366DF27FFB93AE440986E143280E74DCD58A580DD479CC0}
 	===end-group===
 	codecs/crt/verbose: 0
 ]

@@ -13,7 +13,7 @@ register-codec [
 	title: "Internet X.509 Public Key Infrastructure Certificate and Certificate Revocation List (CRL) Profile"
 	suffixes: [%.crt %.cer]
 
-	get-fingerprint: function[
+	get-tbs-hash: function[
 		"Hash of the tbsCertificate (the part covered by the signature)"
 		data [binary!] method [word!]
 	][
@@ -109,9 +109,6 @@ register-codec [
 									]
 									*val: *new
 								]
-								extKeyUsage [
-									*val: der-codec/decode-OID *val/SEQUENCE/OBJECT_IDENTIFIER
-								]
 								subjectAltName [
 									*new: copy []
 									parse *val [
@@ -169,6 +166,7 @@ register-codec [
 				version:
 				serial-number:
 				fingerprint:
+				tbs-hash:
 				algorithm:
 				issuer:
 				valid-from:
@@ -252,6 +250,9 @@ register-codec [
 				'BIT_STRING set *val binary! ( result/signature: *val )
 				to end
 			][	return none ] ;; not a (supported) X.509 certificate
+			if binary? data [
+				result/fingerprint: checksum data 'sha256 ;; of the whole DER certificate
+			]
 			if all [
 				binary? data
 				hash: select [
@@ -270,7 +271,7 @@ register-codec [
 				] result/algorithm
 			][
 				try [
-					result/fingerprint: get-fingerprint :data :hash
+					result/tbs-hash: get-tbs-hash :data :hash
 				]
 			]
 			if verbose > 0 [
