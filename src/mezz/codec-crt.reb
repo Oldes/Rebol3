@@ -11,7 +11,7 @@ register-codec [
 	name:  'crt
 	type:  'cryptography
 	title: "Internet X.509 Public Key Infrastructure Certificate and Certificate Revocation List (CRL) Profile"
-	suffixes: [%.crt]
+	suffixes: [%.crt %.cer]
 
 	get-fingerprint: function[
 		"Hash of the tbsCertificate (the part covered by the signature)"
