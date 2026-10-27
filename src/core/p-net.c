@@ -244,11 +244,15 @@ static REBOOL Query_Net_Field(REBVAL *port, REBVAL *word, REBVAL *ret, void *ctx
 
 		//Print("(max read length %d)", sock->length);
 		result = OS_Do_Device(sock, RDC_READ); // recv can happen immediately
-		if (GET_FLAG(sock->modes, RST_UDP && result == 0))
-			VAL_TAIL(arg) += sock->actual;
 		if (result < 0)
 			Trap_Port(RE_READ_ERROR, port, sock->error);
-		
+		if (result == DR_DONE && GET_FLAG(sock->modes, RST_UDP)) {
+			// Make the received datagram visible right away. The device has
+			// already queued the READ event, so mark the data as consumed,
+			// else the UPDATE action would append the same length again.
+			VAL_TAIL(arg) += sock->actual;
+			sock->actual = 0;
+		}
 		break;
 
 	case A_WRITE:

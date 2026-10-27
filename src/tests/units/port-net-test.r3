@@ -12,6 +12,26 @@ Rebol [
 
 ;- "HTTP scheme" moved to %port-http-test.r3
 
+===start-group=== "UDP"
+	--test-- "UDP read length is applied only once"
+		;; When a datagram is already waiting, READ completes immediately.
+		;; Its length must not be added again by UPDATE when the event is processed.
+		udp-server: open udp://:45117
+		udp-server/awake: func [event] [event/type = 'read]
+		udp-client: open udp://127.0.0.1:45117
+		udp-client/awake: func [event] [false]
+		write udp-client "Hello"
+		wait 0.1 ;; let the datagram arrive, so the READ completes immediately
+		read udp-server
+		--assert 5 = length? udp-server/data ;; the immediate path was taken
+		--assert all [
+			port? wait [udp-server 1]
+			"Hello" = to string! udp-server/data
+		]
+		try [close udp-client]
+		try [close udp-server]
+===end-group===
+
 
 ===start-group=== "WHOIS scheme"
 	--test-- "read WHOIS"
