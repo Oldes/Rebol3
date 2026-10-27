@@ -236,6 +236,30 @@ if find codecs 'crt [
 			--assert block? eku: select crt/extensions 'extendedKeyUsage
 			--assert not eku/1  ;; not critical
 			--assert eku/2 = [serverAuth clientAuth]
+
+		crt-san: debase {
+		MIIB3DCCAYKgAwIBAgIUTGPdlRghJGo8eZXDgot4CKUZwBcwCgYIKoZIzj0EAwIwEzERMA8GA1UE
+		AwwIc2FuLnRlc3QwHhcNMjYxMDI3MTY0NzAzWhcNMzYxMDI0MTY0NzAzWjATMREwDwYDVQQDDAhz
+		YW4udGVzdDBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABGDuxtWH7aOJwMTUsi0BmZxWXt0JtWl6
+		65E2VYgAVgwfRIukBmo+yvkIdE9YWiZRF02ZIOwRjreR619H57Ur3pujgbMwgbAwHQYDVR0OBBYE
+		FKE/TN0F+eMN/yelcxtBE8Gj9FYrMB8GA1UdIwQYMBaAFKE/TN0F+eMN/yelcxtBE8Gj9FYrMA8G
+		A1UdEwEB/wQFMAMBAf8wXQYDVR0RBFYwVKAOBgMqAwSgBwwFb3RoZXKCCHNhbi50ZXN0gQ1pbmZv
+		QHNhbi50ZXN0hhFodHRwczovL3Nhbi50ZXN0L4cECgAAAYcQAAAAAAAAAAAAAAAAAAAAATAKBggq
+		hkjOPQQDAgNIADBFAiB22rNCV8ngBdlGdyMD3xPqy5s9l++ZM99zCHd9lhBsBwIhANtHLA4EDuA6
+		rvYT5GVwrZYzox1hohBBfItnJJqjnDXJ} 64
+		--test-- "CRT subjectAltName with DNS and IPv4"
+			crt: decode 'crt crt-ec
+			--assert block? san: select crt/extensions 'subjectAltName
+			--assert san/2 = ["test.local" "www.test.local" 127.0.0.1]
+		--test-- "CRT subjectAltName with mixed entries"
+			crt: decode 'crt crt-san
+			san: second select crt/extensions 'subjectAltName
+			--assert 5 = length? san  ;; otherName skipped
+			--assert san/1 = "san.test"
+			--assert san/2 = info@san.test
+			--assert san/3 = https://san.test/
+			--assert san/4 = 10.0.0.1
+			--assert san/5 = #{00000000000000000000000000000001}
 	===end-group===
 	codecs/crt/verbose: 0
 ]

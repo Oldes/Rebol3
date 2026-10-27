@@ -106,7 +106,15 @@ register-codec [
 									*new: copy []
 									parse *val [
 										'SEQUENCE into [
-											any ['CS2 set *bin binary! (append *new to string! *bin)]
+											any [
+												  'CS2 set *bin binary! (append *new to string! *bin)           ;; dNSName
+												| 'CS7 set *bin binary! (                                       ;; iPAddress
+													append *new either 4 = length? *bin [to tuple! *bin][*bin]  ;; IPv6 stays binary
+												)
+												| 'CS1 set *bin binary! (append *new to email! to string! *bin) ;; rfc822Name
+												| 'CS6 set *bin binary! (append *new to url! to string! *bin)   ;; URI
+												| skip skip ;; otherName, directoryName,... not decoded yet
+											]
 										]
 									]
 									*val: new-line/all *new true
