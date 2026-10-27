@@ -361,6 +361,16 @@ if find codecs 'crt [
 				surname: "Novak"
 				commonName: "ev.test"
 			]
+
+		--test-- "CRT decode of invalid input"
+			crt-decode: :system/codecs/crt/decode
+			--assert none? crt-decode #{0102}        ;; not DER
+			--assert none? crt-decode #{3003020101}  ;; DER, but not a certificate
+			--assert none? crt-decode [SEQUENCE [INTEGER #{01}]]
+			--assert all [error? e: try [decode 'crt #{0102}] e/id = 'no-codec]
+			--assert all [error? e: try [decode 'crt #{3003020101}] e/id = 'no-codec]
+			--assert object? decode 'crt crt-ec      ;; still decodes a valid one
+
 	===end-group===
 	codecs/crt/verbose: 0
 ]

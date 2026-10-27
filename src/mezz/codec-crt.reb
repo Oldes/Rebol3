@@ -144,7 +144,7 @@ register-codec [
 
 		func [
 			data [binary! block!]
-			/local pkix version serialNumber issuer subject validity der
+			/local pkix der result tmp hash
 		][
 			try [all [
 				; as there seems to be no standard, the *.crt file
@@ -157,6 +157,7 @@ register-codec [
 			der: either binary? data [
 				der-codec/decode data
 			][	data ]
+			unless block? der [return none] ;; not DER data
 			if all [
 				2 = length? der
 				'SEQUENCE = der/1 
@@ -179,7 +180,7 @@ register-codec [
 				signature:
 			]
 
-			parse der [
+			unless parse der [
 				'SEQUENCE into [
 					;-- version:
 					[
@@ -255,7 +256,7 @@ register-codec [
 				)
 				'BIT_STRING set *val binary! ( result/signature: *val )
 				to end
-			]
+			][	return none ] ;; not a (supported) X.509 certificate
 			if all [
 				binary? data
 				hash: select [
