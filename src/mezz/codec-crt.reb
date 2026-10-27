@@ -190,8 +190,8 @@ register-codec [
 					
 					;-- validity:
 					'SEQUENCE into [
-						'UTC_TIME set *val date! (result/valid-from: *val)
-						'UTC_TIME set *val date! (result/valid-to:   *val)
+						['UTC_TIME | 'GENERALIZED_TIME] set *val date! (result/valid-from: *val)
+						['UTC_TIME | 'GENERALIZED_TIME] set *val date! (result/valid-to:   *val)
 					]
 					;-- subject:
 					Name (result/subject: copy *blk)

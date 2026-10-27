@@ -260,6 +260,20 @@ if find codecs 'crt [
 			--assert san/3 = https://san.test/
 			--assert san/4 = 10.0.0.1
 			--assert san/5 = #{00000000000000000000000000000001}
+
+		crt-gt: debase {
+		MIIBezCCASGgAwIBAgIUH80PfOPIgVykau3txqTGOvGmxlMwCgYIKoZIzj0EAwIwEjEQMA4GA1UE
+		AwwHZ3QudGVzdDAgFw0yNjEwMjcxNjUyNDdaGA8yMDUxMDYxODE2NTI0N1owEjEQMA4GA1UEAwwH
+		Z3QudGVzdDBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABBVtbmBTO32I77ZJUEk5VJvL037IIldM
+		lilxsX5nwAvULjbcQgIqmUHtypvH1ktm26kv8KZhBg3JNifNkwCftdyjUzBRMB0GA1UdDgQWBBRv
+		yB3lfJ6pknvQNXDP5i4f3hRtojAfBgNVHSMEGDAWgBRvyB3lfJ6pknvQNXDP5i4f3hRtojAPBgNV
+		HRMBAf8EBTADAQH/MAoGCCqGSM49BAMCA0gAMEUCIAbIse9JJd4Z/VOuMk11a+UzHGe5gALUEo6N
+		uYwutwVLAiEAkyEmuh3lxjjIB/vGGUXS73ApPB5tSWJOkWpdILs4qU0=} 64
+		--test-- "CRT validity with GeneralizedTime"
+			crt: decode 'crt crt-gt
+			--assert crt/valid-from = 2026-10-27/16:52:47
+			--assert crt/valid-to   = 2051-06-18/16:52:47
+			--assert crt/subject = [commonName: "gt.test"]
 	===end-group===
 	codecs/crt/verbose: 0
 ]

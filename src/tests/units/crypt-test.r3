@@ -217,6 +217,12 @@ sY29ouezv4Xz2PuMch5VGPP+CDqzCM4loWgV
 	--assert "9-Jul-2012/3:10" = mold decode 'utc-time "1207090310Z"
 	--assert "9-Jul-2012/3:10+2:00" = mold decode 'utc-time "1207090310+0200"
 
+--test-- "utc-time codec with /generalized"
+	--assert 2050-01-01/0:00 = system/codecs/utc-time/decode/generalized copy "20500101000000Z"
+	--assert 1999-12-31/23:59:59 = system/codecs/utc-time/decode/generalized copy #{31393939313233313233353935395A}
+	--assert 2026-10-27/15:41:54.5 = system/codecs/utc-time/decode/generalized copy "20261027154154.5Z"
+
+
 ===end-group===
 
 
