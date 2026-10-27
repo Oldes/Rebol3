@@ -143,6 +143,13 @@ pick:
 		REBSER *ser;
 		REBCNT n;
 		arg = D_ARG(ARG_QUERY_FIELD);
+		if (IS_NONE(arg)) {
+			// List of the supported fields:
+			ser = Make_Block(1);
+			Init_Word(Append_Value(ser), SYM_LOCAL_IP);
+			Set_Block(D_RET, ser);
+			break;
+		}
 		if (!IS_WORD(arg) || VAL_WORD_CANON(arg) != SYM_LOCAL_IP)
 			Trap_Arg(arg);
 		CLEARS(&req);

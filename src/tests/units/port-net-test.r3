@@ -231,7 +231,8 @@ Rebol [
 	--test-- "query dns://"
 	;@@ https://github.com/Oldes/rebol-issues/issues/1826
 		--assert all [error? e: try [query dns:// object!]  e/id = 'invalid-arg]
-		
+	--test-- "query dns:// none"
+		--assert [local-ip] = query dns:// none
 	--test-- "query dns:// 'local-ip"
 		--assert all [
 			block? ips: query dns:// 'local-ip
