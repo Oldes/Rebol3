@@ -323,6 +323,41 @@ if find codecs 'crt [
 			]
 			--assert crt/issuer = crt/subject
 			--assert date? crt/valid-to  ;; parsing continued past the names
+
+		crt-ev: debase {
+		MIICdTCCAhygAwIBAgIUNgFkMnBKNvbTQ7imES5zBP1r7Q0wCQYHKoZIzj0EATCBkDETMBEGCysG
+		AQQBgjc8AgEDEwJDWjEdMBsGA1UEDwwUUHJpdmF0ZSBPcmdhbml6YXRpb24xETAPBgNVBAUTCDEy
+		MzQ1Njc4MRcwFQYDVQRhDA5OVFJDWi0xMjM0NTY3ODEMMAoGA1UEKgwDSmFuMQ4wDAYDVQQEDAVO
+		b3ZhazEQMA4GA1UEAwwHZXYudGVzdDAeFw0yNjEwMjcxNzMxNDFaFw0zNjEwMjQxNzMxNDFaMIGQ
+		MRMwEQYLKwYBBAGCNzwCAQMTAkNaMR0wGwYDVQQPDBRQcml2YXRlIE9yZ2FuaXphdGlvbjERMA8G
+		A1UEBRMIMTIzNDU2NzgxFzAVBgNVBGEMDk5UUkNaLTEyMzQ1Njc4MQwwCgYDVQQqDANKYW4xDjAM
+		BgNVBAQMBU5vdmFrMRAwDgYDVQQDDAdldi50ZXN0MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE
+		l0uEA4oC4rDWstO5NdxSUVfxjYhPIWoQVbdvhGIG8KaBV1AUOXTCVcuwrkkIlBfnsLMydxDMzXgG
+		V9mIsEXHPqNTMFEwHQYDVR0OBBYEFDlhZz87z+K8UqIIdgjnBL4GGhqGMB8GA1UdIwQYMBaAFDlh
+		Zz87z+K8UqIIdgjnBL4GGhqGMA8GA1UdEwEB/wQFMAMBAf8wCQYHKoZIzj0EAQNIADBFAiAZWY1n
+		FykBV7Khg08R6wAk7nubu7WGqn3fGGlwijNAsAIhAMkuRcuRKr80ssI3QTYzMlw1dCknQjKVjalO
+		CMOfx4sa} 64
+		--test-- "DER decode-OID names"
+			der: system/codecs/der
+			--assert 'sha1WithRSAEncryption = der/decode-OID #{2A864886F70D010105}
+			--assert 'ecdsa-with-SHA1 = der/decode-OID #{2A8648CE3D0401}
+			--assert 'postalCode = der/decode-OID #{550411}
+			--assert 'serialNumber = der/decode-OID #{550405}
+			--assert 'organizationIdentifier = der/decode-OID #{550461}
+			--assert 'jurisdictionCountryName = der/decode-OID #{2B0601040182373C020103}
+		--test-- "CRT ecdsa-with-SHA1 and EV subject attributes"
+			crt: decode 'crt crt-ev
+			--assert crt/algorithm = 'ecdsa-with-SHA1
+			--assert crt/fingerprint = #{E3E512A465154404D9E515518417FDE64796C3F8}
+			--assert crt/subject = [
+				jurisdictionCountryName: "CZ"
+				businessCategory: "Private Organization"
+				serialNumber: "12345678"
+				organizationIdentifier: "NTRCZ-12345678"
+				givenName: "Jan"
+				surname: "Novak"
+				commonName: "ev.test"
+			]
 	===end-group===
 	codecs/crt/verbose: 0
 ]

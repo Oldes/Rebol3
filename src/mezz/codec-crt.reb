@@ -260,7 +260,9 @@ register-codec [
 					ecdsa-with-SHA256       sha256
 					ecdsa-with-SHA384       sha384
 					ecdsa-with-SHA512       sha512
-					sha1WithRSAEncrption    sha1
+					sha224WithRSAEncryption sha224
+					sha1WithRSAEncryption   sha1
+					ecdsa-with-SHA1         sha1
 				] result/algorithm
 			][
 				try [
