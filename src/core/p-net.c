@@ -35,6 +35,23 @@
 
 #define NET_BUF_SIZE 32*1024
 
+// The port state holds two requests (see PORT_STATE_REQS in c-port.c).
+// The first one is used for everything but WRITE, which uses the second
+// one, so a READ and a WRITE may be pending at the same time.
+#define NET_WRITE_REQ(sock) ((sock) + 1)
+
+/***********************************************************************
+**
+*/	static REBHOB *Net_State_Hob(REBSER *port)
+/*
+**		Returns the state handle context of an open net port.
+**		Its series keeps the data of the pending WRITE (GC safe).
+**
+***********************************************************************/
+{
+	return VAL_HANDLE_CTX(OFV(port, STD_PORT_STATE));
+}
+
 enum Transport_Types {
 	TRANSPORT_TCP,
 	TRANSPORT_UDP
@@ -127,6 +144,8 @@ static REBOOL Query_Net_Field(REBVAL *port, REBVAL *word, REBVAL *ret, void *ctx
 {
 	REBSER *port;
 	REBREQ *sock;	// IO request
+	REBREQ *wreq;	// IO request used for WRITE
+	REBHOB *hob;	// state handle context (keeps the WRITE data)
 	REBVAL *spec;	// port spec
 	REBVAL *arg;	// action argument value
 	REBVAL *val;	// e.g. port number value
@@ -219,9 +238,9 @@ static REBOOL Query_Net_Field(REBVAL *port, REBVAL *word, REBVAL *ret, void *ctx
 			if (ANY_BINSTR(arg)) VAL_TAIL(arg) += sock->actual;
 			sock->actual = 0;
 		}
-		else if (sock->command == RDC_WRITE) {
-			SET_NONE(arg);  // Write is done.
-		}
+		// Release the data of a finished (or failed) WRITE:
+		if (!GET_FLAG(NET_WRITE_REQ(sock)->flags, RRF_PENDING))
+			Net_State_Hob(port)->series = NULL;
 		return R_NONE;
 
 	case A_READ:
@@ -275,16 +294,42 @@ static REBOOL Query_Net_Field(REBVAL *port, REBVAL *word, REBVAL *ret, void *ctx
 			if (n <= len) len = n;
 		}
 
-		// Setup the write:
-		*OFV(port, STD_PORT_DATA) = *spec;	// keep it GC safe
-		sock->length = len;
-		sock->data = VAL_BIN_DATA(spec);
-		sock->actual = 0;
+		// WRITE has its own request, so it does not disturb a pending READ.
+		wreq = NET_WRITE_REQ(sock);
+		hob = Net_State_Hob(port);
+
+		// TCP: append to the data of a still pending WRITE (keeps the order).
+		// (UDP: a pending datagram is replaced, as it was before.)
+		if (GET_FLAG(wreq->flags, RRF_PENDING) && hob->series
+				&& !GET_FLAG(sock->modes, RST_UDP)) {
+			Append_Bytes_Len(hob->series, VAL_BIN_DATA(spec), len);
+			wreq->data = BIN_HEAD(hob->series) + wreq->actual; // may be reallocated
+			wreq->length += len;
+			break;
+		}
+
+		// Compatibility: a WRITE used to drop the read buffer (it was used
+		// for the written data). Keep it only when a READ is in progress
+		// or when its received data were not yet processed by UPDATE.
+		if (!(GET_FLAG(sock->flags, RRF_PENDING) && sock->command == RDC_READ)
+				&& sock->actual == 0)
+			SET_NONE(OFV(port, STD_PORT_DATA));
+
+		// Setup the write (with a copy of the data, so it is GC safe
+		// and it cannot be modified while it is being sent):
+		hob->series = Copy_Bytes(VAL_BIN_DATA(spec), len);
+		wreq->socket = sock->socket;
+		wreq->modes  = sock->modes;
+		wreq->state  = sock->state;  // RSM_CONNECT
+		wreq->net    = sock->net;    // remote address used by UDP
+		wreq->length = len;
+		wreq->data   = BIN_HEAD(hob->series);
+		wreq->actual = 0;
 
 		//Print("(write length %d)", len);
-		result = OS_Do_Device(sock, RDC_WRITE); // send can happen immediately
-		if (result < 0) Trap_Port(RE_WRITE_ERROR, port, sock->error);
-		if (result == DR_DONE) SET_NONE(OFV(port, STD_PORT_DATA));
+		result = OS_Do_Device(wreq, RDC_WRITE); // send can happen immediately
+		if (result <= 0) hob->series = NULL; // done or failed
+		if (result < 0) Trap_Port(RE_WRITE_ERROR, port, wreq->error);
 		break;
 
 	case A_PICK:
@@ -314,6 +359,9 @@ static REBOOL Query_Net_Field(REBVAL *port, REBVAL *word, REBVAL *ret, void *ctx
 
 	case A_CLOSE:
 		if (IS_OPEN(sock)) {
+			// A pending WRITE must not be polled with the closed socket:
+			OS_Abort_Device(NET_WRITE_REQ(sock));
+			Net_State_Hob(port)->series = NULL;
             if (OS_Do_Device(sock, RDC_CLOSE) < 0) {
                 Trap_Port(RE_CANNOT_CLOSE, port, sock->error);
             }

@@ -34,6 +34,11 @@
 
 #define MAX_WAIT_MS 64 // Maximum millsec to sleep
 
+// Number of requests in a native port state. The first one is the main
+// request (all code and extensions use it as THE port's REBREQ). The second
+// one is used by net ports for WRITE, so it may pend while a READ pends.
+#define PORT_STATE_REQS 2
+
 /***********************************************************************
 **
 */	REBVAL *Make_Port(REBVAL *spec)
@@ -62,6 +67,7 @@
 ***********************************************************************/
 {
 	REBREQ *req;
+	REBCNT n;
 	REBVAL *state = BLK_SKIP(port, STD_PORT_STATE);
 	REBCNT type = SYM_PORT_STATEX; //TODO: make it per-device type instead one state type for all devices
 
@@ -77,8 +83,10 @@
 		return NULL;
 	}
 	req = (REBREQ *)VAL_HANDLE_CONTEXT_DATA(state);
-	req->port = port;
-	req->device = device;
+	for (n = 0; n < PORT_STATE_REQS; n++) {
+		req[n].port = port;
+		req[n].device = device;
+	}
 
 	return state;
 }
@@ -97,12 +105,16 @@
 {
 	REBVAL *state;
 	REBREQ *req;
+	REBCNT n;
 
 	if (IS_PORT(port)) {
 		state = BLK_SKIP(VAL_PORT(port), STD_PORT_STATE);
 		if (IS_HANDLE(state) && VAL_HANDLE_TYPE(state) == SYM_PORT_STATEX) {
 			req = (REBREQ*)VAL_HANDLE_CONTEXT_DATA(state);
-			if (!GET_FLAG(req->flags, RRF_PENDING)) return FALSE;
+			for (n = 0; n < PORT_STATE_REQS; n++) {
+				if (GET_FLAG(req[n].flags, RRF_PENDING)) return TRUE;
+			}
+			return FALSE;
 		}
 	}
 	return TRUE;
@@ -610,7 +622,7 @@ SCHEME_ACTIONS *Scheme_Actions;	// Initial Global (not threaded)
 ***********************************************************************/
 {
 	// Register a handle used to hold native port states
-	Register_Handle(SYM_PORT_STATEX, sizeof(REBREQ), NULL);
+	Register_Handle(SYM_PORT_STATEX, PORT_STATE_REQS * sizeof(REBREQ), NULL);
 
 	Scheme_Actions = Make_Clear_Mem(sizeof(SCHEME_ACTIONS), MAX_SCHEMES);
 

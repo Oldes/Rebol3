@@ -82,6 +82,51 @@ Rebol [
 ===end-group===
 
 
+===start-group=== "TCP full duplex"
+	--test-- "READ while a WRITE is still pending"
+		;; The READ must not overwrite the pending WRITE request.
+		big: append/dup make binary! 2000000 #{01020304} 500000
+		received: 0
+		reply: none
+		tcp-server: open tcp://:45121
+		tcp-server/awake: func [event /local client] [
+			if event/type = 'accept [
+				client: first event/port
+				client/awake: func [event /local port] [
+					port: event/port
+					if event/type = 'read [
+						received: received + length? port/data
+						clear port/data
+						either received >= length? big [write port "done"][read port]
+					]
+					false
+				]
+				read client
+			]
+			false
+		]
+		tcp-client: open tcp://127.0.0.1:45121
+		tcp-client/awake: func [event /local port] [
+			port: event/port
+			switch event/type [
+				lookup [open port]
+				connect [
+					write port big ;; 2MB is sent in 32kB parts, so it stays pending
+					read port      ;; issued while the WRITE is pending
+				]
+				read [reply: to string! port/data return true]
+			]
+			false
+		]
+		wait [tcp-client 5]
+		--assert received = length? big
+		--assert reply = "done"
+		try [close tcp-client]
+		try [close tcp-server]
+===end-group===
+
+
+
 ===start-group=== "WHOIS scheme"
 	--test-- "read WHOIS"
 		--assert  string? probe try [read whois://google.com]
