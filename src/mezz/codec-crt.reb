@@ -92,7 +92,8 @@ register-codec [
 					(*bool: false)
 					'SEQUENCE into [
 						'OBJECT_IDENTIFIER set *oid binary!
-						opt ['BOOLEAN #{FF} (*bool: true)]
+						;; DER requires FALSE to be omitted, but BER-encoded certs may contain #{00}
+						opt ['BOOLEAN set *bin binary! (*bool: *bin <> #{00})]
 						'OCTET_STRING set *val binary! (
 							*oid: der-codec/decode-OID *oid
 							if all [not empty? *val *val/1 = 48] [*val: der-codec/decode *val]

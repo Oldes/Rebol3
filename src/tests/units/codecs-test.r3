@@ -386,6 +386,22 @@ if find codecs 'crt [
 			--assert all [error? e: try [decode 'crt crt-alg-mismatch] e/id = 'no-codec]
 			--assert 'ecdsa-with-SHA256 = select decode 'crt crt-ec 'algorithm
 
+		crt-crit-false: debase {
+		MIIBzTCCAXOgAwIBAgIUYVXD/RVHa3T8f9wkYslOVVhXtP8wCgYIKoZIzj0EAwIwFTETMBEGA1UE
+		AwwKdGVzdC5sb2NhbDAeFw0yNjEwMjcxNTQxNTRaFw0zNjEwMjQxNTQxNTRaMBUxEzARBgNVBAMM
+		CnRlc3QubG9jYWwwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAASqbqVW+eCg00JcBxQFVwBepoh+
+		5sPVuq9RkQwdiyJEoWDTz22EeEItEoRY1hCSnC2/HIYZbpabQG10Zaj5VTvdo4GgMIGdMB0GA1Ud
+		DgQWBBQoyjJq3pMwi0X8DP7Vl7AROCmmwTAfBgNVHSMEGDAWgBQoyjJq3pMwi0X8DP7Vl7AROCmm
+		wTAPBgNVHRMBAQAEBTADAQH/MB0GA1UdJQQWMBQGCCsGAQUFBwMBBggrBgEFBQcDAjArBgNVHREE
+		JDAiggp0ZXN0LmxvY2Fsgg53d3cudGVzdC5sb2NhbIcEfwAAATAKBggqhkjOPQQDAgNIADBFAiEA
+		4BC0ExXYjA4Q6zQE/JO+8GOT5kUUGRAYXKIoVkrPHfACIHbTdp2phL/711mFuxvNBwlfh1xCvAfG
+		Z8HndTx6XGxY} 64
+		--test-- "CRT extension critical flag"
+			crt: decode 'crt crt-ec
+			--assert true? first select crt/extensions 'basicConstraints
+			crt: decode 'crt crt-crit-false
+			--assert not first select crt/extensions 'basicConstraints
+			--assert block? select crt/extensions 'subjectAltName  ;; following extensions still decoded
 	===end-group===
 	codecs/crt/verbose: 0
 ]
