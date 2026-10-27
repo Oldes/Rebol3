@@ -83,6 +83,7 @@ Rebol [
 
 
 ===start-group=== "TCP full duplex"
+	;@@ https://github.com/Oldes/Rebol-issues/issues/2143
 	--test-- "READ while a WRITE is still pending"
 		;; The READ must not overwrite the pending WRITE request.
 		big: append/dup make binary! 2000000 #{01020304} 500000
@@ -122,6 +123,36 @@ Rebol [
 		--assert received = length? big
 		--assert reply = "done"
 		try [close tcp-client]
+		try [close tcp-server]
+
+	--test-- "READ before the previous READ's event was processed"
+		;; The first READ completes immediately (data already received),
+		;; the second must not overwrite its data.
+		conn: none
+		tcp-server: open tcp://:45122
+		tcp-server/awake: func [event] [
+			if event/type = 'accept [
+				conn: first event/port
+				conn/awake: func [event] [event/type = 'read]
+			]
+			false
+		]
+		tcp-client: open tcp://127.0.0.1:45122
+		tcp-client/awake: func [event] [
+			if event/type = 'lookup [open event/port]
+			false
+		]
+		loop 20 [if all [conn open? tcp-client] [break] wait 0.05]
+		write tcp-client "Hello"
+		wait 0.1 ;; let the data arrive (no READ is pending on conn)
+		read conn
+		read conn
+		--assert all [
+			port? wait [conn 1]
+			"Hello" = to string! conn/data
+		]
+		try [close tcp-client]
+		try [close conn]
 		try [close tcp-server]
 ===end-group===
 

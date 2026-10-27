@@ -256,6 +256,13 @@ static REBOOL Query_Net_Field(REBVAL *port, REBVAL *word, REBVAL *ret, void *ctx
 		if (!IS_STRING(arg) && !IS_BINARY(arg)) {
 			Set_Binary(arg, Make_Binary(NET_BUF_SIZE));
 		}
+		else if (sock->command == RDC_READ && sock->actual > 0) {
+			// The previous READ is done, but its event was not processed yet.
+			// Apply its data now, else the new READ would overwrite it.
+			// (The later UPDATE is fine with it, as the length is consumed.)
+			VAL_TAIL(arg) += sock->actual;
+			sock->actual = 0;
+		}
 		ser = VAL_SERIES(arg);
 		sock->length = SERIES_AVAIL(ser); // space available
 		if (sock->length < NET_BUF_SIZE/2) Extend_Series(ser, NET_BUF_SIZE);
