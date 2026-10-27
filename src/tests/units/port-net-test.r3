@@ -230,7 +230,16 @@ Rebol [
 
 	--test-- "query dns://"
 	;@@ https://github.com/Oldes/rebol-issues/issues/1826
-		--assert all [error? e: try [query dns:// object!]  e/id = 'no-port-action]
+		--assert all [error? e: try [query dns:// object!]  e/id = 'invalid-arg]
+		
+	--test-- "query dns:// 'local-ip"
+		--assert all [
+			block? ips: query dns:// 'local-ip
+			parse ips [any tuple!]
+			not find ips 127.0.0.1
+		]
+	--test-- "query dns:// with an unsupported field"
+		--assert all [error? e: try [query dns:// 'remote-ip]  e/id = 'invalid-arg]
 
 	--test-- "read dns://not-exists"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2498

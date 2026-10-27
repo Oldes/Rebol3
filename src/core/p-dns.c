@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -135,6 +135,27 @@ pick:
 
 	case A_UPDATE:
 		return R_NONE;
+
+	case A_QUERY: {
+		// Host level information (the port does not have to be open).
+		// Using a temporary request, so a pending lookup is not disturbed.
+		REBREQ req;
+		REBSER *ser;
+		REBCNT n;
+		arg = D_ARG(ARG_QUERY_FIELD);
+		if (!IS_WORD(arg) || VAL_WORD_CANON(arg) != SYM_LOCAL_IP)
+			Trap_Arg(arg);
+		CLEARS(&req);
+		req.device = RDI_DNS;
+		if (OS_Do_Device(&req, RDC_QUERY) < 0)
+			Trap_Port(RE_READ_ERROR, port, req.error);
+		ser = Make_Block(req.length);
+		for (n = 0; n < req.length; n++)
+			Set_Tuple(Append_Value(ser), req.data + 4 * n, 4);
+		OS_Free(req.data);
+		Set_Block(D_RET, ser);
+		break;
+	}
 
 	default:
 		Trap1(RE_NO_PORT_ACTION, Get_Action_Word(action));

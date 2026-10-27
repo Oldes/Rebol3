@@ -3,6 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -44,6 +45,14 @@
 #include "reb-host.h"
 #include "host-lib.h"
 #include "sys-net.h"
+
+#ifndef TO_WINDOWS
+#include <ifaddrs.h>
+#include <net/if.h>
+#endif
+
+#define MAX_LOCAL_IPS 64
+#define IS_LOOPBACK_IP(ip) (((REBYTE*)&(ip))[0] == 127) // ip in network byte order
 
 extern DEVICE_CMD Init_Net(REBREQ *); // Share same init
 extern DEVICE_CMD Quit_Net(REBREQ *);
@@ -214,6 +223,65 @@ error:
 
 /***********************************************************************
 **
+*/	DEVICE_CMD Query_DNS(REBREQ *req)
+/*
+**		Collect the IPv4 addresses of the local host (synchronous).
+**		Loopback addresses are not included.
+**
+**		On success, req->data holds an allocated array of addresses
+**		(u32, network byte order) and req->length their count.
+**		The caller must free req->data with OS_Free.
+**
+***********************************************************************/
+{
+	u32 *ips;
+	u32 ip;
+	REBCNT count = 0;
+#ifdef TO_WINDOWS
+	char name[256];
+	HOSTENT *he;
+	char **addr;
+#else
+	struct ifaddrs *list, *ifa;
+#endif
+
+	req->data = NULL;
+	req->length = 0;
+
+	ips = OS_Make(MAX_LOCAL_IPS * sizeof(u32));
+	if (!ips) return DR_ERROR;
+
+#ifdef TO_WINDOWS
+	// Windows resolves its own host name to the addresses of all adapters:
+	if (gethostname(name, sizeof(name)) || !(he = gethostbyname(name))) goto error;
+	for (addr = he->h_addr_list; *addr && count < MAX_LOCAL_IPS; addr++) {
+		ip = *(u32*)(*addr);
+		if (!IS_LOOPBACK_IP(ip)) ips[count++] = ip;
+	}
+#else
+	if (getifaddrs(&list)) goto error;
+	for (ifa = list; ifa && count < MAX_LOCAL_IPS; ifa = ifa->ifa_next) {
+		if (!ifa->ifa_addr || ifa->ifa_addr->sa_family != AF_INET) continue;
+		if (!(ifa->ifa_flags & IFF_UP) || (ifa->ifa_flags & IFF_LOOPBACK)) continue;
+		ip = ((struct sockaddr_in *)ifa->ifa_addr)->sin_addr.s_addr;
+		if (!IS_LOOPBACK_IP(ip)) ips[count++] = ip;
+	}
+	freeifaddrs(list);
+#endif
+
+	req->data = (REBYTE*)ips;
+	req->length = count;
+	return DR_DONE;
+
+error:
+	req->error = GET_ERROR;
+	OS_Free(ips);
+	return DR_ERROR;
+}
+
+
+/***********************************************************************
+**
 **	Command Dispatch Table (RDC_ enum order)
 **
 ***********************************************************************/
@@ -227,6 +295,8 @@ static DEVICE_CMD_FUNC Dev_Cmds[RDC_MAX] =
 	Read_DNS,
 	0,	// write
 	Poll_DNS,
+	0,	// connect
+	Query_DNS,
 };
 
 DEFINE_DEV(Dev_DNS, "DNS", 1, Dev_Cmds, RDC_MAX, 0);
