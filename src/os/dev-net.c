@@ -576,15 +576,17 @@ lserr:
 	if (result) goto lserr;
 
 	SET_FLAG(sock->state, RSM_BIND);
+	Get_Local_IP(sock);
+
+	// UDP has no connections to accept. The bound socket is ready for READ,
+	// so it must not pend in the accept state (accept() fails on it).
+	if (GET_FLAG(sock->modes, RST_UDP)) return DR_DONE;
 
 	// For TCP connections, setup listen queue:
-	if (!GET_FLAG(sock->modes, RST_UDP)) {
-		result = listen(sock->socket, SOMAXCONN);
-		if (result) goto lserr;
-		SET_FLAG(sock->state, RSM_LISTEN);
-	}
+	result = listen(sock->socket, SOMAXCONN);
+	if (result) goto lserr;
+	SET_FLAG(sock->state, RSM_LISTEN);
 
-	Get_Local_IP(sock);
 	sock->command = RDC_CREATE;	// the command done on wakeup
 
 	return DR_PEND;

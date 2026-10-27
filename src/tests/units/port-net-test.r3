@@ -30,6 +30,26 @@ Rebol [
 		]
 		try [close udp-client]
 		try [close udp-server]
+
+	--test-- "UDP listen port does not produce an error event"
+		;; A bound UDP port has nothing to accept, so polling it must not fail.
+		udp-events: copy []
+		udp-server: open udp://:45118
+		udp-server/awake: func [event] [append udp-events event/type event/type = 'read]
+		wait 0.1 ;; lets the device poll the port
+		--assert empty? udp-events
+		--assert 45118 = query udp-server 'local-port
+		udp-client: open udp://127.0.0.1:45118
+		udp-client/awake: func [event] [false]
+		write udp-client "Hi"
+		read udp-server
+		--assert all [
+			port? wait [udp-server 1]
+			"Hi" = to string! udp-server/data
+			udp-events = [read]
+		]
+		try [close udp-client]
+		try [close udp-server]
 ===end-group===
 
 
