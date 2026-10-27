@@ -303,6 +303,9 @@ if find codecs 'crt [
 			--assert crt/issuer-id  = #{00AABB}
 			--assert crt/subject-id = #{00CCDD}
 			--assert block? crt/extensions  ;; parsing continued past the IDs
+		--test-- "CRT tbs hash with 3-byte tbsCertificate header"
+			crt: decode 'crt crt-v1
+			--assert crt/fingerprint = #{C8115F714335EC78E10FFD5A147DB97EA06C5C6C12259A15BA64BE6D93FEE6D2}
 
 		crt-mv: debase {
 		MIIBljCCATsCFF0A3WQ/x+TQKEIZjLorKiD8RLyEMAoGCCqGSM49BAMCME0xMDALBgNVBAsTBFVu

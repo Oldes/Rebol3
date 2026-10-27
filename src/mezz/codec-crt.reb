@@ -13,19 +13,27 @@ register-codec [
 	title: "Internet X.509 Public Key Infrastructure Certificate and Certificate Revocation List (CRL) Profile"
 	suffixes: [%.crt]
 
-	get-fingerprint: function[data [binary!] method [word!]][
+	get-fingerprint: function[
+		"Hash of the tbsCertificate (the part covered by the signature)"
+		data [binary!] method [word!]
+	][
 		bin: binary data
 		loop 2 [
 			binary/read bin [
+				pos:      INDEX
 				flags:    UI8
 				length:   LENGTH
+				start:    INDEX
 			]
 			if any [
 				flags <> 48 ; 0x30 = class universal, constructed, SEQUENCE
 				length > length? bin/buffer
 			][	return none ]
+			any [first-pos first-pos: pos]
 		]
-		checksum/part at data 5 :method (length + 4)
+		;; pos, start and length now describe the tbsCertificate SEQUENCE
+		;; (header size varies with the length encoding)
+		checksum/part at data (pos - first-pos + 1) :method (start - pos + length)
 	]
 	decode: wrap [
 		*oid:
