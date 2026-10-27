@@ -214,7 +214,10 @@ static REBOOL Query_Net_Field(REBVAL *port, REBVAL *word, REBVAL *ret, void *ctx
 		// This is normally called by the WAKE-UP function.
 		arg = OFV(port, STD_PORT_DATA);
 		if (sock->command == RDC_READ) {
+			// UPDATE is called for every event of the port, so the received
+			// length must be consumed, else it would be appended again.
 			if (ANY_BINSTR(arg)) VAL_TAIL(arg) += sock->actual;
+			sock->actual = 0;
 		}
 		else if (sock->command == RDC_WRITE) {
 			SET_NONE(arg);  // Write is done.

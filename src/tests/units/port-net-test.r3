@@ -63,6 +63,22 @@ Rebol [
 		--assert all [error? e: try [first udp-server]  e/id = 'out-of-range]
 		try [close udp-client]
 		try [close udp-server]
+
+	--test-- "UPDATE applies the read length only once"
+		;; Every event of the port calls UPDATE, not only the READ event.
+		;; DELETE on a net port queues a test ERROR event for it.
+		udp-server: open udp://:45120
+		udp-server/awake: func [event] [event/type = 'read]
+		udp-client: open udp://127.0.0.1:45120
+		udp-client/awake: func [event] [false]
+		write udp-client "Hi"
+		read udp-server
+		--assert port? wait [udp-server 1]
+		delete udp-server
+		wait [udp-server 0.1] ;; processes the ERROR event (awake returns false)
+		--assert "Hi" = to string! udp-server/data
+		try [close udp-client]
+		try [close udp-server]
 ===end-group===
 
 
