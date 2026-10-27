@@ -303,6 +303,26 @@ if find codecs 'crt [
 			--assert crt/issuer-id  = #{00AABB}
 			--assert crt/subject-id = #{00CCDD}
 			--assert block? crt/extensions  ;; parsing continued past the IDs
+
+		crt-mv: debase {
+		MIIBljCCATsCFF0A3WQ/x+TQKEIZjLorKiD8RLyEMAoGCCqGSM49BAMCME0xMDALBgNVBAsTBFVu
+		aXQwIQYDVQQDHhoBfQBsAHUBZQBvAHUBDQBrAP0AIABrAW8BSDEMMAoGA1UEChMDT3JnMQswCQYD
+		VQQGEwJDWjAeFw0yNjEwMjcxNzE3MDdaFw0zNjEwMjQxNzE3MDdaME0xMDALBgNVBAsTBFVuaXQw
+		IQYDVQQDHhoBfQBsAHUBZQBvAHUBDQBrAP0AIABrAW8BSDEMMAoGA1UEChMDT3JnMQswCQYDVQQG
+		EwJDWjBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABPgAW9ViFg2rKkfjuwT/qB7Ole2JqC4Uuhyx
+		sj6NqndoC7/tmK6DeEWTzdiGKmVe6CO3wk+xmejtRw63UySYOx4wCgYIKoZIzj0EAwIDSQAwRgIh
+		ALJk77yOKspad4jsxU8c+VbPobxA+vKEkbu1grUbi5tKAiEAhJQdi8Qfnbn5BmrSNwmF2UVLQMCM
+		6ggtnzF/wbRiilI=} 64
+		--test-- "CRT multi-valued RDN with BMPString"
+			crt: decode 'crt crt-mv
+			--assert crt/subject = [
+				organizationalUnitName: "Unit"
+				commonName: "Žluťoučký kůň"
+				organizationName: "Org"
+				countryName: "CZ"
+			]
+			--assert crt/issuer = crt/subject
+			--assert date? crt/valid-to  ;; parsing continued past the names
 	===end-group===
 	codecs/crt/verbose: 0
 ]

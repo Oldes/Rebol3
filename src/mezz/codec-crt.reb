@@ -40,18 +40,19 @@ register-codec [
 		Name: [
 			(clear *blk)
 			'SEQUENCE into [
-				some [
+				any [ ;; subject may be empty (RFC 5280 4.1.2.6)
 					'SET into [
-						'SEQUENCE into [
-							'OBJECT_IDENTIFIER set *oid binary!
-							['PRINTABLE_STRING | 'UTF8_STRING | 'IA5_STRING | 'T61_STRING | 'BMP_STRING]
-							set *val string!
-							(
-								*oid: der-codec/decode-OID *oid
-								if word? *oid [*oid: to set-word! *oid]
-								;?? *oid
-								repend *blk [*oid *val]
-							)
+						some [ ;; multi-valued RDN
+							'SEQUENCE into [
+								'OBJECT_IDENTIFIER set *oid binary!
+								word! set *val skip ;; any DirectoryString (unknown types stay binary)
+								(
+									*oid: der-codec/decode-OID *oid
+									if word? *oid [*oid: to set-word! *oid]
+									;?? *oid
+									repend *blk [*oid *val]
+								)
+							]
 						]
 					]
 				]

@@ -113,9 +113,16 @@ register-codec [
 					UTF8_STRING
 					PRINTABLE_STRING
 					IA5_STRING
-					T61_STRING
-					BMP_STRING [
+					VISIBLE_STRING
+					NUMERIC_STRING
+					T61_STRING [
 						data: to string! data
+					]
+					BMP_STRING [
+						data: iconv data 'UCS2BE
+					]
+					UNIVERSAL_STRING [
+						data: iconv data 'UCS4BE
 					]
 					;OCTET_STRING [
 						;binary/read der [AT :data-pos] 
