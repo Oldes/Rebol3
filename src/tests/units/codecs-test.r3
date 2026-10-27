@@ -209,7 +209,6 @@ if find codecs 'der [
 if find codecs 'crt [
 	codecs/crt/verbose: 3
 	===start-group=== "CRT codec"
-		
 		--test-- "Load CRT file"
 			--assert object? cert: load %units/files/google.crt
 			--assert "Google Internet Authority G3" = try [cert/issuer/commonName]
@@ -221,6 +220,22 @@ if find codecs 'crt [
 			--assert "kubernetes" = try [cert/issuer/commonName]
 			--assert block? try [key: cert/public-key/rsaEncryption]
 			--assert #{010001} = try [key/2]
+
+		crt-ec: debase {
+		MIIBzTCCAXOgAwIBAgIUYVXD/RVHa3T8f9wkYslOVVhXtP8wCgYIKoZIzj0EAwIwFTETMBEGA1UE
+		AwwKdGVzdC5sb2NhbDAeFw0yNjEwMjcxNTQxNTRaFw0zNjEwMjQxNTQxNTRaMBUxEzARBgNVBAMM
+		CnRlc3QubG9jYWwwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAASqbqVW+eCg00JcBxQFVwBepoh+
+		5sPVuq9RkQwdiyJEoWDTz22EeEItEoRY1hCSnC2/HIYZbpabQG10Zaj5VTvdo4GgMIGdMB0GA1Ud
+		DgQWBBQoyjJq3pMwi0X8DP7Vl7AROCmmwTAfBgNVHSMEGDAWgBQoyjJq3pMwi0X8DP7Vl7AROCmm
+		wTAPBgNVHRMBAf8EBTADAQH/MB0GA1UdJQQWMBQGCCsGAQUFBwMBBggrBgEFBQcDAjArBgNVHREE
+		JDAiggp0ZXN0LmxvY2Fsgg53d3cudGVzdC5sb2NhbIcEfwAAATAKBggqhkjOPQQDAgNIADBFAiEA
+		4BC0ExXYjA4Q6zQE/JO+8GOT5kUUGRAYXKIoVkrPHfACIHbTdp2phL/711mFuxvNBwlfh1xCvAfG
+		Z8HndTx6XGxY} 64
+		--test-- "CRT extendedKeyUsage with multiple purposes"
+			crt: decode 'crt crt-ec
+			--assert block? eku: select crt/extensions 'extendedKeyUsage
+			--assert not eku/1  ;; not critical
+			--assert eku/2 = [serverAuth clientAuth]
 	===end-group===
 	codecs/crt/verbose: 0
 ]

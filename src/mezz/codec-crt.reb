@@ -88,6 +88,17 @@ register-codec [
 							*oid: der-codec/decode-OID *oid
 							if all [not empty? *val *val/1 = 48] [*val: der-codec/decode *val]
 							switch *oid [
+								extendedKeyUsage [
+									*new: copy []
+									parse *val [
+										'SEQUENCE into [
+											some ['OBJECT_IDENTIFIER set *bin binary! (
+												append *new der-codec/decode-OID *bin
+											)]
+										]
+									]
+									*val: *new
+								]
 								extKeyUsage [
 									*val: der-codec/decode-OID *val/SEQUENCE/OBJECT_IDENTIFIER
 								]
