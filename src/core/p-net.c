@@ -287,7 +287,10 @@ static REBOOL Query_Net_Field(REBVAL *port, REBVAL *word, REBVAL *ret, void *ctx
 	case A_PICK:
 		// FIRST server-port returns new port connection.
 		len = Get_Num_Arg(arg); // Position
-		if (len == 1 && GET_FLAG(sock->modes, RST_LISTEN) && sock->data)
+		// Only a TCP listen port has an accept queue in sock->data.
+		// A UDP listen port uses sock->data for its read buffer!
+		if (len == 1 && GET_FLAG(sock->modes, RST_LISTEN)
+				&& !GET_FLAG(sock->modes, RST_UDP) && sock->data)
 			Accept_New_Port(ds, port, sock); // sets D_RET
 		else
 			Trap_Range(arg);

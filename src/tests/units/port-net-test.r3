@@ -50,6 +50,19 @@ Rebol [
 		]
 		try [close udp-client]
 		try [close udp-server]
+
+	--test-- "FIRST on a UDP listen port after READ"
+		;; sock->data points into the read buffer, it is not an accept queue.
+		udp-server: open udp://:45119
+		udp-server/awake: func [event] [event/type = 'read]
+		udp-client: open udp://127.0.0.1:45119
+		udp-client/awake: func [event] [false]
+		write udp-client "Hi"
+		read udp-server
+		--assert port? wait [udp-server 1]
+		--assert all [error? e: try [first udp-server]  e/id = 'out-of-range]
+		try [close udp-client]
+		try [close udp-server]
 ===end-group===
 
 
