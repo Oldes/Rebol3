@@ -107,14 +107,14 @@ register-codec [
 									parse *val [
 										'SEQUENCE into [
 											any [
-												  'CS2 set *bin binary! (append *new to string! *bin)           ;; dNSName
-												| 'CS7 set *bin binary! (                                       ;; iPAddress
-													append *new either 4 = length? *bin [to tuple! *bin][*bin]  ;; IPv6 stays binary
-												)
-												| 'CS1 set *bin binary! (append *new to email! to string! *bin) ;; rfc822Name
-												| 'CS6 set *bin binary! (append *new to url! to string! *bin)   ;; URI
-												| skip skip ;; otherName, directoryName,... not decoded yet
-											]
+											  'CS2 set *bin binary! (append *new to string! *bin)            ;; dNSName
+											| 'CS7 set *bin binary! (                                        ;; iPAddress
+												append *new either 4 = length? *bin [to tuple! *bin][*bin] ;; IPv6 stays binary
+											)
+											| 'CS1 set *bin binary! (append *new to email! to string! *bin) ;; rfc822Name
+											| 'CS6 set *bin binary! (append *new to url! to string! *bin)   ;; URI
+											| skip skip ;; otherName, directoryName,... not decoded yet
+										]
 										]
 									]
 									*val: new-line/all *new true
@@ -173,10 +173,13 @@ register-codec [
 			parse der [
 				'SEQUENCE into [
 					;-- version:
-					'CS0 into [
-						'INTEGER set *val binary! (
-							result/version: to integer! *val
-						)
+					[
+						'CS0 into [
+							'INTEGER set *val binary! (
+								result/version: to integer! *val
+							)
+						]
+						| (result/version: 0) ;; DEFAULT v1 (absent in v1 certificates)
 					]
 
 					;-- serial number:
@@ -215,8 +218,9 @@ register-codec [
 						)
 					]
 
-					opt ['BIT_STRING set *val binary! ( result/issuer-id: *val )]
-					opt ['BIT_STRING set *val binary! ( result/subject-id: *val )]
+					;; [1] and [2] IMPLICIT BIT STRING
+					opt ['CS1 set *val binary! ( result/issuer-id: *val )]
+					opt ['CS2 set *val binary! ( result/subject-id: *val )]
 					opt [
 						;-- extensions
 						'CS3 into [

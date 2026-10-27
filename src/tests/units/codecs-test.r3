@@ -274,6 +274,35 @@ if find codecs 'crt [
 			--assert crt/valid-from = 2026-10-27/16:52:47
 			--assert crt/valid-to   = 2051-06-18/16:52:47
 			--assert crt/subject = [commonName: "gt.test"]
+
+		crt-v1: debase {
+		MIIBHTCBxQIUP2Olp+27URxjxrhoUadNCdcPIr4wCgYIKoZIzj0EAwIwEjEQMA4GA1UEAwwHdjEu
+		dGVzdDAeFw0yNjEwMjcxNzEwMjNaFw0zNjEwMjQxNzEwMjNaMBIxEDAOBgNVBAMMB3YxLnRlc3Qw
+		WTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAARl3lJcmvVdG5az7UFxJ93aYF2sIdbO2EPEWS84ZtWK
+		LltFl3t/mwGW+P+XaC57TaMQlRc9T977XzzjkuxLeG/QMAoGCCqGSM49BAMCA0cAMEQCIFKBA+AK
+		9yCgWpvU6X6bj05bUPfIBxDKHtZWqiFbb/qCAiBzpYVxOoGZ8sMQQpDIMtZc6FalJdclKQTWq5fB
+		U0MpqQ==} 64
+		;; crt-gt with hand-inserted issuerUniqueID/subjectUniqueID (signature not valid)
+		crt-uid: debase {
+		MIIBhTCCASugAwIBAgIUH80PfOPIgVykau3txqTGOvGmxlMwCgYIKoZIzj0EAwIwEjEQMA4GA1UE
+		AwwHZ3QudGVzdDAgFw0yNjEwMjcxNjUyNDdaGA8yMDUxMDYxODE2NTI0N1owEjEQMA4GA1UEAwwH
+		Z3QudGVzdDBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABBVtbmBTO32I77ZJUEk5VJvL037IIldM
+		lilxsX5nwAvULjbcQgIqmUHtypvH1ktm26kv8KZhBg3JNifNkwCftdyBAwCqu4IDAMzdo1MwUTAd
+		BgNVHQ4EFgQUb8gd5XyeqZJ70DVwz+YuH94UbaIwHwYDVR0jBBgwFoAUb8gd5XyeqZJ70DVwz+Yu
+		H94UbaIwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNIADBFAiAGyLHvSSXeGf1TrjJNdWvl
+		MxxnuYAC1BKOjbmMLrcFSwIhAJMhJrod5cY4yAf7xhlF0u9wKTwebUliTpFqXSC7OKlN} 64
+		--test-- "CRT v1 certificate (no version field)"
+			crt: decode 'crt crt-v1
+			--assert crt/version = 0
+			--assert crt/subject = [commonName: "v1.test"]
+			--assert crt/algorithm = 'ecdsa-with-SHA256
+			--assert none? crt/extensions
+		--test-- "CRT issuerUniqueID and subjectUniqueID"
+			crt: decode 'crt crt-uid
+			--assert crt/version = 2
+			--assert crt/issuer-id  = #{00AABB}
+			--assert crt/subject-id = #{00CCDD}
+			--assert block? crt/extensions  ;; parsing continued past the IDs
 	===end-group===
 	codecs/crt/verbose: 0
 ]
