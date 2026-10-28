@@ -12,6 +12,18 @@ Rebol [
 
 ;- "HTTP scheme" moved to %port-http-test.r3
 
+===start-group=== "Listen port in use"
+	--test-- "UDP port cannot be bound twice"
+		p1: open udp://:45124
+		--assert all [error? e: try [p2: open udp://:45124]  e/id = 'no-connect]
+		try [close p1]
+	--test-- "TCP port cannot be bound twice"
+		p1: open tcp://:45125
+		--assert all [error? e: try [p2: open tcp://:45125]  e/id = 'no-connect]
+		try [close p1]
+===end-group===
+
+
 ===start-group=== "UDP"
 	--test-- "UDP read length is applied only once"
 		;; When a datagram is already waiting, READ completes immediately.

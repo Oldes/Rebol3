@@ -563,7 +563,17 @@ static REBOOL Nonblocking_Mode(SOCKET sock)
 	Set_Addr(&sa, INADDR_ANY, sock->net.local_port);
 
 	// Allow listen socket reuse:
-	result = setsockopt(sock->socket, SOL_SOCKET, SO_REUSEADDR, (char*)(&len), sizeof(len));
+#ifdef TO_WINDOWS
+#ifndef SO_EXCLUSIVEADDRUSE
+#define SO_EXCLUSIVEADDRUSE ((int)(~SO_REUSEADDR))
+#endif
+	result = setsockopt(sock->socket, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, (char*)(&len), sizeof(len));
+#else
+	// POSIX: allow TCP rebinding while an old connection is in TIME_WAIT.
+	// Not used for UDP, where it allows binding the same port twice.
+	result = GET_FLAG(sock->modes, RST_UDP) ? 0
+		: setsockopt(sock->socket, SOL_SOCKET, SO_REUSEADDR, (char*)(&len), sizeof(len));
+#endif
 	if (result) {
 lserr:
 		sock->error = GET_ERROR;
