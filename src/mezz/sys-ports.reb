@@ -404,7 +404,7 @@ init-schemes: func [
 		name: 'tcp
 		spec: system/standard/port-spec-net
 		info: system/standard/net-info ; for C enums
-		awake: func [event] [print ['TCP-event event/type] true]
+		awake: func [event] [true]
 	]
 
 	make-scheme [
@@ -412,7 +412,7 @@ init-schemes: func [
 		name: 'udp
 		spec: system/standard/port-spec-net
 		info: system/standard/net-info ; for C enums
-		awake: func [event] [print ['UDP-event event/type] true]
+		awake: func [event] [true]
 	]
 
 	make-scheme [
