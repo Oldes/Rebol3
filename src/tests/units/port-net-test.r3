@@ -229,10 +229,17 @@ Rebol [
 	--test-- "read dns://google.com"
 		--assert tuple? try [read dns://google.com]
 
+	;; QUERY is optional (include-net-interfaces), so detect it first:
+	net-interfaces?: not error? try [query dns:// none]
+
 	--test-- "query dns://"
 	;@@ https://github.com/Oldes/rebol-issues/issues/1826
-		--assert all [error? e: try [query dns:// object!]  e/id = 'invalid-arg]
+		--assert all [
+			error? e: try [query dns:// object!]
+			e/id = either net-interfaces? ['invalid-arg]['no-port-action]
+		]
 
+if net-interfaces? [
 	--test-- "query dns:// none"
 		--assert [local-ip interfaces] = query dns:// none
 
@@ -265,6 +272,7 @@ Rebol [
 			255.0.0.0 = lo/netmask
 			not find query dns:// 'local-ip lo/local-ip
 		]
+]
 
 	--test-- "read dns://not-exists"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2498

@@ -548,6 +548,13 @@ include-audio: [
 		config:     INCLUDE_AUDIO_DEVICE
 	]
 ]
+include-net-interfaces: [
+	;- `query dns:// 'interfaces` and `query dns:// 'local-ip`
+	config: INCLUDE_NET_INTERFACES
+	#if Windows? [
+		library: %iphlpapi ;- for GetAdaptersAddresses
+	]
+]
 
 ;- native utilities:                                                            
 include-bincode:    [core-files: %core/u-bincode.c]
@@ -1000,6 +1007,7 @@ include-rebol-bulk: [
 	:include-audio
 	:include-midi
 	:include-serial
+	:include-net-interfaces
 
 	; Extended crypto features
 	:include-cryptography-bulk
@@ -1067,7 +1075,6 @@ common: [
 		libraries: [
 			%User32
 			%wsock32 
-			%iphlpapi ;- for GetAdaptersAddresses (query dns:// 'interfaces)
 			%comdlg32 ;- for GetOpenFileName and GetSaveFileName (request-file)
 			%Shell32  ;- for the win32 unicoded program arguments & drag and drop in View
 			;%Ntdll   ;- for IsWindows*OrGreater functions

@@ -32,6 +32,7 @@
 #include "reb-net.h"
 
 
+#ifdef INCLUDE_NET_INTERFACES
 /***********************************************************************
 **
 */	static REBVAL *Append_Map_Key(REBSER *map, REBCNT sym)
@@ -81,6 +82,7 @@
 
 	Block_As_Map(map);
 }
+#endif // INCLUDE_NET_INTERFACES
 
 
 /***********************************************************************
@@ -187,6 +189,7 @@ pick:
 	case A_UPDATE:
 		return R_NONE;
 
+#ifdef INCLUDE_NET_INTERFACES
 	case A_QUERY: {
 		// Host level information (the port does not have to be open).
 		// Using a temporary request, so a pending lookup is not disturbed.
@@ -227,6 +230,7 @@ pick:
 		OS_Free(req.data);
 		break;
 	}
+#endif
 
 	default:
 		Trap1(RE_NO_PORT_ACTION, Get_Action_Word(action));

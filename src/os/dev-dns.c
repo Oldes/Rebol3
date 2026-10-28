@@ -44,15 +44,19 @@
 
 #include "reb-host.h"
 #include "host-lib.h"
+
+#ifdef INCLUDE_NET_INTERFACES
 #define USE_WINSOCK2 // for GetAdaptersAddresses (see sys-net.h)
+#endif
 #include "sys-net.h"
 
+#ifdef INCLUDE_NET_INTERFACES
 #ifndef TO_WINDOWS
 #include <ifaddrs.h>
 #include <net/if.h>
 #endif
-
 #define MAX_NET_INTERFACES 64
+#endif
 
 extern DEVICE_CMD Init_Net(REBREQ *); // Share same init
 extern DEVICE_CMD Quit_Net(REBREQ *);
@@ -221,6 +225,7 @@ error:
 }
 
 
+#ifdef INCLUDE_NET_INTERFACES
 /***********************************************************************
 **
 */	DEVICE_CMD Query_DNS(REBREQ *req)
@@ -311,6 +316,9 @@ error:
 	OS_Free(nifs);
 	return DR_ERROR;
 }
+#else
+#define Query_DNS 0
+#endif // INCLUDE_NET_INTERFACES
 
 
 /***********************************************************************
