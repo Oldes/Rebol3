@@ -576,6 +576,16 @@ Rebol [
 		--assert {#(email! "a@@")} == mold as email! "a@@"
 		--assert {#(email! "a@b@")} == mold as email! "a@b@"
 		--assert {#(email! "%@b")} == mold as email! "%@b"
+
+	--test-- "mold email starting with a prefix char"
+	;@@ https://github.com/Oldes/Rebol3/issues/1481
+		--assert {#(email! "#a@b")} == mold as email! "#a@b"
+		--assert {#(email! "'a@b")} == mold as email! "'a@b"
+		--assert {#(email! ":a@b")} == mold as email! ":a@b"
+		--assert {#(email! "<a@b")} == mold as email! "<a@b"
+		--assert {#(email! "#a@b")} == mold/all as email! "#a@b"
+		--assert "a#b@c" == mold as email! "a#b@c"
+		--assert (e: as email! "#a@b") == load mold e
 ===end-group===
 
 ===start-group=== "mold ref!"

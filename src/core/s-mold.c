@@ -1340,18 +1340,22 @@ STOID Mold_Error(REBVAL *value, REB_MOLD *mold, REBFLG molded)
 		break;
 
 	case REB_EMAIL:
-	case REB_URL:
+	case REB_URL: {
+		REBYTE c0 = VAL_DATA(value)[0];
 		if ((GET_MOPT(mold, MOPT_MOLD_ALL) && VAL_INDEX(value) != 0)
 			|| VAL_TAIL(value) == 0
 			|| NOT_FOUND == Find_Str_Char(VAL_SERIES(value), 0, 0,
 				VAL_TAIL(value), 1, VAL_TYPE(value) == REB_EMAIL ? '@' : ':', 0)
-			|| VAL_DATA(value)[0] == '%')
+			|| c0 == '%'
+			|| (VAL_TYPE(value) == REB_EMAIL
+				&& (c0 == '#' || c0 == '\'' || c0 == ':' || c0 == '<')))
 		{
 			Mold_All_Constr_String(value, mold);
 			return;
 		}
 		Mold_Url(value, mold);
 		break;
+	}
 
 	case REB_TAG:
 		if (GET_MOPT(mold, MOPT_MOLD_ALL)
