@@ -3,7 +3,7 @@ REBOL [
     title: "TLS Protocol"
     name: 'tls
     type: 'module
-    date: 27-Oct-2026
+    date: 28-Oct-2026
     file: %tls.reb
     author: "Oldes"
     License: MIT
@@ -1568,7 +1568,7 @@ TLS-read-data: function [
                     log-debug ["Inner type:^[[1m" type]
                 ]
             ]
-            append ctx/port-data data
+            if find [22 23] type [append ctx/port-data data]
         ]
         *protocol-type/assert type
         *protocol-version/assert server-version
