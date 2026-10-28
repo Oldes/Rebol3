@@ -856,6 +856,27 @@ Rebol [
 
 ===end-group===
 
+===start-group=== "Invisible chars in words"
+	--test-- "invisible-chars-1"
+		;; U+200B, U+200C, U+200D, U+2060, U+FEFF
+		foreach zw [#{E2808B} #{E2808C} #{E2808D} #{E281A0} #{EFBBBF}][
+			--assert all [error? e: try [transcode zw] e/id = 'invalid]
+			--assert error? try [transcode join #{61} zw]         ;; a<zw>
+			--assert error? try [transcode join zw #{61}]         ;; <zw>a
+			--assert error? try [transcode join #{2761} zw]       ;; 'a<zw>
+			--assert error? try [transcode join #{3A61} zw]       ;; :a<zw>
+			--assert error? try [transcode rejoin [#{61} zw #{3A}]] ;; a<zw>:
+			--assert error? try [transcode join #{2F61} zw]       ;; /a<zw>
+		]
+	--test-- "invisible-chars-2"
+		;; #(email! "a@b") followed by U+200B
+		--assert error? try [transcode #{2328656D61696C2120226140622229E2808B}]
+		--assert email? transcode/one #{2328656D61696C2120226140622229}
+	--test-- "invisible-chars-3"
+		;; still allowed in strings; other non-ASCII words unaffected
+		--assert #{E2808B} = to binary! transcode/one #{22E2808B22}
+		--assert word? transcode/one #{C5BE}                      ;; ž
+===end-group===
 
 ===start-group=== "Special tests"
 	--test-- "Transcode/part"
