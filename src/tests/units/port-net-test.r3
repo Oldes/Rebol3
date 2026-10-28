@@ -67,6 +67,12 @@ Rebol [
 			error? e: try [open [scheme: 'tcp port: 45130 local-ip: "localhost"]]
 			e/id = 'invalid-spec
 		]
+
+	--test-- "Failed OPEN does not leave its socket open"
+		;; Each leaked socket keeps a file descriptor (the default limit is 1024 on Linux).
+		loop 1100 [try [open [scheme: 'tcp port: 45131 local-ip: "x"]]]
+		--assert port? p1: try [open tcp://:45131]
+		try [close p1]
 ===end-group===
 
 

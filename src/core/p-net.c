@@ -138,6 +138,21 @@ static REBOOL Query_Net_Field(REBVAL *port, REBVAL *word, REBVAL *ret, void *ctx
 
 /***********************************************************************
 **
+*/	static void Close_Failed_Open(REBSER *port, REBREQ *sock)
+/*
+**		Close the socket of a port whose OPEN failed and throw
+**		the NO-CONNECT error (with the error code of the failure).
+**
+***********************************************************************/
+{
+	REBINT error = sock->error; // cleared by the close
+	OS_Do_Device(sock, RDC_CLOSE);
+	SET_CLOSED(sock);
+	Trap_Port(RE_NO_CONNECT, port, error);
+}
+
+/***********************************************************************
+**
 */	static int Transport_Actor(REBVAL *ds, REBVAL *port_value, REBCNT action, enum Transport_Types proto)
 /*
 ***********************************************************************/
@@ -153,6 +168,7 @@ static REBOOL Query_Net_Field(REBVAL *port, REBVAL *word, REBVAL *ret, void *ctx
 	REBCNT refs;	// refinement argument flags
 	REBCNT len;		// generic length
 	REBSER *ser;	// simplifier
+	REBOOL opening = FALSE; // the socket was just created by this OPEN
 
 	port = Validate_Port_With_Request(port_value, RDI_NET, &sock);
 
@@ -176,22 +192,32 @@ static REBOOL Query_Net_Field(REBVAL *port, REBVAL *word, REBVAL *ret, void *ctx
 
 		switch (action) {	// Ordered by frequency
 
-		case A_OPEN:
+		case A_OPEN: {
+			REBVAL *lip;
 
 			arg = Obj_Value(spec, STD_PORT_SPEC_NET_HOST);
 			val = Obj_Value(spec, STD_PORT_SPEC_NET_PORT);
+			lip = Obj_Value(spec, STD_PORT_SPEC_NET_LOCAL_IP);
+
+			// Validate the spec before a socket is created (so an error
+			// does not leave it open):
+			if (!IS_STRING(arg) && !IS_TUPLE(arg) && !IS_NONE(arg))
+				Trap_Port(RE_INVALID_SPEC, port, -10);
+			if (lip && !IS_NONE(lip) && !(IS_TUPLE(lip) && VAL_TUPLE_LEN(lip) == 4))
+				Trap_Port(RE_INVALID_SPEC, port, -10);
 
 			Check_Security(SYM_NET, POL_EXEC, Obj_Value(spec, STD_PORT_SPEC_NET_REF));
 
 			if (OS_Do_Device(sock, RDC_OPEN)) Trap_Port(RE_CANNOT_OPEN, port, -12);
 			SET_OPEN(sock);
+			opening = TRUE; // the socket is closed if the OPEN fails below
 
 			// Lookup host name (an extra TCP device step):
 			if (IS_STRING(arg)) {
 				sock->data = VAL_BIN(arg);
 				sock->net.remote_port = IS_INTEGER(val) ? VAL_INT32(val) : 80;
 				result = OS_Do_Device(sock, RDC_LOOKUP);  // sets remote_ip field
-				if (result < 0) Trap_Port(RE_NO_CONNECT, port, sock->error);
+				if (result < 0) Close_Failed_Open(port, sock); // throws
 				return R_RET;
 			}
 
@@ -210,14 +236,12 @@ static REBOOL Query_Net_Field(REBVAL *port, REBVAL *word, REBVAL *ret, void *ctx
 				// Optional local address to listen on (default: all interfaces).
 				// Always set, as a reopened port keeps the address of its last use.
 				sock->net.local_ip = 0; // INADDR_ANY
-				val = Obj_Value(spec, STD_PORT_SPEC_NET_LOCAL_IP);
-				if (val && IS_TUPLE(val) && VAL_TUPLE_LEN(val) == 4)
-					memcpy(&sock->net.local_ip, VAL_TUPLE(val), 4);
-				else if (val && !IS_NONE(val))
-					Trap_Port(RE_INVALID_SPEC, port, -10);
+				if (lip && IS_TUPLE(lip)) // validated above
+					memcpy(&sock->net.local_ip, VAL_TUPLE(lip), 4);
 				break;
 			}
-			else Trap_Port(RE_INVALID_SPEC, port, -10);
+			break; // not reached (validated above)
+		}
 
 		case A_CLOSE:
 			return R_RET;
@@ -400,7 +424,12 @@ static REBOOL Query_Net_Field(REBVAL *port, REBVAL *word, REBVAL *ret, void *ctx
 
 	case A_OPEN:
 		result = OS_Do_Device(sock, RDC_CONNECT);
-		if (result < 0) Trap_Port(RE_NO_CONNECT, port, sock->error);
+		if (result < 0) {
+			// A failed first OPEN does not return the port, so nothing
+			// could close its socket later.
+			if (opening) Close_Failed_Open(port, sock); // throws
+			Trap_Port(RE_NO_CONNECT, port, sock->error);
+		}
 		break;
 		//Trap_Port(RE_ALREADY_OPEN, port);
 
