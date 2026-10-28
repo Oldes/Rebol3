@@ -24,6 +24,52 @@ Rebol [
 ===end-group===
 
 
+===start-group=== "Listen on a local address"
+	--test-- "TCP listen on 127.0.0.1"
+		accepted: none
+		tcp-server: open [scheme: 'tcp port: 45126 local-ip: 127.0.0.1]
+		tcp-server/awake: func [event] [
+			if event/type = 'accept [accepted: first event/port]
+			false
+		]
+		--assert 127.0.0.1 = query tcp-server 'local-ip
+		tcp-client: open tcp://127.0.0.1:45126
+		tcp-client/awake: func [event] [
+			if event/type = 'lookup [open event/port]
+			false
+		]
+		loop 20 [if all [accepted open? tcp-client] [break] wait 0.05]
+		--assert port? accepted
+		--assert 127.0.0.1 = query accepted 'local-ip
+		try [close tcp-client]
+		try [close accepted]
+		try [close tcp-server]
+
+	--test-- "UDP listen on 127.0.0.1"
+		udp-server: open [scheme: 'udp port: 45127 local-ip: 127.0.0.1]
+		--assert 127.0.0.1 = query udp-server 'local-ip
+		try [close udp-server]
+
+	--test-- "Listen on all interfaces by default"
+		tcp-server: open tcp://:45128
+		--assert 0.0.0.0 = query tcp-server 'local-ip
+		try [close tcp-server]
+
+	--test-- "Listen on an address which is not local"
+		;; 203.0.113.0/24 is reserved for documentation (TEST-NET-3)
+		--assert all [
+			error? e: try [open [scheme: 'tcp port: 45129 local-ip: 203.0.113.77]]
+			e/id = 'no-connect
+		]
+
+	--test-- "Invalid local-ip value"
+		--assert all [
+			error? e: try [open [scheme: 'tcp port: 45130 local-ip: "localhost"]]
+			e/id = 'invalid-spec
+		]
+===end-group===
+
+
 ===start-group=== "UDP"
 	;; Opens a client port and waits until it is usable. The host is a string,
 	;; so OPEN starts a lookup, which is async on Windows.

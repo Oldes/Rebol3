@@ -207,6 +207,14 @@ static REBOOL Query_Net_Field(REBVAL *port, REBVAL *word, REBVAL *ret, void *ctx
 				SET_FLAG(sock->modes, RST_LISTEN);
 				sock->data = 0; // where ACCEPT requests are queued
 				sock->net.local_port = IS_INTEGER(val) ? VAL_INT32(val) : 8000;
+				// Optional local address to listen on (default: all interfaces).
+				// Always set, as a reopened port keeps the address of its last use.
+				sock->net.local_ip = 0; // INADDR_ANY
+				val = Obj_Value(spec, STD_PORT_SPEC_NET_LOCAL_IP);
+				if (val && IS_TUPLE(val) && VAL_TUPLE_LEN(val) == 4)
+					memcpy(&sock->net.local_ip, VAL_TUPLE(val), 4);
+				else if (val && !IS_NONE(val))
+					Trap_Port(RE_INVALID_SPEC, port, -10);
 				break;
 			}
 			else Trap_Port(RE_INVALID_SPEC, port, -10);

@@ -538,6 +538,7 @@ standard: object [
 		target: 
 		query:  
 		fragment: none
+		local-ip: none ; address to listen on (none = all interfaces)
 	]
 
 	port-spec-timer: make port-spec-head [

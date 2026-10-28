@@ -550,6 +550,7 @@ static REBOOL Nonblocking_Mode(SOCKET sock)
 **		Before usage:
 **			Open_Socket();
 **			Set local_port to desired port number.
+**			Set local_ip to the address to listen on (0 for all).
 **
 **		Use this instead of Connect_Socket().
 **
@@ -559,10 +560,12 @@ static REBOOL Nonblocking_Mode(SOCKET sock)
 	int len = 1;
 	SOCKAI sa;
 
-	// Setup socket address range and port:
-	Set_Addr(&sa, INADDR_ANY, sock->net.local_port);
+	// Setup socket address and port (local_ip is INADDR_ANY if not specified):
+	Set_Addr(&sa, sock->net.local_ip, sock->net.local_port);
 
-	// Allow listen socket reuse:
+	// Do not allow other sockets to listen on the same port. Note that on
+	// Windows SO_REUSEADDR allows exactly that (also for TCP), so it uses
+	// SO_EXCLUSIVEADDRUSE instead (it can still bind a port in TIME_WAIT).
 #ifdef TO_WINDOWS
 #ifndef SO_EXCLUSIVEADDRUSE
 #define SO_EXCLUSIVEADDRUSE ((int)(~SO_REUSEADDR))
