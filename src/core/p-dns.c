@@ -34,6 +34,57 @@
 
 /***********************************************************************
 **
+*/	static REBVAL *Append_Map_Key(REBSER *map, REBCNT sym)
+/*
+**		Append a key (as a set-word, like in a map literal) to a map
+**		block under construction. Returns the value cell for the key.
+**		(The cell is valid only until the next append.)
+**
+***********************************************************************/
+{
+	REBVAL *val = Append_Value(map);
+	Init_Word(val, sym);
+	VAL_TYPE(val) = REB_SET_WORD;
+	return Append_Value(map);
+}
+
+
+/***********************************************************************
+**
+*/	static void Set_Net_Interface(REBVAL *out, REBNIF *nif)
+/*
+**		Set out to a map describing a local network interface:
+**		#[name: "eth0" local-ip: 192.168.1.10 netmask: 255.255.255.0 flags: [up]]
+**
+**		The out value must be GC safe (it holds the new map).
+**
+***********************************************************************/
+{
+	REBSER *map = Make_Block(8);
+	REBSER *ser;
+	REBVAL *val;
+	REBLEN len = (REBLEN)LEN_BYTES(cb_cast(nif->name));
+
+	Set_Series(REB_MAP, out, map); // GC safe (hashed when complete)
+
+	ser = Copy_Bytes(cb_cast(nif->name), len);
+	if (!Is_ASCII(BIN_HEAD(ser), len)) UTF8_SERIES(ser);
+	Set_String(Append_Map_Key(map, SYM_NAME), ser);
+
+	Set_Tuple(Append_Map_Key(map, SYM_LOCAL_IP), (REBYTE *)&nif->ip, 4);
+	Set_Tuple(Append_Map_Key(map, SYM_NETMASK), (REBYTE *)&nif->netmask, 4);
+
+	ser = Make_Block(2);
+	Set_Block(Append_Map_Key(map, SYM_FLAGS), ser);
+	if (GET_FLAG(nif->flags, RNIF_UP))       Init_Word(Append_Value(ser), SYM_UP);
+	if (GET_FLAG(nif->flags, RNIF_LOOPBACK)) Init_Word(Append_Value(ser), SYM_LOOPBACK);
+
+	Block_As_Map(map);
+}
+
+
+/***********************************************************************
+**
 */	static int DNS_Actor(REBVAL *ds, REBVAL *port_value, REBCNT action)
 /*
 ***********************************************************************/
@@ -141,26 +192,39 @@ pick:
 		// Using a temporary request, so a pending lookup is not disturbed.
 		REBREQ req;
 		REBSER *ser;
-		REBCNT n;
+		REBNIF *nif;
+		REBCNT n, sym;
 		arg = D_ARG(ARG_QUERY_FIELD);
 		if (IS_NONE(arg)) {
 			// List of the supported fields:
-			ser = Make_Block(1);
+			ser = Make_Block(2);
 			Init_Word(Append_Value(ser), SYM_LOCAL_IP);
+			Init_Word(Append_Value(ser), SYM_INTERFACES);
 			Set_Block(D_RET, ser);
 			break;
 		}
-		if (!IS_WORD(arg) || VAL_WORD_CANON(arg) != SYM_LOCAL_IP)
-			Trap_Arg(arg);
+		if (!IS_WORD(arg)) Trap_Arg(arg);
+		sym = VAL_WORD_CANON(arg);
+		if (sym != SYM_LOCAL_IP && sym != SYM_INTERFACES) Trap_Arg(arg);
+
 		CLEARS(&req);
 		req.device = RDI_DNS;
 		if (OS_Do_Device(&req, RDC_QUERY) < 0)
 			Trap_Port(RE_READ_ERROR, port, req.error);
+
 		ser = Make_Block(req.length);
-		for (n = 0; n < req.length; n++)
-			Set_Tuple(Append_Value(ser), req.data + 4 * n, 4);
+		Set_Block(D_RET, ser); // GC safe
+		nif = (REBNIF *)req.data;
+		for (n = 0; n < req.length; n++, nif++) {
+			if (sym == SYM_LOCAL_IP) {
+				// Only usable addresses (up, not loopback):
+				if (!GET_FLAG(nif->flags, RNIF_UP) || GET_FLAG(nif->flags, RNIF_LOOPBACK))
+					continue;
+				Set_Tuple(Append_Value(ser), (REBYTE *)&nif->ip, 4);
+			}
+			else Set_Net_Interface(Append_Value(ser), nif);
+		}
 		OS_Free(req.data);
-		Set_Block(D_RET, ser);
 		break;
 	}
 

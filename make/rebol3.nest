@@ -1067,6 +1067,7 @@ common: [
 		libraries: [
 			%User32
 			%wsock32 
+			%iphlpapi ;- for GetAdaptersAddresses (query dns:// 'interfaces)
 			%comdlg32 ;- for GetOpenFileName and GetSaveFileName (request-file)
 			%Shell32  ;- for the win32 unicoded program arguments & drag and drop in View
 			;%Ntdll   ;- for IsWindows*OrGreater functions

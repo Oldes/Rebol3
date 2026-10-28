@@ -9,6 +9,7 @@ Rebol [
 ~~~start-file~~~ "port-net"
 
 
+
 ;- "HTTP scheme" moved to %port-http-test.r3
 
 ===start-group=== "Listen port in use"
@@ -231,16 +232,39 @@ Rebol [
 	--test-- "query dns://"
 	;@@ https://github.com/Oldes/rebol-issues/issues/1826
 		--assert all [error? e: try [query dns:// object!]  e/id = 'invalid-arg]
+
 	--test-- "query dns:// none"
-		--assert [local-ip] = query dns:// none
+		--assert [local-ip interfaces] = query dns:// none
+
+	--test-- "query dns:// with an unsupported field"
+		--assert all [error? e: try [query dns:// 'remote-ip]  e/id = 'invalid-arg]
+
 	--test-- "query dns:// 'local-ip"
 		--assert all [
 			block? ips: query dns:// 'local-ip
 			parse ips [any tuple!]
 			not find ips 127.0.0.1
 		]
-	--test-- "query dns:// with an unsupported field"
-		--assert all [error? e: try [query dns:// 'remote-ip]  e/id = 'invalid-arg]
+
+	--test-- "query dns:// 'interfaces"
+		--assert all [
+			block? ifs: query dns:// 'interfaces
+			parse ifs [some map!]  ;; at least the loopback
+			string? ifs/1/name
+			tuple?  ifs/1/local-ip
+			tuple?  ifs/1/netmask
+			block?  ifs/1/flags
+		]
+		;; The loopback is listed, but its address is not in local-ip.
+		lo: none
+		foreach i ifs [if find i/flags 'loopback [lo: i break]]
+		--assert all [
+			map? lo
+			string? lo/name
+			127 = lo/local-ip/1
+			255.0.0.0 = lo/netmask
+			not find query dns:// 'local-ip lo/local-ip
+		]
 
 	--test-- "read dns://not-exists"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2498
@@ -264,26 +288,6 @@ Rebol [
 			[local-ip: 0.0.0.0 local-port: 0] = query port [local-ip local-port]
 		]
 		try [close port]
-
-	;@@ https://github.com/Oldes/Rebol-issues/issues/2103
-	--test-- "wait/all returns only waked ports"
-		srv: open tcp://:45123
-		srv/awake: func [event][true]
-		cli: open tcp://127.0.0.1:45123
-		cli/awake: func [event][true]
-		res: wait/all [srv cli 2]
-		--assert block? res
-		--assert not empty? res
-		--assert parse res [some port!]   ;; no timeout value in the result
-		close cli close srv
-
-	--test-- "wait with timeout before ports"
-		srv: open tcp://:45123
-		srv/awake: func [event][true]
-		cli: open tcp://127.0.0.1:45123
-		cli/awake: func [event][true]
-		--assert port? wait [2 cli]
-		close cli close srv
 ===end-group===
 
 

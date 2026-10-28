@@ -44,6 +44,7 @@
 
 #include "reb-host.h"
 #include "host-lib.h"
+#define USE_WINSOCK2 // for GetAdaptersAddresses (see sys-net.h)
 #include "sys-net.h"
 
 #ifndef TO_WINDOWS
@@ -51,8 +52,7 @@
 #include <net/if.h>
 #endif
 
-#define MAX_LOCAL_IPS 64
-#define IS_LOOPBACK_IP(ip) (((REBYTE*)&(ip))[0] == 127) // ip in network byte order
+#define MAX_NET_INTERFACES 64
 
 extern DEVICE_CMD Init_Net(REBREQ *); // Share same init
 extern DEVICE_CMD Quit_Net(REBREQ *);
@@ -225,22 +225,22 @@ error:
 **
 */	DEVICE_CMD Query_DNS(REBREQ *req)
 /*
-**		Collect the IPv4 addresses of the local host (synchronous).
-**		Loopback addresses are not included.
+**		Collect the IPv4 interfaces of the local host (synchronous).
 **
-**		On success, req->data holds an allocated array of addresses
-**		(u32, network byte order) and req->length their count.
+**		On success, req->data holds an allocated array of REBNIF
+**		records and req->length their count.
 **		The caller must free req->data with OS_Free.
 **
 ***********************************************************************/
 {
-	u32 *ips;
-	u32 ip;
+	REBNIF *nifs, *nif;
 	REBCNT count = 0;
 #ifdef TO_WINDOWS
-	char name[256];
-	HOSTENT *he;
-	char **addr;
+	IP_ADAPTER_ADDRESSES *list = NULL, *a;
+	IP_ADAPTER_UNICAST_ADDRESS *u;
+	ULONG size = 16 * 1024;
+	ULONG result = ERROR_BUFFER_OVERFLOW;
+	int n;
 #else
 	struct ifaddrs *list, *ifa;
 #endif
@@ -248,34 +248,67 @@ error:
 	req->data = NULL;
 	req->length = 0;
 
-	ips = OS_Make(MAX_LOCAL_IPS * sizeof(u32));
-	if (!ips) return DR_ERROR;
+	nifs = OS_Make(MAX_NET_INTERFACES * sizeof(REBNIF));
+	if (!nifs) return DR_ERROR;
+	memset(nifs, 0, MAX_NET_INTERFACES * sizeof(REBNIF));
 
 #ifdef TO_WINDOWS
-	// Windows resolves its own host name to the addresses of all adapters:
-	if (gethostname(name, sizeof(name)) || !(he = gethostbyname(name))) goto error;
-	for (addr = he->h_addr_list; *addr && count < MAX_LOCAL_IPS; addr++) {
-		ip = *(u32*)(*addr);
-		if (!IS_LOOPBACK_IP(ip)) ips[count++] = ip;
+	// The required size may change between calls, so try it a few times:
+	for (n = 0; n < 3 && result == ERROR_BUFFER_OVERFLOW; n++) {
+		if (list) OS_Free(list);
+		list = OS_Make(size);
+		if (!list) goto error;
+		result = GetAdaptersAddresses(AF_INET,
+			GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER,
+			NULL, list, &size);
 	}
+	if (result != NO_ERROR) {
+		if (list) OS_Free(list);
+		req->error = result;
+		OS_Free(nifs);
+		return DR_ERROR;
+	}
+	for (a = list; a; a = a->Next) {
+		for (u = a->FirstUnicastAddress; u && count < MAX_NET_INTERFACES; u = u->Next) {
+			if (!u->Address.lpSockaddr || u->Address.lpSockaddr->sa_family != AF_INET) continue;
+			nif = &nifs[count++];
+			nif->ip = ((struct sockaddr_in *)u->Address.lpSockaddr)->sin_addr.s_addr;
+#if defined(_WIN32_WINNT) && (_WIN32_WINNT >= 0x0600)
+			// OnLinkPrefixLength is available since Vista
+			if (u->OnLinkPrefixLength > 0 && u->OnLinkPrefixLength <= 32)
+				nif->netmask = htonl(0xFFFFFFFFUL << (32 - u->OnLinkPrefixLength));
+#endif
+			if (a->OperStatus == IfOperStatusUp) SET_FLAG(nif->flags, RNIF_UP);
+			if (a->IfType == IF_TYPE_SOFTWARE_LOOPBACK) SET_FLAG(nif->flags, RNIF_LOOPBACK);
+			// Friendly name (like "Ethernet") as UTF-8; empty if it does not fit.
+			if (!WideCharToMultiByte(CP_UTF8, 0, a->FriendlyName, -1,
+					nif->name, sizeof(nif->name), NULL, NULL))
+				nif->name[0] = 0;
+		}
+	}
+	OS_Free(list);
 #else
 	if (getifaddrs(&list)) goto error;
-	for (ifa = list; ifa && count < MAX_LOCAL_IPS; ifa = ifa->ifa_next) {
+	for (ifa = list; ifa && count < MAX_NET_INTERFACES; ifa = ifa->ifa_next) {
 		if (!ifa->ifa_addr || ifa->ifa_addr->sa_family != AF_INET) continue;
-		if (!(ifa->ifa_flags & IFF_UP) || (ifa->ifa_flags & IFF_LOOPBACK)) continue;
-		ip = ((struct sockaddr_in *)ifa->ifa_addr)->sin_addr.s_addr;
-		if (!IS_LOOPBACK_IP(ip)) ips[count++] = ip;
+		nif = &nifs[count++];
+		nif->ip = ((struct sockaddr_in *)ifa->ifa_addr)->sin_addr.s_addr;
+		if (ifa->ifa_netmask)
+			nif->netmask = ((struct sockaddr_in *)ifa->ifa_netmask)->sin_addr.s_addr;
+		if (ifa->ifa_flags & IFF_UP) SET_FLAG(nif->flags, RNIF_UP);
+		if (ifa->ifa_flags & IFF_LOOPBACK) SET_FLAG(nif->flags, RNIF_LOOPBACK);
+		strncpy(nif->name, ifa->ifa_name, sizeof(nif->name) - 1);
 	}
 	freeifaddrs(list);
 #endif
 
-	req->data = (REBYTE*)ips;
+	req->data = (REBYTE*)nifs;
 	req->length = count;
 	return DR_DONE;
 
 error:
 	req->error = GET_ERROR;
-	OS_Free(ips);
+	OS_Free(nifs);
 	return DR_ERROR;
 }
 

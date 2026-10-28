@@ -3,6 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,7 +30,14 @@
 //----- Windows - "Network standards? What network standards?" -Bill G.
 #ifdef TO_WINDOWS // any Windows version
 
+#ifdef USE_WINSOCK2
+// Opt-in per source file (winsock.h and winsock2.h cannot be mixed).
+// Requires that windows.h was included with WIN32_LEAN_AND_MEAN.
+#include <winsock2.h>
+#include <iphlpapi.h>	// GetAdaptersAddresses (link with iphlpapi)
+#else
 #include <winsock.h>
+#endif
 
 #define GET_ERROR		WSAGetLastError()
 #define IOCTL			ioctlsocket
