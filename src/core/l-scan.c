@@ -1129,6 +1129,7 @@ new_line:
     case LEX_CLASS_SPECIAL:
         if (HAS_LEX_FLAG(flags, LEX_SPECIAL_AT) && *cp != '<' && *cp != '%') { // for case like: %61@b which is actually: a@b 
 			if (*cp == '\'' || *cp == ':') return -TOKEN_WORD; // no '@foo abd :@foo
+			if (*cp == '#') return -TOKEN_ISSUE; // no #a@b (issue prefix wins)
 			return TOKEN_EMAIL; 
 		}
     next_ls:

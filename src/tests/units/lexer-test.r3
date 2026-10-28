@@ -679,6 +679,13 @@ Rebol [
 		--assert "#a#" = try [mold transcode/one {#a#}]
 		--assert "#ab" = try [mold transcode/one {#ab}]
 
+	--test-- "invalid issue with @"
+	;@@ https://github.com/Oldes/Rebol3/issues/1481
+		--assert all [error? e: try [transcode/one "#a@b"] e/id = 'invalid]
+		--assert all [error? e: try [transcode/one "#@"]   e/id = 'invalid]
+		--assert error? transcode/one/error "#a@b"
+		--assert email? transcode/one "a#b@c"
+		--assert issue? transcode/one "#a"
 ===end-group===
 
 
