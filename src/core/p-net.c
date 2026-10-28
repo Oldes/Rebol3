@@ -247,8 +247,11 @@ static REBOOL Query_Net_Field(REBVAL *port, REBVAL *word, REBVAL *ret, void *ctx
 		// Read data into a buffer, expanding the buffer if needed.
 		// If no length is given, program must stop it at some point.
 		//refs = Find_Refines(ds, ALL_READ_REFS);
-		if (!GET_FLAG(sock->modes, RST_UDP)
-				&& !GET_FLAG(sock->state, RSM_CONNECT))
+		// While an async host lookup is pending (Windows), the request holds
+		// the DNS handle instead of the socket and must not be reused.
+		if (sock->net.host_info
+				|| (!GET_FLAG(sock->modes, RST_UDP)
+				&& !GET_FLAG(sock->state, RSM_CONNECT)))
 			Trap_Port(RE_NOT_CONNECTED, port, -15);
 
 		// Setup the read buffer (allocate a buffer if needed):
@@ -289,8 +292,11 @@ static REBOOL Query_Net_Field(REBVAL *port, REBVAL *word, REBVAL *ret, void *ctx
 		// The lower level write code continues until done.
 
 		refs = Find_Refines(ds, ALL_WRITE_REFS);
-		if (!GET_FLAG(sock->modes, RST_UDP)
-				&& !GET_FLAG(sock->state, RSM_CONNECT))
+		// While an async host lookup is pending (Windows), the request holds
+		// the DNS handle instead of the socket (see Lookup_Socket).
+		if (sock->net.host_info
+				|| (!GET_FLAG(sock->modes, RST_UDP)
+				&& !GET_FLAG(sock->state, RSM_CONNECT)))
 			Trap_Port(RE_NOT_CONNECTED, port, -15);
 
 		// Determine length. Clip /PART to size of string if needed.

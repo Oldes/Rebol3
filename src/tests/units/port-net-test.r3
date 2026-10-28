@@ -25,13 +25,34 @@ Rebol [
 
 
 ===start-group=== "UDP"
+	;; Opens a client port and waits until it is usable. The host is a string,
+	;; so OPEN starts a lookup, which is async on Windows.
+	open-udp-client: func [url [url!] /local port] [
+		port: open url
+		port/awake: func [event] [
+			if event/type = 'lookup [open event/port]
+			event/type = 'connect
+		]
+		wait [port 1]
+		port
+	]
+
+	--test-- "WRITE while the host lookup is pending"
+		;; On Windows the lookup is async; on POSIX it is done in OPEN.
+		udp-client: open udp://127.0.0.1:45123
+		--assert any [
+			not error? e: try [write udp-client "x"]
+			e/id = 'not-connected
+		]
+		try [close udp-client]
+
 	--test-- "UDP read length is applied only once"
 		;; When a datagram is already waiting, READ completes immediately.
 		;; Its length must not be added again by UPDATE when the event is processed.
 		udp-server: open udp://:45117
 		udp-server/awake: func [event] [event/type = 'read]
-		udp-client: open udp://127.0.0.1:45117
-		udp-client/awake: func [event] [false]
+		udp-client: open-udp-client udp://127.0.0.1:45117
+		--assert open? udp-client
 		write udp-client "Hello"
 		wait 0.1 ;; let the datagram arrive, so the READ completes immediately
 		read udp-server
@@ -51,8 +72,8 @@ Rebol [
 		wait 0.1 ;; lets the device poll the port
 		--assert empty? udp-events
 		--assert 45118 = query udp-server 'local-port
-		udp-client: open udp://127.0.0.1:45118
-		udp-client/awake: func [event] [false]
+		udp-client: open-udp-client udp://127.0.0.1:45118
+		--assert open? udp-client
 		write udp-client "Hi"
 		read udp-server
 		--assert all [
@@ -67,8 +88,8 @@ Rebol [
 		;; sock->data points into the read buffer, it is not an accept queue.
 		udp-server: open udp://:45119
 		udp-server/awake: func [event] [event/type = 'read]
-		udp-client: open udp://127.0.0.1:45119
-		udp-client/awake: func [event] [false]
+		udp-client: open-udp-client udp://127.0.0.1:45119
+		--assert open? udp-client
 		write udp-client "Hi"
 		read udp-server
 		--assert port? wait [udp-server 1]
@@ -81,8 +102,8 @@ Rebol [
 		;; DELETE on a net port queues a test ERROR event for it.
 		udp-server: open udp://:45120
 		udp-server/awake: func [event] [event/type = 'read]
-		udp-client: open udp://127.0.0.1:45120
-		udp-client/awake: func [event] [false]
+		udp-client: open-udp-client udp://127.0.0.1:45120
+		--assert open? udp-client
 		write udp-client "Hi"
 		read udp-server
 		--assert port? wait [udp-server 1]
