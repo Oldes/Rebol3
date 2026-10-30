@@ -3,6 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -43,7 +44,19 @@
 
 #include "reb-host.h"
 #include "host-lib.h"
+
+#ifdef INCLUDE_NET_INTERFACES
+#define USE_WINSOCK2 // for GetAdaptersAddresses (see sys-net.h)
+#endif
 #include "sys-net.h"
+
+#ifdef INCLUDE_NET_INTERFACES
+#ifndef TO_WINDOWS
+#include <ifaddrs.h>
+#include <net/if.h>
+#endif
+#define MAX_NET_INTERFACES 64
+#endif
 
 extern DEVICE_CMD Init_Net(REBREQ *); // Share same init
 extern DEVICE_CMD Quit_Net(REBREQ *);
@@ -212,6 +225,102 @@ error:
 }
 
 
+#ifdef INCLUDE_NET_INTERFACES
+/***********************************************************************
+**
+*/	DEVICE_CMD Query_DNS(REBREQ *req)
+/*
+**		Collect the IPv4 interfaces of the local host (synchronous).
+**
+**		On success, req->data holds an allocated array of REBNIF
+**		records and req->length their count.
+**		The caller must free req->data with OS_Free.
+**
+***********************************************************************/
+{
+	REBNIF *nifs, *nif;
+	REBCNT count = 0;
+#ifdef TO_WINDOWS
+	IP_ADAPTER_ADDRESSES *list = NULL, *a;
+	IP_ADAPTER_UNICAST_ADDRESS *u;
+	ULONG size = 16 * 1024;
+	ULONG result = ERROR_BUFFER_OVERFLOW;
+	int n;
+#else
+	struct ifaddrs *list, *ifa;
+#endif
+
+	req->data = NULL;
+	req->length = 0;
+
+	nifs = OS_Make(MAX_NET_INTERFACES * sizeof(REBNIF));
+	if (!nifs) return DR_ERROR;
+	memset(nifs, 0, MAX_NET_INTERFACES * sizeof(REBNIF));
+
+#ifdef TO_WINDOWS
+	// The required size may change between calls, so try it a few times:
+	for (n = 0; n < 3 && result == ERROR_BUFFER_OVERFLOW; n++) {
+		if (list) OS_Free(list);
+		list = OS_Make(size);
+		if (!list) goto error;
+		result = GetAdaptersAddresses(AF_INET,
+			GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER,
+			NULL, list, &size);
+	}
+	if (result != NO_ERROR) {
+		if (list) OS_Free(list);
+		req->error = result;
+		OS_Free(nifs);
+		return DR_ERROR;
+	}
+	for (a = list; a; a = a->Next) {
+		for (u = a->FirstUnicastAddress; u && count < MAX_NET_INTERFACES; u = u->Next) {
+			if (!u->Address.lpSockaddr || u->Address.lpSockaddr->sa_family != AF_INET) continue;
+			nif = &nifs[count++];
+			nif->ip = ((struct sockaddr_in *)u->Address.lpSockaddr)->sin_addr.s_addr;
+#if defined(_WIN32_WINNT) && (_WIN32_WINNT >= 0x0600)
+			// OnLinkPrefixLength is available since Vista
+			if (u->OnLinkPrefixLength > 0 && u->OnLinkPrefixLength <= 32)
+				nif->netmask = htonl(0xFFFFFFFFUL << (32 - u->OnLinkPrefixLength));
+#endif
+			if (a->OperStatus == IfOperStatusUp) SET_FLAG(nif->flags, RNIF_UP);
+			if (a->IfType == IF_TYPE_SOFTWARE_LOOPBACK) SET_FLAG(nif->flags, RNIF_LOOPBACK);
+			// Friendly name (like "Ethernet") as UTF-8; empty if it does not fit.
+			if (!WideCharToMultiByte(CP_UTF8, 0, a->FriendlyName, -1,
+					nif->name, sizeof(nif->name), NULL, NULL))
+				nif->name[0] = 0;
+		}
+	}
+	OS_Free(list);
+#else
+	if (getifaddrs(&list)) goto error;
+	for (ifa = list; ifa && count < MAX_NET_INTERFACES; ifa = ifa->ifa_next) {
+		if (!ifa->ifa_addr || ifa->ifa_addr->sa_family != AF_INET) continue;
+		nif = &nifs[count++];
+		nif->ip = ((struct sockaddr_in *)ifa->ifa_addr)->sin_addr.s_addr;
+		if (ifa->ifa_netmask)
+			nif->netmask = ((struct sockaddr_in *)ifa->ifa_netmask)->sin_addr.s_addr;
+		if (ifa->ifa_flags & IFF_UP) SET_FLAG(nif->flags, RNIF_UP);
+		if (ifa->ifa_flags & IFF_LOOPBACK) SET_FLAG(nif->flags, RNIF_LOOPBACK);
+		strncpy(nif->name, ifa->ifa_name, sizeof(nif->name) - 1);
+	}
+	freeifaddrs(list);
+#endif
+
+	req->data = (REBYTE*)nifs;
+	req->length = count;
+	return DR_DONE;
+
+error:
+	req->error = GET_ERROR;
+	OS_Free(nifs);
+	return DR_ERROR;
+}
+#else
+#define Query_DNS 0
+#endif // INCLUDE_NET_INTERFACES
+
+
 /***********************************************************************
 **
 **	Command Dispatch Table (RDC_ enum order)
@@ -220,13 +329,15 @@ error:
 
 static DEVICE_CMD_FUNC Dev_Cmds[RDC_MAX] =
 {
-	Init_Net,	// Shared init - called only once
-	Quit_Net,	// Shared
+	Init_Net,	// Shared with the network device (called once per device)
+	Quit_Net,	// Shared with the network device (called once per device)
 	Open_DNS,
 	Close_DNS,
 	Read_DNS,
 	0,	// write
 	Poll_DNS,
+	0,	// connect
+	Query_DNS,
 };
 
 DEFINE_DEV(Dev_DNS, "DNS", 1, Dev_Cmds, RDC_MAX, 0);

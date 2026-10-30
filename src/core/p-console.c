@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -43,6 +43,45 @@
 #else
 #define MAKE_OS_BUFFER Make_Binary
 #endif
+
+
+/***********************************************************************
+**
+*/	static REBOOL Set_Console_Mode_Value(REBREQ *req, REBCNT mode, REBVAL *ret)
+/*
+**		Set a value with file data according specified mode
+**
+***********************************************************************/
+{
+	switch (mode) {
+	case SYM_BUFFER_COLS:
+		SET_INTEGER(ret, req->console.buffer_cols);
+		break;
+	case SYM_BUFFER_ROWS:
+		SET_INTEGER(ret, req->console.buffer_rows);
+		break;
+	case SYM_WINDOW_COLS:
+		if (req->console.window_cols == 0)
+			req->console.window_cols = DEFAULT_WINDOW_COLS;
+		SET_INTEGER(ret, req->console.window_cols);
+		break;
+	case SYM_WINDOW_ROWS:
+		SET_INTEGER(ret, req->console.window_rows);
+		break;
+	case SYM_LENGTH:
+		SET_INTEGER(ret, req->console.length);
+		break;
+	default:
+		return FALSE;
+	}
+	return TRUE;
+}
+
+
+static REBOOL Query_Console_Field(REBVAL *port, REBVAL *word, REBVAL *ret, void *ctx)
+{
+	return Set_Console_Mode_Value((REBREQ *)ctx, VAL_WORD_CANON(word), ret);
+}
 
 /***********************************************************************
 **
@@ -151,19 +190,13 @@
 
 	case A_QUERY:
 		spec = Get_System(SYS_STANDARD, STD_CONSOLE_INFO);
-		if (!IS_OBJECT(spec)) Trap_Arg(spec);
-		if (IS_NONE(D_ARG(ARG_QUERY_FIELD))) {
-			Set_Block(D_RET, Get_Object_Words(spec));
-			return R_RET;
+		arg  = D_ARG(ARG_QUERY_FIELD);
+		if (!IS_NONE(arg) && OS_Do_Device(req, RDC_QUERY) < 0) {
+			if (req->error == 25) return R_NONE; //Inappropriate ioctl for device (not running in terminal)
+			SET_INTEGER(D_ARG(2), req->error);
+			Trap1(RE_PROTOCOL, D_ARG(2));
 		}
-		if (OS_Do_Device(req, RDC_QUERY) < 0) {
-			if(req->error == 25) return R_NONE; //Inappropriate ioctl for device (not running in terminal) 
-			SET_INTEGER(arg, req->error);
-			Trap1(RE_PROTOCOL, arg);
-			//return R_NONE;
-		}
-
-		Ret_Query_Console(req, D_RET, D_ARG(ARG_QUERY_FIELD), spec);
+		Query_Fields(port_value, arg, spec, Query_Console_Field, req, D_RET);
 		return R_RET;
 
 	case A_FLUSH:
@@ -175,82 +208,6 @@
 	}
 
 	return R_ARG1; //= port
-}
-
-/***********************************************************************
-**
-*/	static REBOOL Set_Console_Mode_Value(REBREQ *req, REBCNT mode, REBVAL *ret)
-/*
-**		Set a value with file data according specified mode
-**
-***********************************************************************/
-{
-	switch (mode) {
-	case SYM_BUFFER_COLS:
-		SET_INTEGER(ret, req->console.buffer_cols);
-		break;
-	case SYM_BUFFER_ROWS:
-		SET_INTEGER(ret, req->console.buffer_rows);
-		break;
-	case SYM_WINDOW_COLS:
-		if (req->console.window_cols == 0)
-			req->console.window_cols = DEFAULT_WINDOW_COLS;
-		SET_INTEGER(ret, req->console.window_cols);
-		break;
-	case SYM_WINDOW_ROWS:
-		SET_INTEGER(ret, req->console.window_rows);
-		break;
-	case SYM_LENGTH:
-		SET_INTEGER(ret, req->console.length);
-		break;
-	default:
-		return FALSE;
-	}
-	return TRUE;
-}
-
-/***********************************************************************
-**
-*/	void Ret_Query_Console(REBREQ *req, REBVAL *ret, REBVAL *info, REBVAL *spec)
-/*
-**		Query file and set RET value to resulting STD_FILE_INFO object.
-**
-***********************************************************************/
-{
-	if (IS_WORD(info)) {
-		if (!Set_Console_Mode_Value(req, VAL_WORD_CANON(info), ret))
-			Trap1(RE_INVALID_ARG, info);
-	}
-	else if (IS_BLOCK(info)) {
-		REBVAL *val;
-		REBSER *values = Make_Block(2 * BLK_LEN(VAL_SERIES(info)));
-		REBVAL *word = VAL_BLK_DATA(info);
-		for (; NOT_END(word); word++) {
-			if (ANY_WORD(word)) {
-				if (!IS_GET_WORD(word)) {
-					// keep the word as a key (converted to the set-word) in the result
-					val = Append_Value(values);
-					*val = *word;
-					VAL_TYPE(val) = REB_SET_WORD;
-					VAL_SET_LINE(val);
-				}
-				val = Append_Value(values);
-				if (!Set_Console_Mode_Value(req, VAL_WORD_CANON(word), val))
-					Trap1(RE_INVALID_ARG, word);
-			}
-			else  Trap1(RE_INVALID_ARG, word);
-		}
-		Set_Series(REB_BLOCK, ret, values);
-	}
-	else {
-		REBSER *obj = CLONE_OBJECT(VAL_OBJ_FRAME(spec));
-		SET_INTEGER(OFV(obj, STD_CONSOLE_INFO_BUFFER_COLS), req->console.buffer_cols);
-		SET_INTEGER(OFV(obj, STD_CONSOLE_INFO_BUFFER_ROWS), req->console.buffer_rows);
-		SET_INTEGER(OFV(obj, STD_CONSOLE_INFO_WINDOW_COLS), req->console.window_cols);
-		SET_INTEGER(OFV(obj, STD_CONSOLE_INFO_WINDOW_ROWS), req->console.window_rows);
-		SET_INTEGER(OFV(obj, STD_CONSOLE_INFO_LENGTH), req->console.length);
-		SET_OBJECT(ret, obj);
-	}
 }
 
 

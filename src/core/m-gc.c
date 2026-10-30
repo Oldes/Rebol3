@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,7 +23,7 @@
 **  Module:  m-gc.c
 **  Summary: main memory garbage collection
 **  Section: memory
-**  Author:  Carl Sassenrath, Ladislav Mecir, HostileFork
+**  Author:  Carl Sassenrath, Ladislav Mecir, HostileFork, Oldes
 **  Notes:
 **    WARNING WARNING WARNING
 **    This is highly tuned code that should only be modified by experts
@@ -32,7 +32,7 @@
 **
 **	  The process consists of two stages:
 **
-**		MARK -	Mark all series and gobs ("collectible values")
+**		MARK -	Mark all series ("collectible values")
 *				that can be found in:
 **
 **				Root Block: special structures and buffers
@@ -108,45 +108,10 @@ REBVAL *N_watch(REBFRM *frame, REBVAL **inter_block)
 #endif
 
 extern REBDEV *Devices[];
+extern REBCNT Dev_Count;
 
 static void Mark_Series(REBSER *series, REBCNT depth);
 static void Mark_Value(REBVAL *val, REBCNT depth);
-
-/***********************************************************************
-**
-*/	static void Mark_Gob(REBGOB *gob, REBCNT depth)
-/*
-***********************************************************************/
-{
-	REBGOB **pane;
-	REBCNT i;
-
-	if (IS_GOB_MARK(gob)) return;
-
-	MARK_GOB(gob);
-
-	if (GOB_PANE(gob)) {
-		MARK_SERIES(GOB_PANE(gob));
-		pane = GOB_HEAD(gob);
-		for (i = 0; i < GOB_TAIL(gob); i++, pane++) {
-			Mark_Gob(*pane, depth);
-		}
-	}
-
-	if (GOB_PARENT(gob)) Mark_Gob(GOB_PARENT(gob), depth);
-
-	if (GOB_CONTENT(gob)) {
-		if (GOB_TYPE(gob) >= GOBT_IMAGE && GOB_TYPE(gob) <= GOBT_STRING) {
-			MARK_SERIES(GOB_CONTENT(gob));
-		} else if (GOB_TYPE(gob) >= GOBT_DRAW && GOB_TYPE(gob) <= GOBT_EFFECT) {
-			CHECK_MARK(GOB_CONTENT(gob), depth);
-		}
-	}
-
-	if (GOB_DATA(gob) && GOB_DTYPE(gob) && GOB_DTYPE(gob) != GOBD_INTEGER) {
-		CHECK_MARK(GOB_DATA(gob), depth);
-	}
-}
 
 /***********************************************************************
 **
@@ -222,22 +187,25 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 ***********************************************************************/
 {
 	REBREQ *req;
+	REBHOB *hob;
 	
-	if (
-		   IS_EVENT_MODEL(value, EVM_PORT)
-		|| IS_EVENT_MODEL(value, EVM_OBJECT)
-		|| (VAL_EVENT_TYPE(value) == EVT_DROP_FILE && GET_FLAG(VAL_EVENT_FLAGS(value), EVF_COPIED))
-	) {
-		// The ->ser field of the REBEVT is void*, so we must cast
-		// Comment says it is a "port or object"
-		CHECK_MARK((REBSER*)VAL_EVENT_SER(value), depth);
+	if (IS_EVENT_MODEL(value, EVM_PORT) || IS_EVENT_MODEL(value, EVM_OBJECT)) {
+		// The ->ser field of the REBEVT is void*, so we must cast.
+		// Comment says it is a "port or object".
+		if (VAL_EVENT_SER(value))
+			CHECK_MARK((REBSER*)VAL_EVENT_SER(value), depth);
 	}
-
-	if (IS_EVENT_MODEL(value, EVM_GUI)) {
-		Mark_Gob(VAL_EVENT_SER(value), depth);
+	else if (IS_EVENT_MODEL(value, EVM_HANDLE)) {
+		// Same as Mark_Value's REB_HANDLE case: the handle context, and
+		// anything it keeps in its series, must outlive the event.
+		// A released hob must stay marked as well, so its node is not reused
+		// while the event still refers to it.
+		if (NZ(hob = VAL_EVENT_HOB(value)) && IS_ALLOCATED_HOB(hob)) {
+			MARK_HOB(hob);
+			if (hob->series) Mark_Series(hob->series, depth);
+		}
 	}
-
-	if (IS_EVENT_MODEL(value, EVM_DEVICE)) {
+	else if (IS_EVENT_MODEL(value, EVM_DEVICE)) {
 		// In the case of being an EVM_DEVICE event type, the port! will
 		// not be in VAL_EVENT_SER of the REBEVT structure.  It is held
 		// indirectly by the REBREQ ->req field of the event, which
@@ -261,12 +229,12 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 **
 ***********************************************************************/
 {
-	int d;
+	REBCNT d;
 	REBDEV *dev;
 	REBREQ *req;
 	REBDEV **devices = Devices;// Host_Lib->devices;
 	
-	for (d = 0; d < RDI_MAX; d++) {
+	for (d = 0; d < Dev_Count; d++) {
 		dev = devices[d];
 		if (dev)
 			for (req = dev->pending; req; req = req->next)
@@ -304,10 +272,14 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 
 	MARK_SERIES(series);
 
-	// If not a block, go no further
-	if (SERIES_WIDE(series) != sizeof(REBVAL) || IS_BARE_SERIES(series)) return;
+	// If not a block or if sliced block, go no further
+	if (
+		SERIES_WIDE(series) != sizeof(REBVAL)
+		|| IS_BARE_SERIES(series)
+		|| IS_SLICE_SERIES(series))
+		return;
 
-	ASSERT2(RP_SERIES_OVERFLOW, SERIES_TAIL(series) < SERIES_REST(series));
+	ASSERT2(SERIES_TAIL(series) < SERIES_REST(series), RP_SERIES_OVERFLOW);
 
 	//Moved to end: ASSERT1(IS_END(BLK_TAIL(series)), RP_MISSING_END);
 
@@ -332,7 +304,7 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 	}
 
 #if (ALEVEL>0)
-	if (!IS_END(BLK_SKIP(series, len)) && series != DS_Series)
+	if (!IS_END(BLK_SKIP(series, len)) && series != DS_Series && !IS_SLICE_SERIES(series))
 		Crash(RP_MISSING_END);
 #endif
 }
@@ -374,19 +346,26 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 			return;
 		}
 #if (ALEVEL>0)
-		if (!IS_END(BLK_SKIP(ser, SERIES_TAIL(ser))) && ser != DS_Series)
+		// Sliced series do not necessarily end with null!
+		if (!IS_END(BLK_SKIP(ser, SERIES_TAIL(ser))) && ser != DS_Series && !IS_SLICE_SERIES(ser))
 			Crash(RP_MISSING_END);
 #endif
 		if (SERIES_WIDE(ser) != sizeof(REBVAL) && SERIES_WIDE(ser) != 4 && SERIES_WIDE(ser) != 0)
 			Crash(RP_BAD_WIDTH, 16, SERIES_WIDE(ser), VAL_TYPE(val));
-		QUEUE_CHECK_MARK(ser, depth);
+		if (IS_SLICE_SERIES(ser)) {
+			MARK_SERIES(ser);
+			QUEUE_CHECK_MARK(ser->series, depth);
+		}
+		else {
+			QUEUE_CHECK_MARK(ser, depth);
+		}
 		return;
 	}
 	if (VAL_TYPE(val) >= REB_BINARY && VAL_TYPE(val) <= REB_BITSET) {
 		ser = VAL_SERIES(val);
-		if (SERIES_WIDE(ser) > sizeof(REBUNI))
-			Crash(RP_BAD_WIDTH, sizeof(REBUNI), SERIES_WIDE(ser), VAL_TYPE(val));
+		ASSERT1(SERIES_WIDE(ser) <= sizeof(REBUNI), RP_BAD_WIDTH);
 		MARK_SERIES(ser);
+		if (IS_SLICE_SERIES(ser)) MARK_SERIES(ser->series);
 		return;
 	}
 
@@ -489,10 +468,6 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 		Mark_Struct(&VAL_STRUCT(val), depth);
 		break;
 
-	case REB_GOB:
-		Mark_Gob(VAL_GOB(val), depth);
-		break;
-
 	case REB_EVENT:
 		Mark_Event(val, depth);
 		break;
@@ -557,45 +532,6 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 	return count;
 }
 
-
-/***********************************************************************
-**
-*/	static REBCNT Sweep_Gobs(void)
-/*
-**		Free all unmarked gobs.
-**
-**		Scans all gobs in all segments that are part of the
-**		GOB_POOL. Free gobs that have not been marked.
-**
-***********************************************************************/
-{
-	REBSEG	*seg;
-	REBGOB	*gob;
-	REBCNT  n;
-	REBCNT	count = 0;
-
-	for (seg = Mem_Pools[GOB_POOL].segs; seg; seg = seg->next) {
-		gob = (REBGOB *) (seg + 1);
-		for (n = Mem_Pools[GOB_POOL].units; n > 0; n--) {
-			SKIP_WALL_TYPE(gob, REBGOB);
-			MUNG_CHECK(GOB_POOL, gob, sizeof(*gob));
-			if (IS_GOB_USED(gob)) {
-				if (IS_GOB_MARK(gob))
-					UNMARK_GOB(gob);
-				else {
-					Free_Gob(gob);
-					count++;
-				}
-			}
-			gob++;
-			SKIP_WALL_TYPE(gob, REBGOB);
-		}
-	}
-
-	return count;
-}
-
-
 /***********************************************************************
 **
 */	static REBCNT Sweep_Handles(void)
@@ -617,7 +553,9 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 		for (n = Mem_Pools[HOB_POOL].units; n > 0; n--) {
 			SKIP_WALL_TYPE(hob, REBHOB);
 			MUNG_CHECK(HOB_POOL, hob, sizeof(*hob));
-			if (IS_USED_HOB(hob)) {
+			// Released hobs are swept too - their node is returned to the
+			// pool only now, when no value refers to it any more.
+			if (IS_ALLOCATED_HOB(hob)) {
 				//printf("sweep hob: %p\n", hob);
 				if (IS_MARK_HOB(hob))
 					UNMARK_HOB(hob);
@@ -718,9 +656,11 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 	while (GC_Mark_Queue->tail > 0) {
 		Mark_Series(((REBSER**)GC_Mark_Queue->data)[--GC_Mark_Queue->tail], 0);
 	}
+
+	// Disarm timers of ports which are going to be released (weak references):
+	Sweep_Timers();
 	
 	count = Sweep_Series();
-	count += Sweep_Gobs();
 	count += Sweep_Handles();
 
 	// Check memory pool segments.
@@ -847,7 +787,6 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 	Free_Series(GC_Protect);
 	Free_Series(GC_Series);
 	Sweep_Series();
-	Sweep_Gobs();
 	Free_Mem(GC_Infants, sizeof(REBSER*) * (MAX_SAFE_SERIES + 2));
 	Free_Mem(Prior_Expand, sizeof(REBSER*) * MAX_EXPAND_LIST);
 }

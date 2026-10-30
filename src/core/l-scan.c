@@ -691,14 +691,14 @@ new_line:
 ***********************************************************************/
 {
 	REBYTE term = 0;
-	const REBYTE *invalid = cb_cast(":;()[]\"^");
+	const REBYTE *invalid = cb_cast(";()[]\"^");
 
 	if (*cp == '%') cp++, len--;
 	if (*cp == '"') {
 		cp++;
 		len--;
 		term = '"';
-		invalid = cb_cast(":;\"");
+		invalid = cb_cast(";\"");
 	}
 	cp = Scan_Item(cp, cp + len, term, invalid, NULL);
 	if (cp)
@@ -781,6 +781,31 @@ new_line:
 		return 0;
 	}
 	return cp;
+}
+
+/***********************************************************************
+**
+*/  static REBOOL Has_Invisible_Chars(const REBYTE *cp, REBCNT len)
+/*
+**		Returns TRUE if the UTF-8 input contains an invisible format
+**		character, which is not allowed in words:
+**			U+200B ZERO WIDTH SPACE
+**			U+200C ZERO WIDTH NON-JOINER
+**			U+200D ZERO WIDTH JOINER
+**			U+2060 WORD JOINER
+**			U+FEFF ZERO WIDTH NO-BREAK SPACE (BOM)
+**
+***********************************************************************/
+{
+	for (; len >= 3; cp++, len--) {
+		if (*cp < 0xE2) continue;
+		if (cp[0] == 0xE2) {
+			if (cp[1] == 0x80 && cp[2] >= 0x8B && cp[2] <= 0x8D) return TRUE;
+			if (cp[1] == 0x81 && cp[2] == 0xA0) return TRUE;
+		}
+		else if (cp[0] == 0xEF && cp[1] == 0xBB && cp[2] == 0xBF) return TRUE;
+	}
+	return FALSE;
 }
 
 /***********************************************************************
@@ -1104,6 +1129,7 @@ new_line:
     case LEX_CLASS_SPECIAL:
         if (HAS_LEX_FLAG(flags, LEX_SPECIAL_AT) && *cp != '<' && *cp != '%') { // for case like: %61@b which is actually: a@b 
 			if (*cp == '\'' || *cp == ':') return -TOKEN_WORD; // no '@foo abd :@foo
+			if (*cp == '#') return -TOKEN_ISSUE; // no #a@b (issue prefix wins)
 			return TOKEN_EMAIL; 
 		}
     next_ls:
@@ -1746,12 +1772,14 @@ extern REBSER *Scan_Full_Block(SCAN_STATE *scan_state, REBYTE mode_char);
 			}
 		case TOKEN_WORD:
 			if (len == 0) {bp--; goto syntax_error;}
+			if (Has_Invisible_Chars(bp, len)) goto syntax_error;
 			VAL_SET(value, (REBYTE)(REB_WORD + (token - TOKEN_WORD))); // NO_FRAME
 			if (!(VAL_WORD_SYM(value) = Make_Word(bp, len))) goto syntax_error;
 			VAL_WORD_FRAME(value) = 0;
 			break;
 
 		case TOKEN_REFINE:
+			if (Has_Invisible_Chars(bp+1, len-1)) goto syntax_error;
 			VAL_SET(value, REB_REFINEMENT); // NO_FRAME
 			if (!(VAL_WORD_SYM(value) = Make_Word(bp+1, len-1))) goto syntax_error;
 			break;
@@ -1987,7 +2015,9 @@ extern REBSER *Scan_Full_Block(SCAN_STATE *scan_state, REBYTE mode_char);
 			if (*ep == '/') {
 				ep++;
 				scan_state->begin = ep;  // skip next /
-				if (*ep != '(' && IS_LEX_DELIMIT(*ep)) {
+				// Allowed delimiters after `/` are only: `(` for a paren
+				// and `"` for a simple (single line) string (like in Red)
+				if (*ep != '(' && *ep != '"' && IS_LEX_DELIMIT(*ep)) {
 					token = TOKEN_PATH;
 					goto syntax_error;
 				}
@@ -2233,7 +2263,8 @@ exit_block:
 		// check also if there are not any chars left
 		// https://github.com/Oldes/Rebol-issues/issues/2444
 		// (space and tab chars at tail are truncated and so accepted)
-		&& scan_state.end == scan_state.limit) 
+		&& scan_state.end == scan_state.limit
+		&& !Has_Invisible_Chars(cp, len))
 			return Make_Word(cp, len);
 	return 0;
 }

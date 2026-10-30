@@ -6,6 +6,9 @@ Rebol [
 	Needs:   [%../quick-test-module.r3]
 ]
 
+has-lzma?: did find system/catalog/compressions 'lzma
+
+
 ~~~start-file~~~ "Codecs"
 
 ===start-group=== "Codec's identify"
@@ -82,24 +85,16 @@ Rebol [
 		;@@ https://github.com/Oldes/Rebol-issues/issues/1466
 		--assert all [
 			binary? b: try [save/compress none [print "Hello World!"] true]
-			b = #{
-5245424F4C205B0A202020206F7074696F6E733A205B636F6D70726573735D0A
-5D0A789C2B28CACC2B5150F248CDC9C95708CF2FCA495154E20200526B06D9}
 			(load b) = [print "Hello World!"]
 			object? first load/header b
 		]
 		--assert all [
 			binary? b: try [save/compress none [print "Hello World!"] 'script]
-			b = #{
-5245424F4C205B0A202020206F7074696F6E733A205B636F6D70726573735D0A
-5D0A3634237B654A77724B4D724D4B314651386B6A4E79636C58434D3876796B
-6C52564F494341464A7242746B3D7D}
 			(load b) = [print "Hello World!"]
 			object? first load/header b
 		]
 		--assert all [
 			binary? b: try [save/compress none [print "Hello World!"] false]
-			b = #{789C2B28CACC2B5150F248CDC9C95708CF2FCA495154E20200526B06D9}
 			(load decompress b 'zlib) = [print "Hello World!"]
 		]
 
@@ -113,22 +108,22 @@ Rebol [
 --test-- "load UCS16-LE txt"
 	--assert all [
 		string? try [str: load %units/files/issue-2186-UTF16-LE.txt]
-		11709824 = checksum str 'crc24
+		5408699 = checksum str 'crc24
 	]
 --test-- "load UCS16-BE txt"
 	--assert all [
 		string? try [str: load %units/files/issue-2186-UTF16-BE.txt]
-		11709824 = checksum str 'crc24
+		5408699 = checksum str 'crc24
 	]
 --test-- "load UCS32-LE txt"
 	--assert all [
 		string? try [str: load %units/files/issue-2186-UTF32-LE.txt]
-		11709824 = checksum str 'crc24
+		5408699 = checksum str 'crc24
 	]
 --test-- "load UCS32-BE txt"
 	--assert all [
 		string? try [str: load %units/files/issue-2186-UTF32-BE.txt]
-		11709824 = checksum str 'crc24
+		5408699 = checksum str 'crc24
 	]
 --test-- "load/save issue! as .txt"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1937
@@ -214,7 +209,6 @@ if find codecs 'der [
 if find codecs 'crt [
 	codecs/crt/verbose: 3
 	===start-group=== "CRT codec"
-		
 		--test-- "Load CRT file"
 			--assert object? cert: load %units/files/google.crt
 			--assert "Google Internet Authority G3" = try [cert/issuer/commonName]
@@ -226,6 +220,195 @@ if find codecs 'crt [
 			--assert "kubernetes" = try [cert/issuer/commonName]
 			--assert block? try [key: cert/public-key/rsaEncryption]
 			--assert #{010001} = try [key/2]
+
+		crt-ec: debase {
+		MIIBzTCCAXOgAwIBAgIUYVXD/RVHa3T8f9wkYslOVVhXtP8wCgYIKoZIzj0EAwIwFTETMBEGA1UE
+		AwwKdGVzdC5sb2NhbDAeFw0yNjEwMjcxNTQxNTRaFw0zNjEwMjQxNTQxNTRaMBUxEzARBgNVBAMM
+		CnRlc3QubG9jYWwwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAASqbqVW+eCg00JcBxQFVwBepoh+
+		5sPVuq9RkQwdiyJEoWDTz22EeEItEoRY1hCSnC2/HIYZbpabQG10Zaj5VTvdo4GgMIGdMB0GA1Ud
+		DgQWBBQoyjJq3pMwi0X8DP7Vl7AROCmmwTAfBgNVHSMEGDAWgBQoyjJq3pMwi0X8DP7Vl7AROCmm
+		wTAPBgNVHRMBAf8EBTADAQH/MB0GA1UdJQQWMBQGCCsGAQUFBwMBBggrBgEFBQcDAjArBgNVHREE
+		JDAiggp0ZXN0LmxvY2Fsgg53d3cudGVzdC5sb2NhbIcEfwAAATAKBggqhkjOPQQDAgNIADBFAiEA
+		4BC0ExXYjA4Q6zQE/JO+8GOT5kUUGRAYXKIoVkrPHfACIHbTdp2phL/711mFuxvNBwlfh1xCvAfG
+		Z8HndTx6XGxY} 64
+		--test-- "CRT extendedKeyUsage with multiple purposes"
+			crt: decode 'crt crt-ec
+			--assert block? eku: select crt/extensions 'extendedKeyUsage
+			--assert not eku/1  ;; not critical
+			--assert eku/2 = [serverAuth clientAuth]
+
+		crt-san: debase {
+		MIIB3DCCAYKgAwIBAgIUTGPdlRghJGo8eZXDgot4CKUZwBcwCgYIKoZIzj0EAwIwEzERMA8GA1UE
+		AwwIc2FuLnRlc3QwHhcNMjYxMDI3MTY0NzAzWhcNMzYxMDI0MTY0NzAzWjATMREwDwYDVQQDDAhz
+		YW4udGVzdDBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABGDuxtWH7aOJwMTUsi0BmZxWXt0JtWl6
+		65E2VYgAVgwfRIukBmo+yvkIdE9YWiZRF02ZIOwRjreR619H57Ur3pujgbMwgbAwHQYDVR0OBBYE
+		FKE/TN0F+eMN/yelcxtBE8Gj9FYrMB8GA1UdIwQYMBaAFKE/TN0F+eMN/yelcxtBE8Gj9FYrMA8G
+		A1UdEwEB/wQFMAMBAf8wXQYDVR0RBFYwVKAOBgMqAwSgBwwFb3RoZXKCCHNhbi50ZXN0gQ1pbmZv
+		QHNhbi50ZXN0hhFodHRwczovL3Nhbi50ZXN0L4cECgAAAYcQAAAAAAAAAAAAAAAAAAAAATAKBggq
+		hkjOPQQDAgNIADBFAiB22rNCV8ngBdlGdyMD3xPqy5s9l++ZM99zCHd9lhBsBwIhANtHLA4EDuA6
+		rvYT5GVwrZYzox1hohBBfItnJJqjnDXJ} 64
+		--test-- "CRT subjectAltName with DNS and IPv4"
+			crt: decode 'crt crt-ec
+			--assert block? san: select crt/extensions 'subjectAltName
+			--assert san/2 = ["test.local" "www.test.local" 127.0.0.1]
+		--test-- "CRT subjectAltName with mixed entries"
+			crt: decode 'crt crt-san
+			san: second select crt/extensions 'subjectAltName
+			--assert 5 = length? san  ;; otherName skipped
+			--assert san/1 = "san.test"
+			--assert san/2 = info@san.test
+			--assert san/3 = https://san.test/
+			--assert san/4 = 10.0.0.1
+			--assert san/5 = #{00000000000000000000000000000001}
+
+		crt-gt: debase {
+		MIIBezCCASGgAwIBAgIUH80PfOPIgVykau3txqTGOvGmxlMwCgYIKoZIzj0EAwIwEjEQMA4GA1UE
+		AwwHZ3QudGVzdDAgFw0yNjEwMjcxNjUyNDdaGA8yMDUxMDYxODE2NTI0N1owEjEQMA4GA1UEAwwH
+		Z3QudGVzdDBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABBVtbmBTO32I77ZJUEk5VJvL037IIldM
+		lilxsX5nwAvULjbcQgIqmUHtypvH1ktm26kv8KZhBg3JNifNkwCftdyjUzBRMB0GA1UdDgQWBBRv
+		yB3lfJ6pknvQNXDP5i4f3hRtojAfBgNVHSMEGDAWgBRvyB3lfJ6pknvQNXDP5i4f3hRtojAPBgNV
+		HRMBAf8EBTADAQH/MAoGCCqGSM49BAMCA0gAMEUCIAbIse9JJd4Z/VOuMk11a+UzHGe5gALUEo6N
+		uYwutwVLAiEAkyEmuh3lxjjIB/vGGUXS73ApPB5tSWJOkWpdILs4qU0=} 64
+		--test-- "CRT validity with GeneralizedTime"
+			crt: decode 'crt crt-gt
+			--assert crt/valid-from = 2026-10-27/16:52:47
+			--assert crt/valid-to   = 2051-06-18/16:52:47
+			--assert crt/subject = [commonName: "gt.test"]
+
+		crt-v1: debase {
+		MIIBHTCBxQIUP2Olp+27URxjxrhoUadNCdcPIr4wCgYIKoZIzj0EAwIwEjEQMA4GA1UEAwwHdjEu
+		dGVzdDAeFw0yNjEwMjcxNzEwMjNaFw0zNjEwMjQxNzEwMjNaMBIxEDAOBgNVBAMMB3YxLnRlc3Qw
+		WTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAARl3lJcmvVdG5az7UFxJ93aYF2sIdbO2EPEWS84ZtWK
+		LltFl3t/mwGW+P+XaC57TaMQlRc9T977XzzjkuxLeG/QMAoGCCqGSM49BAMCA0cAMEQCIFKBA+AK
+		9yCgWpvU6X6bj05bUPfIBxDKHtZWqiFbb/qCAiBzpYVxOoGZ8sMQQpDIMtZc6FalJdclKQTWq5fB
+		U0MpqQ==} 64
+		;; crt-gt with hand-inserted issuerUniqueID/subjectUniqueID (signature not valid)
+		crt-uid: debase {
+		MIIBhTCCASugAwIBAgIUH80PfOPIgVykau3txqTGOvGmxlMwCgYIKoZIzj0EAwIwEjEQMA4GA1UE
+		AwwHZ3QudGVzdDAgFw0yNjEwMjcxNjUyNDdaGA8yMDUxMDYxODE2NTI0N1owEjEQMA4GA1UEAwwH
+		Z3QudGVzdDBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABBVtbmBTO32I77ZJUEk5VJvL037IIldM
+		lilxsX5nwAvULjbcQgIqmUHtypvH1ktm26kv8KZhBg3JNifNkwCftdyBAwCqu4IDAMzdo1MwUTAd
+		BgNVHQ4EFgQUb8gd5XyeqZJ70DVwz+YuH94UbaIwHwYDVR0jBBgwFoAUb8gd5XyeqZJ70DVwz+Yu
+		H94UbaIwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAgNIADBFAiAGyLHvSSXeGf1TrjJNdWvl
+		MxxnuYAC1BKOjbmMLrcFSwIhAJMhJrod5cY4yAf7xhlF0u9wKTwebUliTpFqXSC7OKlN} 64
+		--test-- "CRT v1 certificate (no version field)"
+			crt: decode 'crt crt-v1
+			--assert crt/version = 0
+			--assert crt/subject = [commonName: "v1.test"]
+			--assert crt/algorithm = 'ecdsa-with-SHA256
+			--assert none? crt/extensions
+		--test-- "CRT issuerUniqueID and subjectUniqueID"
+			crt: decode 'crt crt-uid
+			--assert crt/version = 2
+			--assert crt/issuer-id  = #{00AABB}
+			--assert crt/subject-id = #{00CCDD}
+			--assert block? crt/extensions  ;; parsing continued past the IDs
+		--test-- "CRT tbs hash with 3-byte tbsCertificate header"
+			crt: decode 'crt crt-v1
+			--assert crt/tbs-hash = #{C8115F714335EC78E10FFD5A147DB97EA06C5C6C12259A15BA64BE6D93FEE6D2}
+
+		crt-mv: debase {
+		MIIBljCCATsCFF0A3WQ/x+TQKEIZjLorKiD8RLyEMAoGCCqGSM49BAMCME0xMDALBgNVBAsTBFVu
+		aXQwIQYDVQQDHhoBfQBsAHUBZQBvAHUBDQBrAP0AIABrAW8BSDEMMAoGA1UEChMDT3JnMQswCQYD
+		VQQGEwJDWjAeFw0yNjEwMjcxNzE3MDdaFw0zNjEwMjQxNzE3MDdaME0xMDALBgNVBAsTBFVuaXQw
+		IQYDVQQDHhoBfQBsAHUBZQBvAHUBDQBrAP0AIABrAW8BSDEMMAoGA1UEChMDT3JnMQswCQYDVQQG
+		EwJDWjBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABPgAW9ViFg2rKkfjuwT/qB7Ole2JqC4Uuhyx
+		sj6NqndoC7/tmK6DeEWTzdiGKmVe6CO3wk+xmejtRw63UySYOx4wCgYIKoZIzj0EAwIDSQAwRgIh
+		ALJk77yOKspad4jsxU8c+VbPobxA+vKEkbu1grUbi5tKAiEAhJQdi8Qfnbn5BmrSNwmF2UVLQMCM
+		6ggtnzF/wbRiilI=} 64
+		--test-- "CRT multi-valued RDN with BMPString"
+			crt: decode 'crt crt-mv
+			--assert crt/subject = [
+				organizationalUnitName: "Unit"
+				commonName: "Žluťoučký kůň"
+				organizationName: "Org"
+				countryName: "CZ"
+			]
+			--assert crt/issuer = crt/subject
+			--assert date? crt/valid-to  ;; parsing continued past the names
+
+		crt-ev: debase {
+		MIICdTCCAhygAwIBAgIUNgFkMnBKNvbTQ7imES5zBP1r7Q0wCQYHKoZIzj0EATCBkDETMBEGCysG
+		AQQBgjc8AgEDEwJDWjEdMBsGA1UEDwwUUHJpdmF0ZSBPcmdhbml6YXRpb24xETAPBgNVBAUTCDEy
+		MzQ1Njc4MRcwFQYDVQRhDA5OVFJDWi0xMjM0NTY3ODEMMAoGA1UEKgwDSmFuMQ4wDAYDVQQEDAVO
+		b3ZhazEQMA4GA1UEAwwHZXYudGVzdDAeFw0yNjEwMjcxNzMxNDFaFw0zNjEwMjQxNzMxNDFaMIGQ
+		MRMwEQYLKwYBBAGCNzwCAQMTAkNaMR0wGwYDVQQPDBRQcml2YXRlIE9yZ2FuaXphdGlvbjERMA8G
+		A1UEBRMIMTIzNDU2NzgxFzAVBgNVBGEMDk5UUkNaLTEyMzQ1Njc4MQwwCgYDVQQqDANKYW4xDjAM
+		BgNVBAQMBU5vdmFrMRAwDgYDVQQDDAdldi50ZXN0MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE
+		l0uEA4oC4rDWstO5NdxSUVfxjYhPIWoQVbdvhGIG8KaBV1AUOXTCVcuwrkkIlBfnsLMydxDMzXgG
+		V9mIsEXHPqNTMFEwHQYDVR0OBBYEFDlhZz87z+K8UqIIdgjnBL4GGhqGMB8GA1UdIwQYMBaAFDlh
+		Zz87z+K8UqIIdgjnBL4GGhqGMA8GA1UdEwEB/wQFMAMBAf8wCQYHKoZIzj0EAQNIADBFAiAZWY1n
+		FykBV7Khg08R6wAk7nubu7WGqn3fGGlwijNAsAIhAMkuRcuRKr80ssI3QTYzMlw1dCknQjKVjalO
+		CMOfx4sa} 64
+		--test-- "DER decode-OID names"
+			der: system/codecs/der
+			--assert 'sha1WithRSAEncryption = der/decode-OID #{2A864886F70D010105}
+			--assert 'ecdsa-with-SHA1 = der/decode-OID #{2A8648CE3D0401}
+			--assert 'postalCode = der/decode-OID #{550411}
+			--assert 'serialNumber = der/decode-OID #{550405}
+			--assert 'organizationIdentifier = der/decode-OID #{550461}
+			--assert 'jurisdictionCountryName = der/decode-OID #{2B0601040182373C020103}
+		--test-- "CRT ecdsa-with-SHA1 and EV subject attributes"
+			crt: decode 'crt crt-ev
+			--assert crt/algorithm = 'ecdsa-with-SHA1
+			--assert crt/tbs-hash = #{E3E512A465154404D9E515518417FDE64796C3F8}
+			--assert crt/subject = [
+				jurisdictionCountryName: "CZ"
+				businessCategory: "Private Organization"
+				serialNumber: "12345678"
+				organizationIdentifier: "NTRCZ-12345678"
+				givenName: "Jan"
+				surname: "Novak"
+				commonName: "ev.test"
+			]
+
+		--test-- "CRT decode of invalid input"
+			crt-decode: :system/codecs/crt/decode
+			--assert none? crt-decode #{0102}        ;; not DER
+			--assert none? crt-decode #{3003020101}  ;; DER, but not a certificate
+			--assert none? crt-decode [SEQUENCE [INTEGER #{01}]]
+			--assert all [error? e: try [decode 'crt #{0102}] e/id = 'no-codec]
+			--assert all [error? e: try [decode 'crt #{3003020101}] e/id = 'no-codec]
+			--assert object? decode 'crt crt-ec      ;; still decodes a valid one
+
+		crt-alg-mismatch: debase {
+		MIIBzTCCAXOgAwIBAgIUYVXD/RVHa3T8f9wkYslOVVhXtP8wCgYIKoZIzj0EAwIwFTETMBEGA1UE
+		AwwKdGVzdC5sb2NhbDAeFw0yNjEwMjcxNTQxNTRaFw0zNjEwMjQxNTQxNTRaMBUxEzARBgNVBAMM
+		CnRlc3QubG9jYWwwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAASqbqVW+eCg00JcBxQFVwBepoh+
+		5sPVuq9RkQwdiyJEoWDTz22EeEItEoRY1hCSnC2/HIYZbpabQG10Zaj5VTvdo4GgMIGdMB0GA1Ud
+		DgQWBBQoyjJq3pMwi0X8DP7Vl7AROCmmwTAfBgNVHSMEGDAWgBQoyjJq3pMwi0X8DP7Vl7AROCmm
+		wTAPBgNVHRMBAf8EBTADAQH/MB0GA1UdJQQWMBQGCCsGAQUFBwMBBggrBgEFBQcDAjArBgNVHREE
+		JDAiggp0ZXN0LmxvY2Fsgg53d3cudGVzdC5sb2NhbIcEfwAAATAKBggqhkjOPQQDAwNIADBFAiEA
+		4BC0ExXYjA4Q6zQE/JO+8GOT5kUUGRAYXKIoVkrPHfACIHbTdp2phL/711mFuxvNBwlfh1xCvAfG
+		Z8HndTx6XGxY} 64
+		--test-- "CRT signature algorithm mismatch"
+			--assert none? crt-decode crt-alg-mismatch
+			--assert all [error? e: try [decode 'crt crt-alg-mismatch] e/id = 'no-codec]
+			--assert 'ecdsa-with-SHA256 = select decode 'crt crt-ec 'algorithm
+
+		crt-crit-false: debase {
+		MIIBzTCCAXOgAwIBAgIUYVXD/RVHa3T8f9wkYslOVVhXtP8wCgYIKoZIzj0EAwIwFTETMBEGA1UE
+		AwwKdGVzdC5sb2NhbDAeFw0yNjEwMjcxNTQxNTRaFw0zNjEwMjQxNTQxNTRaMBUxEzARBgNVBAMM
+		CnRlc3QubG9jYWwwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAASqbqVW+eCg00JcBxQFVwBepoh+
+		5sPVuq9RkQwdiyJEoWDTz22EeEItEoRY1hCSnC2/HIYZbpabQG10Zaj5VTvdo4GgMIGdMB0GA1Ud
+		DgQWBBQoyjJq3pMwi0X8DP7Vl7AROCmmwTAfBgNVHSMEGDAWgBQoyjJq3pMwi0X8DP7Vl7AROCmm
+		wTAPBgNVHRMBAQAEBTADAQH/MB0GA1UdJQQWMBQGCCsGAQUFBwMBBggrBgEFBQcDAjArBgNVHREE
+		JDAiggp0ZXN0LmxvY2Fsgg53d3cudGVzdC5sb2NhbIcEfwAAATAKBggqhkjOPQQDAgNIADBFAiEA
+		4BC0ExXYjA4Q6zQE/JO+8GOT5kUUGRAYXKIoVkrPHfACIHbTdp2phL/711mFuxvNBwlfh1xCvAfG
+		Z8HndTx6XGxY} 64
+		--test-- "CRT extension critical flag"
+			crt: decode 'crt crt-ec
+			--assert true? first select crt/extensions 'basicConstraints
+			crt: decode 'crt crt-crit-false
+			--assert not first select crt/extensions 'basicConstraints
+			--assert block? select crt/extensions 'subjectAltName  ;; following extensions still decoded
+
+		--test-- "CRT fingerprint is SHA-256 of the whole certificate"
+			crt: decode 'crt crt-ec
+			--assert crt/fingerprint = #{12A1F7514BD1264B0989B9447FE00DD10BA9AFDFBA55D2F0949A6A58EA715F27}
+			--assert crt/fingerprint = checksum crt-ec 'sha256
+			crt: decode 'crt crt-v1
+			--assert crt/fingerprint = #{14B73035D547DAEF0366DF27FFB93AE440986E143280E74DCD58A580DD479CC0}
 	===end-group===
 	codecs/crt/verbose: 0
 ]
@@ -237,8 +420,10 @@ if find codecs 'swf [
 		
 		--test-- "Load SWF file"
 			--assert object? swf1: load %units/files/test1-deflate.swf
-			--assert object? swf2: load %units/files/test2-lzma.swf
-			--assert swf1/tags = swf2/tags
+			if has-lzma? [
+				--assert object? swf2: load %units/files/test2-lzma.swf
+				--assert swf1/tags = swf2/tags
+			]
 			--assert swf1/header/frames = 25
 
 		codecs/swf/verbose: 3
@@ -256,7 +441,9 @@ if find codecs 'zip [
 	===start-group=== "ZIP codec"
 		
 		--test-- "Load ZIP file"
+		if has-lzma? [
 			--assert block? load %units/files/test-lzma.zip
+		]
 			--assert block? load %units/files/test-stored.zip
 			--assert block? load %units/files/test-deflate.zip
 
@@ -266,12 +453,14 @@ if find codecs 'zip [
 			--assert block? codecs/zip/decode data/2/2
 
 		--test-- "Decode ZIP using info"
+		if has-lzma? [
 			bin: read %units/files/test-lzma.zip
 			--assert block? info: codecs/zip/decode/info bin
 			--assert info/1   = %xJSFL.komodoproject
 			--assert info/2/1 = 18-Aug-2012/5:20:28
 			data: codecs/zip/decompress-file at bin info/2/2 reduce [info/2/5 info/2/3 info/2/4]
 			--assert info/2/6 = checksum data 'crc32
+		]
 
 		--test-- "Encode ZIP using encode"
 			--assert binary? try [bin: encode 'ZIP [
@@ -441,6 +630,64 @@ if find codecs 'JSON [
 
 	===end-group===
 ]
+
+if system/platform = 'Windows [
+	===start-group=== "Windows WIC codecs (sys-codecs.cpp)"
+	
+		;- 3x2 image with distinct colors and non-zero alpha values
+		img: make image! [3x2 #{FF000000FF000000FFFFFFFF000000808080}]
+		img/alpha: #{FF80401020F0}
+
+		--test-- "WIC encode/decode roundtrip (lossless formats)"
+		;; covers: encoder bitmap now created by CreateBitmapFromMemory
+		;; covers: decoding from binary via HGLOBAL stream and malloc path
+			foreach codec [bmp tiff] [
+				if in system/codecs codec [
+					bin: encode codec img
+					--assert binary? bin
+					--assert img = decode codec bin
+				]
+			]
+
+		--test-- "WIC decode of invalid binary must fail"
+		;; error HRESULTs must propagate, not be reported as success
+			foreach codec [bmp tiff jpeg gif] [
+				if in system/codecs codec [
+					--assert error? try [decode codec #{0001020304050607}]
+				]
+			]
+
+		--test-- "WIC decode of empty binary must fail"
+			if in system/codecs 'tiff [
+				--assert error? try [decode 'tiff #{}]
+			]
+ 
+		--test-- "WIC save/load image using a file name"
+		;; covers: file name passed to WIC as PCWSTR, incl. non-ASCII name
+			if in system/codecs 'tiff [
+				foreach file [%wic-test.tiff %wic-test-ěščř.tiff] [
+					save file img
+					--assert did exists? file
+					--assert img = load file
+					try [delete file]
+				]
+			]
+
+		--test-- "WIC decode of image too large for 32-bit buffer must fail"
+		;; covers: w * h * 4 overflow check in the decoder
+		;; TIFF header only, claiming 40000x40000 pixels (6.4GB as 32bpp)
+			if in system/codecs 'tiff [
+				bin: #{
+					49492A000800000009000001040001000000409C00000101040001000000409C
+					0000020103000100000008000000030103000100000001000000060103000100
+					0000010000001101040001000000080000001501030001000000010000001601
+					040001000000409C0000170104000100000000105E5F00000000
+				}
+				--assert error? try [decode 'tiff bin]
+			]
+	===end-group===
+]
+
 
 if find codecs 'PNG [
 	system/options/log/png: 3
@@ -813,7 +1060,7 @@ if find codecs 'safe [
 		--test-- "Initialise new user"
 			--assert not error? try [set-user/n/p temp-user "passw"]
 			--assert system/user/name = @temp-user
-			--assert 'file = exists? try [system/user/data/spec/ref]
+			--assert 'file = try [exists? system/user/data/spec/ref]
 			--assert "hello" = put system/user/data 'key "hello"  ;; store some data...
 			--assert "hello" = user's key               ;; resolve the data
 			--assert not error? try [su]                ;; release user

@@ -2,7 +2,7 @@ REBOL [
     System: "REBOL [R3] Language Interpreter and Run-time Environment"
     Rights: {
         Copyright 2012 REBOL Technologies
-        Copyright 2012-2025 Rebol Open Source Contributors
+        Copyright 2012-2026 Rebol Open Source Contributors
         REBOL is a trademark of REBOL Technologies
     }
     License: {
@@ -11,7 +11,7 @@ REBOL [
     }
     Title:  "macOS AppleScript dialogs"
     Name:    osx-dialogs
-    Version: 1.1.0
+    Version: 1.2.0
     type: module
     Exports: [request-dir request-file request-color]
 ]
@@ -31,7 +31,27 @@ applescript-ctx: make object! [
     out:        ""   ;; Command output buffer
     err:        ""   ;; Command error buffer
     last-dir:   _    ;; Previous directory path
-    
+
+    ;; Convert a Windows-style filter block (description/pattern pairs, e.g.
+    ;; ["Text" "*.txt;*.md" "All" "*.*"]) into an AppleScript `of type {...}`
+    ;; clause. Returns an empty string when no filtering should apply.
+    build-filters: function [list [block!]][
+        types: copy []
+        foreach [desc pattern] list [
+            unless any-string? pattern [continue]
+            foreach ext split to string! pattern #";" [
+                ext: trim ext
+                if ext = "*.*" [return copy ""]   ;; "any file" => no filter
+                if find/match ext "*." [ext: copy skip ext 2]
+                if empty? ext [continue]
+                append types ajoin [#"^"" double-escape ext #"^""]
+            ]
+        ]
+        either empty? types [copy ""][
+            ajoin ["of type {" combine/with types #"," "}"]
+        ]
+    ]
+
     ;; AppleScript for multiple file selection
     script-multi:
     %%{osascript -e 'set AppleScript'\''s text item delimiters to linefeed' \
@@ -114,18 +134,7 @@ request-file: function/with [
     ]
     
     ;; Build filter string for AppleScript
-    self/filters: clear ""
-    if filter [
-        append self/filters "of type {"
-        ;; Process each filter pair (name, filter)
-        foreach value list [
-            if any-string? value [
-                append self/filters ajoin [#"^"" double-escape value {",}]
-            ]
-        ]
-        ;; Replace final comma with closing brace
-        change skip tail self/filters -2 #"}"
-    ]
+    self/filters: either filter [build-filters list][copy ""]
     
     ;; Generate final AppleScript command by substituting variables
     cmd: reword script self

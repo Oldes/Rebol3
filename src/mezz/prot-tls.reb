@@ -1,11 +1,11 @@
 REBOL [
-    version: 0.12.0
+    version: 0.13.0
     title: "TLS Protocol"
     name: 'tls
-    date: 30-Nov-2025
+    type: 'module
+    date: 28-Oct-2026
     file: %tls.reb
     author: "Oldes"
-    Yype: 'module
     License: MIT
     Home: https://github.com/Oldes/Rebol-TLS
 ]
@@ -13,11 +13,12 @@ try [do "_: #(none)"]
 comment "## Include: %tls-context.reb"
 comment {## Title:   "TLS Context Object Definition"}
 TLS-context: context [
-    in: binary 16104
-    out: binary 16104
-    bin: binary 64
+    in:
+    out:
+    bin: none
     tcp-port:
     tls-port:
+    listen-port:
     encrypt-port:
     decrypt-port:
     sha256-port:
@@ -31,6 +32,7 @@ TLS-context: context [
     port-data: make binary! 32000
     rest: make binary! 8
     reading?: false
+    unread?: false
     server?: false
     protocol: none
     state: 'lookup
@@ -67,6 +69,8 @@ TLS-context: context [
     remote-random:
     remote-hs-secret:
     remote-ap-secret:
+    remote-IV:
+    locale-IV:
     finished-hash:
     handshake-secret:
     verify-data:
@@ -75,6 +79,7 @@ TLS-context: context [
     aead: none
     session-id: none
     server-certs: copy []
+    certificate-errors: none
     extensions: copy []
     context-messages: []
     seq-read: 0
@@ -87,6 +92,16 @@ TLS-context: context [
     key-data:
     hello-retry-request:
     none
+]
+new-TLS-context: func [
+    spec [block!]
+    /local ctx
+] [
+    ctx: make TLS-context spec
+    ctx/in: binary 16104
+    ctx/out: binary 16104
+    ctx/bin: binary 64
+    ctx
 ]
 derived-secrets: make map! []
 zero-keys: make map! []
@@ -106,7 +121,7 @@ TLS-init-cipher-suite: func [
     cipher: ctx/cipher-suite
     suite: *Cipher-suite/name :cipher
     unless suite [
-        log-error ["Unknown cipher suite:" enbase suite 16]
+        log-error ["Unknown cipher suite:" skip to binary! cipher 6]
         return false
     ]
     unless find suported-cipher-suites suite [
@@ -281,6 +296,12 @@ comment {## Title:   "TLS Protocol Constants and Enumerations"}
     rsa_pkcs1_sha1: 513
     ecdsa_sha1: 515
 ] 'TLSSignatureScheme
+*SignatureAlgorithm: enum [
+    anonymous: 0
+    rsa: 1
+    dsa: 2
+    ecdsa: 3
+] 'TLSSignatureAlgorithm
 *ClientCertificateType: enum [
     rsa_sign: 1
     dss_sign: 2
@@ -548,6 +569,8 @@ TLS-key-expansion: func [
             remote-hs-key: HKDF-Expand/label :sha remote-hs-secret #{} crypt-size "key"
             locale-hs-IV: HKDF-Expand/label :sha locale-hs-secret #{} IV-size + IV-size-dynamic "iv"
             remote-hs-IV: HKDF-Expand/label :sha remote-hs-secret #{} IV-size + IV-size-dynamic "iv"
+            remote-IV: remote-hs-IV
+            locale-IV: locale-hs-IV
             cipher-spec-set: 2
             aad-length: 5
         ] [
@@ -617,7 +640,7 @@ wrap-record: func [
     ctx [object!]
     plaintext [binary!]
     type [integer!]
-    /locale
+    /local
     length
     nonce
     seq-bytes
@@ -631,7 +654,7 @@ wrap-record: func [
         UI16 :length
     ]
     if crypt-method != 'CHACHA20-POLY1305 [
-        nonce: append clear #{} either type = 23 [locale-ap-IV] [locale-hs-IV]
+        nonce: append clear #{} locale-IV
         seq-bytes: #{000000000000000000000000}
         binary/write seq-bytes [ATz 4 UI64BE :seq-write]
         nonce: nonce xor seq-bytes
@@ -705,6 +728,7 @@ decrypt-tls-record: func [
     mac
     tag
     aad
+    pad
 ] [
     log-more ["Decrypt record of type:^[[1m" type]
     aad: clear #{}
@@ -716,7 +740,7 @@ decrypt-tls-record: func [
                 UI16 :legacy-version
                 UI16 :length
             ]
-            nonce: append clear #{} any [remote-ap-IV remote-hs-IV]
+            nonce: append clear #{} remote-IV
             seq-bytes: #{000000000000000000000000}
             binary/write seq-bytes [atz 4 ui64be :seq-read]
             nonce: nonce xor seq-bytes
@@ -759,7 +783,15 @@ decrypt-tls-record: func [
                 modify decrypt-port 'init-vector remote-hs-IV
                 data: read update write decrypt-port :data
                 if block-size [
-                    clear skip tail data (-1 - (to integer! last data))
+                    pad: to integer! last data
+                    unless all [
+                        mac-size + pad < length? data
+                        (skip tail data (-1 - pad)) == append/dup copy #{} pad (pad + 1)
+                    ] [
+                        critical-error: 'Bad_record_MAC
+                        pad: 0
+                    ]
+                    clear skip tail data (-1 - pad)
                     mac: take/last/part data mac-size
                     binary/write tail aad [UI16BYTES :data]
                     if mac <> checksum/with aad hash-type remote-mac [
@@ -772,7 +804,7 @@ decrypt-tls-record: func [
         ]
         ++ seq-read
     ]
-    unless data [critical-error: 'Bad_record_MAC]
+    unless data [ctx/critical-error: 'Bad_record_MAC]
     data
 ]
 derive-application-traffic-secrets: func [
@@ -829,6 +861,7 @@ switch-to-app-encrypt: func [
             init-vector: :locale-ap-IV
             key: :locale-ap-key
         ]
+        locale-IV: locale-ap-IV
         modify encrypt-port 'aad-length :aad-length
         if tag-length > 0 [
             modify encrypt-port 'tag-length :tag-length
@@ -849,6 +882,7 @@ switch-to-app-decrypt: func [
             init-vector: :remote-ap-IV
             key: :remote-ap-key
         ]
+        remote-IV: remote-ap-IV
         modify decrypt-port 'aad-length :aad-length
         if tag-length > 0 [
             modify decrypt-port 'tag-length :tag-length
@@ -859,6 +893,77 @@ switch-to-app-decrypt: func [
 comment "-- End of:  %tls-crypto.reb"
 comment "## Include: %tls-certificate.reb"
 comment {## Title:   "TLS Certificate Functions"}
+verify-certificates: 'log
+certificate-failure: func [
+    ctx [object!]
+    alert [word!]
+    msg [block! string!]
+] [
+    if block? msg [msg: reform msg]
+    log-error msg
+    append any [ctx/certificate-errors ctx/certificate-errors: copy []] msg
+    if verify-certificates = 'error [cause-TLS-error alert]
+]
+check-certificate-dates: func [
+    ctx [object!]
+    cert [object!]
+    /at time [date!] "Time of the check (default: now)"
+] [
+    time: any [time now/utc]
+    unless all [
+        date? cert/valid-from
+        date? cert/valid-to
+        cert/valid-from <= time
+        time <= cert/valid-to
+    ] [
+        certificate-failure ctx 'Certificate_expired [
+            "Certificate is not valid at" time "(valid from" cert/valid-from "to" cert/valid-to
+            "subject:" mold/flat cert/subject ")"
+        ]
+    ]
+]
+host-matches?: func [
+    host [string!]
+    name [string!]
+    /local pos
+] [
+    either find/match name "*." [
+        to logic! all [
+            pos: find host #"."
+            pos <> host
+            (next pos) = skip name 2
+        ]
+    ] [host = name]
+]
+check-certificate-host: func [
+    ctx [object!]
+    cert [object!]
+    host [string!]
+    /local names
+] [
+    if #"." = last host [host: copy/part host (length? host) - 1]
+    names: any [
+        all [
+            block? cert/extensions
+            block? names: select cert/extensions 'subjectAltName
+            block? names: last names
+            not empty? names
+            names
+        ]
+        all [
+            block? cert/subject
+            string? names: select cert/subject 'commonName
+            reduce [names]
+        ]
+        []
+    ]
+    foreach name names [
+        if all [string? name host-matches? host name] [exit]
+    ]
+    certificate-failure ctx 'Bad_certificate [
+        "Certificate is not valid for host:" host "(names:" mold/flat names ")"
+    ]
+]
 decode-certificates: function [
     ctx [object!]
     msg [binary!]
@@ -878,8 +983,21 @@ decode-certificates: function [
         if ctx/TLS13? [
             cert-extensions: binary/read msg 'UI16BYTES
         ]
-        append ctx/server-certs cert: attempt [decode 'CRT cert]
+        unless cert: attempt [decode 'CRT cert] [
+            log-error "Failed to decode a certificate!"
+            cause-TLS-error 'Bad_certificate
+        ]
+        append ctx/server-certs cert
         log-more ["Certificate subject:^[[1m" mold/only/flat cert/subject]
+        if verify-certificates [check-certificate-dates ctx cert]
+    ]
+    if all [
+        verify-certificates
+        port? ctx/tcp-port
+        host: ctx/tcp-port/spec/host
+        not empty? ctx/server-certs
+    ] [
+        check-certificate-host ctx first ctx/server-certs form host
     ]
     try/with [
         key: ctx/server-certs/1/public-key
@@ -899,6 +1017,18 @@ decode-certificates: function [
         cause-TLS-error 'Bad_certificate
     ]
 ]
+encode-certificate-entries: function [
+    ders [block!]
+] [
+    bin: binary 4000
+    foreach der ders [
+        binary/write bin [
+            UI24BYTES :der
+            UI16 0
+        ]
+    ]
+    bin/buffer
+]
 decode-certificate-verify: function [
     ctx [object!]
     msg [object! binary!]
@@ -907,20 +1037,43 @@ decode-certificate-verify: function [
         signature-type: UI16
         signature: UI16BYTES
     ]
-    log-debug ["Verify certificate using type:^[[1m" *SignatureScheme/name signature-type]
-    if signature-type == 2052 [
-        either system/version < 3.19.7 [
-            log-error {Current Rebol version is not able to validate this certificate!}
-        ] [
-            to-sign: rejoin [
-                server-certificate-verify-context
-                get-transcript-hash ctx 'CERTIFICATE
-            ]
-            key: rsa-init ctx/pub-key ctx/pub-exp
-            unless rsa/verify/pss :key :to-sign :signature [
-                log-error "Certificate validation failed!"
+    scheme: *SignatureScheme/name signature-type
+    log-debug ["Verify certificate using type:^[[1m" scheme]
+    unless verify-certificates [exit]
+    to-sign: rejoin [
+        server-certificate-verify-context
+        get-transcript-hash ctx 'CERTIFICATE
+    ]
+    supported?: true
+    valid?: switch/default scheme [
+        rsa_pss_rsae_sha256
+        rsa_pss_rsae_sha384
+        rsa_pss_rsae_sha512 [
+            all [
+                binary? ctx/pub-exp
+                key: rsa-init ctx/pub-key ctx/pub-exp
+                rsa/verify/pss/hash :key :to-sign :signature signature-hash-methods/:scheme
             ]
         ]
+        ecdsa_secp256r1_sha256
+        ecdsa_secp384r1_sha384
+        ecdsa_secp521r1_sha512 [
+            all [
+                ctx/pub-exp = select [
+                    ecdsa_secp256r1_sha256 secp256r1
+                    ecdsa_secp384r1_sha384 secp384r1
+                    ecdsa_secp521r1_sha512 secp521r1
+                ] scheme
+                ecdsa/verify/curve ctx/pub-key checksum to-sign signature-hash-methods/:scheme signature ctx/pub-exp
+            ]
+        ]
+    ] [
+        supported?: false
+    ]
+    unless valid? [
+        certificate-failure ctx 'Decrypt_error either supported? [
+            ["CertificateVerify signature is not valid (" scheme ")"]
+        ] [["Unsupported CertificateVerify signature scheme:" any [scheme signature-type]]]
     ]
 ]
 decode-certificate-request: function [
@@ -1415,7 +1568,7 @@ TLS-read-data: function [
                     log-debug ["Inner type:^[[1m" type]
                 ]
             ]
-            append ctx/port-data data
+            if find [22 23] type [append ctx/port-data data]
         ]
         *protocol-type/assert type
         *protocol-version/assert server-version
@@ -1507,6 +1660,17 @@ TLS-read-data: function [
     ]
     return true
 ]
+ip-address?: function/with [
+    host [any-string! tuple!]
+] [
+    to logic! any [
+        tuple? host
+        find host #":"
+        parse host [1 3 digit 3 [#"." 1 3 digit]]
+    ]
+] [
+    digit: charset "0123456789"
+]
 prepare-client-hello: function [
     ctx [object!]
 ] [
@@ -1516,6 +1680,7 @@ prepare-client-hello: function [
         if all [
             ctx/tcp-port
             host-name: ctx/tcp-port/spec/host
+            not ip-address? host-name
         ] [
             host-name: to binary! host-name
             length-name: length? host-name
@@ -1565,7 +1730,7 @@ prepare-client-hello: function [
         ]
         out/buffer: head out/buffer
         locale-random: copy/part (at out/buffer 12) 32
-        TLS-update-messages-hash ctx (at out/buffer 6) (4 + length-message)
+        TLS-update-messages-hash/part ctx (at out/buffer 6) (4 + length-message)
         log-more [
             "W[" ctx/seq-write "] Bytes:" length? out/buffer "=>"
             "record:" length-record
@@ -1655,9 +1820,18 @@ decode-server-hello: function [
             cause-TLS-error 'Illegal_parameter
         ]
         extensions: decode-extensions ctx :extensions
-        case/all [
+        case [
             integer? extensions/key_share [
-                log-info ["Hello Retry Request with key_share type:" *EllipticCurves/name extensions/key_share]
+                group: *EllipticCurves/name extensions/key_share
+                log-info ["Hello Retry Request with key_share type:" group]
+                unless all [
+                    group
+                    find supported-groups group
+                    group <> ecdh-group
+                ] [
+                    log-error ["Invalid group requested in HelloRetryRequest:" extensions/key_share]
+                    cause-TLS-error 'Illegal_parameter
+                ]
                 hash: checksum ctx/context-messages/2 ctx/hash-type
                 binary/write clear ctx/context-messages/2 [
                     UI8 254
@@ -1665,17 +1839,27 @@ decode-server-hello: function [
                     UI8BYTES :hash
                 ]
             ]
-            all [
-                extensions/supported_versions == 772
-                handle? dh-key
-                block? extensions/key_share
-            ] [
+            extensions/supported_versions == 772 [
+                unless all [
+                    handle? dh-key
+                    block? extensions/key_share
+                    extensions/key_share/1 = ecdh-group
+                ] [
+                    log-error {Missing or invalid key_share in TLS1.3 ServerHello!}
+                    cause-TLS-error 'Illegal_parameter
+                ]
                 log-info "Using TLS v1.3"
                 version: 772
                 TLS13?: true
                 pre-secret: ecdh/secret dh-key extensions/key_share/2
                 log-more ["Elyptic curve^[[1m" extensions/key_share/1 "^[[22mdata (pre-secret):" pre-secret]
                 TLS-key-expansion ctx
+            ]
+            'else [
+                if find [#{444F574E47524401} #{444F574E47524400}] copy skip remote-random 24 [
+                    log-error "TLS1.3 downgrade detected!"
+                    cause-TLS-error 'Illegal_parameter
+                ]
             ]
         ]
         false
@@ -1743,17 +1927,17 @@ decode-server-key-exchange: function [
         ]
     ] [
         hash-algorithm: *HashAlgorithm/name :hash-algorithm
-        sign-algorithm: *ClientCertificateType/name :sign-algorithm
+        sign-algorithm: *SignatureAlgorithm/name :sign-algorithm
     ]
     log-more ["R[" ctx/seq-read "] Using algorithm:" hash-algorithm "with" sign-algorithm]
     key: ctx/server-certs/1/public-key
     switch sign-algorithm [
-        ecdsa_sign [
+        ecdsa [
             log-more "Checking signature using ECDSA"
             message-hash: checksum verify-data hash-algorithm
-            ecdsa/verify/curve ctx/pub-key message-hash signature ctx/pub-exp
+            valid?: ecdsa/verify/curve ctx/pub-key message-hash signature ctx/pub-exp
         ]
-        rsa_sign [
+        rsa [
             log-more "Checking signature using RSA"
             rsa-key: apply :rsa-init ctx/server-certs/1/public-key/rsaEncryption
             valid?: rsa/verify/hash rsa-key verify-data signature hash-algorithm
@@ -1770,7 +1954,7 @@ decode-server-key-exchange: function [
     ]
     log-more "Signature valid!"
     unless tail? msg/buffer [
-        len: ends - pos
+        len: length? msg/buffer
         binary/read msg [extra: BYTES :len]
         log-error ["Extra" len "bytes at the end of message:" ellipsize form extra 40]
         cause-TLS-error 'Decode_error
@@ -1883,13 +2067,17 @@ TLS-server-awake: func [
         accept [
             port: first serv: event/port
             info: query port [remote-ip remote-port]
-            port/extra: make TLS-context [
+            port/extra: new-TLS-context [
                 tcp-port: port
-                tls-port: serv/parent
+                listen-port: serv/parent
                 server?: true
                 state: 'CLIENT_HELLO
                 version: serv/extra/version
             ]
+            port/extra/tls-port: make port! [scheme: 'tls]
+            port/extra/tls-port/extra: port/extra
+            port/extra/tls-port/spec/title: "TLS Server's client"
+            port/extra/tls-port/spec/ref: rejoin [tls:// info/remote-ip #":" info/remote-port]
             port/spec/title: "TLS Server's client"
             port/spec/ref: rejoin [tcp:// info/remote-ip #":" info/remote-port]
             port/awake: :TLS-server-client-awake
@@ -1935,7 +2123,15 @@ TLS-server-client-awake: function [
                             read TCP-port
                         ]
                         APPLICATION [
-                            TCP-port/parent/actor/On-Read TCP-port
+                            either ctx/handshake? [
+                                ctx/handshake?: false
+                                ctx/unread?: not empty? ctx/port-data
+                                append ctx/listen-port/state/accepted ctx/tls-port
+                                dispatch-event 'accept ctx/listen-port
+                            ] [
+                                ctx/tls-port/data: ctx/port-data
+                                dispatch-event 'read ctx/tls-port
+                            ]
                         ]
                     ]
                 ] [
@@ -1944,23 +2140,32 @@ TLS-server-client-awake: function [
                 return false
             ]
             if ctx [log-error ctx/error: error]
-            do-TLS-close TCP-port
+            close-server-client ctx
             return true
         ]
         wrote [
-            either ctx/protocol = 'APPLICATION [
-                TCP-port/parent/actor/On-Wrote TCP-port
-            ] [
+            either ctx/handshake? [
                 read TCP-port
+            ] [
+                dispatch-event 'wrote ctx/tls-port
             ]
             return false
         ]
         close [
-            do-TLS-close TCP-port
+            close-server-client ctx
             return true
         ]
     ]
     false
+]
+close-server-client: func [
+    ctx [object!]
+] [
+    either ctx/handshake? [
+        do-TLS-close ctx/tls-port
+    ] [
+        dispatch-event 'close ctx/tls-port
+    ]
 ]
 prepare-server-hello: function [
     ctx [object!]
@@ -1991,34 +2196,40 @@ prepare-server-hello: function [
                 ctx/hello-retry-request: none
             ] [
                 change-state ctx 'SERVER_HELLO_RETRY
-                ?? supported-groups
-                ?? ctx/extensions/supported_groups
                 hello-retry-request: true
-                ecdh-group: attempt [
-                    curve: first union supported-groups ctx/extensions/supported_groups
+                ecdh-group: all [
+                    block? extensions/supported_groups
+                    curve: first intersect supported-groups extensions/supported_groups
                     *EllipticCurves/:curve
                 ]
                 unless ecdh-group [
                     cause-TLS-error 'Insufficient_security
                 ]
                 log-info ["Server requests HelloRetry with elliptic group:" ecdh-group]
+                hash: checksum context-messages/2 hash-type
+                binary/write clear context-messages/2 [
+                    UI8 254
+                    UI16 0
+                    UI8BYTES :hash
+                ]
                 binary/write key_share [
                     UI16 :ecdh-group
                 ]
             ]
         ]
         binary/init out none
-        server-extensions: #{}
-        if find extensions 'ec_point_formats [
-            append server-extensions #{000B000403000102}
-        ]
-        if find extensions 'renegotiation_info [
-            append server-extensions #{FF01000100}
-        ]
-        if TLS13? [
+        server-extensions: make binary! 16
+        either TLS13? [
             append server-extensions #{002B00020304}
             if key_share [
                 encode-extension server-extensions 51 key_share
+            ]
+        ] [
+            if find extensions 'supported_point_formats [
+                append server-extensions #{000B000403000102}
+            ]
+            if find extensions 'renegotiation_info [
+                append server-extensions #{FF01000100}
             ]
         ]
         binary/write out [
@@ -2066,7 +2277,7 @@ prepare-server-certificate: function [
 ] [
     change-state ctx 'CERTIFICATE
     with ctx [
-        certificates: tls-port/state/certificates
+        certificates: listen-port/state/certificates
         length: 4 + length? certificates
         record: clear #{}
         binary/write record [
@@ -2082,7 +2293,7 @@ prepare-server-certificate: function [
                 server-certificate-verify-context
                 get-transcript-hash ctx 'CERTIFICATE
             ]
-            signature: rsa/sign/pss tls-port/state/private-key :to-sign
+            signature: rsa/sign/pss listen-port/state/private-key :to-sign
             length: 4 + length? signature
             binary/write clear record [
                 UI8 15
@@ -2100,7 +2311,7 @@ prepare-server-certificate: function [
             ]
             switch key-method [
                 ECDHE_RSA [
-                    spec: TCP-port/parent/state
+                    spec: listen-port/state
                     curve: first spec/elliptic-curves
                     dh-key: ecdh/init none curve
                     pub-key: ecdh/public dh-key
@@ -2179,10 +2390,11 @@ decode-client-hello: function [
         log-debug ["Client session:" session-id]
     ]
     client-cipher-suites: decode-list *Cipher-suite :cipher-suites _
-    ?? client-cipher-suites
     foreach cipher client-cipher-suites [
-        if find suported-cipher-suites cipher [
-            ?? cipher
+        if all [
+            find suported-cipher-suites cipher
+            4864 == (65280 and *Cipher-suite/:cipher)
+        ] [
             ctx/cipher-suite: *Cipher-suite/:cipher
             log-info ["Server choose cipher:" as-yellow ctx/cipher-suite]
             TLS-init-cipher-suite ctx
@@ -2198,6 +2410,13 @@ decode-client-hello: function [
         cause-TLS-error 'Unexpected_message
     ]
     ctx/extensions: decode-extensions ctx :extensions
+    unless all [
+        block? ctx/extensions/supported_versions
+        find ctx/extensions/supported_versions 772
+    ] [
+        log-error "Client does not support TLS1.3!"
+        cause-TLS-error 'Protocol_version
+    ]
     if all [
         block? ctx/extensions/supported_groups
         block? ctx/extensions/key_share
@@ -2213,7 +2432,7 @@ comment "## Include: %tls-scheme.reb"
 comment {## Title:   "TLS Scheme Implementation"}
 do-TLS-open: func [
     port [port!]
-    /local spec conn config certs bin der key
+    /local spec conn config certs ders key
 ] [
     log-debug "OPEN"
     if port/state [return port]
@@ -2237,7 +2456,7 @@ do-TLS-open: func [
         conn/parent: port
     ]
     either spec/host [
-        port/extra: conn/extra: make TLS-context [
+        port/extra: conn/extra: new-TLS-context [
             tcp-port: conn
             tls-port: port
             version: *Protocol-version/TLS1.2
@@ -2254,43 +2473,25 @@ do-TLS-open: func [
             private-key: none
             elliptic-curves: decode-list *EllipticCurves :supported-elliptic-curves _
             version: *Protocol-version/TLS1.2
+            accepted: make block! 4
         ]
         if config: select spec 'config [
             certs: any [select config 'certificates []]
             unless block? certs [certs: to block! certs]
-            bin: binary 4000
+            ders: copy []
             foreach file certs [
                 try/with [
-                    der: select decode 'pkix read file 'binary
-                    binary/write bin [UI24BYTES :der]
+                    append ders select decode 'pkix read file 'binary
                 ] [
                     log-error ["Failed to import certificate:" file]
                 ]
             ]
-            binary/write bin [UI16 0]
-            port/state/certificates: bin/buffer
+            port/state/certificates: encode-certificate-entries ders
             if key: select config 'private-key [
                 if file? key [try [key: load key]]
                 either handle? key [
                     port/state/private-key: key
                 ] [log-error ["Failed to import private key:" key]]
-            ]
-        ]
-        port/actor: context [
-            On-Read: func [port [port!] /local data] [
-                log-debug "TLS On-Read"
-                probe to string! data: port/extra/port-data
-                either empty? data [
-                    do-TLS-read port
-                ] [
-                    do-TLS-write port {HTTP/1.1 200 OK^M
-Content-type: text/plain^M
-^M
-Hello from Rebol using TLS v1.3}
-                ]
-            ]
-            On-Wrote: func [port [port!]] [
-                dispatch-event 'close port
             ]
         ]
         conn/parent: port
@@ -2308,7 +2509,12 @@ do-TLS-close: func [
     port [port!] /local ctx parent
 ] [
     log-debug "CLOSE"
-    unless ctx: port/extra [return port]
+    unless ctx: port/extra [
+        if all [object? port/state port? port/state/TCP-port] [
+            close port/state/TCP-port
+        ]
+        return port
+    ]
     parent: port/parent
     log-debug "Closing port/extra/tcp-port"
     close ctx/tcp-port
@@ -2326,12 +2532,37 @@ do-TLS-close: func [
     ]
     port
 ]
-do-TLS-read: func [
+TLS-tcp-port: func [
     port [port!]
 ] [
+    any [
+        all [port/extra port/extra/tcp-port]
+        all [object? port/state port/state/TCP-port]
+    ]
+]
+do-TLS-read: func [
+    port [port!] /local ctx
+] [
     log-debug "READ"
-    read port/extra/tcp-port
+    ctx: port/extra
+    either ctx/unread? [
+        ctx/unread?: false
+        port/data: ctx/port-data
+        dispatch-event 'read port
+    ] [
+        read ctx/tcp-port
+    ]
     port
+]
+do-TLS-pick: func [
+    port [port!]
+    index
+] [
+    all [
+        object? port/state
+        block? port/state/accepted
+        take port/state/accepted
+    ]
 ]
 do-TLS-write: func [
     port [port!]
@@ -2342,6 +2573,7 @@ do-TLS-write: func [
     ctx: port/extra
     if ctx/protocol = 'APPLICATION [
         binary/init ctx/out none
+        unless binary? value [value: to binary! value]
         while [not tail? value] [
             prepare-application-data ctx copy/part :value 16384
             value: skip value 16384
@@ -2374,20 +2606,25 @@ prepare-application-data: func [
                 UI16 :legacy-version
                 UI16BYTES :message
             ]
-            ++ seq-write
         ]
     ]
 ]
 prepare-alert-close-notify: func [
     ctx [object!]
+    /local message
 ] [
     log-more "alert-close-notify"
-    message: encrypt-tls-record ctx #{0100}
-    with ctx [
-        binary/write out [
-            UI8 21
-            UI16 :legacy-version
-            UI16BYTES :message
+    message: #{0100}
+    either ctx/TLS13? [
+        prepare-wrapped-record ctx message 21
+    ] [
+        message: encrypt-tls-record/type ctx message 21
+        with ctx [
+            binary/write out [
+                UI8 21
+                UI16 :legacy-version
+                UI16BYTES :message
+            ]
         ]
     ]
 ]
@@ -2423,6 +2660,14 @@ tls-config: func [
             [
                 tls-verbosity :value
             ]
+            verify
+            verify-certificates
+            [
+                verify-certificates: switch/default :value [
+                    log [quote log]
+                    none false off _ #(false) [none]
+                ] [quote error]
+            ]
         ]
     ]
 ]
@@ -2449,8 +2694,9 @@ sys/make-scheme [
         write: :do-TLS-write
         open: :do-TLS-open
         close: :do-TLS-close
-        query: func [port [port!]] [all [port/extra query port/extra/tcp-port]]
-        open?: func [port [port!]] [all [port/extra open? port/extra/tcp-port]]
+        pick: :do-TLS-pick
+        query: func [port [port!] field /mode /local tcp] [all [tcp: TLS-tcp-port port query tcp :field]]
+        open?: func [port [port!] /local tcp] [did all [tcp: TLS-tcp-port port open? tcp]]
         copy: func [port [port!]] [if port/data [copy port/data]]
         length?: func [port [port!]] [either port/data [length? port/data] [0]]
     ]
@@ -2480,6 +2726,10 @@ suported-cipher-suites-binary: rejoin [
     #{00FF}
 ]
 suported-cipher-suites: decode-list *Cipher-suite :suported-cipher-suites-binary _
+suported-cipher-suites-binary: make binary! 2 * length? suported-cipher-suites
+foreach suite suported-cipher-suites [
+    binary/write tail suported-cipher-suites-binary [UI16 :*Cipher-suite/:suite]
+]
 supported-signature-algorithms: #{0403050306030807080408050806040105010601}
 supported-elliptic-curves: make binary! 22
 supported-groups: make block! 12

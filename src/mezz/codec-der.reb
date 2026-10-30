@@ -23,7 +23,7 @@ register-codec [
 	name:  'der
 	type:  'cryptography
 	title: "Distinguished Encoding Rules"
-	suffixes: [%.p12 %.pfx %.cer %.der %.jks %.p7s]
+	suffixes: [%.p12 %.pfx %.der %.jks %.p7s]
 	decode: function[data [binary!]][
 		if verbose > 0 [
 			print ["^/^[[1;32mDecode DER data^[[m (^[[1m" length? data "^[[mbytes )"]
@@ -107,12 +107,22 @@ register-codec [
 					UTC_TIME [
 						data: system/codecs/utc-time/decode data
 					]
+					GENERALIZED_TIME [
+						data: system/codecs/utc-time/decode/generalized data
+					]
 					UTF8_STRING
 					PRINTABLE_STRING
 					IA5_STRING
-					T61_STRING
-					BMP_STRING [
+					VISIBLE_STRING
+					NUMERIC_STRING
+					T61_STRING [
 						data: to string! data
+					]
+					BMP_STRING [
+						data: iconv data 'UCS2BE
+					]
+					UNIVERSAL_STRING [
+						data: iconv data 'UCS4BE
 					]
 					;OCTET_STRING [
 						;binary/read der [AT :data-pos] 
@@ -286,6 +296,7 @@ register-codec [
 					;| #"^(03)"  (name: 'prime192v3)  
 					| #"^(01)"  (name: 'secp192r1)
 				]
+				| #{0401}   (name: 'ecdsa-with-SHA1)
 				| #{0403} [
 					  #"^(01)" (name: 'ecdsa-with-SHA224)
 					| #"^(02)" (name: 'ecdsa-with-SHA256)
@@ -306,7 +317,7 @@ register-codec [
 						0#02 md2WithRSAEncryption
 						0#03 md4withRSAEncryption
 						0#04 md5withRSAEncryption
-						0#05 sha1WithRSAEncrption
+						0#05 sha1WithRSAEncryption
 						0#0B sha256WithRSAEncryption
 						0#0C sha384WithRSAEncryption
 						0#0D sha512WithRSAEncryption
@@ -399,6 +410,8 @@ register-codec [
 			set n: skip (
 				name: select #[
 					0#03 commonName
+					0#04 surname
+					0#05 serialNumber
 					0#06 countryName
 					0#07 localityName
 					0#08 stateOrProvinceName
@@ -410,10 +423,12 @@ register-codec [
 					0#0E searchGuide 
 					0#0F businessCategory
 					0#10 postalAddress
-					0#11 spostalCode
+					0#11 postalCode
 					0#12 postOfficeBox
 					0#13 physicalDeliveryOfficeName
 					0#14 telephoneNumber
+					0#2A givenName
+					0#61 organizationIdentifier
 				] n
 			) end
 			|
@@ -488,6 +503,12 @@ register-codec [
 			#{2B06010401} [;= 1.3.6.1.4.1 -> Private Enterprise Numbers
 				#{82370201} (main: "Microsoft") [
 					#"^(15)" (name: 'individualCodeSigning)
+				]
+				|
+				#{82373C0201} (main: "Microsoft EV jurisdiction") [
+					  #"^(01)" (name: 'jurisdictionLocalityName)
+					| #"^(02)" (name: 'jurisdictionStateOrProvinceName)
+					| #"^(03)" (name: 'jurisdictionCountryName)
 				]
 				|
 				#{D679} (main: "Google") [

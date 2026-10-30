@@ -37,7 +37,6 @@ dt [ ;- delta time
 		%units/error-test.r3
 		%units/evaluation-test.r3
 		%units/event-test.r3
-		%units/gob-test.r3
 		%units/handle-test.r3
 		%units/file-test.r3
 		%units/format-test.r3
@@ -65,6 +64,7 @@ dt [ ;- delta time
 	;@@	%units/port-http-test.r3 ;; temporary disabled, because httpbin.org server has serious connection issues!
 		%units/power-test.r3
 		%units/protect-test.r3
+		%units/repl-test.r3
 		%units/series-test.r3
 		%units/struct-test.r3
 		%units/task-test.r3
@@ -117,11 +117,11 @@ dt [ ;- delta time
 
 	unless empty? failed-units [
 		print "------------------------------------------------------------"
-		print "FAILED units files:"
+		print as-red "FAILED units files:"
 		foreach [file error] failed-units [
-			?? file
-			?? error
+			print [as-yellow mold file mold/part error 500] 
 		]
+		quit/return -2 ;; Test should not pass when there is any error in the test files.
 	]
 
 

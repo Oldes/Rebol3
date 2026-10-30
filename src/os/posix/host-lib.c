@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -457,11 +457,14 @@ RL_LIB *RL; // Link back to reb-lib from embedded extensions (like for now: host
 		*path = (REBCHR*)realpath(cs_cast(buf), NULL); // needs FREE once not used!!
 	}
 	FREE_MEM(buf);
+	if (!*path) return FALSE;
 #else
 	// Linux version...
 	*path = MAKE_STR(PATH_MAX);            // needs FREE once not used!!
 	CLEAR(*path, PATH_MAX*sizeof(REBCHR)); // readlink does not null terminate!
 	if (readlink("/proc/self/exe", *path, PATH_MAX) == -1) {
+		FREE_MEM(*path);
+		*path = NULL;
 		return FALSE;
 	}
 #endif
@@ -638,14 +641,27 @@ RL_LIB *RL; // Link back to reb-lib from embedded extensions (like for now: host
 **		provide a precise time sampling method. So, if the target
 **		posix OS does, add the ifdef code in here.
 **
+**		A monotonic clock is used when available, so the result is
+**		not affected by changes of the system time (NTP, user...).
+**		The counter is not a wall clock time, it is usable only as
+**		a base.
+**
 ***********************************************************************/
 {
-	struct timeval tv;
 	i64 time;
+#ifdef CLOCK_MONOTONIC
+	struct timespec ts;
+
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+
+	time = ((i64)ts.tv_sec * 1000000) + (ts.tv_nsec / 1000);
+#else
+	struct timeval tv;
 
 	gettimeofday(&tv,0);
 
 	time = ((i64)tv.tv_sec * 1000000) + tv.tv_usec;
+#endif
 
 	if (base == 0) return time;
 
@@ -1327,7 +1343,14 @@ stdin_pipe_err:
 **		Return -1 on error, otherwise process ID
 ***********************************************************************/
 {
+#ifdef TO_WASM
+	// There are no child processes in the browser. Emscripten does not
+	// implement wait4 and prints a warning on each call (OS_Wait calls
+	// this function in every loop).
+	return -1;
+#else
 	return waitpid(pid, status, flags == 0? WNOHANG : 0);
+#endif
 }
 
 static int Try_Browser(char *browser, REBCHR *url)
@@ -1490,8 +1513,15 @@ error:
 */	REBINT OS_Is_TTY(void)
 /*
 **		Checks whether the standard input is connected to a terminal
+**		(always false in the browser build)
 **
 ***********************************************************************/
 {
+#ifdef TO_WASM
+	// Emscripten reports stdin as a TTY, but in the browser there is no
+	// terminal to read keys from (so the security requestor would loop).
+	return 0;
+#else
 	return isatty(STDIN_FILENO);
+#endif
 }

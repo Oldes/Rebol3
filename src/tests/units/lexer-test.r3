@@ -72,6 +72,30 @@ Rebol [
 			e/arg1 = "end-of-script"
 		]
 
+===end-group===
+
+
+===start-group=== "String in path"
+	--test-- "string-in-path-1"
+		p: transcode/one {a/b/"a"}
+		--assert path? p
+		--assert 3 = length? p
+		--assert "a" = pick p 3
+		--assert {a/b/"a"} = mold p
+	--test-- "string-in-path-2"
+		--assert lit-path? p: transcode/one {'a/"b c"/d}
+		--assert "b c" = p/2
+		--assert 'd = p/3
+	--test-- "string-in-path-3"
+		--assert set-path? p: transcode/one {a/"b":}
+		--assert "b" = p/2
+	--test-- "string-in-path-4"
+		--assert get-path? transcode/one {:a/"b"}
+		--assert path? transcode/one {a/"b^^/c"}   ;; escaped newline is OK
+	--test-- "string-in-path-5 (invalid)"
+		--assert error? try [transcode/one {a/"b^/c"}]  ;; real line break inside
+		--assert error? try [transcode/one "a/{b}"]
+		--assert error? try [transcode/one {a/"b}]
 
 ===end-group===
 
@@ -504,6 +528,18 @@ Rebol [
 		--assert file? transcode/one {%a@c}
 		--assert file? transcode/one {%a%40c}
 
+	--test-- "files with colon"
+		--assert (as file! "c:/foo") == transcode/one {%c:/foo}
+		--assert (as file! "c:/foo") == transcode/one {%c:\foo}
+		--assert (as file! "c:/foo") == transcode/one {%"c:\foo"}
+		--assert (as file! "a:b")    == transcode/one {%a:b}
+		--assert (as file! "x:")     == transcode/one {%x:}
+		--assert (as file! "x:")     == transcode/one {%"x:"}
+		--assert (as file! ":a")     == transcode/one {%:a}
+		--assert (as file! ":")      == transcode/one {%%3A}
+		--assert set-word? transcode/one {%:}
+		--assert [%x: 1] == transcode {%x: 1}
+
 ===end-group===
 
 ===start-group=== "Money"
@@ -643,6 +679,13 @@ Rebol [
 		--assert "#a#" = try [mold transcode/one {#a#}]
 		--assert "#ab" = try [mold transcode/one {#ab}]
 
+	--test-- "invalid issue with @"
+	;@@ https://github.com/Oldes/Rebol3/issues/1481
+		--assert all [error? e: try [transcode/one "#a@b"] e/id = 'invalid]
+		--assert all [error? e: try [transcode/one "#@"]   e/id = 'invalid]
+		--assert error? transcode/one/error "#a@b"
+		--assert email? transcode/one "a#b@c"
+		--assert issue? transcode/one "#a"
 ===end-group===
 
 
@@ -765,7 +808,6 @@ Rebol [
 		--assert datatype? transcode/one {#(error!)}
 		--assert datatype? transcode/one {#(task!)}
 		--assert datatype? transcode/one {#(port!)}
-		--assert datatype? transcode/one {#(gob!)}
 		--assert datatype? transcode/one {#(event!)}
 		--assert datatype? transcode/one {#(handle!)}
 		--assert datatype? transcode/one {#(struct!)}
@@ -805,13 +847,15 @@ Rebol [
 		--assert #{0002} = transcode/one/error "#{00;XXX^/02}"
 		--assert #{0002} = transcode/one/error "#{00;XXX^M02}" ;CR is also comment stopper
 
-		--assert error? transcode/one/error "#{0}"
-
 	--test-- {binary! with other valid escapes}
 		--assert #{0003} = transcode/one/error "#{^(30)^(30)03}"
 	--test-- {binary! with unicode char} ; is handled early
 		--assert error? first transcode/only/error "#{0č}"
 		--assert error? transcode/one/error "#{0č}"
+	--test-- {binary! padding}
+		--assert #{00}   = transcode/one/error "#{0}"
+		--assert #{01}   = transcode/one/error "2#{1}"
+
 	--test-- "Invalid binary"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1431
 		--assert all [error? e: try [load {000016#{FF}}] e/id = 'invalid e/arg1 = "integer"]
@@ -819,6 +863,27 @@ Rebol [
 
 ===end-group===
 
+===start-group=== "Invisible chars in words"
+	--test-- "invisible-chars-1"
+		;; U+200B, U+200C, U+200D, U+2060, U+FEFF
+		foreach zw [#{E2808B} #{E2808C} #{E2808D} #{E281A0} #{EFBBBF}][
+			--assert all [error? e: try [transcode zw] e/id = 'invalid]
+			--assert error? try [transcode join #{61} zw]         ;; a<zw>
+			--assert error? try [transcode join zw #{61}]         ;; <zw>a
+			--assert error? try [transcode join #{2761} zw]       ;; 'a<zw>
+			--assert error? try [transcode join #{3A61} zw]       ;; :a<zw>
+			--assert error? try [transcode rejoin [#{61} zw #{3A}]] ;; a<zw>:
+			--assert error? try [transcode join #{2F61} zw]       ;; /a<zw>
+		]
+	--test-- "invisible-chars-2"
+		;; #(email! "a@b") followed by U+200B
+		--assert error? try [transcode #{2328656D61696C2120226140622229E2808B}]
+		--assert email? transcode/one #{2328656D61696C2120226140622229}
+	--test-- "invisible-chars-3"
+		;; still allowed in strings; other non-ASCII words unaffected
+		--assert #{E2808B} = to binary! transcode/one #{22E2808B22}
+		--assert word? transcode/one #{C5BE}                      ;; ž
+===end-group===
 
 ===start-group=== "Special tests"
 	--test-- "Transcode/part"

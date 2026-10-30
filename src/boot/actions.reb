@@ -125,79 +125,79 @@ even?: action [
 
 head: action [
 	{Returns the series at its beginning.}
-	series [series! gob! port!]
+	series [series! port!]
 ]
 
 tail: action [
 	{Returns the series just past its end.}
-	series [series! gob! port!]
+	series [series! port!]
 ]
 
 head?: action [
 	{Returns TRUE if a series is at its beginning.}
-	series [series! gob! port!]
+	series [series! port!]
 ]
 
 tail?: action [
 	{Returns TRUE if series is at or past its end; or empty for other types.}
-	series [series! gob! port! bitset! typeset! map!]
+	series [series! port! bitset! typeset! map!]
 ]
 
 past?: action [
 	{Returns TRUE if series is past its end.}
-	series [series! gob! port!]
+	series [series! port!]
 ]
 
 next: action [
 	{Returns the series at its next position.}
-	series [series! gob! port!]
+	series [series! port!]
 ]
 
 back: action [
 	{Returns the series at its previous position.}
-	series [series! gob! port!]
+	series [series! port!]
 ]
 
 skip: action [
 	{Returns the series forward or backward from the current position.}
-	series [series! gob! port!]
+	series [series! port!]
 	offset [number! logic! pair!]
 ]
 
 at: action [
 	{Returns the series at the specified index, relative to the current position.}
-	series [series! gob! port!]
+	series [series! port!]
 	index [number! logic! pair!]
 ]
 
 atz: action [
 	{Returns the series at the specified 0-based index, relative to the current position.}
-	series [series! gob! port!]
+	series [series! port!]
 	index [number! logic! pair!]
 ]
 
 index?: action [
 	{Returns the current position (index) of the series.}
-	series [series! gob! port! none!]
+	series [series! port! none!]
 	/xy {Returns index as an XY pair offset}
 ]
 
 indexz?: action [
 	{Returns the current 0-based position (index) of the series.}
-	series [series! gob! port! none!]
+	series [series! port! none!]
 	/xy {Returns index as an XY pair offset}
 ]
 
 length?: action [
 	{Returns the length (from the current position for series.)}
-	series [series! port! map! tuple! bitset! object! gob! struct! any-word! none!]
+	series [series! port! map! tuple! bitset! object! struct! any-word! none!]
 ]
 
 ;-- Series Extraction
 
 pick: action [
 	{Returns the value at the specified position.}
-	aggregate [series! map! gob! pair! date! time! tuple! bitset! port!]
+	aggregate [series! map! pair! date! time! tuple! bitset! port! struct!]
 	index {Index offset, symbol, or other value to use as index}
 ]
 
@@ -205,7 +205,7 @@ pick: action [
 
 find: action [
 	{Searches for a value; for series returns where found, else none.}
-	series [series! map! any-object! gob! bitset! typeset! none!]
+	series [series! map! any-object! bitset! typeset! none!]
 	value [any-type!]
 	/part {Limits the search to a given length or position}
 	range [number! series! pair!]
@@ -225,7 +225,7 @@ find: action [
 
 select: action [
 	{Searches for a value; returns the value that follows, else none.}
-	series [series! map! any-object! none!]
+	series [series! map! any-object! none! struct!]
 	value [any-type!]
 	/part {Limits the search to a given length or position}
 	range [number! series! pair!]
@@ -275,7 +275,7 @@ copy: action [
 
 take: action [
 	{Removes and returns one or more elements.}
-	series [series! port! gob! none!] {At the current position (modified)}
+	series [series! port! none!] {At the current position (modified)}
 	/part {Specifies a length or end position}
 	range [number! series! pair!]
 	/deep {Also copies series values within the block}
@@ -295,7 +295,7 @@ put: action [
 
 insert: action [
 	{Inserts element(s); for series, returns just past the insert.}
-	series [series! port! map! gob! object! bitset!] {At position (modified)}
+	series [series! port! map! object! bitset!] {At position (modified)}
 	value [any-type!] {The value to insert}
 	/part {Limits to a given length or position}
 	range [number! series! pair!]
@@ -306,7 +306,7 @@ insert: action [
 
 append: action [
 	{Inserts element(s) at tail; for series, returns head.}
-	series [series! port! map! gob! object! bitset!] {Any position (modified)}
+	series [series! port! map! object! bitset!] {Any position (modified)}
 	value [any-type!] {The value to insert}
 	/part {Limits to a given length or position}
 	range [number! series! pair!]
@@ -317,7 +317,7 @@ append: action [
 
 remove: action [
 	{Removes element(s); returns same position.}
-	series [series! gob! port! bitset! none! map!] {At position (modified)}
+	series [series! port! bitset! none! map!] {At position (modified)}
 	/part {Removes multiple elements or to a given position}
 	range [number! series! pair! char!]
 	/key {Removes a key from map.}
@@ -326,7 +326,7 @@ remove: action [
 
 change: action [
 	{Replaces element(s); returns just past the change.}
-	series [series! gob! port! struct!]{At position (modified)}
+	series [series! port! struct!]{At position (modified)}
 	value [any-type!] {The new value}
 	/part {Limits the amount to change to a given length or position}
 	range [number! series! pair!]
@@ -337,14 +337,14 @@ change: action [
 
 poke: action [
 	{Replaces an element at a given position.}
-	series [series! port! map! gob! bitset!] {(modified)}
+	series [series! port! map! bitset! struct!] {(modified)}
 	index {Index offset, symbol, or other value to use as index}
 	value [any-type!] {The new value (returned)}
 ]
 
 clear: action [
 	{Removes elements from current position to tail; returns at new tail.}
-	series [series! port! map! gob! bitset! struct! none!] {At position, if ordered collection (modified)}
+	series [series! port! map! bitset! struct! none!] {At position, if ordered collection (modified)}
 ]
 
 trim: action [
@@ -360,13 +360,13 @@ trim: action [
 
 swap: action [
 	{Swaps elements between two series or the same series.}
-	series1 [series! gob!] {At position (modified)}
-	series2 [series! gob!] {At position (modified)}
+	series1 [series!] {At position (modified)}
+	series2 [series!] {At position (modified)}
 ]
 
 reverse: action [
 	{Reverses the order of elements; returns at same position.}
-	series [series! gob! tuple! pair!] {At position (modified)}
+	series [series! tuple! pair!] {At position (modified)}
 	/part {Limits to a given length or position}
 	range [number! series!]
 ]
@@ -454,7 +454,7 @@ open?: action [
 
 query: action [
 	{Returns information about target if possible.}
-	target [port! file! url! block! vector! date! handle! word!]
+	target [port! file! url! block! vector! date! handle! word! image!]
 	field [word! block! none! datatype!] "NONE will return valid modes for target type"
 	/mode "** DEPRECATED **"
 ]

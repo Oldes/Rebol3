@@ -47,14 +47,6 @@
 #include "reb-host.h"
 #include "host-lib.h"
 
-#ifdef REB_VIEW
-#include <gtk/gtk.h>
-extern GMainContext *GTKCtx;
-extern REBINT exit_loop;
-#else
-REBINT exit_loop = 0;
-#endif
-
 extern struct pollfd poller; // currently in dev-stdio.c
 
 void Done_Device(int handle, int error);
@@ -85,19 +77,7 @@ void Done_Device(int handle, int error);
 **
 ***********************************************************************/
 {
-	int flag = DR_DONE;
-#ifdef REB_VIEW
-	//X_Event_Loop(-1);
-	//puts("Poll_Events");
-	if (exit_loop > 0) {
-		while(g_main_context_pending(GTKCtx)) {
-			flag = DR_PEND;
-			//printf(".");
-			g_main_context_iteration(GTKCtx, FALSE);
-		}
-	}
-#endif
-	return flag;	// different meaning compared to most commands
+	return DR_DONE;
 }
 
 
@@ -112,10 +92,6 @@ void Done_Device(int handle, int error);
 ***********************************************************************/
 {
 	struct timeval tv = {0,0};
-
-#ifdef REB_VIEW
-	//TODO: process GUI events!!!
-#endif
 
 	tv.tv_usec = req->length * 1000; // converts ms to us
 	if (select(0, 0, 0, 0, &tv) < 0) {

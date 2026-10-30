@@ -150,7 +150,7 @@
 
 	case A_LENGTHQ:
 		if (IS_UTF8_STRING(value)) {
-			SET_INTEGER(DS_RETURN, tail > index ? Length_As_UTF8_Code_Points(VAL_BIN_DATA(value)) : 0);
+			SET_INTEGER(DS_RETURN, tail > index ? UTF8_Length(VAL_BIN_DATA(value), tail - index) : 0);
 		}
 		else {
 			SET_INTEGER(DS_RETURN, tail > index ? tail - index : 0);
@@ -160,6 +160,7 @@
 	case A_REMOVE:
 		// /PART length
 		TRAP_PROTECT(VAL_SERIES(value));
+		TRAP_FIXED_SIZE(VAL_SERIES(value));
 		if (DS_REF(ARG_REMOVE_KEY)) {
 			if (ANY_BLOCK(value)) {
 				len = 2;
@@ -210,20 +211,46 @@ is_true:
 
 /***********************************************************************
 **
-*/	REBINT Cmp_Block(REBVAL *sval, REBVAL *tval, REBFLG is_case)
+*/	REBFLG In_Cmp_Loop(REB_CMP_LOOP *loop, REBVAL *a, REBVAL *b)
+/*
+**		Returns TRUE if the pair of series values is already being
+**		compared (circular reference).
+**
+***********************************************************************/
+{
+	REBSER *sa = VAL_SERIES(a), *sb = VAL_SERIES(b);
+	REBCNT ia = VAL_INDEX(a), ib = VAL_INDEX(b);
+	for (; loop; loop = loop->prev) {
+		if ((loop->a == sa && loop->b == sb && loop->ai == ia && loop->bi == ib)
+		 || (loop->a == sb && loop->b == sa && loop->ai == ib && loop->bi == ia))
+			return TRUE;
+	}
+	return FALSE;
+}
+
+
+/***********************************************************************
+**
+*/	REBINT Cmp_Block_Loop(REBVAL *sval, REBVAL *tval, REBFLG is_case, REB_CMP_LOOP *loop)
 /*
 **		Compare two blocks and return the difference of the first
 **		non-matching value.
+**		A pair of blocks already being compared is considered equal.
 **
 ***********************************************************************/
 {
 	REBVAL	*s;
 	REBVAL	*t;
 	REBINT	diff;
+	REB_CMP_LOOP node;
 
 	if ((VAL_SERIES(sval)==VAL_SERIES(tval))&&
 	 (VAL_INDEX(sval)==VAL_INDEX(tval)))
 		 return 0;
+
+	if (In_Cmp_Loop(loop, sval, tval)) return 0;
+
+	REBLEN len = VAL_TAIL(sval) >= VAL_INDEX(sval) ? VAL_TAIL(sval) - VAL_INDEX(sval) : 0;
 
 	// make sure that none of block is past tail
 	// https://github.com/Oldes/Rebol-issues/issues/2439
@@ -232,12 +259,28 @@ is_true:
 
 	CHECK_STACK(&s);
 
-	while (!IS_END(s)) {
-		if ((diff = Cmp_Value(s, t, is_case)) != 0)
+	node.a  = VAL_SERIES(sval);
+	node.b  = VAL_SERIES(tval);
+	node.ai = VAL_INDEX(sval);
+	node.bi = VAL_INDEX(tval);
+	node.prev = loop;
+
+	while (len--> 0) {
+		if ((diff = Cmp_Value_Loop(s, t, is_case, &node)) != 0)
 			return diff;
 		s++, t++;
 	}
-	return VAL_TYPE(s) - VAL_TYPE(t);
+	return 0;// VAL_TYPE(s) - VAL_TYPE(t);
+}
+
+
+/***********************************************************************
+**
+*/	REBINT Cmp_Block(REBVAL *sval, REBVAL *tval, REBFLG is_case)
+/*
+***********************************************************************/
+{
+	return Cmp_Block_Loop(sval, tval, is_case, NULL);
 }
 
 
@@ -248,6 +291,19 @@ is_true:
 **		Compare two values and return the difference.
 **
 **		is_case TRUE for case sensitive compare
+**
+***********************************************************************/
+{
+	return Cmp_Value_Loop(s, t, is_case, NULL);
+}
+
+
+/***********************************************************************
+**
+*/	REBINT Cmp_Value_Loop(REBVAL *s, REBVAL *t, REBFLG is_case, REB_CMP_LOOP *loop)
+/*
+**		Same as Cmp_Value, with a chain of series being compared
+**		(circularity detection).
 **
 ***********************************************************************/
 {
@@ -312,9 +368,6 @@ chkMoney:
 	case REB_EVENT:
 		return Cmp_Event(s, t);
 
-	case REB_GOB:
-		return Cmp_Gob(s, t);
-
 	case REB_TUPLE:
 		return Cmp_Tuple(s, t);
 
@@ -331,7 +384,7 @@ chkMoney:
 	case REB_SET_PATH:
 	case REB_GET_PATH:
 	case REB_LIT_PATH:
-		return Cmp_Block(s, t, is_case);
+		return Cmp_Block_Loop(s, t, is_case, loop);
 
 	case REB_STRING:
 	case REB_FILE:
@@ -347,6 +400,14 @@ chkMoney:
 		return Compare_Binary_Vals(s, t);
 
 	case REB_VECTOR:
+		// Element type is the primary key under /case, matching the
+		// ANY_NUMBER handling above (integer! before decimal!). VECT_TYPE's
+		// enum order is signed ints, unsigned ints, then floats.
+		if (is_case) {
+			REBFLG vt2 = VAL_VEC_TYPE(t);
+			REBFLG vt1 = VAL_VEC_TYPE(s);
+			if (vt1 != vt2) return vt1 - vt2;
+		}
 		return Compare_Vector(s, t);
 
 	case REB_DATATYPE:
