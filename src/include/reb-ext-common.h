@@ -84,17 +84,19 @@
 ***********************************************************************/
 
 #define APPEND_STRING(str, ...) \
-	len = snprintf(NULL,0,__VA_ARGS__);\
-	if (len > (int)(SERIES_REST(str)-SERIES_LEN(str))) {\
-		RL_EXPAND_SERIES(str, SERIES_TAIL(str), len);\
-		SERIES_TAIL(str) -= len;\
-	}\
-	len = snprintf( \
-		SERIES_TEXT(str)+SERIES_TAIL(str),\
-		SERIES_REST(str)-SERIES_TAIL(str),\
-		__VA_ARGS__\
-	);\
-	SERIES_TAIL(str) += len;
+	do { \
+		size_t __len = snprintf(NULL, 0, __VA_ARGS__); \
+		if (__len > (size_t)(SERIES_REST(str)-SERIES_LEN(str))) { \
+			RL_EXPAND_SERIES(str, SERIES_TAIL(str), (REBCNT)__len); \
+			SERIES_TAIL(str) -= (REBLEN)__len; \
+		} \
+		len = snprintf( \
+			SERIES_TEXT(str)+SERIES_TAIL(str), \
+			SERIES_REST(str)-SERIES_TAIL(str), \
+			__VA_ARGS__ \
+		); \
+		SERIES_TAIL(str) += (REBLEN)len; \
+	} while(0)
 
 
 /***********************************************************************
