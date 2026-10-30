@@ -269,7 +269,9 @@ import (module [
 		][
 			browse join https://rebol.tech/docs/functions.html# word
 		]
-		cols: query system/ports/output 'window-cols
+		;; The reported width may be zero in non-interactive consoles (e.g. CI),
+		;; so enforce a sane minimum terminal width.
+		cols: max 76 query system/ports/output 'window-cols
 		max-desc-width: cols - 35
 		buffer: any [string  clear ""]
 		catch [
