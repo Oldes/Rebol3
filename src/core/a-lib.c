@@ -1447,8 +1447,11 @@ RL_API REBCNT RL_Decode_UTF8_Char(const REBYTE *str, REBCNT *len)
 	info = (REBSTI *)BLK_HEAD(spec->series);
 
 	// A malformed or hostile RXIARG must not become an out of bounds write.
+	// The data series of a struct is a byte series, but a view into a vector
+	// of structs uses the vector's series, whose tail counts ELEMENTS (the
+	// element size is kept as the series width) - so compare in bytes.
 	if ((REBU64)arg->structure.offset + (REBU64)info->size
-		> (REBU64)SERIES_TAIL(data)) return FALSE;
+		> (REBU64)SERIES_TAIL(data) * SERIES_WIDE(data)) return FALSE;
 
 	out->data   = BIN_SKIP(data, arg->structure.offset);
 	out->size   = info->size;

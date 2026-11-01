@@ -120,6 +120,10 @@ mezzanine: [
 	;; Nested struct - `n/b` is a VIEW into n's data at a non-zero offset,
 	;; so its size can only come from the specification.
 	n: make struct! [a [uint8!] b [struct! [c [uint32!] d [uint32!]]]]
+	;; Elements of 8 bytes - a vector of them has fewer elements than bytes,
+	;; which is what a struct view into it must not be confused by.
+	u: make struct! [c [uint32!] d [uint32!]]
+	uv: none
 	;; A `rebval!` field makes t-struct flag the spec MARK|PROTECTED: the
 	;; data now holds real Rebol values which the GC walks, so raw byte
 	;; writes from an extension would corrupt them.
@@ -259,6 +263,14 @@ mezzanine: [
 			;; A word! array has no vector equivalent - the extension must
 			;; refuse it rather than sum raw symbol ids.
 			[w/n: [alpha beta]  error? try [strua w 'n]]
+			;; A struct view into a vector of structs - its data series is the
+			;; vector's, whose tail counts elements, not bytes.
+			[uv: make vector! [:u [1 2 3 4]]  stru/read uv/1]
+			[same? uv/2 stru uv/2]
+			;; Bumping the first byte of the second element must land there,
+			;; so the view's offset is in bytes too.
+			[reduce [uv/1/c uv/2/c]]  ;; == [1 4]
+
 			;; Every element of a rebval! array must be marked, including the
 			;; last one - an off-by-one in Mark_Struct_Fields would show only
 			;; here.
