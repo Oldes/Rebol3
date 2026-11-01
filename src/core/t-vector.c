@@ -1393,12 +1393,82 @@ REBCNT Get_Vector_Type_From_Symbol(REBCNT sym) {
 	return value;
 }
 
+// Number of elements a block initializer describes, or -1 when its length does
+// not fit the element's fields. The block may hold a block or a struct per
+// element, set-words of a single element, or the values of all their fields.
+static
+REBINT Count_Vector_Struct_Values(REBVAL *block, REBCNT nfld)
+{
+	REBVAL *bv  = VAL_BLK_DATA(block);
+	REBCNT  len = VAL_LEN(block);
+
+	if (len == 0) return 0;
+	if (IS_BLOCK(bv) || IS_STRUCT(bv)) return (REBINT)len;
+	if (IS_SET_WORD(bv)) return 1;
+	if (nfld == 0 || (len % nfld) != 0) return -1;
+	return (REBINT)(len / nfld);
+}
+
+// Initializes the elements of a vector of structs from a block:
+//
+//     make vector! [:pt [1.0 2.0  3.0 4.0]]          ;; values of all fields
+//     make vector! [:pt [[a: 1.0 b: 2.0] [a: 3.0]]]  ;; a block per element
+//     make vector! [:pt reduce [s1 s2]]              ;; a struct per element
+static
+void Set_Vector_Struct_Values(REBVAL *vec, REBVAL *block, REBSER *fields)
+{
+	REBCNT  size = FIELDS_INFO(fields)->size;
+	REBCNT  nfld = Struct_Fields_Count(fields);
+	REBVAL *bv   = VAL_BLK_DATA(block);
+	REBCNT  len  = VAL_LEN(block);
+	REBCNT  tail = VAL_TAIL(vec);
+	REBVAL  item; // a view of the element being initialized
+	REBVAL  vals; // the values used for it
+	REBVAL *it = &item;
+	REBCNT  n;
+
+	if (len == 0) return;
+
+	// Set-words initialize just the first element, like a struct's own values.
+	if (IS_SET_WORD(bv)) {
+		if (tail > 0) {
+			Set_Vector_Struct(it, vec, 0);
+			Set_Struct_Values(it, block);
+		}
+		return;
+	}
+
+	for (n = 0; n < tail && len > 0; n++) {
+		Set_Vector_Struct(it, vec, n);
+		if (IS_STRUCT(bv)) {
+			// Only a struct of the vector's own specification is accepted!
+			if (VAL_STRUCT_SIZE(bv) != size
+				|| !Same_Struct_Fields(fields, VAL_STRUCT_FIELDS(bv))
+			)	Trap_Arg(bv);
+			COPY_MEM(VAL_STRUCT_DATA_BIN(it), VAL_STRUCT_DATA_BIN(bv), size);
+			bv++; len--;
+		}
+		else if (IS_BLOCK(bv)) {
+			Set_Struct_Values(it, bv);
+			bv++; len--;
+		}
+		else {
+			// The values of all fields follow each other in the block.
+			vals = *block;
+			VAL_INDEX(&vals) = VAL_INDEX(block) + (n * nfld);
+			Set_Struct_Values(it, &vals);
+			len = (len > nfld) ? len - nfld : 0;
+		}
+	}
+}
+
 // Makes a vector of structs. The element prototype is already resolved, `bp`
 // are the values which follow it. All of them are optional:
 //
 //     make vector! [:point 100]
 //     make vector! [:point 3x2]             ;; a shaped vector (3 cols, 2 rows)
 //     make vector! [point2d! 100]           ;; a registered struct
+//     make vector! [:point [1 2  3 4]]      ;; the values of the elements
 //     make vector! [:point :size :data :index]
 //     #(vector! #(struct! [x [int32!] y [int32!]]) #{...} 2)
 //
@@ -1412,6 +1482,7 @@ REBVAL *Make_Vector_Struct_Spec(REBSER *fields, REBVAL *bp, REBVAL *value, REBFL
 	REBINT rows = 1;
 	REBLEN index = 0;
 	REBVAL *data = NULL;
+	REBVAL *vals = NULL;
 	REBVAL *val = bp;
 
 	if (IS_GET_WORD(val)) val = Get_Var(val);
@@ -1438,6 +1509,18 @@ REBVAL *Make_Vector_Struct_Spec(REBSER *fields, REBVAL *bp, REBVAL *value, REBFL
 		val = ++bp;
 		if (IS_GET_WORD(val)) val = Get_Var(val);
 	}
+	// Initial values:
+	else if (IS_BLOCK(val)) {
+		REBINT len = Count_Vector_Struct_Values(val, Struct_Fields_Count(fields));
+		// The block must hold the values of whole elements!
+		if (len < 0) Trap_Arg(val);
+		// With a shape the number of elements is cols * rows!
+		if (cols == 0) cols = len;
+		else if (len > (cols * rows)) Trap_Arg(val);
+		vals = val;
+		val = ++bp;
+		if (IS_GET_WORD(val)) val = Get_Var(val);
+	}
 	// Index offset:
 	if (IS_INTEGER(val)) {
 		index = Int32s(val, 1) - 1;
@@ -1450,6 +1533,7 @@ REBVAL *Make_Vector_Struct_Spec(REBSER *fields, REBVAL *bp, REBVAL *value, REBFL
 		REBCNT len = MIN(VAL_LEN(data), VAL_TAIL(value) * size);
 		if (len > 0) COPY_MEM(VAL_VEC_HEAD(value), VAL_BIN_DATA(data), len);
 	}
+	if (vals) Set_Vector_Struct_Values(value, vals, fields);
 	if (index > VAL_TAIL(value)) return 0;
 	VAL_INDEX(value) = index;
 	return value;
@@ -2675,4 +2759,4 @@ void Mold_Vector_Struct(REBVAL *value, REB_MOLD *mold, REBFLG molded)
 		}
 		Append_Byte(mold->series, ')');
 	}
-}
+}

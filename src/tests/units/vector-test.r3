@@ -1919,6 +1919,84 @@ Rebol [
 
 ===end-group===
 
+===start-group=== "VECTOR of STRUCTs initial values"
+	pt!: make struct! [a [double!] b [double!] r [double!]]
+	point: make struct! [x [int32!] y [int32!]]
+
+--test-- "the values of all fields follow each other"
+	vs: make vector! [:pt! [1.0 2.0 0.0  3.0 4.0 0.0  5.0 6.0 0.0]]
+	--assert 3 = length? vs
+	--assert [1.0 3.0 5.0] = collect [foreach e vs [keep e/a]]
+	--assert [2.0 4.0 6.0] = collect [foreach e vs [keep e/b]]
+	--assert [0.0 0.0 0.0] = collect [foreach e vs [keep e/r]]
+
+--test-- "a block of values per element"
+	vs: make vector! [:pt! [[a: 1.0 b: 2.0] [a: 3.0 b: 4.0] [a: 5.0 b: 6.0]]]
+	--assert 3 = length? vs
+	--assert [1.0 3.0 5.0] = collect [foreach e vs [keep e/a]]
+	;; the unnamed fields are left zero
+	--assert [0.0 0.0 0.0] = collect [foreach e vs [keep e/r]]
+	;; the inner block may also hold just the values
+	vs: make vector! [:pt! [[1.0 2.0 3.0] [4.0 5.0 6.0]]]
+	--assert 2 = length? vs
+	--assert 3.0 = vs/1/r
+	--assert 4.0 = vs/2/a
+
+--test-- "a struct per element"
+	a: make struct! [a [double!] b [double!] r [double!]]
+	b: make struct! [a [double!] b [double!] r [double!]]
+	a/a: 1.0
+	b/a: 2.0
+	vs: make vector! reduce [:pt! reduce [a b]]
+	--assert 2 = length? vs
+	--assert [1.0 2.0] = collect [foreach e vs [keep e/a]]
+	;; the structs are copied, not referenced
+	a/a: 9.0
+	--assert 1.0 = vs/1/a
+
+--test-- "set-words initialize just one element"
+	vs: make vector! [:pt! [a: 1.0 b: 2.0]]
+	--assert 1 = length? vs
+	--assert 1.0 = vs/1/a
+	--assert 2.0 = vs/1/b
+
+--test-- "an empty block makes an empty vector"
+	vs: make vector! [:pt! []]
+	--assert vector? vs
+	--assert 0 = length? vs
+
+--test-- "the number of values must fit the fields"
+	--assert error? try [make vector! [:pt! [1.0 2.0]]]
+	--assert error? try [make vector! [:pt! [1.0 2.0 3.0 4.0]]]
+	;; a bad value type is refused too
+	--assert error? try [make vector! [:pt! [1.0 2.0 "x"]]]
+	--assert error? try [make vector! [:pt! [[a: 1.0 z: 2.0]]]]
+	--assert error? try [make vector! reduce [:pt! reduce [make struct! [q [int32!]]]]]
+
+--test-- "the values may be combined with the number of elements"
+	vs: make vector! [:pt! 3 [1.0 2.0 3.0]]
+	--assert 3 = length? vs
+	--assert 1.0 = vs/1/a
+	--assert 0.0 = vs/2/a
+	;; but they must fit into it
+	--assert error? try [make vector! [:pt! 1 [1.0 2.0 3.0  4.0 5.0 6.0]]]
+
+--test-- "the values may be combined with a shape"
+	v: make vector! [:point 2x2 [1 1  2 2  3 3  4 4]]
+	--assert 2x2 = v/shape
+	--assert 4 = length? v
+	--assert 3 = v/1x2/x
+	--assert error? try [make vector! [:point 2x1 [1 1  2 2  3 3]]]
+
+--test-- "the values may be used in the construction syntax"
+	v: load {#(vector! #(struct! [x [int32!] y [int32!]]) [1 2  3 4])}
+	--assert vector? v
+	--assert 2 = length? v
+	--assert 3 = v/2/x
+
+===end-group===
+
+
 ===start-group=== "VECTOR of STRUCTs element access"
 	point: make struct! [x [int32!] y [int32!]]
 

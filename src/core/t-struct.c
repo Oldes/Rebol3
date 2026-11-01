@@ -1159,6 +1159,33 @@ static void init_fields(REBVAL *ret, REBVAL *spec)
 
 /***********************************************************************
 **
+*/	REBCNT Struct_Fields_Count(REBSER *fields)
+/*
+**		Number of the struct's top level fields, which is also the number
+**		of values needed to initialize it from a plain block of values.
+**
+***********************************************************************/
+{
+	// The first value of the series holds the info!
+	return SERIES_TAIL(fields) - 1;
+}
+
+
+/***********************************************************************
+**
+*/	void Set_Struct_Values(REBVAL *stru, REBVAL *values)
+/*
+**		Initializes a struct from a block of values, which may name the
+**		fields, like [a: 1 b: 2], or hold just one value per field.
+**
+***********************************************************************/
+{
+	init_fields(stru, values);
+}
+
+
+/***********************************************************************
+**
 */	REBTYPE(Struct)
 /*
 ***********************************************************************/
@@ -1294,4 +1321,4 @@ static void init_fields(REBVAL *ret, REBVAL *spec)
 
 is_arg_error:
 	Trap_Types(RE_EXPECT_VAL, REB_STRUCT, VAL_TYPE(arg));
-}
+}
