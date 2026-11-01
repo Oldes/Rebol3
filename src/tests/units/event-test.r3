@@ -217,6 +217,17 @@ Rebol [
 		e/port = system/ports/system
 	]
 
+--test-- "event code is signed"
+	e: make event! [code: -1]
+	--assert -1 = e/code
+	e/code: -2147483648
+	--assert -2147483648 = e/code
+	e/code: 2147483647
+	--assert 2147483647 = e/code
+--test-- "event code outside 32 bits is refused"
+	--assert error? try [make event! [code: 4294967295]]
+	--assert error? try [make event! [code: -2147483649]]
+
 ===end-group===
 
 

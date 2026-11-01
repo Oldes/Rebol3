@@ -202,7 +202,10 @@
 
 	case SYM_CODE:
 		if (IS_INTEGER(val)) {
-			VAL_EVENT_DATA(value) = VAL_INT64(val);
+			// What reads back is a signed 32-bit number, so nothing
+			// outside that range can be stored without changing.
+			if (VAL_INT64(val) < MIN_I32 || VAL_INT64(val) > MAX_I32) return FALSE;
+			VAL_EVENT_DATA(value) = (u32)VAL_INT32(val);
 			CLR_FLAGS(VAL_EVENT_FLAGS(value), EVF_HAS_XY, EVF_HAS_SYM);
 			SET_FLAG(VAL_EVENT_FLAGS(value), EVF_HAS_CODE);
 			break;
@@ -373,7 +376,9 @@
 			break;
 		}
 		if (GET_FLAG(VAL_EVENT_FLAGS(value), EVF_HAS_CODE)) {
-			SET_INTEGER(val, VAL_EVENT_DATA(value));
+			// Signed: a code is a count as often as an id - a wheel's
+			// lines go either way - and the field is only 32 bits wide.
+			SET_INTEGER(val, (REBINT)VAL_EVENT_DATA(value));
 			break;
 		}
 		goto is_none;
