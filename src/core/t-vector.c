@@ -1246,6 +1246,10 @@ static REBINT cmp_u64_dec(REBU64 u, REBDEC d) {
 	if (len > 0x7fffffff) return NULL;
 	REBSER* ser = Make_Series(AS_REBLEN(len) + 1, wide, TRUE);
 	LABEL_SERIES(ser, "make vector");
+	// A vector never holds Rebol values, so the GC must not scan its data.
+	// That is essential for a vector of structs: when the element size is the
+	// same as the size of a Rebol value, the GC would else mark random bytes!
+	BARE_SERIES(ser);
 	ser->tail = AS_REBLEN(len);
 	return ser;
 }
@@ -2146,6 +2150,7 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 
 		// Copy_Binary_Part keeps the series width, which is the element size!
 		ser = Copy_Binary_Part(vect, VAL_INDEX(value), len);
+		BARE_SERIES(ser); // the GC must not scan the data - see Make_Vector_Series
 		SET_VECTOR(value, ser, vtype);
 		// Like in Make_Vector_Struct, the link holds the element's field list.
 		if (fields) ser->series = fields;
@@ -2313,6 +2318,7 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 			// Copy_Binary_Part keeps the series width, which is the element size!
 			REBSER *fields = VECT_IS_STRUCT(vtype) ? VAL_VEC_STRUCT(value) : NULL;
 			ser = Copy_Binary_Part(vect, start, len);
+			BARE_SERIES(ser); // the GC must not scan the data - see Make_Vector_Series
 			SET_VECTOR(D_RET, ser, vtype);
 			// Like in Make_Vector_Struct, the link holds the element's field list.
 			if (fields) ser->series = fields;

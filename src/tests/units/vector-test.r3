@@ -2052,6 +2052,46 @@ Rebol [
 
 ===end-group===
 
+
+===start-group=== "VECTOR of STRUCTs and the GC"
+
+--test-- "the data of a vector of structs are not scanned by the GC"
+	;; A struct of the same size as the internal Rebol value used to be
+	;; scanned as if the vector was a block of values - and as the data are
+	;; zero filled, the GC reported an unexpected end and crashed.
+	val-size: length? make struct! [v [rebval!]]
+	same!: make struct! compose/deep [data [uint8! [(val-size)]]]
+	--assert val-size = length? same!
+	--assert vector? v: make vector! [:same! 1000]
+	recycle
+	--assert 1000 = length? v
+	--assert 0 = v/1/data/1
+
+--test-- "a copied or taken part is not scanned either"
+	val-size: length? make struct! [v [rebval!]]
+	same!: make struct! compose/deep [data [uint8! [(val-size)]]]
+	v: make vector! [:same! 100]
+	c: copy v
+	t: take/part v 10
+	recycle
+	--assert 100 = length? c
+	--assert  10 = length? t
+	--assert  90 = length? v
+
+--test-- "a large vector of structs may be created"
+	;; the allocation itself triggers the recycle
+	pixel!: make struct! [n [double!] r [double!] g [double!] b [double!]]
+	--assert vector? pixels: make vector! reduce [:pixel! 800 * 640]
+	--assert 512000 = length? pixels
+	pixels/1/r: 1.0
+	recycle
+	--assert 1.0 = pixels/1/r
+	--assert 0.0 = pixels/512000/b
+
+===end-group===
+
+
+
 ===start-group=== "VECTOR of STRUCTs copy and conversion"
 	point: make struct! [x [int32!] y [int32!]]
 
