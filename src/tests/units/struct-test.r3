@@ -875,6 +875,48 @@ if system/version >= 3.19.1 [
 ===end-group===
 
 
+===start-group=== "STRUCT array field in a path"
+
+--test-- "an array field of a nested struct"
+	;; the nested struct and the result shared pvs->store, so the struct was
+	;; destroyed before its data were read
+	s: make struct! [inner [struct! [data [uint8! [4]]]] n [int32!]]
+	s/inner/data: #(uint8! [1 2 3 4])
+	--assert vector? v: s/inner/data
+	--assert 4 = length? v
+	--assert [1 2 3 4] = to block! v
+	--assert 1 = s/inner/data/1
+	--assert 4 = s/inner/data/4
+
+--test-- "a block backed array field of a nested struct"
+	s: make struct! [inner [struct! [w [word! [2]]]]]
+	s/inner/w: [a b]
+	--assert block? b: s/inner/w
+	--assert [a b] = b
+	--assert 'a = s/inner/w/1
+
+--test-- "an array field of a struct in a vector"
+	pt!: make struct! [xy [int32! [2]] n [int32!]]
+	v: make vector! [:pt! 2]
+	v/1/xy: #(int32! [1 2])
+	v/2/xy: #(int32! [3 4])
+	--assert vector? v/1/xy
+	--assert [1 2] = to block! v/1/xy
+	--assert 1 = v/1/xy/1
+	--assert 4 = v/2/xy/2
+
+--test-- "an array field of a struct taken from a vector"
+	pt!: make struct! [xy [int32! [2]] n [int32!]]
+	v: make vector! [:pt! 1]
+	v/1/xy: #(int32! [7 8])
+	s: pick v 1
+	--assert [7 8] = to block! s/xy
+	--assert 7 = s/xy/1
+
+===end-group===
+
+
+
 ===start-group=== "Struct reflection"
 ;@@ https://github.com/Oldes/Rebol-issues/issues/2577
 s: #(struct! [

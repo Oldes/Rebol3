@@ -137,6 +137,11 @@ static REBFLG get_scalar(REBSTU *stu,
 
 // Retrieves the value of a struct field and stores it in `val`.
 // Handles both array fields (returning a block or vector) and scalar fields.
+//
+// NOTE: `val` may be the very value which `stu` points into! A path step uses
+// pvs->store both for the struct it resolved (an element of a vector or a
+// nested struct) and for the result, so nothing may be stored into `val`
+// before the struct's data are read.
 static
 void Get_Struct_Field_Value(REBSTU* stu, REBSTF* field, REBVAL* val)
 {
@@ -145,24 +150,31 @@ void Get_Struct_Field_Value(REBSTU* stu, REBSTF* field, REBVAL* val)
 			// Type has no vector equivalent - fall back to a block of scalars
 			REBCNT n;
 			REBSER *ser = Make_Block(field->dimension);
-			// The value must reference the series BEFORE anything else can be
-			// allocated! `val` is usually pvs->store, which lives on the data
-			// stack, so the GC would else mark a block with a stale series.
-			Set_Block(val, ser);
+			// The block is not referenced by any value while it is filled, so
+			// it must be protected from the GC. (It cannot be stored into `val`
+			// in advance - that would destroy the struct being read!)
+			SAVE_SERIES(ser);
 			for (n = 0; n < field->dimension; n++) {
 				get_scalar(stu, field, n, Append_Value(ser));
 			}
+			UNSAVE_SERIES(ser);
+			Set_Block(val, ser);
 		}
 		else {
 			// Type maps to a known vector word - use a vector for efficiency
-			Make_Vector_From_Word(val, (REBCNT)type_to_sym[field->type], field->dimension);
-			ASSERT1(NZ(VAL_SERIES(val)), RP_INTERNAL);
-			COPY_MEM(VAL_VEC_HEAD(val), STRUCT_DATA_BIN(stu) + field->offset,
+			REBVAL out;
+			Make_Vector_From_Word(&out, (REBCNT)type_to_sym[field->type], field->dimension);
+			ASSERT1(NZ(VAL_SERIES(&out)), RP_INTERNAL);
+			// Nothing is allocated between the two, so the new vector cannot
+			// be collected before the data are copied into it.
+			COPY_MEM(VAL_VEC_HEAD(&out), STRUCT_DATA_BIN(stu) + field->offset,
 			         field->dimension * field->size);
+			*val = out;
 		}
 	}
 	else {
 		// Non-array field - retrieve a single scalar value directly
+		// (get_scalar reads the data before it stores anything into `val`)
 		get_scalar(stu, field, 0, val);
 	}
 }
