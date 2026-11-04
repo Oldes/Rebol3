@@ -12,9 +12,9 @@ REBOL [
 		Licensed under the Apache License, Version 2.0
 		See: http://www.apache.org/licenses/LICENSE-2.0
 	}
-	Version: 0.8.4
+	Version: 0.8.5
 	Needs: 3.18.5 ;; because using the new log-* functions
-	Date: 27-May-2026
+	Date: 4-Nov-2026
 	File: %prot-http.r3
 	Purpose: {
 		This program defines the HTTP protocol scheme for REBOL 3.
@@ -523,7 +523,7 @@ http-response-headers: construct [
 	Last-Modified:
 ]
 
-do-redirect: func [port [port!] new-uri [url! string! file!] /local spec state headers temp][
+do-redirect: func [port [port!] new-uri [url! string! file!] /local spec state headers temp same-origin?][
 	spec: port/spec
 	state: port/state
 	port/data: none
@@ -562,18 +562,39 @@ do-redirect: func [port [port!] new-uri [url! string! file!] /local spec state h
 			'http  [append new-uri [port: 80 ]]
 		]
 	]
+	same-origin?: all [
+		spec/scheme = new-uri/scheme
+		spec/host = new-uri/host
+		spec/port = new-uri/port
+	]
 	new-uri: construct/with new-uri port/scheme/spec
 	new-uri/method: spec/method
 	new-uri/ref: as url! ajoin either find [#(none) 80 443] new-uri/port [
 		[new-uri/scheme "://" new-uri/host new-uri/path]
 	][	[new-uri/scheme "://" new-uri/host #":" new-uri/port new-uri/path]]
 
+
+
 	unless find [http https] new-uri/scheme [
 		return throw-http-error port {Redirect to a protocol different from HTTP or HTTPS not supported}
 	]
 
 	; store original request headers
-	headers: spec/headers
+	headers: make map! spec/headers
+
+	; Do not forward origin credentials to another origin
+	unless same-origin? [
+		foreach name [
+			Authorization
+			Proxy-Authorization
+			Cookie
+			Cookie2
+			Origin
+			Referer
+		][
+			remove/key headers name
+		]
+	]
 	; we need to reset tcp connection here before doing a redirect
 	close port/state/connection
 	port/spec: new-uri
@@ -749,7 +770,7 @@ anonymize: func[
 ] system/catalog/bitsets
 
 hex-digits: system/catalog/bitsets/hex-digits
-    digits: system/catalog/bitsets/numeric
+	digits: system/catalog/bitsets/numeric
 
 sys/make-scheme [
 	name: 'http
