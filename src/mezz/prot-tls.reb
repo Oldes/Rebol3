@@ -1714,6 +1714,9 @@ prepare-client-hello: function [
         unless session-id [
             binary/write session-id: make binary! 32 [RANDOM-BYTES 32]
         ]
+        unless locale-random [
+            binary/write locale-random: make binary! 32 [RANDOM-BYTES 32]
+        ]
         binary/write out [
             UI8 22
             UI16 769
@@ -1721,7 +1724,7 @@ prepare-client-hello: function [
             UI8 1
             UI24 :length-message
             UI16 :legacy-version
-            RANDOM-BYTES 32
+            :locale-random
             UI8BYTES :session-id
             UI16BYTES :suported-cipher-suites-binary
             UI8 1
@@ -1729,7 +1732,6 @@ prepare-client-hello: function [
             UI16BYTES :extensions
         ]
         out/buffer: head out/buffer
-        locale-random: copy/part (at out/buffer 12) 32
         TLS-update-messages-hash/part ctx (at out/buffer 6) (4 + length-message)
         log-more [
             "W[" ctx/seq-write "] Bytes:" length? out/buffer "=>"
