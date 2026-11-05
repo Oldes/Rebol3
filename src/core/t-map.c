@@ -674,7 +674,7 @@ new_entry:
 
 	case A_INSERT:
 	case A_APPEND:
-		if (!IS_BLOCK(arg)) Trap_Arg(val);
+		if (!IS_BLOCK(arg)) Trap_Arg(arg);
 		*D_RET = *val;
 		if (DS_REF(AN_DUP)) {
 			Trap0(RE_BAD_REFINES);

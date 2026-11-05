@@ -390,6 +390,15 @@ Rebol [
 		--assert not same? select m 'c select m2 'c
 		--assert [3] = select m2 'c
 
+	--test-- "append invalid value to map"
+		m: make map! []
+		e: try [append m 1]
+		--assert e/id = 'invalid-arg
+		--assert e/arg1 = 1
+		e: try [insert m "x"]
+		--assert e/id = 'invalid-arg
+		--assert e/arg1 = "x"
+
 ===end-group===
 
 
