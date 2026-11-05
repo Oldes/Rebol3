@@ -236,6 +236,15 @@ system/schemes/http/spec/timeout: 30
 		--assert string? try [
 			read append http://httpbin.org/response-headers? "Content-Type=text/plain%3B charset=utf-8%3B foo=bar"
 		]
+
+	--test-- "header with none value is not sent"
+		--assert all [
+			block? res: try [write/all http://httpbin.org/headers [GET [Accept-Encoding: #(none) X-Test: "1"]]]
+			res/1 = 200
+			map? data: try [decode 'json res/3]
+			none? data/headers/Accept-Encoding
+			did data/headers/X-Test
+		]
 		
 ===end-group===
 

@@ -288,7 +288,8 @@ make-http-request: func [
 	append request " HTTP/1.1^M^/"
 	
 	foreach [word string] :headers [
-		append request ajoin [form :word #":" SP :string CRLF]
+		;; headers set to none are not sent (allows removing default headers)
+		if :string [append request ajoin [form :word #":" SP :string CRLF]]
 	]
 
 	if :content [
