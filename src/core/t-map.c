@@ -325,6 +325,8 @@
 		if (series->tail <= MIN_DICT * 2) {
 			hash = Find_Block_Key(series, key, 2, cased);
 			if (hash != NOT_FOUND) {
+				// Ignore removed key when only getting the value
+				if (!val && VAL_MAP_REMOVED(BLK_SKIP(series, hash))) return NOT_FOUND;
 				hash++; // position of the value
 				// Key already exists so update the value, if needed...
 				if (val) {
@@ -356,7 +358,12 @@
 	n = hashes[hash];
 
 	// Just a GET of value:
-	if (!val) return ((n-1)*2)+1;
+	if (!val) {
+		if (!n) return NOT_FOUND;
+		n = (n-1)*2; // index of the key
+		if (VAL_MAP_REMOVED(BLK_SKIP(series, n))) return NOT_FOUND;
+		return n+1;  // index of the value
+	}
 
 	// Must set the value:
 	if (n) {  // re-set it:

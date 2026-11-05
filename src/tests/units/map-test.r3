@@ -146,6 +146,19 @@ Rebol [
 		mf4-m: make map! [b 1]
 		--assert 'b	= find mf4-m first [b:]
 		--assert 'b	= find mf4-m first [b:]
+
+	--test-- "find on removed map key"
+		m: make map! [a 1 b 2]
+		remove/key m 'a
+		--assert none? find m 'a
+		--assert none? select m 'a
+		--assert 1 = length? m
+		m: make map! []
+		repeat i 100 [put m i i] ;; large enough to use the hash table
+		remove/key m 1
+		--assert none? find m 1
+		--assert none? select m 1
+		--assert 99 = length? m
 ===end-group===
 
 
