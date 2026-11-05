@@ -57,12 +57,12 @@ system/schemes/http/spec/timeout: 30
 		--assert     #{646F63747970652068746D6C3E} = read/seek/part http://example.com 2 13
 
 	--test-- "read/lines/seek/part"
-		--assert ["<!doctype html>" "<html>" "<head>"] = read/lines/part http://example.com 3
-		--assert ["<!doctype html>" "<html>" "<head>"] = read/lines/seek/part http://example.com 0 3
-		--assert                   ["<html>" "<head>"] = read/lines/seek/part http://example.com 1 2
+		--assert ["<!doctype html>" "<html><head>" {<meta name="generator" content="REBOL WIP Wiki"/>}] = read/lines/part http://rebol.com 3
+		--assert ["<!doctype html>" "<html><head>" {<meta name="generator" content="REBOL WIP Wiki"/>}]  = read/lines/seek/part http://rebol.com 0 3
+		--assert ["<html><head>" {<meta name="generator" content="REBOL WIP Wiki"/>}]  = read/lines/seek/part http://rebol.com 1 2
 		; using /lines with /binary is not allowed
-		--assert all [error? e: try [read/lines/binary http://example.com] e/id = 'bad-refine]
-		--assert all [block? b: try [read/lines/seek http://example.com 2] b/1 = "<head>"]
+		--assert all [error? e: try [read/lines/binary http://rebol.com] e/id = 'bad-refine]
+		--assert all [block? b: try [read/lines/seek http://rebol.com 2] b/1 = "<!doctype html>"]
 
 	--test-- "read/string/binary"
 		--assert all [error? e: try [read/string/binary http://example.com] e/id = 'bad-refines]
@@ -201,6 +201,20 @@ system/schemes/http/spec/timeout: 30
 		--assert all [ ;= Use Proxy
 			block? res: try [read/all https://httpbin.org/status/305]
 			res/1 = 200
+		]
+	--test-- "redirect strips credentials on origin change"
+		--assert all [
+			block? res: try [write/all http://httpbin.org/redirect-to?url=https://httpbin.org/headers [GET [Authorization: "Bearer secret"]]]
+			res/1 = 200
+			map? data: try [decode 'json res/3]
+			none? data/headers/Authorization
+		]
+	--test-- "redirect keeps credentials on same origin"
+		--assert all [
+			block? res: try [write/all http://httpbin.org/redirect-to?url=/headers [GET [Authorization: "Bearer secret"]]]
+			res/1 = 200
+			map? data: try [decode 'json res/3]
+			data/headers/Authorization == "Bearer secret"
 		]
 ===end-group===
 

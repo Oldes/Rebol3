@@ -747,7 +747,7 @@ decode-result: func[
 			; using also deline to normalize possible CRLF to LF
 			try [result/3: deline iconv result/3 code-page]
 		][
-			result/3: to string! result/3
+			result/3: attempt [to string! result/3]
 		]
 	]
 	result
@@ -832,8 +832,8 @@ sys/make-scheme [
 				][
 					decode-result result
 					case/all [
-						string [ try [result/3: to string! result/3] ]
-						lines  [ try [result/3: split-lines to string! result/3] ]
+						string [ attempt [result/3:  to string! result/3]]
+						lines  [ attempt [result/3: split-lines result/3]]
 						index  [ result/3: skip result/3 index ]
 						length [ clear skip result/3 length]
 					]
