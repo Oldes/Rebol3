@@ -669,6 +669,14 @@ system/schemes/http/spec/timeout: 30
 	--test-- "set-cookies with a single string"
 		set-cookies "string-test.example" "s=1; Path=/"
 		--assert "s=1" == get-cookies "string-test.example" "/"
+
+	--test-- "cookie value with spaces"
+		set-cookies "value-test.example" "q=a b; Path=/"
+		--assert "q=a b" == get-cookies "value-test.example" "/"
+	--test-- "cookie value trimmed, attribute without space after separator"
+		set-cookies "value-test2.example" "t= x ;Path=/docs"
+		--assert none? get-cookies "value-test2.example" "/"
+		--assert "t=x" == get-cookies "value-test2.example" "/docs"
 ===end-group===
 
 ~~~end-file~~~

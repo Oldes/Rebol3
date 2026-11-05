@@ -1062,6 +1062,7 @@ with cookies-rules: context [
 	cookie-octet: make bitset! #{000000005FF7FFEFFFFFFFF7FFFFFFFE}
 	cookie-octet-sp: make bitset! #{00400000DFF7FFEFFFFFFFF7FFFFFFFE} ; includes SPACE
 	; any CHAR except CTLs or separators:
+	value-char: complement charset ";"
 	token-char: complement charset [{()<>@,;:\"/[]?={} ^-} 0 - 31 127]
 	domain-char: charset [#"a"-#"z" #"A"-#"Z" ".-"]
 	path-char: complement charset [0 - 31 #";"]
@@ -1104,10 +1105,10 @@ with cookies-rules: context [
 			attr: parse line [
 				copy c-name:  =cookie-name #"="
 				[
-					#"^"" copy c-value: any cookie-octet-sp #"^""
-					| copy c-value: any cookie-octet
+					#"^"" copy c-value: any cookie-octet-sp #"^"" any SP ahead [#";" | end]
+					| copy c-value: any value-char (trim c-value)
 				]
-				collect any ["; " [
+				collect any [#";" any SP [
 					"Expires=" copy Expires: =rfc1123-date |
 					"Domain="  copy Domain: any domain-char |
 					"Path="    copy Path:   any path-char |
