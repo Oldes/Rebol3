@@ -3,6 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
+**  Copyright 2012-2026 Rebol Open Source Developers
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -48,6 +49,8 @@ static REBOOL Same_Object(REBVAL *val, REBVAL *arg)
 **		Compare objects field by field.
 **		A pair of frames already being compared (circular reference)
 **		is considered equal.
+**		Fields hidden in both objects are skipped; a field hidden
+**		in only one of them makes the objects not equal.
 **
 ***********************************************************************/
 {
@@ -56,6 +59,7 @@ static REBOOL Same_Object(REBVAL *val, REBVAL *arg)
 	REBSER *w1;
 	REBSER *w2;
 	REBINT n;
+	REBFLG h1, h2;
 	REB_CMP_LOOP node, *l;
 
 	if (VAL_TYPE(arg) != VAL_TYPE(val)) return FALSE;
@@ -84,8 +88,10 @@ static REBOOL Same_Object(REBVAL *val, REBVAL *arg)
 
 	// Compare each entry:
 	for (n = 1; n < (REBINT)(f1->tail); n++) {
-		if (VAL_HIDDEN(BLK_SKIP(w1, n))) return VAL_HIDDEN(BLK_SKIP(w2, n));
-		if (VAL_HIDDEN(BLK_SKIP(w2, n))) return VAL_HIDDEN(BLK_SKIP(w1, n));
+		h1 = VAL_HIDDEN(BLK_SKIP(w1, n)) ? TRUE : FALSE;
+		h2 = VAL_HIDDEN(BLK_SKIP(w2, n)) ? TRUE : FALSE;
+		if (h1 != h2) return FALSE;
+		if (h1) continue; // hidden in both, skip it
 		if (Cmp_Value_Loop(BLK_SKIP(w1, n), BLK_SKIP(w2, n), is_case, &node)) return FALSE;
 		if (Cmp_Value_Loop(BLK_SKIP(f1, n), BLK_SKIP(f2, n), is_case, &node)) return FALSE;
 	}

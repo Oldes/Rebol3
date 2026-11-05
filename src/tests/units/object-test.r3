@@ -340,7 +340,26 @@ Rebol [
 		a/p: b  b/p: a
 		--assert a = b
 		--assert did find reduce [o3 o1] o2
+
+	--test-- "hidden field does not stop comparison"
+		o1: make object! [a: 1 h: 2 b: 3]
+		o2: make object! [a: 1 h: 2 b: 4]
+		protect/hide in o1 'h
+		protect/hide in o2 'h
+		--assert not equal? o1 o2
+	--test-- "fields hidden in both are skipped"
+		o1: make object! [a: 1 h: 2 b: 3]
+		o2: make object! [a: 1 h: 9 b: 3]
+		protect/hide in o1 'h
+		protect/hide in o2 'h
+		--assert equal? o1 o2
+	--test-- "field hidden in only one object"
+		o1: make object! [a: 1 h: 2 b: 3]
+		o2: make object! [a: 1 h: 2 b: 3]
+		protect/hide in o1 'h
+		--assert not equal? o1 o2
 ===end-group===
+
 
 
 ===start-group=== "Object actions"
