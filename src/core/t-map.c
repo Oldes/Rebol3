@@ -530,11 +530,31 @@ new_entry:
 	ASSERT1(IS_MAP(val) || IS_BLOCK(val) || IS_PAREN(val), RP_INTERNAL);
 	series = Make_Map(VAL_BLK_LEN(val) / 2);
 	if (IS_MAP(val)) {
-		// There should be valid key/value pairs, so just copying is sufficient.
-		COPY_BLK_PART(series, VAL_BLK(val), VAL_TAIL(val));
-		// If existing series has a hashtable, reuse it.
-		if (VAL_SERIES(val)->series)
-			series->series = Copy_Series(VAL_SERIES(val)->series);
+		REBSER *src = VAL_SERIES(val);
+		if (Length_Map(src) * 2 == SERIES_TAIL(src)) {
+			// No removed entries, so just copying is sufficient.
+			COPY_BLK_PART(series, VAL_BLK(val), VAL_TAIL(val));
+			// If existing series has a hashtable, reuse it.
+			if (src->series)
+				series->series = Copy_Series(src->series);
+		}
+		else {
+			// Skip removed entries (compaction), so the hash table must be rebuilt.
+			REBVAL *key;
+			REBVAL *out = BLK_HEAD(series);
+			for (key = BLK_HEAD(src); NOT_END(key) && NOT_END(key+1); key += 2) {
+				if (VAL_MAP_REMOVED(key)) continue;
+				*out++ = key[0];
+				*out++ = key[1];
+			}
+			SET_END(out);
+			series->tail = out - BLK_HEAD(series);
+			// Use hashing only when there is more than MIN_DICT keys (like in Find_Entry)
+			if (series->tail > MIN_DICT * 2) {
+				series->series = Make_Hash_Array(series->tail);
+				Rehash_Hash(series);
+			}
+		}
 	}
 	else {
 		// There may be duplicates, so we must append each key/value pair.

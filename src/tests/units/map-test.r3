@@ -456,6 +456,33 @@ Rebol [
 		put m p 2
 		--assert 2 = select m 'a/b
 		--assert error? try [append first find words-of m 'a/b 'c]
+
+	--test-- "copy of map skips removed entries"
+		;; result is small enough to be linear
+		m: make map! []
+		repeat i 100 [put m i i]
+		repeat i 95 [remove/key m i]
+		c: copy m
+		--assert 5 = length? c
+		--assert equal? m c
+		--assert [96 97 98 99 100] = keys-of c
+		--assert 100 = select c 100
+		--assert none? select c 1
+		put c 1 1
+		--assert 6 = length? c
+		--assert 1 = select c 1
+		;; result is still hashed
+		m: make map! []
+		repeat i 100 [put m i i]
+		remove/key m 1
+		c: copy m
+		--assert 99 = length? c
+		--assert equal? m c
+		--assert none? find c 1
+		repeat i 100 [put c i + 100 i]
+		--assert 199 = length? c
+		--assert 1 = select c 101
+		--assert 100 = select c 100
 ===end-group===
 
 
