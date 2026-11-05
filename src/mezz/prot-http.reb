@@ -352,7 +352,7 @@ put system/catalog 'http-status-codes http-status-codes: #[
 	204 "No Content"
 	205 "Reset Content"
 	206 "Partial Content"
-	
+
 	300 "Multiple Choices"
 	301 "Moved Permanently"
 	302 "Found"
@@ -414,12 +414,12 @@ check-response: func [port /local conn res headers d1 d2 line info state awake s
 			all [
 				d1: find conn/data crlfbin
 				d2: find/tail d1 crlf2bin
-				;log-trace 'HTML "server using standard content separator of #{0D0A0D0A}"
+				;log-trace 'HTTP "server using standard content separator of #{0D0A0D0A}"
 			]
 			all [
 				d1: find conn/data #{0A}
 				d2: find/tail d1 #{0A0A}
-				log-trace 'HTML "Server using malformed line separator of #{0A0A}"
+				log-trace 'HTTP "Server using malformed line separator of #{0A0A}"
 			]
 		]
 	][
