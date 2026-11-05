@@ -660,6 +660,7 @@ check-data: func [port /local headers res data available out chunk-size pos trai
 				until [
 					either parse data [
 						copy chunk-size some hex-digits
+						opt [#";" to crlfbin] ;; ignore chunk extensions
 						crlfbin pos: to end
 					][
 						;- ugly conversion of the chunk size from hexadecimal string to integer
@@ -694,9 +695,12 @@ check-data: func [port /local headers res data available out chunk-size pos trai
 							]
 						]
 					][
-						throw-http-error port "Invalid chunk data!"
+						;; an incomplete size line just waits for more data
+						if find data crlfbin [
+							throw-http-error port "Invalid chunk data!"
+						]
 						true ; end of loop
-					] 
+					]
 				]
 			]
 			unless state/state = 'ready [
