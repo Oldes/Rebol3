@@ -89,6 +89,12 @@
 
 #define CHECK_BIND_TABLE
 
+// Word lists longer than this get a hash index for word lookup.
+// The index is kept in the word list's `series` field (like map's hashes)
+// and the hash series' `size` field holds the number of words indexed.
+#define WORDS_HASH_MIN 64
+#define HASHED_WORDS(hser) ((hser)->size)
+
 /***********************************************************************
 **
 */	void Check_Bind_Table(void)
@@ -153,8 +159,16 @@
 
 	// Expand or copy WORDS block:
 	if (copy) {
+		REBSER *hser = words->series; // word index (see Find_Word_Index)
 		FRM_WORD_SERIES(frame) = Copy_Expand_Block(words, delta);
 		BARE_SERIES(FRM_WORD_SERIES(frame));
+		if (hser) {
+			// The copy has the same words at the same positions, so the index
+			// stays valid. It must be copied, as the lists may differ from now on.
+			words = FRM_WORD_SERIES(frame);
+			words->series = Copy_Series(hser);
+			HASHED_WORDS(words->series) = HASHED_WORDS(hser);
+		}
 	} else {
 		Extend_Series(words, delta);
 		BLK_TERM(words);
@@ -1087,26 +1101,97 @@
 
 /***********************************************************************
 **
+*/  static REBSER *Hash_Word_List(REBSER *wser)
+/*
+**      Return the hash index of a frame word list (canon symbol -> word
+**      index), creating or updating it as needed. Word lists only grow
+**      at the tail, so only the words added since the last call are
+**      hashed. The index is rebuilt when it would get too dense, or
+**      when the list got shorter (should not happen).
+**
+***********************************************************************/
+{
+	REBSER *hser = wser->series;
+	REBCNT len = SERIES_TAIL(wser);
+	REBCNT *hashes;
+	REBCNT size, n, i, h = 0, canon;
+
+	if (!hser || HASHED_WORDS(hser) > len || len > hser->tail / 2) {
+		hser = Make_Hash_Array(len); // size is a prime >= 2 * len
+		HASHED_WORDS(hser) = 1;      // slot 0 (SELF) is not indexed
+		wser->series = hser;
+	}
+	hashes = (REBCNT *)hser->data;
+	size = hser->tail;
+	for (n = HASHED_WORDS(hser); n < len; n++) {
+		canon = VAL_BIND_CANON(BLK_SKIP(wser, n));
+		for (i = 0; i < size; i++) {
+			h = Hash_Probe(canon, i, size);
+			if (!hashes[h]) break;
+		}
+		hashes[h] = n;
+	}
+	HASHED_WORDS(hser) = len;
+	return hser;
+}
+
+
+/***********************************************************************
+**
 */  REBCNT Find_Word_Index(REBSER *frame, REBCNT sym, REBFLG always)
 /*
 **      Search a frame looking for the given word symbol.
 **      Return the frame index for a word. Locate it by matching
 **      the canon word identifiers. Return 0 if not found.
 **
+**      Long word lists use a hash index (see Hash_Word_List).
+**
+**      For short lists, the first pass compares only symbols (no word
+**      table access), which finds words looked up with the same
+**      spelling as they were defined. The second pass compares canon
+**      symbols.
+**
 ***********************************************************************/
 {
-	REBCNT len = SERIES_TAIL(FRM_WORD_SERIES(frame));
-	REBVAL *word = FRM_WORDS(frame) + 1;
+	REBSER *wser = FRM_WORD_SERIES(frame);
+	REBCNT len = SERIES_TAIL(wser);
+	REBVAL *words;
+	REBVAL *word;
 	REBCNT n;
 	REBCNT s;
 
-	s = SYMBOL_TO_CANON(sym); // always compare to CANON sym
+	if (len > WORDS_HASH_MIN) {
+		REBSER *hser = Hash_Word_List(wser);
+		REBCNT *hashes = (REBCNT *)hser->data;
+		REBCNT size = hser->tail;
+		REBCNT i;
 
-	for (n = 1; n < len; n++, word++)
-		if (sym == VAL_BIND_SYM(word) || s == VAL_BIND_CANON(word))
-			return (!always && VAL_GET_OPT(word, OPTS_HIDE)) ? 0 : n;
+		words = BLK_HEAD(wser);
+		s = SYMBOL_TO_CANON(sym);
+		for (i = 0; i < size; i++) {
+			n = hashes[Hash_Probe(s, i, size)];
+			if (!n) return 0;
+			word = words + n;
+			if (sym == VAL_BIND_SYM(word) || s == VAL_BIND_CANON(word)) goto found;
+		}
+		return 0;
+	}
+
+	words = BLK_HEAD(wser);
+
+	// Fast pass: exact symbol match
+	for (n = 1, word = words + 1; n < len; n++, word++)
+		if (sym == VAL_BIND_SYM(word)) goto found;
+
+	// Slow pass: canonical (case insensitive) match
+	s = SYMBOL_TO_CANON(sym);
+	for (n = 1, word = words + 1; n < len; n++, word++)
+		if (s == VAL_BIND_CANON(word)) goto found;
 
 	return 0;
+
+found:
+	return (!always && VAL_GET_OPT(word, OPTS_HIDE)) ? 0 : n;
 }
 
 

@@ -261,6 +261,39 @@ Rebol [
 ===end-group===
 
 
+===start-group=== "Hashed word lookup in large objects"
+	--test-- "lookup in large object"
+		o: make object! collect [repeat i 100 [keep to set-word! ajoin ["w" i] keep i]]
+		--assert 1 = select o 'w1
+		--assert 100 = select o 'w100
+		--assert 50 = select o 'W50
+		--assert 50 = o/w50
+		--assert none? select o 'w101
+	--test-- "words added after the index was built"
+		append o [w101: 101]
+		--assert 101 = select o 'w101
+		put o 'w102 102
+		--assert 102 = o/W102
+		repeat i 200 [put o to word! ajoin ["x" i] i]   ; forces index rebuilds
+		--assert 200 = select o 'x200
+		--assert 1 = select o 'w1
+	--test-- "copy gets its own index"
+		c: copy o
+		append c [only-in-copy: 1]
+		--assert none? select o 'only-in-copy
+		--assert 1 = select c 'only-in-copy
+		--assert 100 = select c 'w100
+	--test-- "hidden word"
+		protect/hide in o 'w2
+		--assert none? select o 'w2
+		--assert none? in o 'w2
+	--test-- "index survives recycle"
+		recycle
+		--assert 50 = select o 'w50
+		--assert 200 = select c 'x200
+===end-group===
+
+
 ===start-group=== "TRIM on object/module/error"
 	--test-- "trim object"
 		o: make object! [a: 1 b: none c: 3]

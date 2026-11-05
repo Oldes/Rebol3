@@ -115,6 +115,19 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 
 /***********************************************************************
 **
+*/	static void Mark_Word_List(REBSER *words)
+/*
+**		Mark a frame or function word list (it is bare, so it is not
+**		scanned) and its hash index, if it has one (see Find_Word_Index).
+**
+***********************************************************************/
+{
+	MARK_SERIES(words);
+	if (words->series) MARK_SERIES(words->series);
+}
+
+/***********************************************************************
+**
 */	static void Mark_Struct_Fields(REBSTU *stu, REBSER *fields, REBCNT offset, REBCNT depth)
 /*
 **		Mark all Rebol values stored in a struct's data, including values
@@ -410,7 +423,7 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 	case REB_FRAME:
 		// Mark special word list. Contains no pointers because
 		// these are special word bindings (to typesets if used).
-		if (VAL_FRM_WORDS(val)) MARK_SERIES(VAL_FRM_WORDS(val));
+		if (VAL_FRM_WORDS(val)) Mark_Word_List(VAL_FRM_WORDS(val));
 		if (VAL_FRM_SPEC(val)) { CHECK_MARK(VAL_FRM_SPEC(val), depth); }
 		break;
 
@@ -441,14 +454,14 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 	case REB_NATIVE:
 	case REB_ACTION:
 		CHECK_MARK(VAL_FUNC_SPEC(val), depth);
-		MARK_SERIES(VAL_FUNC_ARGS(val));
+		Mark_Word_List(VAL_FUNC_ARGS(val));
 		break;
 	case REB_OP:
 		if (VAL_GET_EXT(val) == REB_FUNCTION) {
 			CHECK_MARK(VAL_FUNC_BODY(val), depth);
 		}
 		CHECK_MARK(VAL_FUNC_SPEC(val), depth);
-		MARK_SERIES(VAL_FUNC_ARGS(val));
+		Mark_Word_List(VAL_FUNC_ARGS(val));
 		break;
 
 	case REB_IMAGE:
