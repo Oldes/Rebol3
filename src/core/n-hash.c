@@ -164,29 +164,56 @@ FORCE_INLINE
 	return fmix32(VAL_TYPE(val));
 }
 
+#define MAX_HASH_DEPTH 32 // max depth of nested blocks used for the hash
+
 /***********************************************************************
 **
-*/	REBCNT Hash_Block_Value(REBVAL *block)
+*/	static REBCNT Hash_Block_Loop(REBVAL *block, REBSER **parents, REBCNT depth)
 /*
 **		Return a case insensitive hash value for the block.
+**		Parents are series of the blocks being hashed (to detect circularity).
+**		A nested block which is one of the parents, or which is too deep,
+**		contributes only with its type.
 **
 ***********************************************************************/
 {
-	REBCNT k1, h1 = 0;
+	REBCNT k1, h1 = 0, n;
 	REBVAL *data = VAL_BLK_DATA(block);
 	REBLEN len = VAL_LEN(block);
+
+	parents[depth] = VAL_SERIES(block);
 
 	k1 = VAL_TYPE(block);
 	bmix(&h1, &k1);
 
-	while (NZ(VAL_TYPE(data))) {
-		k1 = Hash_Value(data++);
+	for (; NZ(VAL_TYPE(data)); data++) {
+		if (ANY_BLOCK(data)) {
+			k1 = VAL_TYPE(data);
+			if (depth + 1 < MAX_HASH_DEPTH) {
+				for (n = 0; n <= depth && parents[n] != VAL_SERIES(data); n++);
+				if (n > depth) k1 = Hash_Block_Loop(data, parents, depth + 1);
+			}
+		}
+		else k1 = Hash_Value(data);
 		bmix(&h1, &k1);
 	}
 	h1 ^= len;
 	h1 = fmix32(h1);
 
 	return h1;
+}
+
+/***********************************************************************
+**
+*/	REBCNT Hash_Block_Value(REBVAL *block)
+/*
+**		Return a case insensitive hash value for the block.
+**		Safe for circular blocks.
+**
+***********************************************************************/
+{
+	REBSER *parents[MAX_HASH_DEPTH];
+	return Hash_Block_Loop(block, parents, 0);
 }
 
 /***********************************************************************
@@ -316,4 +343,3 @@ FORCE_INLINE
 
 	return hser;
 }
-

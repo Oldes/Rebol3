@@ -123,6 +123,19 @@ Rebol [
 		--assert 1100 = length? m
 		--assert 1000 = select m 1100
 		--assert 200 = select m 100
+
+	--test-- "hash of circular block"
+		b: copy [1]
+		append/only b b
+		--assert integer? hash b
+		c: copy [x]
+		append/only c reduce [c c]  ;; multiple self-references
+		--assert integer? hash c
+		--assert (hash [a [b [c]]]) = hash [a [b [c]]]
+		;; as a map key
+		m: make map! []
+		put m b 1
+		--assert 1 = select m b
 ===end-group===
 
 ===start-group=== "APPEND on map!"
