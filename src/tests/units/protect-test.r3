@@ -69,11 +69,13 @@ Rebol [
 
 	--test-- "delect"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1783
-	dialect: context [default: [tuple!]]
-	inp: [1.2.3]
-	out: make block! 4
-	protect out
-	--assert is-protected-error? [delect dialect inp out]
+	if any-function? :delect [
+		dialect: context [default: [tuple!]]
+		inp: [1.2.3]
+		out: make block! 4
+		protect out
+		--assert is-protected-error? [delect dialect inp out]
+	]
 
 	--test-- "protect bitset"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/977
@@ -197,6 +199,27 @@ Rebol [
 		--assert not equal? context [a: 1] context [a: 1 protect/hide 'a]
 		--assert not equal? context [a: 1 protect/hide 'a] context []
 
+===end-group===
+
+
+===start-group=== "PUT on object with protected/hidden words"
+	--test-- "put on protected word"
+		o: make object! [a: 1]
+		protect in o 'a
+		--assert all [
+			error? e: try [put o 'a 2]
+			e/id = 'locked-word
+			e/arg1 = 'a
+		]
+		--assert o/a = 1
+	--test-- "put on hidden word"
+		o: make object! [a: 1 h: 2]
+		protect/hide in o 'h
+		--assert all [
+			error? e: try [put o 'h 3]
+			e/id = 'hidden
+		]
+		--assert 1 = length? words-of o
 ===end-group===
 
 ~~~end-file~~~

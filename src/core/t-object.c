@@ -119,7 +119,8 @@ static void Extend_Obj(REBSER *obj, REBVAL *key, REBVAL *value)
 			if (!value) return;
 			val = FRM_VALUE(obj, index);
 			if (GET_FLAGS(VAL_OPTS(FRM_WORD(obj, index)), OPTS_HIDE, OPTS_LOCK)) {
-				if (VAL_PROTECTED(val)) Trap1(RE_LOCKED_WORD, val);
+				// protection flags are stored on the word, not on the value
+				if (VAL_PROTECTED(FRM_WORD(obj, index))) Trap1(RE_LOCKED_WORD, key);
 				Trap0(RE_HIDDEN);
 			}
 		} else {
