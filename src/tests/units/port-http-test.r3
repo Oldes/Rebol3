@@ -12,6 +12,20 @@ Rebol [
 ;; so let's give it more time...
 system/schemes/http/spec/timeout: 30
 
+===start-group=== "HTTP scheme - log anonymization"
+	anonymize: :system/modules/http/anonymize
+	--test-- "anonymize cookies and proxy credentials"
+		r: anonymize ajoin [
+			"GET / HTTP/1.1^/"
+			"Cookie: session=secret123^/"
+			"Proxy-Authorization: Basic dXNlcjpwYXNz^/"
+			"Host: example.com^/"
+		]
+		--assert not find r "secret123"
+		--assert not find r "dXNlcjpwYXNz"
+		--assert did find r "Host: example.com"
+===end-group===
+
 ===start-group=== "HTTP scheme - chunked decoding"
 	check-data: :system/modules/http/check-data
 	chunked-feed: function [parts [block!]][

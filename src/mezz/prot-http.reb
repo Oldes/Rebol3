@@ -787,8 +787,8 @@ anonymize: func[
 	parse data [
 		any [
 			thru LF [
-				  "Authorization:" some SP some uri
-				| ["X-Token:" | "X-Auth-Token:" | "X-goog-api-key:"]
+				  ["Authorization:" | "Proxy-Authorization:"] some SP some uri
+				| ["Cookie:" | "X-Token:" | "X-Auth-Token:" | "X-goog-api-key:"]
 			] some SP 0 4 uri change to LF "****"
 			| skip
 		]
