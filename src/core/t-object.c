@@ -88,11 +88,18 @@ static REBOOL Same_Object(REBVAL *val, REBVAL *arg)
 
 	// Compare each entry:
 	for (n = 1; n < (REBINT)(f1->tail); n++) {
-		h1 = VAL_HIDDEN(BLK_SKIP(w1, n)) ? TRUE : FALSE;
-		h2 = VAL_HIDDEN(BLK_SKIP(w2, n)) ? TRUE : FALSE;
-		if (h1 != h2) return FALSE;
-		if (h1) continue; // hidden in both, skip it
-		if (Cmp_Value_Loop(BLK_SKIP(w1, n), BLK_SKIP(w2, n), is_case, &node)) return FALSE;
+		if (w1 == w2) {
+			// Shared word list (copies, objects made from the same parent):
+			// words and flags are identical, compare only the values.
+			if (VAL_HIDDEN(BLK_SKIP(w1, n))) continue;
+		}
+		else {
+			h1 = VAL_HIDDEN(BLK_SKIP(w1, n)) ? TRUE : FALSE;
+			h2 = VAL_HIDDEN(BLK_SKIP(w2, n)) ? TRUE : FALSE;
+			if (h1 != h2) return FALSE;
+			if (h1) continue; // hidden in both, skip it
+			if (Cmp_Value_Loop(BLK_SKIP(w1, n), BLK_SKIP(w2, n), is_case, &node)) return FALSE;
+		}
 		if (Cmp_Value_Loop(BLK_SKIP(f1, n), BLK_SKIP(f2, n), is_case, &node)) return FALSE;
 	}
 
