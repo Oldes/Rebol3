@@ -9,7 +9,11 @@
 // Block read - if your platform needs to do endian-swapping or can only
 // handle aligned reads, do the conversion here
 FORCE_INLINE REBCNT getblock32(const REBCNT* p, int i) {
-    return p[i];
+    // binary data may not be 4-byte aligned, so avoid a direct (unaligned) read;
+    // compilers turn this memcpy into a single load where it is allowed
+    REBCNT k;
+    memcpy(&k, (const REBYTE*)p + (i * 4), 4);
+    return k;
 }
 /*-----------------------------------------------------------------------------
 // Block mix - mix the key block, combine with hash block, mix the hash block,
