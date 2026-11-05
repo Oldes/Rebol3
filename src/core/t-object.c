@@ -208,11 +208,13 @@ static void Append_Obj(REBSER *obj, REBVAL *arg, REBCNT part)
 
 	BLK_TERM(BUF_WORDS);
 
-	// Append new words to obj
+	// Append new words to obj (if any; expanding also copies the word list)
 	len = SERIES_TAIL(obj);
-	Expand_Frame(obj, SERIES_TAIL(BUF_WORDS) - len, 1);
-	for (word = BLK_SKIP(BUF_WORDS, len); NOT_END(word); word++)
-		Append_Frame(obj, 0, VAL_WORD_SYM(word));
+	if (SERIES_TAIL(BUF_WORDS) > len) {
+		Expand_Frame(obj, SERIES_TAIL(BUF_WORDS) - len, 1);
+		for (word = BLK_SKIP(BUF_WORDS, len); NOT_END(word); word++)
+			Append_Frame(obj, 0, VAL_WORD_SYM(word));
+	}
 
 	// Set new values to obj words (already validated above)
 	for (word = arg, n = 0; n < part && NOT_END(word); word += 2, n++) {

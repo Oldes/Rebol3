@@ -183,6 +183,24 @@ Rebol [
 ===end-group===
 
 
+===start-group=== "APPEND on object with existing words"
+	--test-- "append existing words only"
+		o: make object! [a: 1 b: 2]
+		append o [a: 10 b: 20]
+		--assert o/a = 10
+		--assert o/b = 20
+		--assert 2 = length? o
+	--test-- "copy is not affected"
+		o: make object! [a: 1]
+		c: copy o
+		append o [a: 10]
+		--assert c/a = 1
+		append o [b: 2]
+		--assert none? in c 'b
+		--assert o/b = 2
+===end-group===
+
+
 ===start-group=== "TRIM on object/module/error"
 	--test-- "trim object"
 		o: make object! [a: 1 b: none c: 3]
