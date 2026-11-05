@@ -1871,6 +1871,11 @@ extern REBSER *Scan_Full_Block(SCAN_STATE *scan_state, REBYTE mode_char);
 			break;
 
 		case TOKEN_DATE:
+			if (bp[len-1] == ':' && mode_char == '/') {	// could be path/1x1: set
+				Scan_Pair(bp, len-1, value); // invalid pair leaves value unset => syntax error
+				scan_state->end--;	// put ':' back on end but not beginning
+				break;
+			}
 			while (*ep == '/' && mode_char != '/') {  // Is it a date/time?
 				ep++;
 				while (IS_LEX_AT_LEAST_SPECIAL(*ep)) ep++;

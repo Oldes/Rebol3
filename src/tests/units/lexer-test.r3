@@ -99,6 +99,30 @@ Rebol [
 
 ===end-group===
 
+===start-group=== "Pair in path"
+	--test-- "pair in get path"
+		--assert path? p: transcode/one "img/1x1"
+		--assert 1x1 = pick p 2
+		--assert path? p: transcode/one "img/1x1/4"
+		--assert [img 1x1 4] = to block! p
+	--test-- "pair in set-path"
+		--assert set-path? p: transcode/one "img/1x1:"
+		--assert 1x1 = pick p 2
+		--assert set-path? p: transcode/one "img/-1x2:"
+		--assert -1x2 = pick p 2
+		--assert set-path? p: transcode/one "img/1.5x2:"
+		--assert 1.5x2 = pick p 2
+		--assert [a/1x1: 2] = transcode "a/1x1: 2"
+	--test-- "invalid pair in set-path"
+		--assert error? try [transcode/one "img/1x:"]
+		--assert error? try [transcode/one "img/1-1-2000:"]
+	--test-- "image pixel set-path"
+		img: make image! 3x3
+		img/2x2: 1.2.3.4
+		--assert 1.2.3.4 = pick img 2x2
+		--assert img/2x2 = img/(2x2)
+===end-group===
+
 
 ===start-group=== "Special cases with < char"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1903
