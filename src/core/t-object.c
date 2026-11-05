@@ -246,6 +246,9 @@ static REBSER *Trim_Object(REBSER *obj)
 	}
 
 	nobj = Make_Frame(cnt);
+	// Keep the spec (module header) and the SELF word (selfless frames):
+	VAL_FRM_SPEC(FRM_VALUES(nobj)) = VAL_FRM_SPEC(FRM_VALUES(obj));
+	*FRM_WORDS(nobj) = *FRM_WORDS(obj);
 	nval = FRM_VALUES(nobj)+1;
 	word = FRM_WORDS(obj)+1;
 	nwrd = FRM_WORDS(nobj)+1;
@@ -609,9 +612,17 @@ reflect:
 
 	case A_TRIM:
 		if (Find_Refines(ds, ALL_TRIM_REFS)) Trap0(RE_BAD_REFINES); // none allowed
-		type = VAL_TYPE(value);
+		if (THROWN(value)) Trap0(RE_THROW_USAGE); // has no frame
 		obj = Trim_Object(VAL_OBJ_FRAME(value));
-		break;
+		if (IS_MODULE(value)) {
+			// keep the module type and body (spec is kept by Trim_Object)
+			VAL_OBJ_FRAME(value) = obj;
+			break; // returns value
+		}
+		// An error frame has a fixed layout (accessed as ERROR_OBJ),
+		// so a trimmed error can only be an object:
+		type = IS_ERROR(value) ? REB_OBJECT : VAL_TYPE(value);
+		break; // returns obj
 
 	case A_TAILQ:
 		if (IS_OBJECT(value)) {

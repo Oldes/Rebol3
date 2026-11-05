@@ -183,6 +183,27 @@ Rebol [
 ===end-group===
 
 
+===start-group=== "TRIM on object/module/error"
+	--test-- "trim object"
+		o: make object! [a: 1 b: none c: 3]
+		t: trim o
+		--assert object? t
+		--assert [a c] = words-of t
+	--test-- "trim module keeps type and spec"
+		m: module [title: "Trim test"] [a: 1 b: none]
+		t: trim m
+		--assert module? t
+		--assert "Trim test" = title-of t
+		--assert t/a = 1
+		--assert none? in t 'b
+	--test-- "trim error returns object"
+		e: try [1 / 0]
+		t: trim e
+		--assert object? t
+		--assert t/id = 'zero-divide
+===end-group===
+
+
 ===start-group=== "RESOLVE object"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1107
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1108
