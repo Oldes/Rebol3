@@ -215,6 +215,13 @@ system/schemes/http/spec/timeout: 30
 		a: try [write p [GET]]
 		b: try [write p [GET]]
 		--assert all [string? a  string? b  a <> b]
+
+	--test-- "Range header not reused by a later read on the same port"
+		p: make port! http://example.com
+		a: try [read/part p 15]
+		b: try [read p]
+		--assert a == "<!doctype html>"
+		--assert all [string? b  15 < length? b]
 ===end-group===
 
 ===start-group=== "HTTP scheme - Successful responses"

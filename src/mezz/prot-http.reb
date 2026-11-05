@@ -855,11 +855,15 @@ sys/make-scheme [
 			if lib/all [port/state  not any-function? :port/awake  not open? port][port/state: none]
 			unless port/state [open port port/state/close?: yes]
 
-			if lib/all [any [part seek] not string] [
+			either lib/all [any [part seek] not string] [
 				either seek [ binary: true assert [index >= 0]][ index: 0 ]
 				length: either part [ assert [length > 0] length + index][ none ]
 				put port/spec/headers quote Range: ajoin ["bytes=" index #"-" any [lib/all [length length - 1] ""]]
+			][
+				;; don't reuse a Range header from a previous partial read on this port
+				if select port/spec/headers 'Range [put port/spec/headers quote Range: none]
 			]
+
 			either any-function? :port/awake [
 				unless open? port [cause-error 'Access 'not-open port/spec/ref]
 				if port/state/state <> 'ready [throw-http-error port "Port not ready"]
