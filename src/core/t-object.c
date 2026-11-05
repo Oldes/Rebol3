@@ -98,7 +98,12 @@ static REBOOL Same_Object(REBVAL *val, REBVAL *arg)
 			h2 = VAL_HIDDEN(BLK_SKIP(w2, n)) ? TRUE : FALSE;
 			if (h1 != h2) return FALSE;
 			if (h1) continue; // hidden in both, skip it
-			if (Cmp_Value_Loop(BLK_SKIP(w1, n), BLK_SKIP(w2, n), is_case, &node)) return FALSE;
+			// Compare word symbols only; the word type in a word list
+			// (word or set-word) depends on how the frame was created.
+			if (is_case
+				? VAL_BIND_SYM(BLK_SKIP(w1, n)) != VAL_BIND_SYM(BLK_SKIP(w2, n))
+				: VAL_BIND_CANON(BLK_SKIP(w1, n)) != VAL_BIND_CANON(BLK_SKIP(w2, n))
+			) return FALSE;
 		}
 		if (Cmp_Value_Loop(BLK_SKIP(f1, n), BLK_SKIP(f2, n), is_case, &node)) return FALSE;
 	}

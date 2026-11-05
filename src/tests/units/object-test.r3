@@ -224,6 +224,22 @@ Rebol [
 ===end-group===
 
 
+===start-group=== "Object equality of words"
+	--test-- "objects created differently"
+		o1: make object! [a: 1]
+		o2: append make object! [] [a: 1]
+		o3: make object! #[a: 1]
+		--assert equal? o1 o2
+		--assert strict-equal? o1 o2
+		--assert strict-equal? o1 o3
+	--test-- "word case"
+		o1: make object! [a: 1]
+		o2: make object! [A: 1]
+		--assert equal? o1 o2
+		--assert not strict-equal? o1 o2
+===end-group===
+
+
 ===start-group=== "TRIM on object/module/error"
 	--test-- "trim object"
 		o: make object! [a: 1 b: none c: 3]
