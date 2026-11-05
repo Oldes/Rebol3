@@ -418,7 +418,9 @@
 	}
 
 	// A new key: expand the hash table first, if needed
-	// (only here, so reads and updates of existing keys never reallocate it)
+	// (only here, so reads and updates of existing keys never reallocate it).
+	// Note: series->tail is 2x number of keys, so the load is kept below 25%;
+	// a higher load saves some memory, but makes string keys much slower.
 	if (series->tail > hser->tail/2) {
 		Expand_Hash(hser); // modifies size value
 		Rehash_Hash(series);
