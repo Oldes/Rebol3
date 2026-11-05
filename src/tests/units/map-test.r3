@@ -411,6 +411,20 @@ Rebol [
 		m: make map! [a 1 b 2]
 		o: make object! m
 		--assert [a b] = words-of o
+
+	--test-- "clear on hashed map"
+		m: make map! []
+		repeat i 100 [put m i i]
+		clear m
+		--assert 0 = length? m
+		--assert none? select m 1
+		repeat i 100 [put m i i * 2]
+		--assert 100 = length? m
+		--assert 200 = select m 100
+		--assert none? select m 101
+		remove/key m 50
+		--assert none? find m 50
+		--assert 99 = length? m
 ===end-group===
 
 

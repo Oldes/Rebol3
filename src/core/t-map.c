@@ -750,7 +750,9 @@ new_entry:
 	}
 	case A_CLEAR:
 		Clear_Series(series);
-		if (series->series) Clear_Series(series->series);
+		// Drop the hash table (Clear_Series would reset its prime size to zero);
+		// the map uses linear search again until it grows above MIN_DICT.
+		series->series = NULL;
 		Set_Series(REB_MAP, D_RET, series);
 		break;
 
