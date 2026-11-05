@@ -554,8 +554,6 @@ do-redirect: func [port [port!] new-uri [url! string! file!] /local spec state h
 		new-uri: decode-url as url! ajoin [spec/scheme "://" spec/host #":" spec/port new-uri]
 	]
 
-	spec/headers/host: new-uri/host
-
 	unless select new-uri 'port [
 		switch new-uri/scheme [
 			'https [append new-uri [port: 443]]
@@ -581,6 +579,8 @@ do-redirect: func [port [port!] new-uri [url! string! file!] /local spec state h
 
 	; store original request headers
 	headers: make map! spec/headers
+	; Host must be recomputed for the new target (including a non-default port)
+	remove/key headers 'Host
 
 	; Do not forward origin credentials to another origin
 	unless same-origin? [

@@ -196,6 +196,45 @@ system/schemes/http/spec/timeout: 30
 		p: make port! http://httpbin.org/redirect-to?url=https://httpbin.org/get
 		--assert string? try [read p]
 		--assert not open? p
+
+	--test-- "redirect keeps non-default port in Host header"
+		srv: open tcp://:8123
+		srv/awake: func [event /local client][
+			if event/type = 'accept [
+				client: first event/port
+				client/awake: func [event /local p req host][
+					p: event/port
+					switch event/type [
+						read [
+							req: to string! p/data
+							either find req "^M^/^M^/" [
+								host: none
+								parse req [thru "^/Host: " copy host to "^M" to end]
+								write p to binary! either find req "GET /echo" [
+									ajoin [
+										"HTTP/1.1 200 OK^M^/Content-Type: text/plain^M^/"
+										"Content-Length: " length? host "^M^/Connection: close^M^/^M^/" host
+									]
+								][
+									{HTTP/1.1 302 Found^M^/Location: http://127.0.0.1:8123/echo^M^/Content-Length: 0^M^/Connection: close^M^/^M^/}
+								]
+							][	read p ]
+						]
+						wrote [close p]
+					]
+					false
+				]
+				read client
+			]
+			false
+		]
+		saved: system/options/http-redirects
+		system/options/http-redirects: 5
+		r: try [read http://127.0.0.1:8123/]
+		system/options/http-redirects: saved
+		close srv
+		--assert r == "127.0.0.1:8123"
+		
 	--test-- "redirect http"
 		--assert all [ ;= Multiple Choices
 			block? res: try [read/all http://httpbin.org/status/300]
