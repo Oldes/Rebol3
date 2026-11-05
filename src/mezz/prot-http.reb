@@ -600,8 +600,9 @@ do-redirect: func [port [port!] new-uri [url! string! file!] /local spec state h
 	port/spec: new-uri
 	port/state: none
 	open port
-	; keep the redirection counter across connections
+	; keep the redirection counter and close request across connections
 	port/state/redirects: state/redirects
+	port/state/close?:    state/close?
 	; restore original request headers
 	port/spec/headers: headers
 	port

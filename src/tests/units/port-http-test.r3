@@ -191,6 +191,11 @@ system/schemes/http/spec/timeout: 30
 		r: try [read http://httpbin.org/redirect/3]
 		system/options/http-redirects: saved
 		--assert string? r
+	--test-- "port closed after sync read with redirect"
+		;; redirect to a different origin forces a new connection
+		p: make port! http://httpbin.org/redirect-to?url=https://httpbin.org/get
+		--assert string? try [read p]
+		--assert not open? p
 	--test-- "redirect http"
 		--assert all [ ;= Multiple Choices
 			block? res: try [read/all http://httpbin.org/status/300]
