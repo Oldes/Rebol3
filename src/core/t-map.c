@@ -396,12 +396,6 @@
 		series->series = hser = Make_Hash_Array(series->tail);
 		Rehash_Hash(series);
 	}
-	// Get hash table, expand it if needed:
-	if (series->tail > hser->tail/2) {
-		Expand_Hash(hser); // modifies size value
-		Rehash_Hash(series);
-	}
-
 	hash = Find_Key(series, hser, key, 2, cased, 0);
 	hashes = (REBCNT*)hser->data;
 	n = hashes[hash];
@@ -421,6 +415,15 @@
 		VAL_CLR_OPT(set++, OPTS_HIDE);  // clear HIDE flag in case it was removed key; change to value position
 		*set = *val;                    // set the value
 		return n+1;                     // index of the value
+	}
+
+	// A new key: expand the hash table first, if needed
+	// (only here, so reads and updates of existing keys never reallocate it)
+	if (series->tail > hser->tail/2) {
+		Expand_Hash(hser); // modifies size value
+		Rehash_Hash(series);
+		hash = Find_Key(series, hser, key, 2, cased, 0); // free slot for the new key
+		hashes = (REBCNT*)hser->data;
 	}
 new_entry:
 	// Create new entry:

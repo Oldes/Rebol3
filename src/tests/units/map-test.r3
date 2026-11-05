@@ -107,6 +107,22 @@ Rebol [
 		--assert 1 = select/case m 'w1
 		--assert -1 = select/case m 'W1
 		--assert 201 = length? m
+
+	--test-- "map hash table grows only on insert"
+		m: make map! []
+		repeat i 100 [put m i i]
+		protect m
+		repeat i 200 [select m i]  ;; reads on a protected map
+		--assert 100 = select m 100
+		--assert none? select m 101
+		unprotect m
+		repeat i 100 [put m i i * 2]   ;; updates of existing keys
+		--assert 200 = select m 100
+		--assert 100 = length? m
+		repeat i 1000 [put m i + 100 i]   ;; inserts with expansion
+		--assert 1100 = length? m
+		--assert 1000 = select m 1100
+		--assert 200 = select m 100
 ===end-group===
 
 ===start-group=== "APPEND on map!"
