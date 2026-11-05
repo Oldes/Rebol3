@@ -201,6 +201,27 @@ Rebol [
 ===end-group===
 
 
+===start-group=== "APPEND on object - binding table after error"
+	--test-- "locked word error with new words collected"
+		o: make object! [a: 1 b: 2]
+		protect in o 'b
+		--assert error? try [append o [x: 1 y: 2 b: 3]]
+		o2: make object! [x: 10 y: 20]
+		--assert [x y] = words-of o2
+		--assert o2/y = 20
+		unprotect in o 'b
+		append o [x: 5]
+		--assert o/x = 5
+		--assert 3 = length? o
+	--test-- "invalid key error with new words collected"
+		o: make object! [a: 1]
+		--assert error? try [append o [x: 1 2 3]]
+		--assert 1 = length? o
+		append o [x: 1]
+		--assert o/x = 1
+===end-group===
+
+
 ===start-group=== "Object equality with shared word list"
 	--test-- "copy equal / not equal"
 		o: make object! [a: 1 b: "x"]

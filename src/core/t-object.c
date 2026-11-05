@@ -149,6 +149,20 @@ static void Extend_Obj(REBSER *obj, REBVAL *key, REBVAL *value)
 		Trap_Arg(key);
 	}
 }
+static void Collect_Abort(void)
+/*
+**		Release the binding table and BUF_WORDS after an error during
+**		word collection. Unlike Collect_End, no word list is copied.
+*/
+{
+	REBINT *binds = WORDS_HEAD(Bind_Table);
+	REBVAL *words;
+
+	BLK_TERM(BUF_WORDS);
+	for (words = BLK_HEAD(BUF_WORDS); NOT_END(words); words++)
+		binds[VAL_WORD_CANON(words)] = 0;
+	RESET_TAIL(BUF_WORDS);  // allow reuse
+}
 static void Append_Obj(REBSER *obj, REBVAL *arg, REBCNT part)
 {
 	REBCNT i, n, len;
@@ -182,18 +196,14 @@ static void Append_Obj(REBSER *obj, REBVAL *arg, REBCNT part)
 	for (word = arg, n = 0; n < part && NOT_END(word); word += 2, n++) {
 
 		if (!IS_WORD(word) && !IS_SET_WORD(word)) {
-			// release binding table
-			BLK_TERM(BUF_WORDS);
-			Collect_End(obj);
+			Collect_Abort();
 			Trap_Arg(word);
 		}
 
 		if (NZ(i = binds[VAL_WORD_CANON(word)])) {
 			// bug fix, 'self is protected only in selfish frames:
 			if ((VAL_WORD_CANON(word) == SYM_SELF) && !IS_SELFLESS(obj)) {
-				// release binding table
-				BLK_TERM(BUF_WORDS);
-				Collect_End(obj);
+				Collect_Abort();
 				Trap0(RE_SELF_PROTECTED);
 			}
 			// Word already in the object (not one collected from this block),
@@ -202,9 +212,7 @@ static void Append_Obj(REBSER *obj, REBVAL *arg, REBCNT part)
 				&& GET_FLAGS(VAL_OPTS(FRM_WORD(obj, i)), OPTS_HIDE, OPTS_LOCK)
 			) {
 				locked = VAL_PROTECTED(FRM_WORD(obj, i));
-				// release binding table
-				BLK_TERM(BUF_WORDS);
-				Collect_End(obj);
+				Collect_Abort();
 				if (locked) Trap1(RE_LOCKED_WORD, word);
 				Trap0(RE_HIDDEN);
 			}
