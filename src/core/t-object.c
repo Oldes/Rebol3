@@ -142,6 +142,7 @@ static void Append_Obj(REBSER *obj, REBVAL *arg, REBCNT part)
 	REBCNT i, n, len;
 	REBVAL *word, *val;
 	REBINT *binds; // for binding table
+	REBFLG locked;
 
 	// Can be a word:
 	if (ANY_WORD(arg)) {
@@ -163,7 +164,9 @@ static void Append_Obj(REBSER *obj, REBVAL *arg, REBCNT part)
 
 	part >>= 1; // part must be number of key/value pairs
 
-	// Examine word/value argument block
+	// Examine word/value argument block.
+	// All checks are done here, before the object is modified,
+	// so an error does not leave the object partially updated.
 	for (word = arg, n = 0; n < part && NOT_END(word); word += 2, n++) {
 
 		if (!IS_WORD(word) && !IS_SET_WORD(word)) {
@@ -180,6 +183,18 @@ static void Append_Obj(REBSER *obj, REBVAL *arg, REBCNT part)
 				BLK_TERM(BUF_WORDS);
 				Collect_End(obj);
 				Trap0(RE_SELF_PROTECTED);
+			}
+			// Word already in the object (not one collected from this block),
+			// check whether it may be modified:
+			if (i < SERIES_TAIL(obj)
+				&& GET_FLAGS(VAL_OPTS(FRM_WORD(obj, i)), OPTS_HIDE, OPTS_LOCK)
+			) {
+				locked = VAL_PROTECTED(FRM_WORD(obj, i));
+				// release binding table
+				BLK_TERM(BUF_WORDS);
+				Collect_End(obj);
+				if (locked) Trap1(RE_LOCKED_WORD, word);
+				Trap0(RE_HIDDEN);
 			}
 		} else {
 			// collect the word
@@ -199,18 +214,11 @@ static void Append_Obj(REBSER *obj, REBVAL *arg, REBCNT part)
 	for (word = BLK_SKIP(BUF_WORDS, len); NOT_END(word); word++)
 		Append_Frame(obj, 0, VAL_WORD_SYM(word));
 
-	// Set new values to obj words
+	// Set new values to obj words (already validated above)
 	for (word = arg, n = 0; n < part && NOT_END(word); word += 2, n++) {
 
 		i = binds[VAL_WORD_CANON(word)];
 		val = FRM_VALUE(obj, i);
-		if (GET_FLAGS(VAL_OPTS(FRM_WORD(obj, i)), OPTS_HIDE, OPTS_LOCK)) { 
-			// release binding table
-			Collect_End(obj);
-			if (VAL_PROTECTED(FRM_WORD(obj, i)))
-				Trap1(RE_LOCKED_WORD, FRM_WORD(obj, i));
-			Trap0(RE_HIDDEN);
-		}
 
 		if (IS_END(word + 1)) SET_UNSET(val);
 		else *val = word[1];

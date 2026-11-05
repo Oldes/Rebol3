@@ -136,6 +136,32 @@ Rebol [
 			[:arg1] = spec: system/catalog/errors/(e/type)/(e/id)
 			["foo"] = reduce bind system/catalog/errors/(e/type)/(e/id) e
 		]
+
+	--test-- "append with protected word leaves object unchanged"
+		o: make object! [a: 1 b: 2]
+		protect in o 'b
+		--assert all [
+			error? e: try [append o [a: 10 c: 3 b: 20]]
+			e/id = 'locked-word
+		]
+		--assert o/a = 1
+		--assert o/b = 2
+		--assert 2 = length? o
+		--assert none? in o 'c
+	--test-- "append with hidden word leaves object unchanged"
+		o: make object! [a: 1 h: 2]
+		protect/hide in o 'h
+		--assert all [
+			error? e: try [append o [a: 10 h: 3 c: 4]]
+			e/id = 'hidden
+		]
+		--assert o/a = 1
+		--assert 2 = length? o
+	--test-- "append with duplicate new word still works"
+		o: make object! [a: 1]
+		append o [c: 3 c: 4]
+		--assert o/c = 4
+		--assert 2 = length? o
 ===end-group===
 
 
