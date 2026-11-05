@@ -329,6 +329,17 @@ Rebol [
 		--assert a = b
 		--assert equal? a b
 		--assert not same? a b
+
+	--test-- "compare objects with circular references"
+		o1: object [a: 1 ref: none]  o1/ref: o1
+		o2: object [a: 1 ref: none]  o2/ref: o2
+		o3: object [a: 2 ref: none]  o3/ref: o3
+		--assert o1 = o2
+		--assert o1 <> o3
+		a: object [x: 1 p: none]  b: object [x: 1 p: none]
+		a/p: b  b/p: a
+		--assert a = b
+		--assert did find reduce [o3 o1] o2
 ===end-group===
 
 

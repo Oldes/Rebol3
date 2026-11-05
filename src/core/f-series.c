@@ -428,7 +428,7 @@ chkMoney:
 	case REB_MODULE:
 	case REB_PORT:
 		//return VAL_OBJ_FRAME(s) - VAL_OBJ_FRAME(t); // strict variant
-		return !CT_Object(s, t, 1); // equality used
+		return !Equal_Object_Loop(s, t, FALSE, loop); // equality used
 
 	case REB_NATIVE:
 		return THE_SIGN(&VAL_FUNC_CODE(s) - &VAL_FUNC_CODE(t));

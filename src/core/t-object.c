@@ -41,13 +41,22 @@ static REBOOL Same_Object(REBVAL *val, REBVAL *arg)
 }
 
 
-static REBOOL Equal_Object(REBVAL *val, REBVAL *arg, REBFLG is_case)
+/***********************************************************************
+**
+*/	REBFLG Equal_Object_Loop(REBVAL *val, REBVAL *arg, REBFLG is_case, REB_CMP_LOOP *loop)
+/*
+**		Compare objects field by field.
+**		A pair of frames already being compared (circular reference)
+**		is considered equal.
+**
+***********************************************************************/
 {
 	REBSER *f1;
 	REBSER *f2;
 	REBSER *w1;
 	REBSER *w2;
 	REBINT n;
+	REB_CMP_LOOP node, *l;
 
 	if (VAL_TYPE(arg) != VAL_TYPE(val)) return FALSE;
 
@@ -60,18 +69,35 @@ static REBOOL Equal_Object(REBVAL *val, REBVAL *arg, REBFLG is_case)
 	w2 = FRM_WORD_SERIES(f2);
 	if (w1->tail != w2->tail) return FALSE;
 
+	// Circular reference: this pair of frames is already being compared
+	for (l = loop; l; l = l->prev) {
+		if ((l->a == f1 && l->b == f2) || (l->a == f2 && l->b == f1))
+			return TRUE;
+	}
+
+	CHECK_STACK(&n);
+
+	node.a  = f1;
+	node.b  = f2;
+	node.ai = node.bi = 0;
+	node.prev = loop;
+
 	// Compare each entry:
 	for (n = 1; n < (REBINT)(f1->tail); n++) {
 		if (VAL_HIDDEN(BLK_SKIP(w1, n))) return VAL_HIDDEN(BLK_SKIP(w2, n));
 		if (VAL_HIDDEN(BLK_SKIP(w2, n))) return VAL_HIDDEN(BLK_SKIP(w1, n));
-		if (Cmp_Value(BLK_SKIP(w1, n), BLK_SKIP(w2, n), is_case)) return FALSE;
-		// Use Compare_Values();
-		if (Cmp_Value(BLK_SKIP(f1, n), BLK_SKIP(f2, n), is_case)) return FALSE;
+		if (Cmp_Value_Loop(BLK_SKIP(w1, n), BLK_SKIP(w2, n), is_case, &node)) return FALSE;
+		if (Cmp_Value_Loop(BLK_SKIP(f1, n), BLK_SKIP(f2, n), is_case, &node)) return FALSE;
 	}
 
 	return TRUE;
 }
 
+
+static REBOOL Equal_Object(REBVAL *val, REBVAL *arg, REBFLG is_case)
+{
+	return Equal_Object_Loop(val, arg, is_case, NULL);
+}
 static void Extend_Obj(REBSER *obj, REBVAL *key, REBVAL *value)
 {
 	REBCNT index;
