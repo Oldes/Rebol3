@@ -167,6 +167,15 @@ Rebol [
 		--assert 20000 = length? m
 		--assert 1 = select m #"^(4E00)"
 
+	--test-- "hash of datatype!"
+		--assert (hash integer!) = hash integer!
+		--assert (hash integer!) <> hash string!
+		--assert [integer! string!] = unique [integer! string! integer! string!]
+		m: make map! []
+		foreach t [integer! decimal! string! block! map!] [put m get t form t]
+		--assert "string!" = select m string!
+		--assert none? select m char!
+
 	--test-- "murmur3 reference vectors"
 		--assert 0          = hash #{}
 		--assert 1009084850 = hash #{61}                     ;; "a"    0x3c2569b2

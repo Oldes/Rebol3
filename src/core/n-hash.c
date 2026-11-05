@@ -163,7 +163,7 @@ FORCE_INLINE
 	}
 
 	case REB_DATATYPE:
-		return CRC_Word(Get_Sym_Name(VAL_DATATYPE(val) + 1), UNKNOWN);
+		return fmix32(VAL_DATATYPE(val) + 1); // no need to compute CRC of the type's name
 
 //	case REB_HANDLE:
 //		return (REBCNT)VAL_HANDLE_I32(val); //TODO: this is not valid for context handles!
