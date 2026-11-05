@@ -37,3 +37,12 @@ FORCE_INLINE REBCNT fmix32(REBCNT h) {
     h ^= h >> 16;
     return h;
 }
+
+//-----------------------------------------------------------------------------
+// Quadratic probing - the same sequence as Hash_Probe: (hash + i + 3*i*i) % len,
+// but computed incrementally without divisions (the step between probes is 6*i+4).
+// Hash tables are always at least 251 slots long, so a single subtraction is enough.
+#define PROBE_START(slot, step, hash, len) ((slot) = (hash) % (len), (step) = 4 % (len))
+#define PROBE_NEXT(slot, step, len) ( \
+    (slot) += (step), (slot) -= ((slot) >= (len)) ? (len) : 0, \
+    (step) += 6,      (step) -= ((step) >= (len)) ? (len) : 0)

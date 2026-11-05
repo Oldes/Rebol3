@@ -100,7 +100,9 @@ FORCE_INLINE
 ***********************************************************************/
 {
 	//return ((hash % len) + idx) % len; // linear
-	return ((hash % len) + 1 * idx + 3 * idx * idx) % len; // quadratric
+	// computed in 64 bits, so the sequence is exact (same as the incremental
+	// PROBE_START/PROBE_NEXT macros in sys-hash.h)
+	return (REBCNT)(((REBU64)(hash % len) + idx + 3 * (REBU64)idx * idx) % len); // quadratic
 	//return ((hash % len) + idx * (1 + (hash % (len - 1)))) % len; // double hashing
 }
 

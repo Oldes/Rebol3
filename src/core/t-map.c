@@ -53,6 +53,7 @@
 */
 
 #include "sys-core.h"
+#include "sys-hash.h"
 
 // Use following define to speed map creation a little bit as the key words
 // will not be normalized to set-words and or words when using words-of
@@ -211,6 +212,7 @@
 	REBCNT n;
 	REBVAL *val;
 	REBCNT i;
+	REBCNT step;
 
 	if (!hser) {
 		// If there are no hashes for the keys, use plain linear search...
@@ -233,8 +235,7 @@
 		hashed = Hash_Value(key);
 
 		if (ANY_WORD(key)) {
-			for(i = 0; i < len; i++) {
-				hash = Hash_Probe(hashed, i, len);
+			for (PROBE_START(hash, step, hashed, len), i = 0; i < len; i++, PROBE_NEXT(hash, step, len)) {
 				n = hashes[hash];
 				if (!n) break;
 				val = BLK_SKIP(series, (n - 1) * wide);
@@ -251,8 +252,7 @@
 		}
 		else if (ANY_BINSTR(key)) {
 			cased = !(IS_BINARY(key) || cased);
-			for (i = 0; i < len; i++) {
-				hash = Hash_Probe(hashed, i, len);
+			for (PROBE_START(hash, step, hashed, len), i = 0; i < len; i++, PROBE_NEXT(hash, step, len)) {
 				n = hashes[hash];
 				if (!n) break;
 				val = BLK_SKIP(series, (n - 1) * wide);
@@ -264,8 +264,7 @@
 			}
 		}
 		else {
-			for (i = 0; i < len; i++) {
-				hash = Hash_Probe(hashed, i, len);
+			for (PROBE_START(hash, step, hashed, len), i = 0; i < len; i++, PROBE_NEXT(hash, step, len)) {
 				n = hashes[hash];
 				if (!n) break;
 				val = BLK_SKIP(series, (n - 1) * wide);
@@ -301,7 +300,7 @@
 ***********************************************************************/
 {
 	REBVAL *val;
-	REBCNT n, i, len, hashed;
+	REBCNT n, i, len, hashed, step;
 	REBCNT slot = 0;
 	REBCNT *hashes;
 	REBSER *hser = series->series;
@@ -314,8 +313,7 @@
 	val = BLK_HEAD(series);
 	for (n = 0; n < series->tail; n += 2, val += 2) {
 		hashed = Hash_Value(val);
-		for (i = 0; i < len; i++) {
-			slot = Hash_Probe(hashed, i, len);
+		for (PROBE_START(slot, step, hashed, len), i = 0; i < len; i++, PROBE_NEXT(slot, step, len)) {
 			if (!hashes[slot]) break;
 		}
 		hashes[slot] = n/2+1;
