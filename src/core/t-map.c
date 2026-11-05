@@ -600,6 +600,14 @@ new_entry:
 {
 	REBSER *ser = 0;
 	REBCNT size = SERIES_TAIL(blk);
+	REBCNT n;
+	REBVAL *key;
+
+	// Keys are hashed, so string keys must not be modifiable (like in Find_Entry)
+	for (n = 0; n < size; n += 2) {
+		key = BLK_SKIP(blk, n);
+		if (ANY_BINSTR(key)) PROTECT_SERIES(VAL_SERIES(key));
+	}
 
 	ser = Make_Hash_Array(size);
 	blk->series = ser;

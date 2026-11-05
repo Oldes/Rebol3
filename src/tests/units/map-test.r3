@@ -425,6 +425,13 @@ Rebol [
 		remove/key m 50
 		--assert none? find m 50
 		--assert 99 = length? m
+
+	--test-- "list-env map keys are protected"
+		e: list-env
+		--assert map? e
+		k: first words-of e
+		--assert error? try [append k "x"]
+		--assert string? select e k
 ===end-group===
 
 
