@@ -1099,7 +1099,7 @@ with cookies-rules: context [
 			1 < index? pos
 		][	to string! copy/part request-path pos ][ "/" ]
 
-		foreach line to block! data [
+		foreach line either string? data [reduce [data]][data] [
 			Expires: domain: path: max-age: none
 			attr: parse line [
 				copy c-name:  =cookie-name #"="

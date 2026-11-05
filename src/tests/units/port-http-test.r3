@@ -665,6 +665,10 @@ system/schemes/http/spec/timeout: 30
 		--assert none? get-cookies "path-test2.example" "/other"
 		set-cookies/from "path-test3.example" ["c=3"] "/login"
 		--assert "c=3" == get-cookies "path-test3.example" "/anything"
+
+	--test-- "set-cookies with a single string"
+		set-cookies "string-test.example" "s=1; Path=/"
+		--assert "s=1" == get-cookies "string-test.example" "/"
 ===end-group===
 
 ~~~end-file~~~
