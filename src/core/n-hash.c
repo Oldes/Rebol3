@@ -130,6 +130,7 @@ FORCE_INLINE
 
 	case REB_INTEGER:
 	case REB_DECIMAL: // depends on INT64 sharing the DEC64 bits
+	case REB_PERCENT:
 		return fmix32((REBCNT)(VAL_INT64(val) >> 32) ^ ((REBCNT)VAL_INT64(val)));
 
 	case REB_CHAR: // hashed always as lowercased

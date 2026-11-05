@@ -136,6 +136,15 @@ Rebol [
 		m: make map! []
 		put m b 1
 		--assert 1 = select m b
+
+	--test-- "map with percent keys"
+		m: make map! []
+		print ["percent put:" dt [repeat i 20000 [put m to percent! i i]]]
+		--assert 20000 = length? m
+		--assert   1 = select m 100%
+		--assert 200 = select m 20000%
+		--assert none? select m 1
+		--assert (hash 50%) <> hash 51%
 ===end-group===
 
 ===start-group=== "APPEND on map!"
