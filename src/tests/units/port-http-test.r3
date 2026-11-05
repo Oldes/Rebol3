@@ -126,6 +126,34 @@ system/schemes/http/spec/timeout: 30
 			e/id = 'Protocol
 			did find/match e/arg1 "Invalid status line"
 		]
+	--test-- "interim 1xx response followed by final response in one packet"
+		srv: open tcp://:8125
+		srv/awake: func [event /local client][
+			if event/type = 'accept [
+				client: first event/port
+				client/awake: func [event /local p][
+					p: event/port
+					switch event/type [
+						read [
+							either find p/data #{0D0A0D0A} [
+								write p to binary! ajoin [
+									"HTTP/1.1 100 Continue^M^/^M^/"
+									"HTTP/1.1 200 OK^M^/Content-Type: text/plain^M^/"
+									"Content-Length: 2^M^/Connection: close^M^/^M^/ok"
+								]
+							][	read p ]
+						]
+						wrote [close p]
+					]
+					false
+				]
+				read client
+			]
+			false
+		]
+		r: try [read http://127.0.0.1:8125/]
+		close srv
+		--assert r == "ok"
 ===end-group===
 
 ===start-group=== "HTTP scheme - Successful responses"

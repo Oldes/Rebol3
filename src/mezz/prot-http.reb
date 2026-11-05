@@ -472,7 +472,8 @@ check-response: func [port /local conn res headers d1 d2 line info state awake s
 		code < 200 [ ;= Information responses
 			info/headers: info/response-line: info/status-code: port/data: none
 			state/state: 'reading-headers
-			read conn
+			;; the final response may already be buffered after the interim one
+			either empty? conn/data [read conn][res: check-response port]
 		]
 		find [204 304] code [ ;= No Content | Not Modified
 			state/state: 'ready
