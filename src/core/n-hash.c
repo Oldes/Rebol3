@@ -143,7 +143,13 @@ FORCE_INLINE
 	case REB_TIME:
 	case REB_DATE:
 		ret = (REBCNT)(VAL_TIME(val) ^ (VAL_TIME(val) / SEC_SEC));
-		if (IS_DATE(val)) ret ^= VAL_DATE(val).bits;
+		if (IS_DATE(val)) {
+			// Dates are stored in UTC and compared without the zone,
+			// so the zone must not be part of the hash
+			REBDAT date = VAL_DATE(val);
+			date.date.zone = 0;
+			ret ^= date.bits;
+		}
 		return ret;
 
 	case REB_TUPLE:

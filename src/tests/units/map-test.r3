@@ -176,6 +176,16 @@ Rebol [
 		--assert "string!" = select m string!
 		--assert none? select m char!
 
+	--test-- "hash of date! ignores zone"
+		d1: 1-Jan-2020/10:00+1:00
+		d2: 1-Jan-2020/9:00
+		--assert d1 = d2
+		--assert (hash d1) = hash d2
+		m: make map! []
+		repeat i 100 [put m i i]   ;; force the hash table
+		put m d1 1
+		--assert 1 = select m d2
+
 	--test-- "murmur3 reference vectors"
 		--assert 0          = hash #{}
 		--assert 1009084850 = hash #{61}                     ;; "a"    0x3c2569b2
