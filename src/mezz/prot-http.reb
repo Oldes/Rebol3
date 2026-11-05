@@ -30,6 +30,7 @@ REBOL [
 ]
 
 sync-op: func [port body /local header state][
+	if all [port/state  not open? port][port/state: none]
 	unless port/state [open port port/state/close?: yes]
 	state: port/state
 	state/awake: :read-sync-awake
@@ -850,6 +851,8 @@ sys/make-scheme [
 			]
 			if lib/all [string binary] [cause-error 'Script 'bad-refines none]
 
+			;; a closed port from a previous sync operation must be reopened
+			if lib/all [port/state  not any-function? :port/awake  not open? port][port/state: none]
 			unless port/state [open port port/state/close?: yes]
 
 			if lib/all [any [part seek] not string] [

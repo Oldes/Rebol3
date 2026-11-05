@@ -204,6 +204,17 @@ system/schemes/http/spec/timeout: 30
 			e/id = 'Protocol
 		]
 		--assert binary? make-http-request [host: "example.com" headers: [X-Test: "a"]]
+
+	--test-- "repeated read on the same port"
+		p: make port! http://httpbin.org/uuid
+		a: try [read p]
+		b: try [read p]
+		--assert all [string? a  string? b  a <> b]
+	--test-- "repeated write on the same port"
+		p: make port! http://httpbin.org/uuid
+		a: try [write p [GET]]
+		b: try [write p [GET]]
+		--assert all [string? a  string? b  a <> b]
 ===end-group===
 
 ===start-group=== "HTTP scheme - Successful responses"
