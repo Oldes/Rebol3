@@ -6,15 +6,11 @@
 [![Zulip](https://img.shields.io/badge/zulip-join_chat-brightgreen.svg)](https://rebol.zulipchat.com/)
 [![Chocolatey](https://raw.githubusercontent.com/Oldes/media/master/install-from-choco.svg)](https://chocolatey.org/packages/rebol3)
 [![Replit](https://raw.githubusercontent.com/Oldes/media/master/try-on-replit.svg)](https://replit.com/@Oldes/Rebol-3140?v=1)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Oldes/Rebol3)
+[![Ask DeepWiki](https://raw.githubusercontent.com/Oldes/media/refs/heads/master/deepwiki-badge.svg)](https://deepwiki.com/Oldes/Rebol3)
 
 # Rebol [R3] Source Code Distribution
 
 Purpose of this **Rebol fork** is to push [Carl's original source](https://github.com/rebol/rebol) to be at least as usable as Rebol 2 while keeping the source code clean and project easy to build. Use [CHANGES.md](https://github.com/Oldes/Rebol3/blob/master/CHANGES.md) file to see changes made in this branch.
-
-### Issue Reporting
-
-Preferred way to report issues is using the [dedicated issue repository](https://github.com/Oldes/Rebol-issues/issues). It's a fork of the original Rebol issue repository, which was filled with issues from the [CureCode issue tracker](https://www.curecode.org/rebol3/view-tickets.rsp), which was used before Rebol was on Github. I'm not using the original Rebol issue repository, because I was not allowed to even add labels to my own issues. It was later moved under Metaeducation account and is used for Ren-C development anyway.
 
 ### Precompiled Binaries
 
