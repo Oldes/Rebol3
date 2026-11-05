@@ -186,6 +186,16 @@ Rebol [
 		put m d1 1
 		--assert 1 = select m d2
 
+	--test-- "hash of date! without time"
+		--assert 1-Jan-2020 = 1-Jan-2020/0:00
+		--assert (hash 1-Jan-2020) = hash 1-Jan-2020/0:00
+		--assert (hash 1-Jan-2020) = hash 1-Jan-2020/1:00+1:00
+		m: make map! []
+		repeat i 100 [put m i i]   ;; force the hash table
+		put m 1-Jan-2020 1
+		--assert 1 = select m 1-Jan-2020/0:00
+		--assert 1 = select m 1-Jan-2020/1:00+1:00
+
 	--test-- "hash of tuple! ignores trailing zeros"
 		--assert (hash 1.2.3.4.5) = hash 1.2.3.4.5.0
 		--assert (hash 1.2.3.4) = hash 1.2.3.4.0

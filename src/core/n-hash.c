@@ -141,8 +141,11 @@ FORCE_INLINE
 		return VAL_ALL_BITS(val)[0] ^ VAL_ALL_BITS(val)[1] ^ VAL_ALL_BITS(val)[2];
 
 	case REB_TIME:
-	case REB_DATE:
-		ret = (REBCNT)(VAL_TIME(val) ^ (VAL_TIME(val) / SEC_SEC));
+	case REB_DATE: {
+		// Date without time is compared as midnight (see Cmp_Time)
+		REBI64 t = VAL_TIME(val);
+		if (t == NO_TIME) t = 0;
+		ret = (REBCNT)(t ^ (t / SEC_SEC));
 		if (IS_DATE(val)) {
 			// Dates are stored in UTC and compared without the zone,
 			// so the zone must not be part of the hash
@@ -151,6 +154,7 @@ FORCE_INLINE
 			ret ^= date.bits;
 		}
 		return ret;
+	}
 
 	case REB_TUPLE: {
 		// Tuples are compared as zero padded (1.2.3 = 1.2.3.0),
