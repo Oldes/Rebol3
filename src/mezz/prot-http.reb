@@ -262,7 +262,7 @@ escape-query: function/with [
 make-http-request: func [
 	"Create an HTTP request (returns binary!)"
 	spec [block! object!] "Request specification from an opened port"
-	/local method path target query headers content request cookies-to-send
+	/local method path target query headers content request cookies-to-send req-path
 ][
 	method:  any [select spec 'method 'GET]
 	path:    any [select spec 'path    %/]
@@ -278,7 +278,7 @@ make-http-request: func [
 	if :target [append request enhex/uri :target]
 	if :query  [append append request #"?" escape-query :query]
 
-	req-path: either :target [ajoin [path target]][path]
+	req-path: ajoin [path :target]
 	if cookies-to-send: either 'https = select spec 'scheme [
 		get-cookies/secure spec/host req-path
 	][	get-cookies spec/host req-path ][
@@ -738,9 +738,8 @@ check-data: func [port /local headers res data available out chunk-size pos trai
 	res
 ]
 
-decode-result: func[
+decode-result: function/with [
 	result [block!] {[header body]}
-	/local body content-type code-page encoding
 ][
 	if encoding: attempt [to word! result/2/Content-Encoding] [
 		either find system/catalog/compressions encoding [
@@ -761,8 +760,8 @@ decode-result: func[
 			; consider content to be a text if charset specification is included
 			parse content-type [
 				to #";" thru "charset=" [
-					  #"^"" copy code-page to #"^"" to end ; Facebook is using this!
-					| copy code-page to end
+					  #"^"" copy code-page: to #"^"" to end ; Facebook is using this!
+					| copy code-page: some charset-char to end
 				]
 			]
 			; or when it is without charset, but of type text/*
@@ -778,7 +777,7 @@ decode-result: func[
 		]
 	]
 	result
-]
+][	charset-char: complement charset {;" ^-} ]
 
 anonymize: func[
 	;; remove identifying information from data

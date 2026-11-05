@@ -231,6 +231,11 @@ system/schemes/http/spec/timeout: 30
 	--test-- "GET request with Unicode character in query"
 		--assert "hergé at DuckDuckGo" = parse read https://duckduckgo.com/?q=hergé [thru "<title>" return copy title to "<"]
 		--assert "hergé at DuckDuckGo" = parse read https://duckduckgo.com/?q=herg%25C3%25A9 [thru "<title>" return copy title to "<"]
+
+	--test-- "charset followed by other content-type parameters"
+		--assert string? try [
+			read append http://httpbin.org/response-headers? "Content-Type=text/plain%3B charset=utf-8%3B foo=bar"
+		]
 		
 ===end-group===
 
