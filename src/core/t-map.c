@@ -278,23 +278,31 @@
 **
 */	static void Rehash_Hash(REBSER *series)
 /*
-**		Recompute the entire hash table. Table must be large enough.
+**		Recompute the entire hash table. Table must be large enough and empty.
+**		Map keys are unique, so there is no need to compare them,
+**		just find the first free slot for each key.
 **
 ***********************************************************************/
 {
 	REBVAL *val;
-	REBCNT n;
-	REBCNT key;
+	REBCNT n, i, len, hashed;
+	REBCNT slot = 0;
 	REBCNT *hashes;
+	REBSER *hser = series->series;
 
-	if (!series->series) return;
+	if (!hser) return;
 
-	hashes = (REBCNT*)(series->series->data);
+	hashes = (REBCNT*)hser->data;
+	len = hser->tail;
 
 	val = BLK_HEAD(series);
 	for (n = 0; n < series->tail; n += 2, val += 2) {
-		key = Find_Key(series, series->series, val, 2, TRUE, 0);
-		hashes[key] = n/2+1;
+		hashed = Hash_Value(val);
+		for (i = 0; i < len; i++) {
+			slot = Hash_Probe(hashed, i, len);
+			if (!hashes[slot]) break;
+		}
+		hashes[slot] = n/2+1;
 	}
 }
 

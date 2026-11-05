@@ -87,6 +87,26 @@ Rebol [
 		--assert equal? m load mold/all m
 		--assert equal? m load mold m
 
+	--test-- "map rehash"
+		m: make map! []
+		repeat i 1000 [put m append copy "k" i i]
+		--assert 1000 = length? m
+		--assert 1 = select m "K1"
+		--assert 1000 = select m "k1000"
+		repeat i 500 [remove/key m append copy "k" i]
+		repeat i 2000 [put m i i]   ;; more rehashing with removed keys
+		--assert none? select m "k1"
+		--assert 501 = select m "k501"
+		--assert 2000 = select m 2000
+		--assert 2500 = length? m
+		;; keys differing only by case
+		m: make map! []
+		repeat i 100 [put m to word! append copy "w" i i]
+		put/case m 'W1 -1
+		repeat i 100 [put m i i]
+		--assert 1 = select/case m 'w1
+		--assert -1 = select/case m 'W1
+		--assert 201 = length? m
 ===end-group===
 
 ===start-group=== "APPEND on map!"
