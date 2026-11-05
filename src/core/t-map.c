@@ -594,6 +594,7 @@ new_entry:
 */	void Block_As_Map(REBSER *blk)
 /*
 **		Convert existing block to a map.
+**		Keys must be unique (case-sensitively), no deduplication is done!
 **
 ***********************************************************************/
 {
