@@ -534,6 +534,17 @@ Rebol [
 		--assert 20 = length? m
 		--assert 100 = m/("k1")
 
+	--test-- "remove/key on map is case-sensitive"
+		m: make map! ["a" 1 b 2]
+		remove/key m "A"
+		remove/key m 'B
+		--assert 2 = length? m
+		--assert 1 = select m "a"
+		--assert 2 = select m 'b
+		remove/key m "a"
+		remove/key m 'b
+		--assert 0 = length? m
+
 ===end-group===
 
 ===start-group=== "remove-each with map!"

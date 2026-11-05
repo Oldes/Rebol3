@@ -693,6 +693,8 @@ new_entry:
 
 	case A_REMOVE:
 		//O: throw an error if /part is used?
+		// NOTE: the key is matched case-sensitively (unlike SELECT and PUT without /case),
+		//       so only an exact key is removed: `remove/key m "A"` does not remove "a".
 		n = Find_Entry(series, D_ARG(ARG_REMOVE_KEY_ARG), 0, TRUE);
 		if (n != NOT_FOUND) {
 			VAL_SET_OPT(VAL_BLK_SKIP(val, n-1), OPTS_HIDE); // hide the key
