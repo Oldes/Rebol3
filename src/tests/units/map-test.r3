@@ -283,6 +283,19 @@ Rebol [
 		put m $1.00 1
 		--assert 1 = select m $1
 		--assert 1 = select m $1.0
+
+	--test-- "Cmp_Value on hash! and closure!"
+		;; hash!
+		h1: make hash! [1]
+		h2: make hash! [2]
+		--assert 2 = length? unique reduce [h1 h2]
+		m: make map! reduce [h1 1]
+		--assert none? select m h2
+		;; closure!
+		c1: closure [x][x + 1]
+		c2: closure [x][x + 2]
+		--assert 2 = length? unique reduce [:c1 :c2]
+		--assert 1 = length? unique reduce [:c1 :c1]
 ===end-group===
 
 ===start-group=== "APPEND on map!"

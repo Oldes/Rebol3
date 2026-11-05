@@ -379,6 +379,7 @@ chkMoney:
 
 	case REB_BLOCK:
 	case REB_PAREN:
+	case REB_HASH:
 	case REB_MAP:
 	case REB_PATH:
 	case REB_SET_PATH:
@@ -433,6 +434,7 @@ chkMoney:
 
 	case REB_OBJECT:
 	case REB_MODULE:
+	case REB_TASK:
 	case REB_PORT:
 		//return VAL_OBJ_FRAME(s) - VAL_OBJ_FRAME(t); // strict variant
 		return !Equal_Object_Loop(s, t, FALSE, loop); // equality used
@@ -443,6 +445,7 @@ chkMoney:
 	case REB_ACTION:
 	case REB_COMMAND:
 	case REB_OP:
+	case REB_CLOSURE:
 	case REB_FUNCTION:
 		return THE_SIGN(VAL_FUNC_BODY(s) - VAL_FUNC_BODY(t));
 
