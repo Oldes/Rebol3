@@ -663,8 +663,13 @@ check-data: func [port /local headers res data available out chunk-size pos trai
 						opt [#";" to crlfbin] ;; ignore chunk extensions
 						crlfbin pos: to end
 					][
-						;- ugly conversion of the chunk size from hexadecimal string to integer
-						chunk-size: to integer! to issue! to string! :chunk-size
+						chunk-size: transcode/one ajoin ["0#" to string! :chunk-size]
+						if all [
+							chunk-size = 0
+							not parse pos [crlfbin to end | to crlf2bin to end]
+						][
+							break ;; last chunk's trailer not complete yet; keep its size line and wait
+						]
 						remove/part data pos
 						available: length? data
 						log-debug 'HTTP ["Chunk-size:^[[m" chunk-size " ^[[36mavailable:^[[m " available]

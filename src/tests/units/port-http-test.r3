@@ -51,6 +51,13 @@ system/schemes/http/spec/timeout: 30
 		--assert ['ready #(none) "Wiki"] = chunked-feed ["4;name=value^M^/Wiki^M^/0^M^/^M^/"]
 	--test-- "chunked - invalid size line"
 		--assert error? second chunked-feed ["xyz^M^/"]
+
+	--test-- "chunked - final CRLF in later read"
+		--assert ['ready #(none) "Wiki"] = chunked-feed ["4^M^/Wiki^M^/0^M^/" "^M^/"]
+		--assert ['ready #(none) "Wiki"] = chunked-feed ["4^M^/Wiki^M^/0^M^/^M" "^/"]
+	--test-- "chunked - trailer in later read"
+		--assert ['ready #(none) "Wiki"] = chunked-feed ["4^M^/Wiki^M^/0^M^/X-T: 1^M^/" "^M^/"]
+		--assert ['ready #(none) "Wiki"] = chunked-feed ["4^M^/Wiki^M^/0^M^/X-T" ": 1^M^/^M^/"]
 ===end-group===
 
 ===start-group=== "HTTP scheme"
