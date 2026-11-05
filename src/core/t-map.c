@@ -629,14 +629,9 @@ new_entry:
 ***********************************************************************/
 {
 	REBVAL *val;
-	REBCNT cnt = 0;
+	REBCNT cnt = Length_Map(mapser); // number of not removed entries
 	REBSER *blk;
 	REBVAL *out;
-
-	// Count number of set entries:
-	for (val = BLK_HEAD(mapser); NOT_END(val) && NOT_END(val+1); val += 2) {
-		if (!VAL_MAP_REMOVED(val)) cnt++; // must not be removed
-	}
 
 	// Copy entries to new block:
 	blk = Make_Block(cnt * ((what == 0) ? 2 : 1));
