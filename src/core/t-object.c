@@ -580,16 +580,20 @@ static REBSER *Trim_Object(REBSER *obj)
 			VAL_OBJ_FRAME(value) = VAL_MOD_SPEC(value);
 			VAL_SET(value, REB_OBJECT);
 			if (action == OF_TITLE) {
-				REBCNT n = Find_Word_Index(VAL_OBJ_FRAME(value), SYM_TITLE, FALSE);
+				n = Find_Word_Index(VAL_OBJ_FRAME(value), SYM_TITLE, FALSE);
 				if(!n) return R_NONE;
 				value = VAL_OBJ_VALUE(value, n);
 			}
 			break;
 		}
-		// Adjust for compatibility with PICK:
-		if (action == OF_VALUES) action = 2;
-		else if (action == OF_BODY) action = 3;
-		if (action < 1 || action > 3) Trap_Reflect(VAL_TYPE(value), arg);
+		// Map reflectors to Make_Object_Block modes (1: words, 2: values, 3: both):
+		switch (action) {
+		case OF_WORDS:  action = 1; break;
+		case OF_VALUES: action = 2; break;
+		case OF_BODY:   action = 3; break;
+		default:
+			Trap_Reflect(VAL_TYPE(value), arg);
+		}
 #ifdef obsolete
 		goto reflect;
 
