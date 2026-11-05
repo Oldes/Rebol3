@@ -152,8 +152,15 @@ FORCE_INLINE
 		// else..
 		return Hash_Binary(VAL_TUPLE(val), VAL_TUPLE_LEN(val));
 
-	case REB_PAIR:
-		return VAL_ALL_BITS(val)[0] ^ VAL_ALL_BITS(val)[1];
+	case REB_PAIR: {
+		// Mix both coordinates (plain XOR made all NxN pairs hash to 0
+		// and AxB same as BxA); adding 0.0 normalizes -0.0 to 0.0
+		float f;
+		REBCNT k1, h1 = 0;
+		f = VAL_PAIR_X(val) + 0.0f; memcpy(&k1, &f, 4); bmix(&h1, &k1);
+		f = VAL_PAIR_Y(val) + 0.0f; memcpy(&k1, &f, 4); bmix(&h1, &k1);
+		return fmix32(h1);
+	}
 
 	case REB_DATATYPE:
 		return CRC_Word(Get_Sym_Name(VAL_DATATYPE(val) + 1), UNKNOWN);

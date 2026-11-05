@@ -145,6 +145,16 @@ Rebol [
 		--assert 200 = select m 20000%
 		--assert none? select m 1
 		--assert (hash 50%) <> hash 51%
+
+	--test-- "hash of pair!"
+		--assert (hash 1x1) <> hash 2x2
+		--assert (hash 1x2) <> hash 2x1
+		--assert (hash 0x0) = hash negate 0x0
+		m: make map! []
+		repeat i 1000 [put m as-pair i i i]
+		--assert 1000 = length? m
+		--assert 500 = select m 500x500
+		--assert none? select m 500x501
 ===end-group===
 
 ===start-group=== "APPEND on map!"
