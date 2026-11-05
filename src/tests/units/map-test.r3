@@ -155,6 +155,17 @@ Rebol [
 		--assert 1000 = length? m
 		--assert 500 = select m 500x500
 		--assert none? select m 500x501
+
+	--test-- "hash of char!"
+		--assert 20000 = length? unique collect [
+			repeat i 20000 [keep hash to char! 19967 + i]
+		]
+		--assert (hash #"a") = hash #"A"
+		--assert (hash #"č") = hash #"Č"
+		m: make map! []
+		repeat i 20000 [put m to char! 19967 + i i]
+		--assert 20000 = length? m
+		--assert 1 = select m #"^(4E00)"
 ===end-group===
 
 ===start-group=== "APPEND on map!"

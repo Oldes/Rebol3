@@ -135,7 +135,7 @@ FORCE_INLINE
 
 	case REB_CHAR: // hashed always as lowercased
 		if ((ret = VAL_CHAR(val)) < UNICODE_CASES) ret = LO_CASE(ret);
-		return ret = (((REBCNT)ret * 506832829L) >> 18);
+		return fmix32(ret); // (multiply and shift by 18 gave only 14 bits)
 
 	case REB_MONEY:
 		return VAL_ALL_BITS(val)[0] ^ VAL_ALL_BITS(val)[1] ^ VAL_ALL_BITS(val)[2];
