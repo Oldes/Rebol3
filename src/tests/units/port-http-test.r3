@@ -222,6 +222,45 @@ system/schemes/http/spec/timeout: 30
 		b: try [read p]
 		--assert a == "<!doctype html>"
 		--assert all [string? b  15 < length? b]
+
+	--test-- "relative Location resolved against current path"
+		loc: none
+		srv: open tcp://:8127
+		srv/awake: func [event /local client][
+			if event/type = 'accept [
+				client: first event/port
+				client/awake: func [event /local p req path][
+					p: event/port
+					switch event/type [
+						read [
+							req: to string! p/data
+							either find req "^M^/^M^/" [
+								parse req ["GET " copy path to #" "]
+								write p to binary! either path = "/dir/page" [
+									ajoin ["HTTP/1.1 302 Found^M^/Location: " loc "^M^/Content-Length: 0^M^/Connection: close^M^/^M^/"]
+								][
+									ajoin ["HTTP/1.1 200 OK^M^/Content-Type: text/plain^M^/Content-Length: " length? path "^M^/Connection: close^M^/^M^/" path]
+								]
+							][	read p ]
+						]
+						wrote [close p]
+					]
+					false
+				]
+				read client
+			]
+			false
+		]
+		saved: system/options/http-redirects
+		system/options/http-redirects: 5
+		loc: "other"                 r1: try [read http://127.0.0.1:8127/dir/page]
+		loc: "?x=1"                  r2: try [read http://127.0.0.1:8127/dir/page]
+		loc: "//127.0.0.1:8127/abs"  r3: try [read http://127.0.0.1:8127/dir/page]
+		system/options/http-redirects: saved
+		close srv
+		--assert r1 == "/dir/other"
+		--assert r2 == "/dir/page?x=1"
+		--assert r3 == "/abs"
 ===end-group===
 
 ===start-group=== "HTTP scheme - Successful responses"

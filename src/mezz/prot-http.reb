@@ -30,7 +30,8 @@ REBOL [
 ]
 
 sync-op: func [port body /local header state][
-	if all [port/state  not open? port][port/state: none]
+	;; a port closed by a previous sync operation (or left with an error) must be reopened
+	if any [error? port/state  all [object? port/state  port/state/state = 'closing]][port/state: none]
 	unless port/state [open port port/state/close?: yes]
 	state: port/state
 	state/awake: :read-sync-awake
@@ -532,12 +533,10 @@ http-response-headers: construct [
 	Last-Modified:
 ]
 
-do-redirect: func [port [port!] new-uri [url! string! file!] /local spec state headers temp same-origin? code][
+do-redirect: func [port [port!] new-uri [url! string! file!] /local spec state headers temp same-origin? code base q][
 	spec: port/spec
 	state: port/state
 	port/data: none
-
-	;new-uri: as url! new-uri
 
 	log-info 'HTTP ["Redirect to:^[[m" mold new-uri]
 
@@ -546,6 +545,8 @@ do-redirect: func [port [port!] new-uri [url! string! file!] /local spec state h
 		return throw-http-error port {Too many redirections}
 	]
 
+	;; current request path, used to resolve relative references
+	base: ajoin [spec/path spec/target]
 	spec/query: spec/target: none ; old parts not used in redirection!
 
 	;; RFC 9110 15.4: 303 (and 301/302 after POST) switch the method to GET without a body
@@ -562,19 +563,35 @@ do-redirect: func [port [port!] new-uri [url! string! file!] /local spec state h
 		]
 	]
 
+	;; protocol-relative reference (//host/path)
+	if find/match new-uri "//" [new-uri: ajoin [spec/scheme #":" new-uri]]
+
 	;; If decoding of the new uri fails, then it must be just change of the path
 	either temp: decode-url new-uri [
 		new-uri: temp
 	][
-		;; Some servers may have invalid location (missing slash) - Rebol-issues/issues/2604
-		if new-uri/1 != #"/" [insert new-uri #"/"]
+		;; RFC 3986 5.2: resolve a relative reference against the current path
+		new-uri: to string! new-uri
+		if q: find new-uri #"?" [
+			spec/query: copy next q
+			new-uri: copy/part new-uri q
+		]
+		case [
+			empty? new-uri [new-uri: base]
+			#"/" <> first new-uri [
+				new-uri: ajoin [copy/part base find/last/tail base #"/" new-uri]
+			]
+		]
 		spec/path: new-uri: as file! new-uri
 		;; If it's redirection under same url, we can reuse the opened connection
 		if "keep-alive" = select state/info/headers 'Connection [
 			do-request port
 			return true
 		]
-		new-uri: decode-url as url! ajoin [spec/scheme "://" spec/host #":" spec/port new-uri]
+		new-uri: decode-url as url! ajoin [
+			spec/scheme "://" spec/host #":" spec/port new-uri
+			if spec/query [ajoin [#"?" spec/query]]
+		]
 	]
 
 	unless select new-uri 'port [
@@ -594,8 +611,6 @@ do-redirect: func [port [port!] new-uri [url! string! file!] /local spec state h
 	new-uri/ref: as url! ajoin either find [#(none) 80 443] new-uri/port [
 		[new-uri/scheme "://" new-uri/host new-uri/path]
 	][	[new-uri/scheme "://" new-uri/host #":" new-uri/port new-uri/path]]
-
-
 
 	unless find [http https] new-uri/scheme [
 		return throw-http-error port {Redirect to a protocol different from HTTP or HTTPS not supported}
@@ -851,8 +866,8 @@ sys/make-scheme [
 			]
 			if lib/all [string binary] [cause-error 'Script 'bad-refines none]
 
-			;; a closed port from a previous sync operation must be reopened
-			if lib/all [port/state  not any-function? :port/awake  not open? port][port/state: none]
+			;; a port closed by a previous sync operation (or left with an error) must be reopened
+			if any [error? port/state  lib/all [object? port/state  port/state/state = 'closing]][port/state: none]
 			unless port/state [open port port/state/close?: yes]
 
 			either lib/all [any [part seek] not string] [
