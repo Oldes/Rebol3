@@ -422,7 +422,7 @@ chkMoney:
 		return Compare_Word(s,t,is_case);
 
 	case REB_ERROR:
-		return VAL_ERR_NUM(s) - VAL_ERR_NUM(s);
+		return VAL_ERR_NUM(s) - VAL_ERR_NUM(t);
 
 	case REB_OBJECT:
 	case REB_MODULE:

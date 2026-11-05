@@ -216,6 +216,11 @@ Rebol [
 		--assert all [error? e: try [system/catalog/errors: none] e/id = 'locked-word]
 		--assert all [error? e: try [system/catalog/errors/Math: none] e/id = 'locked-word]
 
+	--test-- "find/compare different errors"
+		e1: try [1 / 0]
+		e2: try [no-such-word-xyz]
+		--assert none? find reduce [e1] e2
+		--assert same? e1 first find reduce [e2 e1] e1
 ===end-group===
 
 
