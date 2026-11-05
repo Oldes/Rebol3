@@ -278,9 +278,10 @@ make-http-request: func [
 	if :target [append request enhex/uri :target]
 	if :query  [append append request #"?" escape-query :query]
 
+	req-path: either :target [ajoin [path target]][path]
 	if cookies-to-send: either 'https = select spec 'scheme [
-		get-cookies/secure spec/host path
-	][	get-cookies spec/host path ][
+		get-cookies/secure spec/host req-path
+	][	get-cookies spec/host req-path ][
 		put headers 'Cookie cookies-to-send
 	]
 
@@ -439,8 +440,8 @@ check-response: func [port /local conn res headers d1 d2 line info state awake s
 			awake make event! [type: 'error port: port]
 		]
 		if cookies: select headers 'set-cookie [
-			set-cookies port/spec/host cookies
-		] 
+			set-cookies/from port/spec/host cookies ajoin [spec/path spec/target]
+		]
 		if date: any [
 			;@@ https://github.com/Oldes/Rebol-issues/issues/2496
 			select headers 'last-modified
@@ -1086,8 +1087,18 @@ with cookies-rules: context [
 		"Cookies are stored in `system/state/cookies` map."
 		host [string!] "Current host (used when the cookie doesn't set its domain)"
 		data [string! block!] "Either a string or block containing `Set-Cookie` lines."
+		/from "Request path (used to compute the default cookie path)"
+			request-path [string! file!]
 	][
 		timestamp: to integer! now/utc
+		;; RFC 6265 5.1.4: default-path is the request path up to (not including) its last slash
+		default-path: either all [
+			request-path
+			#"/" = first request-path
+			pos: find/last request-path #"/"
+			1 < index? pos
+		][	to string! copy/part request-path pos ][ "/" ]
+
 		foreach line to block! data [
 			Expires: domain: path: max-age: none
 			attr: parse line [
@@ -1112,6 +1123,8 @@ with cookies-rules: context [
 			;; the Max-Age attribute has precedence and controls the expiration date of the cookie!
 			if Max-Age [Expires: timestamp + to integer! Max-Age]
 			unless Expires [Expires: timestamp + 3600 append attr 'not-persistent]
+			;; RFC 6265 5.2.4: use default-path when Path is missing or doesn't start with a slash
+			if any [none? Path  #"/" != first Path][Path: copy default-path]
 
 			;; https://datatracker.ietf.org/doc/html/rfc6265#section-4.1.2.3
 			either Domain [
@@ -1182,6 +1195,7 @@ with cookies-rules: context [
 	][
 		clear values
 		secure?: secure
+		req-path: to string! path
 		timestamp: to integer! now/utc
 		domain: ajoin ["." host]
 		;; collect values for subdomains
@@ -1200,13 +1214,27 @@ with cookies-rules: context [
 	][
 		values: make map! []
 		str: make string! 500
-		timestamp: domain: secure?: none
+		timestamp: domain: secure?: req-path: none
+		;; RFC 6265 5.1.4 (case-sensitive)
+		path-match?: func [cookie-path [string!] request-path [string!]][
+			to logic! all [
+				find/match/case request-path cookie-path
+				any [
+					cookie-path == request-path
+					#"/" = last cookie-path
+					#"/" = pick request-path 1 + length? cookie-path
+				]
+			]
+		]
 		get-host-cookies: func[domain /local data Expires Path Name Value attr][
 			if block? data: cookies-data/:domain [
 				while [not tail? data][
 					set [Expires: Path: Name: Value: attr:] data
 					either Expires >= timestamp [
-						unless all [not secure?  block? attr  find attr 'Secure][
+						unless any [
+							all [not secure?  block? attr  find attr 'Secure]
+							not path-match? any [Path "/"] req-path
+						][
 							values/:Name: Value
 						]
 						data: skip data 5

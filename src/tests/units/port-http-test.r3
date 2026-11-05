@@ -652,6 +652,19 @@ system/schemes/http/spec/timeout: 30
 			find c "s=1"
 			find c "p=2"
 		]
+
+	--test-- "cookie Path matching"
+		set-cookies "path-test.example" ["a=1; Path=/docs"]
+		--assert "a=1" == get-cookies "path-test.example" "/docs"
+		--assert "a=1" == get-cookies "path-test.example" "/docs/web"
+		--assert none? get-cookies "path-test.example" "/docsets"
+		--assert none? get-cookies "path-test.example" "/"
+	--test-- "cookie default Path"
+		set-cookies/from "path-test2.example" ["b=2"] "/app/login"
+		--assert "b=2" == get-cookies "path-test2.example" "/app/x"
+		--assert none? get-cookies "path-test2.example" "/other"
+		set-cookies/from "path-test3.example" ["c=3"] "/login"
+		--assert "c=3" == get-cookies "path-test3.example" "/anything"
 ===end-group===
 
 ~~~end-file~~~
