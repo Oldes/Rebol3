@@ -547,7 +547,7 @@ static REBSER *Trim_Object(REBSER *obj)
 		if (D_REF(ARG_COPY_DEEP)) {
 			types |= CP_DEEP | (D_REF(ARG_COPY_TYPES) ? 0 : TS_DEEP_COPIED);
 		}
-		if D_REF(ARG_COPY_TYPES) {
+		if (D_REF(ARG_COPY_TYPES)) {
 			arg = D_ARG(ARG_COPY_KINDS);
 			if (IS_DATATYPE(arg)) types |= TYPESET(VAL_DATATYPE(arg));
 			else types |= VAL_TYPESET(arg);
