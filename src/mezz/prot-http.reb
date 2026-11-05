@@ -12,9 +12,9 @@ REBOL [
 		Licensed under the Apache License, Version 2.0
 		See: http://www.apache.org/licenses/LICENSE-2.0
 	}
-	Version: 0.8.5
+	Version: 0.8.6
 	Needs: 3.18.5 ;; because using the new log-* functions
-	Date: 4-Nov-2026
+	Date: 5-Nov-2026
 	File: %prot-http.r3
 	Purpose: {
 		This program defines the HTTP protocol scheme for REBOL 3.
@@ -605,7 +605,7 @@ do-redirect: func [port [port!] new-uri [url! string! file!] /local spec state h
 	port
 ]
 
-check-data: func [port /local headers res data available out chunk-size pos trailer state conn][
+check-data: func [port /local headers res data available out chunk-size pos trailer state conn n][
 	state: port/state
 	headers: state/info/headers
 	conn: state/connection
@@ -625,19 +625,21 @@ check-data: func [port /local headers res data available out chunk-size pos trai
 
 			if state/chunk-size [
 				;- rests from previous unfinished chunk
-				either state/chunk-size <= available [
-					; we have enough data to end the chunk
+				either state/chunk-size + 2 <= available [
+					;; we have enough data to end the chunk (including its CRLF)
 					append out take/part data state/chunk-size
 					state/chunk-size: none
 					if crlfbin <> take/part data 2 [
 						throw-http-error port "Missing CRLF after chunk end!"
 					]
 				][
-					append out take/part data available
-					state/chunk-size: state/chunk-size - available
+					;; consume only the payload; the CRLF may still be pending
+					n: min available state/chunk-size
+					append out take/part data n
+					state/chunk-size: state/chunk-size - n
 				]
 			]
-			if not empty? data [
+			if all [none? state/chunk-size  not empty? data][
 				until [
 					either parse data [
 						copy chunk-size some hex-digits
@@ -660,17 +662,17 @@ check-data: func [port /local headers res data available out chunk-size pos trai
 							]
 							true ; end of loop
 						][
-							available: length? data
-							either chunk-size <= available [
+							either chunk-size + 2 <= available [
 								append out take/part data :chunk-size
 								if crlfbin <> take/part data 2 [
-									throw-http-error port "Missing CRLF after chunk end!???"
+									throw-http-error port "Missing CRLF after chunk end!"
 								]
 								empty? data
 							][
-								;print "unfinished chunk.."
-								state/chunk-size: chunk-size - available
-								append out take/part data available
+								;; unfinished chunk (or its CRLF not received yet)
+								n: min available chunk-size
+								append out take/part data n
+								state/chunk-size: chunk-size - n
 								true ; end of loop
 							]
 						]

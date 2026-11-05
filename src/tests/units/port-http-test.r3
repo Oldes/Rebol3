@@ -12,6 +12,37 @@ Rebol [
 ;; so let's give it more time...
 system/schemes/http/spec/timeout: 30
 
+===start-group=== "HTTP scheme - chunked decoding"
+	check-data: :system/modules/http/check-data
+	chunked-feed: function [parts [block!]][
+		port: make port! http://localhost/
+		conn: object [data: make binary! 64]
+		port/state: object [
+			state: 'reading-data
+			error: none
+			connection: conn
+			info: object [headers: object [transfer-encoding: "chunked"]]
+			awake: func [e][true]
+			chunk-size: none
+		]
+		foreach part parts [
+			append conn/data to binary! part
+			check-data port
+		]
+		reduce [port/state/state  port/state/error  to string! port/data]
+	]
+	--test-- "chunked - whole response"
+		--assert ['ready #(none) "Wiki"] = chunked-feed ["4^M^/Wiki^M^/0^M^/^M^/"]
+	--test-- "chunked - CRLF not yet received"
+		--assert ['ready #(none) "Wiki"] = chunked-feed ["4^M^/Wiki" "^M^/0^M^/^M^/"]
+	--test-- "chunked - split between CR and LF"
+		--assert ['ready #(none) "Wiki"] = chunked-feed ["4^M^/Wiki^M" "^/0^M^/^M^/"]
+	--test-- "chunked - payload split, then CRLF later"
+		--assert ['ready #(none) "Wiki"] = chunked-feed ["4^M^/Wi" "ki" "^M^/0^M^/^M^/"]
+	--test-- "chunked - two chunks"
+		--assert ['ready #(none) "Wikipedia"] = chunked-feed ["4^M^/Wiki^M^/5^M^/pe" "dia^M^/0^M^/^M^/"]
+===end-group===
+
 ===start-group=== "HTTP scheme"
 	--test-- "read HTTP"
 		--assert  string? try [read http://google.com]
