@@ -11,6 +11,8 @@ Rebol [
 ;; it looks that httpbin.org has long response times:/
 ;; so let's give it more time...
 system/schemes/http/spec/timeout: 30
+;system/options/quiet: false
+;system/options/log/http: 4
 
 ===start-group=== "HTTP scheme - log anonymization"
 	anonymize: :system/modules/http/anonymize
@@ -261,6 +263,43 @@ system/schemes/http/spec/timeout: 30
 		--assert r1 == "/dir/other"
 		--assert r2 == "/dir/page?x=1"
 		--assert r3 == "/abs"
+
+	--test-- "keep-alive redirect with response body"
+		close-after?: false
+		srv: open tcp://:8128
+		srv/awake: func [event /local client][
+			if event/type = 'accept [
+				client: first event/port
+				client/awake: func [event /local p req path][
+					p: event/port
+					switch event/type [
+						read [
+							req: to string! p/data
+							either find req "^M^/^M^/" [
+								parse req ["GET " copy path to #" "]
+								clear p/data
+								close-after?: path <> "/start"
+								write p to binary! either path = "/start" [
+									{HTTP/1.1 302 Found^M^/Location: /target^M^/Connection: keep-alive^M^/Content-Length: 5^M^/^M^/moved}
+								][
+									{HTTP/1.1 200 OK^M^/Content-Type: text/plain^M^/Content-Length: 2^M^/Connection: close^M^/^M^/ok}
+								]
+							][	read p ]
+						]
+						wrote [either close-after? [close p][read p]]
+					]
+					false
+				]
+				read client
+			]
+			false
+		]
+		saved: system/options/http-redirects
+		system/options/http-redirects: 5
+		r: try [read http://127.0.0.1:8128/start]
+		system/options/http-redirects: saved
+		close srv
+		--assert r == "ok"
 ===end-group===
 
 ===start-group=== "HTTP scheme - Successful responses"
