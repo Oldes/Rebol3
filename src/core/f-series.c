@@ -413,6 +413,13 @@ chkMoney:
 	case REB_DATATYPE:
 		return VAL_DATATYPE(s) - VAL_DATATYPE(t);
 
+	case REB_TYPESET: {
+		// 64-bit sets, so compare them (subtraction could not fit REBINT)
+		REBU64 ts1 = VAL_TYPESET(s);
+		REBU64 ts2 = VAL_TYPESET(t);
+		return (ts1 == ts2) ? 0 : (ts1 < ts2) ? -1 : 1;
+	}
+
 	case REB_WORD:
 	case REB_SET_WORD:
 	case REB_GET_WORD:

@@ -254,6 +254,21 @@ Rebol [
 		--assert 1 = select m "ČAU"
 		--assert none? select/case m "čau"
 		--assert 1 = select/case m "Čau"
+
+	--test-- "typeset! in Cmp_Value and hash"
+		t1: make typeset! [integer!]
+		t2: make typeset! [string!]
+		m: make map! reduce [t1 1]
+		--assert none? select m t2
+		--assert 1 = select m make typeset! [integer!]
+		--assert 2 = length? unique reduce [t1 t2 t1]
+		--assert (hash t1) <> hash t2
+		--assert (hash t1) = hash make typeset! [integer!]
+		;; hashed map
+		repeat i 100 [put m i i]
+		put m t2 2
+		--assert 2 = select m t2
+		--assert 1 = select m t1
 ===end-group===
 
 ===start-group=== "APPEND on map!"

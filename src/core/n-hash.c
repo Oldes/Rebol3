@@ -183,6 +183,11 @@ FORCE_INLINE
 		return fmix32(h1);
 	}
 
+	case REB_TYPESET: {
+		REBU64 ts = VAL_TYPESET(val);
+		return fmix32((REBCNT)(ts >> 32) ^ ((REBCNT)ts));
+	}
+
 	case REB_DATATYPE:
 		return fmix32(VAL_DATATYPE(val) + 1); // no need to compute CRC of the type's name
 
