@@ -206,6 +206,22 @@ Rebol [
 		put m 0.0 1
 		--assert 1 = select m negate 0.0
 
+	--test-- "exact decimal map keys"
+		a: 0.1 + 0.2
+		--assert a = 0.3                ;; equal? is still tolerant
+		m: make map! reduce [a 1]
+		--assert none? select m 0.3     ;; linear map: exact
+		--assert 1 = select m a
+		repeat i 100 [put m i i]        ;; force the hash table
+		--assert none? select m 0.3     ;; hashed map: exact
+		--assert 1 = select m a
+		put m 0.3 2
+		--assert 102 = length? m
+		;; -0.0 and 0.0 are still the same key
+		put m 0.0 3
+		--assert 3 = select m negate 0.0
+		--assert 2 = length? unique reduce [a 0.3]
+
 	--test-- "hash of tuple! ignores trailing zeros"
 		--assert (hash 1.2.3.4.5) = hash 1.2.3.4.5.0
 		--assert (hash 1.2.3.4) = hash 1.2.3.4.0

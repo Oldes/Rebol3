@@ -250,7 +250,7 @@ static void No_Nones_Or_Logic(REBVAL *arg) {
 	}
 	else {
 		for (n = 0; n < series->tail; n += skip, val += skip) {
-			if (VAL_TYPE(val) == VAL_TYPE(key) && 0 == Cmp_Value(key, val, cased)) {
+			if (VAL_TYPE(val) == VAL_TYPE(key) && 0 == Cmp_Key_Value(key, val, cased)) {
 				return n;
 			}
 		}

@@ -174,6 +174,22 @@
 
 /***********************************************************************
 **
+*/	REBINT Cmp_Key_Value(REBVAL *key, REBVAL *val, REBFLG cased)
+/*
+**		Compare two values of the same type used as keys (maps, set operations).
+**		Same as Cmp_Value, but decimals are compared exactly (without tolerance),
+**		so the result is consistent with Hash_Value. Only 0 (equal) is meaningful.
+**
+***********************************************************************/
+{
+	if (IS_DECIMAL(key) || IS_PERCENT(key))
+		return Eq_Decimal2(VAL_DECIMAL(key), VAL_DECIMAL(val)) ? 0 : 1;
+	return Cmp_Value(key, val, cased);
+}
+
+
+/***********************************************************************
+**
 */	REBCNT Find_Key(REBSER *series, REBSER *hser, REBVAL *key, REBINT wide, REBCNT cased, REBYTE mode)
 /*
 **		Returns hash index (either the match or the new one).
@@ -253,7 +269,7 @@
 				n = hashes[hash];
 				if (!n) break;
 				val = BLK_SKIP(series, (n - 1) * wide);
-				if (VAL_TYPE(val) == VAL_TYPE(key) && 0 == Cmp_Value(key, val, cased))
+				if (VAL_TYPE(val) == VAL_TYPE(key) && 0 == Cmp_Key_Value(key, val, cased))
 					return hash;
 #ifdef DEBUG_HASH_COLLISIONS
 				++ Eval_Collisions;
