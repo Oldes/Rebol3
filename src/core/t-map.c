@@ -338,8 +338,7 @@
 				return hash;
 			}
 			if (!val) return NOT_FOUND;
-			hash /= 2;
-			goto new_entry;
+			goto new_entry; // `hash` is not used there, as there are no hashes yet
 		}
 
 		// Add hash table:
