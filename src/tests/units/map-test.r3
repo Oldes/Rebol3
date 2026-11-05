@@ -176,6 +176,18 @@ Rebol [
 		;; unaligned data
 		--assert 1139631978 = hash next #{0061626364}        ;; "abcd" 0x43ed676a
 		--assert (hash next #{00616263}) = hash #{616263}
+
+	--test-- "hash of UTF-8 strings is case-insensitive"
+		--assert (hash "Čau") = hash "čau"
+		--assert (hash "ŽLUŤOUČKÝ") = hash "žluťoučký"
+		--assert (hash "abc") = hash "ABC"
+		m: make map! []
+		repeat i 100 [put m ajoin ["k" i] i]   ;; force the hash table
+		put m "Čau" 1
+		--assert 1 = select m "čau"
+		--assert 1 = select m "ČAU"
+		--assert none? select/case m "čau"
+		--assert 1 = select/case m "Čau"
 ===end-group===
 
 ===start-group=== "APPEND on map!"

@@ -241,9 +241,24 @@ FORCE_INLINE
 	if (BYTE_SIZE(VAL_SERIES(val))) {
 		bin = VAL_BIN_DATA(val);
 		len = VAL_TAIL(val) - VAL_INDEX(val);
-		for (n = 0; n < len; n++) {
-			ch = (REBCNT)LO_CASE(*bin++);
-			bmix(&hash, &ch);
+		if (IS_UTF8_SERIES(VAL_SERIES(val))) {
+			// Hash lowercased codepoints (not bytes), so it is consistent with
+			// the case-insensitive compare of UTF-8 strings (Compare_UTF8_Len).
+			// The length used is the number of codepoints (same as for ASCII).
+			const REBYTE *str = bin;
+			REBLEN bytes = len;
+			for (len = 0; bytes > 0; str++, len++) {
+				ch = UTF8_Decode_Codepoint(&str, &bytes); // mods str, bytes
+				if (ch < UNICODE_CASES) ch = LO_CASE(ch);
+				bmix(&hash, &ch);
+			}
+		}
+		else {
+			// ASCII only
+			for (n = 0; n < len; n++) {
+				ch = (REBCNT)LO_CASE(*bin++);
+				bmix(&hash, &ch);
+			}
 		}
 	}
 	else {
