@@ -496,13 +496,18 @@ new_entry:
 		Append_Map(series, val, UNKNOWN);
 	}
 	if (types != 0) {
+		REBCNT n, tail = SERIES_TAIL(series);
 		if (IS_MAP(val)) {
 			node.src  = VAL_SERIES(val);
 			node.dst  = series;
 			node.prev = loop;
 			loop = &node;
 		}
-		Copy_Deep_Values_Loop(series, 0, SERIES_TAIL(series), types, loop);
+		// Copy only values! Keys are hashed, so they must stay unmodified
+		// (string keys are already copied and protected when inserted).
+		for (n = 1; n < tail; n += 2) {
+			Copy_Deep_Values_Loop(series, n, n + 1, types, loop);
+		}
 	}
 	return series;
 }

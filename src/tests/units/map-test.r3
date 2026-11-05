@@ -377,6 +377,19 @@ Rebol [
 		--assert #{0102} = pick words-of m 2
 		--assert 2 = select m #{0102}
 
+	--test-- "copy/deep keeps map keys protected"
+		m: make map! ["ab" 1 #{01} 2 c [3]]
+		m2: copy/deep m
+		k: first words-of m2
+		--assert error? try [append k "x"]
+		k: second words-of m2
+		--assert error? try [append k #{02}]
+		--assert 1 = select m2 "ab"
+		--assert 2 = select m2 #{01}
+		;; values are still deep copied
+		--assert not same? select m 'c select m2 'c
+		--assert [3] = select m2 'c
+
 ===end-group===
 
 
