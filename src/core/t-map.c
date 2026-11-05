@@ -617,6 +617,7 @@ new_entry:
 	REBSER *frame;
 	REBVAL *word;
 	REBVAL *mval;
+	REBVAL *w;
 
 	// Count number of set entries:
 	for (mval = BLK_HEAD(mapser); NOT_END(mval) && NOT_END(mval+1); mval += 2) {
@@ -630,6 +631,10 @@ new_entry:
 	val  = FRM_VALUE(frame, 1);
 	for (mval = BLK_HEAD(mapser); NOT_END(mval) && NOT_END(mval+1); mval += 2) {
 		if (ANY_WORD(mval) && !IS_NONE(mval+1)) {
+			// Keys which differ only by case would be duplicate words in the object
+			for (w = FRM_WORD(frame, 1); w < word; w++) {
+				if (VAL_BIND_CANON(w) == VAL_WORD_CANON(mval)) Trap1(RE_DUP_VARS, mval);
+			}
 			VAL_SET(word, REB_SET_WORD);
 			VAL_SET_OPT(word, OPTS_UNWORD);
 			VAL_BIND_SYM(word) = VAL_WORD_SYM(mval);

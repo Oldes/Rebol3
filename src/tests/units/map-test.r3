@@ -399,6 +399,18 @@ Rebol [
 		--assert e/id = 'invalid-arg
 		--assert e/arg1 = "x"
 
+	--test-- "to object! on map with keys differing by case"
+		m: make map! [a 1 A 2]
+		e: try [make object! m]
+		--assert error? e
+		--assert e/id = 'dup-vars
+		;; removed or none-valued duplicates are ignored
+		remove/key m 'A
+		o: make object! m
+		--assert 1 = o/a
+		m: make map! [a 1 b 2]
+		o: make object! m
+		--assert [a b] = words-of o
 ===end-group===
 
 
