@@ -26,6 +26,17 @@ system/schemes/http/spec/timeout: 30
 		--assert did find r "Host: example.com"
 ===end-group===
 
+===start-group=== "HTTP scheme - decode result"
+	decode-result: :system/modules/http/decode-result
+	--test-- "multiple Content-Encoding values"
+		body: compress compress "hello" 'deflate 'gzip
+		res: decode-result reduce [200 object [Content-Encoding: "deflate, gzip" Content-Type: "text/plain"] body]
+		--assert "hello" == res/3
+	--test-- "unknown Content-Encoding keeps binary"
+		res: decode-result reduce [200 object [Content-Encoding: "foo" Content-Type: "text/plain"] #{0102}]
+		--assert #{0102} == res/3
+===end-group===
+
 ===start-group=== "HTTP scheme - chunked decoding"
 	check-data: :system/modules/http/check-data
 	chunked-feed: function [parts [block!]][

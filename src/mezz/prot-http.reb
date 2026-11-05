@@ -742,17 +742,23 @@ check-data: func [port /local headers res data available out chunk-size pos trai
 decode-result: function/with [
 	result [block!] {[header body]}
 ][
-	if encoding: attempt [to word! result/2/Content-Encoding] [
-		either find system/catalog/compressions encoding [
-			try/with [
-				result/3: decompress result/3 encoding
+	if string? encoding: select result/2 'Content-Encoding [
+		;; multiple encodings are listed in the order applied, so decode in reverse
+		foreach enc reverse split encoding #"," [
+			unless enc: attempt [to word! trim enc] [continue]
+			if enc = 'identity [continue]
+			either find system/catalog/compressions enc [
+				try/with [
+					result/3: decompress result/3 enc
+				][
+					log-info 'HTTP ["Failed to decode data using:^[[22m" enc]
+					return result
+				]
+				log-info 'HTTP ["Extracted using:^[[22m" enc "^[[1mto:^[[22m" length? result/3 "bytes"]
 			][
-				log-info 'HTTP ["Failed to decode data using:^[[22m" encoding]
+				log-info 'HTTP ["Unknown Content-Encoding:^[[m" enc]
 				return result
 			]
-			log-info 'HTTP ["Extracted using:^[[22m" encoding "^[[1mto:^[[22m" length? result/3 "bytes"]
-		][
-			log-info 'HTTP ["Unknown Content-Encoding:^[[m" encoding]
 		]
 	]
 	if all [
