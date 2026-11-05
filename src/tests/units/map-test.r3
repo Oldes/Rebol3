@@ -267,14 +267,20 @@ Rebol [
 			1 = m/([a])
 			2 = pick m [b]
 		]
-		;- note that keys are not implicitly protected!
+		;- block keys are copied (deeply) and protected
 		k: [c]
 		poke m :k 3
 		--assert [[a] [b] [c]] = keys-of m
-		;- so it's possible to create a map with multiple same keys!
+		--assert not same? k last keys-of m
+		;- so modifying the original block does not change the key
 		append clear k 'b
-		--assert [[a] [b] [b]] = keys-of m
-		;- it's still possible to protect keys manually like:
+		--assert [[a] [b] [c]] = keys-of m
+		--assert 3 = select m [c]
+		--assert 2 = select m k    ;; k is now [b]
+		;- and the stored key itself cannot be modified
+		--assert error? try [append last keys-of m 'x]
+		--assert [[a] [b] [c]] = keys-of m
+		;- an already protected block is copied as well
 		k: protect [d] clear m
 		poke m :k 4
 		--assert [[d]] = keys-of m
@@ -432,6 +438,24 @@ Rebol [
 		k: first words-of e
 		--assert error? try [append k "x"]
 		--assert string? select e k
+
+	--test-- "block keys in map are copied and protected"
+		b: [1 [2 "x"]]
+		m: make map! []
+		put m b 1
+		append b 3          ;; must not affect the stored key
+		append b/2/2 "y"
+		--assert 1 = select m [1 [2 "x"]]
+		k: first words-of m
+		--assert error? try [append k 4]
+		--assert error? try [append k/2 4]
+		--assert error? try [append k/2/2 "z"]
+		--assert 1 = select m [1 [2 "x"]]
+		;; path keys too
+		p: 'a/b
+		put m p 2
+		--assert 2 = select m 'a/b
+		--assert error? try [append first find words-of m 'a/b 'c]
 ===end-group===
 
 

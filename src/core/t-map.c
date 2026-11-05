@@ -301,6 +301,48 @@
 
 /***********************************************************************
 **
+*/	static void Protect_Key_Block(REBSER *blk)
+/*
+**		Protects the block and all its nested blocks and strings.
+**		Used only on a fresh deep copy of a block key, so nothing shared
+**		with user's data is protected. The protection flag is also used
+**		as the recursion guard (for circular blocks).
+**
+***********************************************************************/
+{
+	REBVAL *val;
+
+	if (IS_PROTECT_SERIES(blk)) return;
+	PROTECT_SERIES(blk);
+	for (val = BLK_HEAD(blk); NOT_END(val); val++) {
+		if (ANY_BLOCK(val)) Protect_Key_Block(VAL_SERIES(val));
+		else if (ANY_BINSTR(val)) PROTECT_SERIES(VAL_SERIES(val));
+	}
+}
+
+
+/***********************************************************************
+**
+*/	static void Append_Key_Block(REBSER *series, REBVAL *key)
+/*
+**		Appends a deep copy of the block key and protects it,
+**		as the key is hashed and so it must not be modified.
+**
+***********************************************************************/
+{
+	REBSER *blk = Copy_Block_Values(VAL_SERIES(key), VAL_INDEX(key), VAL_TAIL(key), CP_DEEP | TS_DEEP_COPIED);
+	REBVAL *set;
+
+	Protect_Key_Block(blk);
+	set = Append_Value(series);
+	*set = *key;
+	VAL_SERIES(set) = blk;
+	VAL_INDEX(set) = 0;
+}
+
+
+/***********************************************************************
+**
 */	REBCNT Find_Entry(REBSER *series, REBVAL *key, REBVAL *val, REBOOL cased)
 /*
 **		Try to find the entry in the map. If not found
@@ -387,6 +429,8 @@ new_entry:
 		VAL_SERIES(set) = Copy_String(VAL_SERIES(key), VAL_INDEX(key), VAL_LEN(key));
 		VAL_TYPE(set) = VAL_TYPE(key);
 		PROTECT_SERIES(VAL_SERIES(set));
+	} else if (ANY_BLOCK(key)) {
+		Append_Key_Block(series, key);
 	} else {
 		Append_Val(series, key);
 	}
@@ -396,6 +440,8 @@ new_entry:
 		set = Append_Value(series);
 		VAL_SERIES(set) = Copy_String(VAL_SERIES(key), VAL_INDEX(key), VAL_LEN(key));
 		VAL_TYPE(set) = VAL_TYPE(key);
+	} else if (ANY_BLOCK(key)) {
+		Append_Key_Block(series, key);
 	} else {
 		Append_Val(series, key);
 	}
