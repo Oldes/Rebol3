@@ -391,6 +391,18 @@ system/schemes/http/spec/timeout: 30
 			none? data/headers/Accept-Encoding
 			did data/headers/X-Test
 		]
+
+	--test-- "PUT and DELETE responses are decoded"
+		--assert all [
+			block? res: try [write/all http://httpbin.org/put [PUT "a=1"]]
+			res/1 = 200
+			string? res/3
+		]
+		--assert all [
+			block? res: try [write/all http://httpbin.org/delete [DELETE]]
+			res/1 = 200
+			string? res/3
+		]
 		
 ===end-group===
 

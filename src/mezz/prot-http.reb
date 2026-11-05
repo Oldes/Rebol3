@@ -945,7 +945,7 @@ sys/make-scheme [
 				result: sync-op port [parse-write-dialect port value]
 				if lib/all [
 					not binary
-					find [GET POST PATCH] port/spec/method
+					port/spec/method <> 'HEAD
 				] [decode-result result]
 				check-result result :all
 			]
