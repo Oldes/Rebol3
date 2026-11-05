@@ -530,7 +530,7 @@ new_entry:
 	n = VAL_BLK_LEN(data);
 	if (n & 1) return FALSE;
 
-	Set_Series(REB_MAP, out, Copy_Map(data, type));
+	Set_Series(REB_MAP, out, Copy_Map(data, 0)); // `type` is a datatype, not a copy typeset!
 
 	return TRUE;
 }

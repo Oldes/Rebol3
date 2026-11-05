@@ -82,6 +82,10 @@ Rebol [
 			e/id = 'protected
 		]
 
+	--test-- "load of molded map"
+		m: make map! [a "x" b [1 2] c #{01} d 1.5]
+		--assert equal? m load mold/all m
+		--assert equal? m load mold m
 
 ===end-group===
 
