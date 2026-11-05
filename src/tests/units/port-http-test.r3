@@ -643,6 +643,15 @@ system/schemes/http/spec/timeout: 30
 		--assert did find get-cookies "sub.cookie-test.example" "/" "b=2"
 		--assert did find get-cookies "cookie-test.example" "/" "b=2"
 		--assert none? get-cookies "other-cookie-test.example" "/"
+
+	--test-- "Secure cookie sent only over https"
+		set-cookies "secure-test.example" ["s=1; Secure" "p=2"]
+		--assert "p=2" == get-cookies "secure-test.example" "/"
+		--assert did all [
+			c: get-cookies/secure "secure-test.example" "/"
+			find c "s=1"
+			find c "p=2"
+		]
 ===end-group===
 
 ~~~end-file~~~

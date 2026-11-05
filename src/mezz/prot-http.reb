@@ -278,7 +278,9 @@ make-http-request: func [
 	if :target [append request enhex/uri :target]
 	if :query  [append append request #"?" escape-query :query]
 
-	if cookies-to-send: get-cookies spec/host path [
+	if cookies-to-send: either 'https = select spec 'scheme [
+		get-cookies/secure spec/host path
+	][	get-cookies spec/host path ][
 		put headers 'Cookie cookies-to-send
 	]
 
@@ -1175,9 +1177,11 @@ with cookies-rules: context [
 		"Retrieves and formats valid cookies for HTTP requests."
 		host [string!] "The host for which cookies are being retrieved."
 		path [string! file!] "The path for which cookies are being retrieved."
+		/secure "Include cookies with the Secure attribute (for HTTPS requests)"
 		return: [string! "Cookies formated into a single string suitable for HTTP requests."]
 	][
 		clear values
+		secure?: secure
 		timestamp: to integer! now/utc
 		domain: ajoin ["." host]
 		;; collect values for subdomains
@@ -1196,14 +1200,15 @@ with cookies-rules: context [
 	][
 		values: make map! []
 		str: make string! 500
-		timestamp: domain: none
+		timestamp: domain: secure?: none
 		get-host-cookies: func[domain /local data Expires Path Name Value attr][
-			;print ["get-host-cookies for" domain]
 			if block? data: cookies-data/:domain [
 				while [not tail? data][
 					set [Expires: Path: Name: Value: attr:] data
 					either Expires >= timestamp [
-						values/:Name: Value
+						unless all [not secure?  block? attr  find attr 'Secure][
+							values/:Name: Value
+						]
 						data: skip data 5
 					][
 						log-info 'COOKIES ["DEL" domain path name]
