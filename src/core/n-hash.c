@@ -145,8 +145,33 @@ FORCE_INLINE
 		if ((ret = VAL_CHAR(val)) < UNICODE_CASES) ret = LO_CASE(ret);
 		return fmix32(ret); // (multiply and shift by 18 gave only 14 bits)
 
-	case REB_MONEY:
-		return VAL_ALL_BITS(val)[0] ^ VAL_ALL_BITS(val)[1] ^ VAL_ALL_BITS(val)[2];
+	case REB_MONEY: {
+		// Deci values are unnormalized ($1 = $1.0 = $1.00, $0 = -$0), so hash
+		// a canonical form: significand without trailing decimal zeros
+		deci d = VAL_DECI(val);
+		REBCNT m[3], q[3], k1, h1 = 0;
+		REBINT e = d.e;
+		REBU64 r;
+		REBINT i;
+		m[0] = d.m0; m[1] = d.m1; m[2] = d.m2;
+		if ((m[0] | m[1] | m[2]) == 0) return 0; // any zero
+		while (e < 127) {
+			// divide the significand by 10, if it is exact
+			for (r = 0, i = 2; i >= 0; i--) {
+				r = (r << 32) | m[i];
+				q[i] = (REBCNT)(r / 10);
+				r %= 10;
+			}
+			if (r != 0) break;
+			m[0] = q[0]; m[1] = q[1]; m[2] = q[2];
+			e++;
+		}
+		k1 = m[0]; bmix(&h1, &k1);
+		k1 = m[1]; bmix(&h1, &k1);
+		k1 = m[2]; bmix(&h1, &k1);
+		k1 = ((REBCNT)d.s << 8) | ((REBCNT)e & 0xff); bmix(&h1, &k1);
+		return fmix32(h1);
+	}
 
 	case REB_TIME:
 	case REB_DATE: {

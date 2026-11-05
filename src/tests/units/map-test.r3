@@ -269,6 +269,20 @@ Rebol [
 		put m t2 2
 		--assert 2 = select m t2
 		--assert 1 = select m t1
+
+	--test-- "hash of money! is canonical"
+		--assert $1 = $1.00
+		--assert (hash $1) = hash $1.0
+		--assert (hash $1) = hash $1.00
+		--assert (hash $100) = hash $1e2
+		--assert (hash $0) = hash negate $0
+		--assert (hash $1.5) <> hash $2.5
+		--assert (hash $1) <> hash negate $1
+		m: make map! []
+		repeat i 100 [put m i i]   ;; force the hash table
+		put m $1.00 1
+		--assert 1 = select m $1
+		--assert 1 = select m $1.0
 ===end-group===
 
 ===start-group=== "APPEND on map!"
