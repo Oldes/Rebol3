@@ -137,9 +137,9 @@
 		if (hashes) {
 			// the target map has a hash table, so get the real index of the key
 			idx = ((hashes[idx] - 1) * 2);
-			// check if the target key is not removed; if so, we can end
-			if (VAL_MAP_REMOVED(VAL_BLK_SKIP(tval,idx))) return -1;
 		}
+		// check if the target key is not removed; if so, we can end
+		if (VAL_MAP_REMOVED(VAL_BLK_SKIP(tval,idx))) return -1;
 		// compare both values
 		if (Cmp_Value_Loop(key + 1, VAL_BLK_SKIP(tval, idx + 1), is_case, &node) != 0) return -1;
 	}

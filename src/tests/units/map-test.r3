@@ -225,6 +225,16 @@ Rebol [
 		eqb1-b: [1]  append/only eqb1-b eqb1-b
 		--assert attempt [equal? eqb1-a eqb1-b]
 
+	--test-- "compare maps with removed keys (no hash table)"
+		a: make map! [y 1 w 1]
+		put a 'x none
+		remove/key a 'w     ;; a: y 1, x none (tail 6)
+		b: make map! [x 1 y 1 z 1]
+		remove/key b 'x     ;; b: y 1, z 1 (tail 6, removed x holds none)
+		--assert a <> b
+		--assert b <> a
+		--assert not equal? a b
+
 ===end-group===
 
 
