@@ -152,11 +152,14 @@ FORCE_INLINE
 		}
 		return ret;
 
-	case REB_TUPLE:
-		if (VAL_TUPLE_LEN(val) <= 4)
-			return fmix32(VAL_UNT32(val));
-		// else..
-		return Hash_Binary(VAL_TUPLE(val), VAL_TUPLE_LEN(val));
+	case REB_TUPLE: {
+		// Tuples are compared as zero padded (1.2.3 = 1.2.3.0),
+		// so trailing zeros must not be part of the hash
+		REBCNT len = VAL_TUPLE_LEN(val);
+		REBYTE *tp = VAL_TUPLE(val);
+		while (len > 0 && tp[len - 1] == 0) len--;
+		return Hash_Binary(tp, len);
+	}
 
 	case REB_PAIR: {
 		// Mix both coordinates (plain XOR made all NxN pairs hash to 0

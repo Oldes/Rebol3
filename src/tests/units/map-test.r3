@@ -186,6 +186,17 @@ Rebol [
 		put m d1 1
 		--assert 1 = select m d2
 
+	--test-- "hash of tuple! ignores trailing zeros"
+		--assert (hash 1.2.3.4.5) = hash 1.2.3.4.5.0
+		--assert (hash 1.2.3.4) = hash 1.2.3.4.0
+		--assert (hash 1.2.3) = hash 1.2.3.0
+		--assert (hash 1.2.3) <> hash 1.2.4
+		m: make map! []
+		repeat i 100 [put m i i]   ;; force the hash table
+		put m 1.2.3.4.5.0 1
+		--assert 1 = select m 1.2.3.4.5
+		--assert 1 = select m 1.2.3.4.5.0.0
+
 	--test-- "murmur3 reference vectors"
 		--assert 0          = hash #{}
 		--assert 1009084850 = hash #{61}                     ;; "a"    0x3c2569b2
