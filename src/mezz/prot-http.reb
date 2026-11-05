@@ -117,13 +117,6 @@ read-sync-awake: func [event [event!] /local error state][
 		close [
 			true
 		]
-		custom [
-			if event/code = 300 [
-				state/state: 'redirect
-				return true
-			]
-			false
-		]
 		error [
 			if all [
 				state
@@ -214,7 +207,6 @@ http-awake: func [event /local port http-port state awake res][
 			]
 			log-trace 'HTTP ["Closing:^[[1m" http-port/spec/ref]
 			close http-port
-			if error? state [ do state ]
 			res
 		]
 	][true]
@@ -523,7 +515,6 @@ check-result: func[ result [block!] all [logic! none!]][
 
 crlfbin:  #{0D0A}
 crlf2bin: #{0D0A0D0A}
-crlf2: to string! crlf2bin
 http-response-headers: construct [
 	Content-Length:
 	Content-Encoding:
@@ -916,10 +907,7 @@ sys/make-scheme [
 		update: func[
 			port [port!]
 		][
-			? port
-			? port/state
 			read port/state/connection
-
 		]
 		open: func [
 			port [port!]
@@ -938,7 +926,6 @@ sys/make-scheme [
 				info: make port/scheme/info [type: 'url]
 				awake: :port/awake
 				redirects: 0
-				chunk: none
 				chunk-size: none
 			]
 			spec: port/spec
