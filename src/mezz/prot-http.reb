@@ -1117,6 +1117,15 @@ with cookies-rules: context [
 				;; agent will include the cookie in the Cookie header to example.com,
 				;; www.example.com, and www.corp.example.com
 				if #"." != Domain/1 [insert Domain #"."]
+				;; RFC 6265 5.3 step 6: ignore cookie if Domain doesn't domain-match the host
+				dot-host: ajoin [#"." host]
+				unless all [
+					pos: find/last dot-host Domain
+					tail? skip pos length? Domain
+				][
+					log-info 'COOKIES ["IGNORED" c-name "for domain" Domain "from host" host]
+					continue
+				]
 			][
 				;; When domain is not specified, use host name without the leading dot!
 				;; So when host was: "example.com", cookie must be available only to this

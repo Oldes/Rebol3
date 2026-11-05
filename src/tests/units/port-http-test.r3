@@ -633,4 +633,16 @@ system/schemes/http/spec/timeout: 30
 		]
 ===end-group===
 
+===start-group=== "HTTP cookies"
+	--test-- "cookie Domain must match host"
+		set-cookies "www.cookie-test.example" ["a=1; Domain=evil.example"]
+		--assert none? get-cookies "evil.example" "/"
+		--assert none? select system/state/cookies ".evil.example"
+		set-cookies "www.cookie-test.example" ["b=2; Domain=cookie-test.example"]
+		--assert did find get-cookies "www.cookie-test.example" "/" "b=2"
+		--assert did find get-cookies "sub.cookie-test.example" "/" "b=2"
+		--assert did find get-cookies "cookie-test.example" "/" "b=2"
+		--assert none? get-cookies "other-cookie-test.example" "/"
+===end-group===
+
 ~~~end-file~~~
