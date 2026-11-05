@@ -580,7 +580,8 @@ do-redirect: func [port [port!] new-uri [url! string! file!] /local spec state h
 		spec/port = new-uri/port
 	]
 	new-uri: construct/with new-uri port/scheme/spec
-	new-uri/method: spec/method
+	new-uri/method:  spec/method
+	new-uri/content: spec/content  ;; 307/308 must resend the body (already none after 303 handling)
 	new-uri/ref: as url! ajoin either find [#(none) 80 443] new-uri/port [
 		[new-uri/scheme "://" new-uri/host new-uri/path]
 	][	[new-uri/scheme "://" new-uri/host #":" new-uri/port new-uri/path]]

@@ -249,7 +249,22 @@ system/schemes/http/spec/timeout: 30
 			map? data: try [decode 'json res/3]
 			data/method == "GET"
 		]
-
+	--test-- "307 redirect resends POST body"
+		--assert all [
+			block? res: try [write/all http://httpbin.org/redirect-to?url=/post&status_code=307 [POST "a=1"]]
+			res/1 = 200
+			map? data: try [decode 'json res/3]
+			data/method == "POST"
+			data/data == "a=1"
+		]
+	--test-- "308 redirect resends POST body"
+		--assert all [
+			block? res: try [write/all http://httpbin.org/redirect-to?url=/post&status_code=308 [POST "a=1"]]
+			res/1 = 200
+			map? data: try [decode 'json res/3]
+			data/method == "POST"
+			data/data == "a=1"
+		]
 	--test-- "redirect http"
 		--assert all [ ;= Multiple Choices
 			block? res: try [read/all http://httpbin.org/status/300]
