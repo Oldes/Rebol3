@@ -523,7 +523,7 @@ http-response-headers: construct [
 	Last-Modified:
 ]
 
-do-redirect: func [port [port!] new-uri [url! string! file!] /local spec state headers temp same-origin?][
+do-redirect: func [port [port!] new-uri [url! string! file!] /local spec state headers temp same-origin? code][
 	spec: port/spec
 	state: port/state
 	port/data: none
@@ -538,6 +538,20 @@ do-redirect: func [port [port!] new-uri [url! string! file!] /local spec state h
 	]
 
 	spec/query: spec/target: none ; old parts not used in redirection!
+
+	;; RFC 9110 15.4: 303 (and 301/302 after POST) switch the method to GET without a body
+	code: state/info/status-code
+	if any [
+		all [code = 303  spec/method <> 'HEAD]
+		all [find [301 302] code  spec/method = 'POST]
+	][
+		spec/method: 'GET
+		spec/content: none
+		spec/headers: to map! spec/headers
+		foreach name [Content-Type Content-Length Content-Encoding][
+			remove/key spec/headers name
+		]
+	]
 
 	;; If decoding of the new uri fails, then it must be just change of the path
 	either temp: decode-url new-uri [

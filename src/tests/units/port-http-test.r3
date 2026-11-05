@@ -234,7 +234,22 @@ system/schemes/http/spec/timeout: 30
 		system/options/http-redirects: saved
 		close srv
 		--assert r == "127.0.0.1:8123"
-		
+
+	--test-- "303 redirect changes POST to GET"
+		--assert all [
+			block? res: try [write/all http://httpbin.org/redirect-to?url=/get&status_code=303 [POST "a=1"]]
+			res/1 = 200
+			map? data: try [decode 'json res/3]
+			data/method == "GET"
+		]
+	--test-- "302 redirect changes POST to GET"
+		--assert all [
+			block? res: try [write/all http://httpbin.org/redirect-to?url=/get&status_code=302 [POST "a=1"]]
+			res/1 = 200
+			map? data: try [decode 'json res/3]
+			data/method == "GET"
+		]
+
 	--test-- "redirect http"
 		--assert all [ ;= Multiple Choices
 			block? res: try [read/all http://httpbin.org/status/300]
