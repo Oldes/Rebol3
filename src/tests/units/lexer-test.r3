@@ -123,6 +123,31 @@ Rebol [
 		--assert img/2x2 = img/(2x2)
 ===end-group===
 
+===start-group=== "Char in path"
+	--test-- "char in path scan"
+		--assert path? p: transcode/one {blk/#"a"}
+		--assert #"a" = pick p 2
+		--assert {blk/#"a"} = mold p
+		--assert get-path? transcode/one {:blk/#"a"}
+		--assert lit-path? transcode/one {'blk/#"a"}
+	--test-- "char in set-path scan"
+		--assert set-path? p: transcode/one {blk/#"a":}
+		--assert #"a" = pick p 2
+		--assert [blk/#"a": 1] = transcode {blk/#"a": 1}
+	--test-- "special chars in path"
+		--assert #"/" = pick transcode/one {blk/#"/"} 2
+		--assert #"^/" = pick transcode/one {blk/#"^^/"} 2
+		--assert #"^"" = pick transcode/one {blk/#"^^""} 2
+		--assert [blk #"a" #"b"] = to block! transcode/one {blk/#"a"/#"b"}
+	--test-- "char in path evaluation"
+		blk: [#"a" 11 #"b" [#"c" 22]]
+		--assert 11 = blk/#"a"
+		--assert 22 = blk/#"b"/#"c"
+		blk/#"a": 33
+		--assert 33 = blk/#"a"
+		--assert none? blk/#"x"
+===end-group===
+
 
 ===start-group=== "Special cases with < char"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1903
