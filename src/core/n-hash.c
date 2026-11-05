@@ -129,9 +129,17 @@ FORCE_INLINE
 		return 2 + VAL_LOGIC(val);
 
 	case REB_INTEGER:
-	case REB_DECIMAL: // depends on INT64 sharing the DEC64 bits
-	case REB_PERCENT:
 		return fmix32((REBCNT)(VAL_INT64(val) >> 32) ^ ((REBCNT)VAL_INT64(val)));
+
+	case REB_DECIMAL:
+	case REB_PERCENT: {
+		// -0.0 is equal to 0.0 and all NaNs are equal, so normalize them first
+		REBDEC d = VAL_DECIMAL(val) + 0.0; // -0.0 => 0.0
+		REBI64 bits;
+		if (d != d) bits = 0x7FF8000000000000LL; // any NaN => canonical NaN
+		else memcpy(&bits, &d, sizeof(bits));
+		return fmix32((REBCNT)(bits >> 32) ^ ((REBCNT)bits));
+	}
 
 	case REB_CHAR: // hashed always as lowercased
 		if ((ret = VAL_CHAR(val)) < UNICODE_CASES) ret = LO_CASE(ret);

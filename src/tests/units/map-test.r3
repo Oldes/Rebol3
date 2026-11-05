@@ -196,6 +196,16 @@ Rebol [
 		--assert 1 = select m 1-Jan-2020/0:00
 		--assert 1 = select m 1-Jan-2020/1:00+1:00
 
+	--test-- "hash of decimal! normalizes -0.0"
+		--assert 0.0 = negate 0.0
+		--assert (hash 0.0) = hash negate 0.0
+		--assert (hash 0%) = hash negate 0%
+		--assert (hash 1.5) <> hash 2.5
+		m: make map! []
+		repeat i 100 [put m i i]   ;; force the hash table
+		put m 0.0 1
+		--assert 1 = select m negate 0.0
+
 	--test-- "hash of tuple! ignores trailing zeros"
 		--assert (hash 1.2.3.4.5) = hash 1.2.3.4.5.0
 		--assert (hash 1.2.3.4) = hash 1.2.3.4.0
