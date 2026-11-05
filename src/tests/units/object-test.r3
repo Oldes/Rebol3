@@ -463,6 +463,20 @@ Rebol [
 ===end-group===
 
 
+===start-group=== "SELECT/FIND on object"
+	--test-- "select/find existing and missing word"
+		o: make object! [a: 1 h: 2]
+		--assert 1 = select o 'a
+		--assert none? select o 'x
+		--assert find o 'a
+		--assert none? find o 'x
+	--test-- "select/find hidden word"
+		protect/hide in o 'h
+		--assert none? select o 'h
+		--assert none? find o 'h
+===end-group===
+
+
 ===start-group=== "APPEND on OBJECT"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/551
 	;@@ https://github.com/Oldes/Rebol-issues/issues/708

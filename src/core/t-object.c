@@ -568,8 +568,7 @@ static REBSER *Trim_Object(REBSER *obj)
 		if (IS_WORD(arg))
 			n = Find_Word_Index(VAL_OBJ_FRAME(value), VAL_WORD_SYM(arg), FALSE);
 
-		if (n <= 0 || (REBCNT)n >= SERIES_TAIL(VAL_OBJ_FRAME(value)))
-			return R_NONE;
+		if (n == 0) return R_NONE; // not found (or hidden)
 
 		if (action == A_FIND) goto is_true;
 
@@ -597,15 +596,6 @@ static REBSER *Trim_Object(REBSER *obj)
 		default:
 			Trap_Reflect(VAL_TYPE(value), arg);
 		}
-#ifdef obsolete
-		goto reflect;
-
-	case A_PICK:
-		action = Get_Num_Arg(arg); // integer, decimal, logic
-		if (action < 1 || action > 3) Trap_Arg(arg);
-		if (action < 3) action |= 4;  // add SELF to list
-reflect:
-#endif
 		if (THROWN(value)) Trap0(RE_THROW_USAGE);
 		Set_Block(value, Make_Object_Block(VAL_OBJ_FRAME(value), action));
 		break;
