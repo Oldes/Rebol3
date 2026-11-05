@@ -98,6 +98,34 @@ system/schemes/http/spec/timeout: 30
 	--test-- "read/string/binary"
 		--assert all [error? e: try [read/string/binary http://example.com] e/id = 'bad-refines]
 
+	--test-- "invalid status line"
+		srv: open tcp://:8124
+		srv/awake: func [event /local client][
+			if event/type = 'accept [
+				client: first event/port
+				client/awake: func [event /local p][
+					p: event/port
+					switch event/type [
+						read [
+							either find p/data #{0D0A0D0A} [
+								write p to binary! "FOO 200 OK^M^/Content-Length: 0^M^/Connection: close^M^/^M^/"
+							][	read p ]
+						]
+						wrote [close p]
+					]
+					false
+				]
+				read client
+			]
+			false
+		]
+		e: try [read http://127.0.0.1:8124/]
+		close srv
+		--assert all [
+			error? e
+			e/id = 'Protocol
+			did find/match e/arg1 "Invalid status line"
+		]
 ===end-group===
 
 ===start-group=== "HTTP scheme - Successful responses"

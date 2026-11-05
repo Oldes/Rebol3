@@ -456,10 +456,12 @@ check-response: func [port /local conn res headers d1 d2 line info state awake s
 	]
 	res: false
 	unless info/status-code [
-		if parse line [
+		either parse line [
 			"HTTP/1." [#"0" | #"1"] some #" " copy code: 3 digits to end
 		][
 			info/status-code: to integer! code
+		][
+			return throw-http-error port ["Invalid status line: " mold line]
 		]
 	]
 	code: info/status-code
