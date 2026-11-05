@@ -509,7 +509,12 @@ static REBSER *Trim_Object(REBSER *obj)
 				n = Int32(DS_ARG(AN_COUNT));
 				if (n <= 0) break;
 			}
-			Append_Obj(VAL_OBJ_FRAME(value), arg, Partial1(arg, D_ARG(AN_LENGTH)));
+			// The /part length is meaningful only for a block argument
+			// (a word is handled without it, other types are rejected).
+			Append_Obj(
+				VAL_OBJ_FRAME(value), arg,
+				ANY_BLOCK(arg) ? Partial1(arg, D_ARG(AN_LENGTH)) : 0
+			);
 			return R_ARG1;
 		}
 		else

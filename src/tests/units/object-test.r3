@@ -165,6 +165,24 @@ Rebol [
 ===end-group===
 
 
+===start-group=== "APPEND on object with non-block argument"
+	--test-- "append word"
+		o: make object! [a: 1]
+		append o 'x
+		--assert word? in o 'x
+		--assert 2 = length? o
+	--test-- "append/part word"
+		o: make object! [a: 1]
+		append/part o 'y 2
+		--assert word? in o 'y
+		--assert 2 = length? o
+	--test-- "append invalid argument"
+		o: make object! [a: 1]
+		--assert error? try [append o 1]
+		--assert 1 = length? o
+===end-group===
+
+
 ===start-group=== "RESOLVE object"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1107
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1108
