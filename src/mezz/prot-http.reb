@@ -281,7 +281,14 @@ make-http-request: func [
 	
 	foreach [word string] :headers [
 		;; headers set to none are not sent (allows removing default headers)
-		if :string [append request ajoin [form :word #":" SP :string CRLF]]
+		if :string [
+			string: form :string
+			;; prevent header injection / request splitting
+			unless parse string [any not-crlf-chars end] [
+				cause-error 'Access 'Protocol ajoin ["Invalid character in header: " :word]
+			]
+			append request ajoin [form :word #":" SP string CRLF]
+		]
 	]
 
 	if :content [
@@ -515,6 +522,8 @@ check-result: func[ result [block!] all [logic! none!]][
 
 crlfbin:  #{0D0A}
 crlf2bin: #{0D0A0D0A}
+not-crlf-chars: complement charset "^M^/"
+
 http-response-headers: construct [
 	Content-Length:
 	Content-Encoding:

@@ -196,6 +196,14 @@ system/schemes/http/spec/timeout: 30
 		r: try [read http://127.0.0.1:8125/]
 		close srv
 		--assert r == "ok"
+
+	make-http-request: :system/modules/http/make-http-request
+	--test-- "header value with CRLF is rejected"
+		--assert all [
+			error? e: try [make-http-request [host: "example.com" headers: [X-Test: "a^M^/Evil: 1"]]]
+			e/id = 'Protocol
+		]
+		--assert binary? make-http-request [host: "example.com" headers: [X-Test: "a"]]
 ===end-group===
 
 ===start-group=== "HTTP scheme - Successful responses"
