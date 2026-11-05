@@ -365,6 +365,18 @@ Rebol [
 		repeat i 100 [k: join "a" i m/:k: i] ;; no crash
 		--assert 100 == m/("a100")
 
+	--test-- "map string key copied from offset"
+		k: next "xab"
+		m: make map! []
+		put m k 1
+		--assert "ab" = first words-of m
+		--assert 1 = select m "ab"
+		--assert "ab" = find m "AB"
+		k: next #{FF0102}
+		put m k 2
+		--assert #{0102} = pick words-of m 2
+		--assert 2 = select m #{0102}
+
 ===end-group===
 
 
