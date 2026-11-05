@@ -166,6 +166,16 @@ Rebol [
 		repeat i 20000 [put m to char! 19967 + i i]
 		--assert 20000 = length? m
 		--assert 1 = select m #"^(4E00)"
+
+	--test-- "murmur3 reference vectors"
+		--assert 0          = hash #{}
+		--assert 1009084850 = hash #{61}                     ;; "a"    0x3c2569b2
+		--assert 3017643002 = hash to binary! "abc"          ;;        0xb3dd93fa
+		--assert 3127628307 = hash to binary! "test"         ;;        0xba6bd213
+		--assert 776992547  = hash to binary! "The quick brown fox jumps over the lazy dog"
+		;; unaligned data
+		--assert 1139631978 = hash next #{0061626364}        ;; "abcd" 0x43ed676a
+		--assert (hash next #{00616263}) = hash #{616263}
 ===end-group===
 
 ===start-group=== "APPEND on map!"

@@ -61,7 +61,7 @@ REBCNT MurmurHash3_x86_32(const void* key, int len, REBCNT seed)
 	case 2: k1 ^= tail[1] << 8;
 	case 1: k1 ^= tail[0];
 		k1 *= MURMUR_HASH_3_X86_32_C1;
-		k1  = ROTL32(k1, 16);
+		k1  = ROTL32(k1, 15);
 		k1 *= MURMUR_HASH_3_X86_32_C2;
 		h1 ^= k1;
 	};
