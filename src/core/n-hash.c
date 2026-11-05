@@ -277,54 +277,96 @@ FORCE_INLINE
 
 /***********************************************************************
 **
-*/	REBCNT Hash_String_Value(REBVAL* val)
+*/	static void Hash_Codepoint(REBCNT ch, REBCNT *hash, REBCNT *acc, REBCNT *n)
 /*
-**		Return a case insensitive hash value for the string value.
+**		Adds a lowercased codepoint, as UTF-8 bytes, to the string hash state.
+**		Bytes are collected in `acc` and mixed by 4 (like Murmur3 blocks).
 **
 ***********************************************************************/
 {
-	REBYTE* bin;
-	REBUNI* uni;
-	REBLEN  len;
-	REBCNT  n, ch;
+	REBYTE b[4];
+	REBCNT i, len;
+
+	if (ch < UNICODE_CASES) ch = (REBCNT)LO_CASE(ch);
+	if (ch < 0x80) {
+		b[0] = (REBYTE)ch; len = 1;
+	} else if (ch < 0x800) {
+		b[0] = (REBYTE)(0xC0 | (ch >> 6));
+		b[1] = (REBYTE)(0x80 | (ch & 0x3F)); len = 2;
+	} else if (ch < 0x10000) {
+		b[0] = (REBYTE)(0xE0 | (ch >> 12));
+		b[1] = (REBYTE)(0x80 | ((ch >> 6) & 0x3F));
+		b[2] = (REBYTE)(0x80 | (ch & 0x3F)); len = 3;
+	} else {
+		b[0] = (REBYTE)(0xF0 | (ch >> 18));
+		b[1] = (REBYTE)(0x80 | ((ch >> 12) & 0x3F));
+		b[2] = (REBYTE)(0x80 | ((ch >> 6) & 0x3F));
+		b[3] = (REBYTE)(0x80 | (ch & 0x3F)); len = 4;
+	}
+	for (i = 0; i < len; i++) {
+		*acc |= (REBCNT)b[i] << (8 * *n);
+		if (++*n == 4) {
+			bmix(hash, acc);
+			*acc = 0;
+			*n = 0;
+		}
+	}
+}
+
+/***********************************************************************
+**
+*/	REBCNT Hash_String_Value(REBVAL* val)
+/*
+**		Return a case insensitive hash value for the string value.
+**		The hash is computed from the lowercased text encoded as UTF-8,
+**		so it is the same for ASCII, UTF-8 and wide strings.
+**		The length used is the number of codepoints.
+**
+***********************************************************************/
+{
+	const REBYTE *bin;
+	REBLEN  len, i;
+	REBLEN  count;
 	REBCNT  hash = 0;
+	REBCNT  acc = 0; // collected bytes
+	REBCNT  n = 0;   // number of collected bytes
 
 	if (BYTE_SIZE(VAL_SERIES(val))) {
 		bin = VAL_BIN_DATA(val);
 		len = VAL_TAIL(val) - VAL_INDEX(val);
 		if (IS_UTF8_SERIES(VAL_SERIES(val))) {
-			// Hash lowercased codepoints (not bytes), so it is consistent with
-			// the case-insensitive compare of UTF-8 strings (Compare_UTF8_Len).
-			// The length used is the number of codepoints (same as for ASCII).
-			const REBYTE *str = bin;
 			REBLEN bytes = len;
-			for (len = 0; bytes > 0; str++, len++) {
-				ch = UTF8_Decode_Codepoint(&str, &bytes); // mods str, bytes
-				if (ch < UNICODE_CASES) ch = LO_CASE(ch);
-				bmix(&hash, &ch);
+			for (count = 0; bytes > 0; bin++, count++) {
+				// UTF8_Decode_Codepoint modifies bin and bytes
+				Hash_Codepoint(UTF8_Decode_Codepoint(&bin, &bytes), &hash, &acc, &n);
 			}
 		}
 		else {
-			// ASCII only
-			for (n = 0; n < len; n++) {
-				ch = (REBCNT)LO_CASE(*bin++);
-				bmix(&hash, &ch);
+			// Bytes (ASCII); 4 ASCII chars are mixed at once when aligned
+			for (i = 0; i < len; ) {
+				if (n == 0 && i + 4 <= len && ((bin[i] | bin[i+1] | bin[i+2] | bin[i+3]) & 0x80) == 0) {
+					acc = (REBCNT)LO_CASE(bin[i])
+						| ((REBCNT)LO_CASE(bin[i+1]) << 8)
+						| ((REBCNT)LO_CASE(bin[i+2]) << 16)
+						| ((REBCNT)LO_CASE(bin[i+3]) << 24);
+					bmix(&hash, &acc);
+					acc = 0;
+					i += 4;
+				}
+				else Hash_Codepoint(bin[i++], &hash, &acc, &n);
 			}
+			count = len;
 		}
 	}
 	else {
-		uni = VAL_UNI_DATA(val);
+		REBUNI *uni = VAL_UNI_DATA(val);
 		len = Val_Series_Len(val);
-		for (n = 0; n < len; n++) {
-			ch = (REBCNT)(*uni++);
-			if (ch < UNICODE_CASES)
-				ch = (REBCNT)LO_CASE(ch);
-			bmix(&hash, &ch);
-		}
+		for (i = 0; i < len; i++) Hash_Codepoint(uni[i], &hash, &acc, &n);
+		count = len;
 	}
-	hash ^= len;
-	hash = fmix32(hash);
-	return hash;
+	if (n > 0) bmix(&hash, &acc);
+	hash ^= count;
+	return fmix32(hash);
 }
 
 FORCE_INLINE
