@@ -534,7 +534,7 @@ do-redirect: func [port [port!] new-uri [url! string! file!] /local spec state h
 
 	state/redirects: state/redirects + 1
 	if state/redirects > system/options/http-redirects [
-		res: throw-http-error port {Too many redirections}
+		return throw-http-error port {Too many redirections}
 	]
 
 	spec/query: spec/target: none ; old parts not used in redirection!
@@ -600,6 +600,8 @@ do-redirect: func [port [port!] new-uri [url! string! file!] /local spec state h
 	port/spec: new-uri
 	port/state: none
 	open port
+	; keep the redirection counter across connections
+	port/state/redirects: state/redirects
 	; restore original request headers
 	port/spec/headers: headers
 	port

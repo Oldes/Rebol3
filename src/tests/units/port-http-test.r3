@@ -179,6 +179,18 @@ system/schemes/http/spec/timeout: 30
 ===end-group===
 
 ===start-group=== "HTTP scheme - Redirection messages"
+	--test-- "too many redirections"
+		saved: system/options/http-redirects
+		system/options/http-redirects: 2
+		e: try [read http://httpbin.org/redirect/3]
+		system/options/http-redirects: saved
+		--assert all [error? e  e/id = 'Protocol  e/arg1 = "Too many redirections"]
+	--test-- "redirections within limit"
+		saved: system/options/http-redirects
+		system/options/http-redirects: 3
+		r: try [read http://httpbin.org/redirect/3]
+		system/options/http-redirects: saved
+		--assert string? r
 	--test-- "redirect http"
 		--assert all [ ;= Multiple Choices
 			block? res: try [read/all http://httpbin.org/status/300]
