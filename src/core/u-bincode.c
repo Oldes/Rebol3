@@ -1546,7 +1546,8 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 						case SYM_F32LE:
 							n = 4;
 							ASSERT_READ_SIZE(value, cp, ep, n);
-							SET_DECIMAL(temp, ((float*)cp)[0]);
+							memcpy(&f32.v, cp, 4); // cp may be unaligned
+							SET_DECIMAL(temp, f32.v);
 							break;
 						case SYM_F32BE:
 							n = 4;
@@ -1555,14 +1556,16 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 							buf[1] = cp[2];
 							buf[2] = cp[1];
 							buf[3] = cp[0];
-							SET_DECIMAL(temp, ((float*)buf)[0]);
+							memcpy(&f32.v, buf, 4);
+							SET_DECIMAL(temp, f32.v);
 							break;
 						case SYM_DOUBLE:
 						case SYM_F64:
 						case SYM_F64LE:
 							n = 8;
 							ASSERT_READ_SIZE(value, cp, ep, n);
-							SET_DECIMAL(temp, ((double*)cp)[0]);
+							memcpy(&dbl, cp, 8); // cp may be unaligned
+							SET_DECIMAL(temp, dbl);
 							break;
 						case SYM_F64BE:
 							n = 8;
@@ -1575,6 +1578,7 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 							buf[5] = cp[2];
 							buf[6] = cp[1];
 							buf[7] = cp[0];
+							memcpy(&dbl, buf, 8);
 							SET_DECIMAL(temp, ((double *)buf)[0]);
 							break;
 						case SYM_FIXED8:
