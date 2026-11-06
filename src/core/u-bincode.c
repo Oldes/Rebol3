@@ -1155,19 +1155,19 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 							n = 4;
 							ASSERT_READ_SIZE(value, cp, ep, n);
 							VAL_SET(temp, REB_INTEGER);
-							SET_INT32(temp, ((i32)cp[3] << 0 ) |
-											((i32)cp[2] << 8 ) |
-											((i32)cp[1] << 16) |
-											((i32)cp[0] << 24));
+							SET_INT32(temp, (i32)((u32)cp[3] << 0 ) |
+											     ((u32)cp[2] << 8 ) |
+											     ((u32)cp[1] << 16) |
+											     ((u32)cp[0] << 24));
 							break;
 						case SYM_SI32LE:
 							n = 4;
 							ASSERT_READ_SIZE(value, cp, ep, n);
 							VAL_SET(temp, REB_INTEGER);
-							SET_INT32(temp, ((i32)cp[0] << 0 ) |
-											((i32)cp[1] << 8 ) |
-											((i32)cp[2] << 16) |
-											((i32)cp[3] << 24));
+							SET_INT32(temp, (i32)((u32)cp[0] << 0 ) |
+											     ((u32)cp[1] << 8 ) |
+											     ((u32)cp[2] << 16) |
+											     ((u32)cp[3] << 24));
 							break;
 						case SYM_UI64:
 						case SYM_UI64BE:
@@ -1587,10 +1587,10 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 						case SYM_FIXED16:
 							n = 4;
 							ASSERT_READ_SIZE(value, cp, ep, n);
-							i = ((i32)cp[0] << 0)  |
-								((i32)cp[1] << 8)  |
-								((i32)cp[2] << 16) |
-								((i32)cp[3] << 24) ;
+							i = (i32)((u32)cp[0] << 0)  |
+								     ((u32)cp[1] << 8)  |
+								     ((u32)cp[2] << 16) |
+								     ((u32)cp[3] << 24) ;
 							VAL_SET(temp, REB_DECIMAL);
 							VAL_DECIMAL(temp) = ((float)i / 65536.0f);
 							break;

@@ -83,6 +83,13 @@ is-protected-error?: func[code][
 		--assert 32767 = binary/read b 'UI16
 		--assert 9223372036854775807 = binary/read b 'UI64
 		--assert 127 = binary/read b 'UI8
+	--test-- "BinCode - read signed 32-bit with high bit set (UBSan)"
+		--assert -2147483648 = binary/read #{80000000} 'si32
+		--assert -2147483648 = binary/read #{80000000} 'si32be
+		--assert -2147483648 = binary/read #{00000080} 'si32le
+		--assert -1          = binary/read #{FFFFFFFF} 'si32
+		--assert -32768.0    = binary/read #{00000080} 'fixed16
+		--assert -1.0        = binary/read #{0000FFFF} 'fixed16
 	--test-- "BinCode - write negative unsigned integers (big endian)"
 		binary/write b [UI8 -1 UI16 -1 UI24 -1 UI32 -1 UI64 -1]
 		--assert #{FF FFFF FFFFFF FFFFFFFF FFFFFFFFFFFFFFFF} = b/buffer
