@@ -107,7 +107,7 @@
 	//REBYTE *flags;
 
 	SET_FLAG(dir->modes, RFM_DIR);
-	SET_FLAG(dir->modes, policy);
+	SET_FLAG(dir->modes, policy & ~REMOVE_TAIL_SLASH); // policy is a bit number, REMOVE_TAIL_SLASH a mask
 
 	// We depend on To_Local_Path giving us 2 extra chars for / and *
 	os_path = Value_To_OS_Path(path, TRUE);
