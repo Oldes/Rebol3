@@ -492,7 +492,7 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 						goto error;
 					case SYM_PAD:
 						if (IS_INTEGER(next)) {
-							if (VAL_INT32(next) < 0) Trap1(RE_INVALID_ARG, next);
+							if (VAL_INT32(next) <= 0) Trap1(RE_INVALID_ARG, next);
 							i = count % VAL_INT32(next);
 							count += (i > 0) ? VAL_UNT32(next) - i : 0;
 							continue;
@@ -1493,11 +1493,12 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 							next = ++value;
 							if (IS_GET_WORD(next)) next = Get_Var(next);
 							if (!IS_INTEGER(next)) goto error_next_value;
+							if (VAL_INT32(next) <= 0) Trap1(RE_INVALID_ARG, next);
 							i = VAL_INDEX(buffer_read) % VAL_INT32(next);
 							if (i > 0) {
-								i = VAL_INT32(next) - i;
+								i = VAL_INDEX(buffer_read) + VAL_INT32(next) - i; // new index
 								ASSERT_INDEX_RANGE(buffer_read, i, value);
-								VAL_INDEX(buffer_read) += i;
+								VAL_INDEX(buffer_read) = i;
 								cp = BIN_DATA(bin) + VAL_INDEX(buffer_read);
 							}
 							continue;

@@ -261,6 +261,21 @@ is-protected-error?: func[code][
 		binary/write b: #{} [UI8 255 PAD 4 UI8 255]
 		--assert b = #{FF000000FF}
 		--assert [255 255] = binary/read b [UI8 PAD 4 UI8]
+	--test-- "pad 0 / negative"
+		--assert error? try [binary/write binary 8 [pad 0]]
+		--assert error? try [binary/write binary 8 [pad -4]]
+		--assert error? try [binary/read #{0102} [pad 0]]
+		--assert error? try [binary/read #{0102} [pad -4]]
+	--test-- "read pad beyond tail"
+		--assert error? try [binary/read #{0102030405} [ui32 pad 8]]
+	--test-- "read pad valid"
+		--assert [1 5] = binary/read #{0102030405060708} [ui8 pad 4 ui8]
+		--assert [1 2] = binary/read #{01020304} [ui8 pad 1 ui8]
+	--test-- "write pad valid"
+		bin: binary 8
+		binary/write bin [ui8 1 pad 4 ui8 2]
+		--assert #{0100000002} = binary/read bin 'bytes
+
 
 	--test-- "BinCode - LENGTH?"
 		;LENGTH? returns number of bytes remaining in the buffer
