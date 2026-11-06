@@ -1046,6 +1046,8 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 		inBit = IS_OBJECT(val_ctx) ? VAL_INT32(VAL_OBJ_VALUE(val_ctx, BINCODE_READ_BITMASK)): 0;
 
 		if (IS_INTEGER(val_read)) {
+			// negative counts are huge as unsigned; also avoids 64->32 bit truncation
+			if (VAL_UNT64(val_read) > (REBU64)(ep - cp)) Trap1(RE_OUT_OF_RANGE, val_read);
 			n = (REBCNT)VAL_INT64(val_read);
 			ASSERT_READ_SIZE(val_read, cp, ep, n);
 			if(ref_into) {
@@ -1373,6 +1375,7 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 								value--;
 							} else {
 								if (!IS_INTEGER(next)) Trap1(RE_INVALID_SPEC, value);
+								if (VAL_UNT64(next) > (REBU64)(ep - cp)) Trap1(RE_OUT_OF_RANGE, value);
 								n = VAL_INT32(next);
 							}
 							ASSERT_READ_SIZE(value, cp, ep, n);

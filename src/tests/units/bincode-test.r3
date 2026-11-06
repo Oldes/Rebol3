@@ -776,4 +776,19 @@ is-protected-error?: func[code][
 		--assert #{FFFFFFFFFFFF4120AC} = binary/read bin 'bytes
 ===end-group===
 
+
+===start-group=== "BinCode - read count validation"
+	--test-- "read N"
+		--assert #{0102} = binary/read #{010203} 2
+		--assert #{}     = binary/read #{010203} 0
+		--assert error? try [binary/read #{0102} 3]
+		--assert error? try [binary/read #{0102} -1]
+		--assert error? try [binary/read #{0102} 4294967297]
+	--test-- "bytes N"
+		--assert [#{0102}] = binary/read #{010203} [bytes 2]
+		--assert error? try [binary/read #{0102} [bytes -1]]
+		--assert error? try [binary/read #{0102} [bytes 4294967297]]
+		--assert error? try [binary/read #{0102} [string-bytes 4294967297]]
+===end-group===
+
 ~~~end-file~~~
