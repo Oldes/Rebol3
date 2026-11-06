@@ -1897,6 +1897,7 @@ static u64 Bincode_Bits_Value(REBCNT cmd, REBINT nbits, REBVAL *arg) {
 	return R_ARG1;
 
 error:
+	if (IS_END(value)) value--; // missing argument at block end: report the command
 	Trap_Word(RE_DIALECT, SYM_BINCODE, value);
 error_next_value:
 	if (IS_END(next)) value--;

@@ -1000,4 +1000,14 @@ is-protected-error?: func[code][
 		--assert error? try [binary/write binary 8 [string]]
 ===end-group===
 
+
+===start-group=== "BinCode - missing argument at block end"
+	--test-- "write command without argument"
+		--assert error? try [binary/write binary 8 [ui8]]
+		--assert error? try [binary/write binary 8 [string]]
+		--assert error? try [binary/write binary 8 [bytes]]
+		--assert error? try [binary/write binary 8 [ub 4]]
+		--assert error? try [binary/write binary 8 [bit]]
+===end-group===
+
 ~~~end-file~~~
