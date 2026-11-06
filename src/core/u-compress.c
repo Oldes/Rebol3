@@ -235,12 +235,19 @@ int DecompressCommonDeflate(deflate_mode_t mode, const REBYTE* input, REBLEN len
 		result = h->decompress(ctx, input, len, BIN_HEAD(*output), out_bytes, NULL);
 	}
 	else {
-	retry:
-		result = h->decompress_ex(ctx, input, len, BIN_HEAD(*output), SERIES_REST(*output), &in_bytes, &out_bytes);
-		if (result == LIBDEFLATE_INSUFFICIENT_SPACE) {
-			SERIES_TAIL(*output) = SERIES_REST(*output);
-			Expand_Series(*output, AT_TAIL, len >> 1);
-			goto retry;
+		for (;;) {
+			// keep one byte for the terminator
+			result = h->decompress_ex(ctx, input, len, BIN_HEAD(*output), SERIES_REST(*output) - 1, &in_bytes, &out_bytes);
+			if (result != LIBDEFLATE_INSUFFICIENT_SPACE) break;
+			// libdeflate restarts from the beginning, so the content does not
+			// have to be kept, just a bigger buffer is needed.
+			out_len = (REBU64)SERIES_REST(*output) * 2;
+			if (out_len > MAX_I32) {
+				*error = result;
+				libdeflate_free_decompressor(ctx);
+				return FALSE;
+			}
+			Resize_Series(*output, (REBCNT)out_len);
 		}
 	}
 
@@ -252,6 +259,7 @@ int DecompressCommonDeflate(deflate_mode_t mode, const REBYTE* input, REBLEN len
 	if (limit != NO_LIMIT && out_bytes > limit) out_bytes = limit;
 	libdeflate_free_decompressor(ctx);
 	SERIES_TAIL(*output) = (REBLEN)out_bytes;
+	TERM_SERIES(*output);
 	return TRUE;
 }
 
