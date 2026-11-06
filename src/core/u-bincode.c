@@ -1392,8 +1392,8 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 						case SYM_STRING:
 							bp = cp;
 							for(;;) {
-								if(bp[0] == 0) break;
-								if(bp == ep) Trap1(RE_OUT_OF_RANGE, value);
+								if (bp >= ep) Trap1(RE_OUT_OF_RANGE, value); // no NUL before end
+								if (bp[0] == 0) break;
 								bp++;
 							}
 							n = (REBCNT)(bp - cp);

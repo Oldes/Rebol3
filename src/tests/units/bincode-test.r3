@@ -182,6 +182,17 @@ is-protected-error?: func[code][
 		--assert #{CAFE} = binary/read #{00000002CAFE} 'UI32BYTES
 		--assert #{CAFE} = binary/read #{02000000CAFE} 'UI32LEBYTES
 
+	--test-- "BinCode - read string (NUL terminated) - valid"
+		--assert "ABC" = binary/read #{41424300} 'string
+		--assert ""    = binary/read #{00} 'string
+		--assert ["A" 66] = binary/read #{410042} [string ui8]
+	--test-- "BinCode - read string (NUL terminated) - missing NUL"
+		--assert error? try [binary/read #{414243} 'string]
+		--assert error? try [binary/read #{} 'string]
+		b: binary #{41}
+		--assert error? try [binary/read b 'string]
+		--assert 1 = binary/read b 'length?  ;; index not moved past tail
+
 	--test-- "BinCode - write GET-WORD"
 		a: 42 b: binary/write #{} [ui8 :a]
 		--assert #{2A} = b/buffer
