@@ -611,6 +611,7 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 
 					case SYM_RANDOM_BYTES:
 						if (IS_INTEGER(next)) {
+							if (VAL_INT64(next) < 0 || VAL_INT64(next) > 0x7FFFFFFF) Trap1(RE_OUT_OF_RANGE, next);
 							count += VAL_INT32(next);
 							continue;
 						}

@@ -791,4 +791,19 @@ is-protected-error?: func[code][
 		--assert error? try [binary/read #{0102} [string-bytes 4294967297]]
 ===end-group===
 
+
+===start-group=== "BinCode - random-bytes"
+	--test-- "valid"
+		bin: binary 16
+		binary/write bin [ui8 1 random-bytes 4 ui8 2]
+		--assert 6 = binary/read bin 'length?
+		--assert [1 2] = binary/read bin [ui8 skip 4 ui8]
+		bin: binary 16
+		binary/write bin [random-bytes 0]
+		--assert 0 = binary/read bin 'length?
+	--test-- "invalid counts"
+		--assert error? try [binary/write binary 8 [random-bytes -1]]
+		--assert error? try [binary/write binary 8 [random-bytes 4294967297]]
+===end-group===
+
 ~~~end-file~~~
