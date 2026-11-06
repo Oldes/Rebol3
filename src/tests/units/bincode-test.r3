@@ -867,7 +867,7 @@ is-protected-error?: func[code][
 ===end-group===
 
 
-===start-group=== "bincode - msdos date year range"
+===start-group=== "BinCode - msdos date year range"
 	--test-- "valid bounds"
 		bin: binary 8
 		binary/write bin [msdos-date 1-Jan-1980 msdos-date 31-Dec-2107]
@@ -880,6 +880,29 @@ is-protected-error?: func[code][
 		--assert error? try [binary/write binary 8 [msdos-date 1-Jan-2108]]
 		--assert error? try [binary/write binary 8 [msdos-datetime 31-Dec-1979/12:00]]
 		--assert error? try [binary/write binary 8 [msdos-datetime 1-Jan-2108/12:00]]
+===end-group===
+
+
+===start-group=== "BinCode - signed BE/LE variants"
+	--test-- "write signed BE/LE"
+		bin: binary 64
+		binary/write bin [si16be -2 si16le -2 si24be -2 si24le -2 si32be -2 si32le -2 si64be -2 si64le -2]
+		--assert #{FFFEFEFFFFFFFEFEFFFFFFFFFFFEFEFFFFFFFFFFFFFFFFFFFFFEFEFFFFFFFFFFFFFF} = binary/read bin 'bytes
+	--test-- "read signed BE/LE"
+		bin: binary 64
+		binary/write bin [si16be -2 si16le -2 si24be -2 si24le -2 si32be -2 si32le -2 si64be -2 si64le -2]
+		--assert [-2 -2 -2 -2 -2 -2 -2 -2] = binary/read bin [si16be si16le si24be si24le si32be si32le si64be si64le]
+	--test-- "positive values"
+		bin: binary 16
+		binary/write bin [si24le 1193046]
+		--assert #{563412} = binary/read bin 'bytes
+		--assert 1193046 = binary/read #{563412} 'si24le
+		--assert 1 = binary/read #{0000000000000001} 'si64
+		--assert 1 = binary/read #{0100000000000000} 'si64le
+	--test-- "range"
+		--assert error? try [binary/write binary 8 [si16le 32768]]
+		--assert error? try [binary/write binary 8 [si24le 8388608]]
+		--assert error? try [binary/write binary 8 [si32le 2147483648]]
 ===end-group===
 
 ~~~end-file~~~

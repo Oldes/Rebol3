@@ -449,6 +449,8 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 						else goto error;
 						break;
 					case SYM_SI16:
+					case SYM_SI16BE:
+					case SYM_SI16LE:
 					case SYM_UI16:
 					case SYM_UI16LE:
 					case SYM_UI16BE:
@@ -458,6 +460,8 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 						else goto error;
 						break;
 					case SYM_SI24:
+					case SYM_SI24BE:
+					case SYM_SI24LE:
 					case SYM_UI24:
 					case SYM_UI24LE:
 					case SYM_UI24BE:
@@ -467,6 +471,8 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 						else goto error;
 						break;
 					case SYM_SI32:
+					case SYM_SI32BE:
+					case SYM_SI32LE:
 					case SYM_UI32:
 					case SYM_UI32LE:
 					case SYM_UI32BE:
@@ -476,6 +482,8 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 						else goto error;
 						break;
 					case SYM_SI64:
+					case SYM_SI64BE:
+					case SYM_SI64LE:
 					case SYM_UI64:
 					case SYM_UI64LE:
 					case SYM_UI64BE:
@@ -746,23 +754,27 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 						break;
 					case SYM_UI16LE:
 						ASSERT_UI_RANGE(next, 0xFFFF);
+					write_ui16le:
 						n = 2;
 						bp = (REBYTE*)&VAL_INT64(next);
 						WRITE_LE_2(cp, bp);
 						break;
 					case SYM_UI24LE:
 						ASSERT_UI_RANGE(next, 0xFFFFFF);
+					write_ui24le:
 						n = 3;
 						bp = (REBYTE*)&VAL_INT64(next);
 						WRITE_LE_3(cp, bp);
 						break;
 					case SYM_UI32LE:
 						ASSERT_U32_RANGE(next);
+					write_ui32le:
 						n = 4;
 						bp = (REBYTE*)&VAL_INT64(next);
 						WRITE_LE_4(cp, bp);
 						break;
 					case SYM_UI64LE:
+					write_ui64le:
 						n = 8;
 						bp = (REBYTE*)&VAL_INT64(next);
 						WRITE_LE_8(cp, bp);
@@ -772,16 +784,31 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 						ASSERT_SI_RANGE(next, 0x7F);
 						goto write_ui8;
 					case SYM_SI16:
+					case SYM_SI16BE:
 						ASSERT_SI_RANGE(next, 0x7FFF);
 						goto write_ui16;
 					case SYM_SI24:
+					case SYM_SI24BE:
 						ASSERT_SI_RANGE(next, 0x7FFFFF);
 						goto write_ui24;
 					case SYM_SI32:
+					case SYM_SI32BE:
 						ASSERT_SI_RANGE(next, 0x7FFFFFFF);
 						goto write_ui32;
 					case SYM_SI64:
+					case SYM_SI64BE:
 						goto write_ui64;
+					case SYM_SI16LE:
+						ASSERT_SI_RANGE(next, 0x7FFF);
+						goto write_ui16le;
+					case SYM_SI24LE:
+						ASSERT_SI_RANGE(next, 0x7FFFFF);
+						goto write_ui24le;
+					case SYM_SI32LE:
+						ASSERT_SI_RANGE(next, 0x7FFFFFFF);
+						goto write_ui32le;
+					case SYM_SI64LE:
+						goto write_ui64le;
 
 					case SYM_BYTES:
 						n = VAL_LEN(next);
@@ -1155,6 +1182,16 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 							if((cp[0] & 0x80) == 0x80) i |= 0xFF000000;
 							SET_INT32(temp, i);
 							break;
+						case SYM_SI24LE:
+							n = 3;
+							ASSERT_READ_SIZE(value, cp, ep, n);
+							VAL_SET(temp, REB_INTEGER);
+							i = ((i32)cp[0] <<  0) |
+								((i32)cp[1] <<  8) |
+								((i32)cp[2] << 16) ;
+							if((cp[2] & 0x80) == 0x80) i |= 0xFF000000;
+							SET_INT32(temp, i);
+							break;
 						case SYM_UI32:
 						case SYM_UI32BE:
 							n = 4;
@@ -1193,6 +1230,8 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 											     ((u32)cp[2] << 16) |
 											     ((u32)cp[3] << 24));
 							break;
+						case SYM_SI64:
+						case SYM_SI64BE:
 						case SYM_UI64:
 						case SYM_UI64BE:
 							n = 8;
@@ -1208,6 +1247,7 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 								((u64)cp[1] << 48) |
 								((u64)cp[0] << 56) ;
 							break;
+						case SYM_SI64LE:
 						case SYM_UI64LE:
 							n = 8;
 							ASSERT_READ_SIZE(value, cp, ep, n);
