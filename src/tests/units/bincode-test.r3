@@ -732,4 +732,25 @@ is-protected-error?: func[code][
 
 ===end-group===
 
+
+===start-group=== "BinCode - write gaps are zeroed"
+	--test-- "at past tail on reused buffer"
+		bin: binary 16
+		binary/write bin #{FFFFFFFFFFFFFFFF}
+		binary/init bin none
+		binary/write bin [at 5 ui8 1]
+		--assert #{0000000001} = binary/read bin 'bytes
+	--test-- "at past tail after existing data"
+		bin: binary 16
+		binary/write bin #{0102030405060708}
+		binary/init bin none
+		binary/write bin [ui8 1 ui8 2]
+		binary/write bin [at 5 ui8 9]
+		--assert #{0102000009} = binary/read bin 'bytes
+	--test-- "at back into existing data keeps it"
+		bin: binary 16
+		binary/write bin [ui32 0#01020304 at 2 ui8 255]
+		--assert #{01FF0304} = binary/read bin 'bytes
+===end-group===
+
 ~~~end-file~~~

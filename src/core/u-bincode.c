@@ -636,6 +636,7 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 			} // end of for loop
 
 			tail_new = count; //bytes needed to write
+			n = SERIES_TAIL(bin); // old tail
 			//printf("index: %i tail: %i count: %i tail_new: %i rest: %i\n", index, tail, count, tail_new, SERIES_REST(bin));
 			if (tail_new > SERIES_REST(bin)) {
 				//puts("expanding");
@@ -645,6 +646,8 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 			if (tail_new > tail) tail = tail_new;
 			SERIES_TAIL(bin) = tail;
 			VAL_TAIL(buffer_read) = tail;
+			// zero newly exposed bytes, so gaps (for example after AT past the tail) don't hold stale data
+			if (tail > n) CLEAR(BIN_DATA(bin) + n, tail - n);
 			
 
 			value = VAL_BLK_DATA(val_write); //resets value at head of the input block
