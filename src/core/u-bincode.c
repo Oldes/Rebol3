@@ -202,7 +202,8 @@ static REBCNT EncodedU64_Size(u64 value) {
 
 static REBCNT EncodedVINT_Size(REBU64 value) {
 	REBCNT count = 1;
-	while (value >= (1ULL << (7 * count))) count++;
+	// all-ones value of a width is reserved (EBML "unknown size"), so it moves to the next width
+	while (value >= (1ULL << (7 * count)) - 1) count++;
 	return count;
 }
 
@@ -553,8 +554,8 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 
 					case SYM_VINT:
 						if (IS_INTEGER(next)) {
-							// max 8 bytes = 56 data bits (negative values are huge as unsigned)
-							if (VAL_UNT64(next) >= (1ULL << 56)) Trap1(RE_OUT_OF_RANGE, next);
+							// max 8 bytes = 56 data bits, all-ones reserved (negative values are huge as unsigned)
+							if (VAL_UNT64(next) >= (1ULL << 56) - 1) Trap1(RE_OUT_OF_RANGE, next);
 							count += EncodedVINT_Size(VAL_UNT64(next));
 							continue;
 						}

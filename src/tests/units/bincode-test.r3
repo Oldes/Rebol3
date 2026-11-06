@@ -845,20 +845,25 @@ is-protected-error?: func[code][
 
 
 ===start-group=== "BinCode - vint"
-	--test-- "write/read valid"
+	--test-- "write valid"
 		bin: binary 32
-		binary/write bin [vint 0 vint 126 vint 128 vint 72057594037927935]
-		--assert #{80FE408001FFFFFFFFFFFFFF} = binary/read bin 'bytes
+		binary/write bin [vint 0 vint 126 vint 127 vint 128 vint 16382 vint 16383]
+		--assert #{80FE407F40807FFE203FFF} = binary/read bin 'bytes
+		bin: binary 16
+		binary/write bin [vint 72057594037927934]
+		--assert #{01FFFFFFFFFFFFFE} = binary/read bin 'bytes
+	--test-- "write/read roundtrip"
 		bin: binary 32
-		binary/write bin [vint 0 vint 126 vint 128 vint 72057594037927935]
-		--assert [0 126 128 72057594037927935] = binary/read bin [vint vint vint vint]
+		binary/write bin [vint 0 vint 127 vint 16383 vint 72057594037927934]
+		--assert [0 127 16383 72057594037927934] = binary/read bin [vint vint vint vint]
 	--test-- "write out of range"
-		--assert error? try [binary/write binary 16 [vint 72057594037927936]]
+		--assert error? try [binary/write binary 16 [vint 72057594037927935]]
 		--assert error? try [binary/write binary 16 [vint -1]]
-	--test-- "read invalid"
+	--test-- "read"
+		--assert 127 = binary/read #{FF} 'vint   ;; reserved, but still decoded
 		--assert error? try [binary/read #{00} 'vint]
 		--assert error? try [binary/read #{0000000000000000FF} 'vint]
-		--assert error? try [binary/read #{4080} [vint vint]]   ;; truncated 2nd
+		--assert error? try [binary/read #{4080} [vint vint]]
 ===end-group===
 
 ~~~end-file~~~
