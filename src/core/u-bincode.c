@@ -597,6 +597,7 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 
 					case SYM_MSDOS_DATE:
 						if (!IS_DATE(next)) goto error; // only date allowed
+						if (VAL_YEAR(next) < 1980 || VAL_YEAR(next) > 2107) Trap1(RE_OUT_OF_RANGE, next); // 7-bit year from 1980
 						//continue..
 					case SYM_MSDOS_TIME:
 						if (IS_DATE(next) || IS_TIME(next)) {
@@ -607,6 +608,7 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 
 					case SYM_MSDOS_DATETIME:
 						if (IS_DATE(next)) { // needs date part
+							if (VAL_YEAR(next) < 1980 || VAL_YEAR(next) > 2107) Trap1(RE_OUT_OF_RANGE, next); // 7-bit year from 1980
 							count += 4;
 							continue;
 						}

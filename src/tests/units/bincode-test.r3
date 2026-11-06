@@ -866,4 +866,20 @@ is-protected-error?: func[code][
 		--assert error? try [binary/read #{4080} [vint vint]]
 ===end-group===
 
+
+===start-group=== "bincode - msdos date year range"
+	--test-- "valid bounds"
+		bin: binary 8
+		binary/write bin [msdos-date 1-Jan-1980 msdos-date 31-Dec-2107]
+		--assert [1-Jan-1980 31-Dec-2107] = binary/read bin [msdos-date msdos-date]
+		bin: binary 8
+		binary/write bin [msdos-datetime 1-Jan-1980/0:00 msdos-datetime 31-Dec-2107/23:59:58]
+		--assert [1-Jan-1980/0:00 31-Dec-2107/23:59:58] = binary/read bin [msdos-datetime msdos-datetime]
+	--test-- "out of range"
+		--assert error? try [binary/write binary 8 [msdos-date 31-Dec-1979]]
+		--assert error? try [binary/write binary 8 [msdos-date 1-Jan-2108]]
+		--assert error? try [binary/write binary 8 [msdos-datetime 31-Dec-1979/12:00]]
+		--assert error? try [binary/write binary 8 [msdos-datetime 1-Jan-2108/12:00]]
+===end-group===
+
 ~~~end-file~~~
