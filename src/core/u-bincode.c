@@ -1646,6 +1646,7 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 							if (IS_PROTECT_SERIES(bin)) Trap0(RE_PROTECTED);
 							Remove_Series(VAL_SERIES(buffer_read), 0, VAL_INDEX(buffer_read));
 							cp = VAL_BIN_HEAD(buffer_read);
+							ep = cp + VAL_TAIL(buffer_read); // head may move and tail shrinks
 							VAL_INDEX(buffer_write) = MAX(0, (REBI64)VAL_INDEX(buffer_write) - VAL_INDEX(buffer_read));
 							VAL_INDEX(buffer_read) = 0;
 							continue;

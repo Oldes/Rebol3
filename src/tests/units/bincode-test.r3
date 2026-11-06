@@ -615,6 +615,18 @@ is-protected-error?: func[code][
 			empty? head b/buffer
 			empty? head b/buffer-write
 		]
+
+	--test-- "crop all then read"
+		b: binary #{0102}
+		--assert error? try [binary/read b [ui16 crop ui8]]
+	--test-- "crop large (bias reset) then read"
+		b: binary append/dup #{} 0 5000
+		--assert error? try [binary/read b [skip 4096 crop bytes 905]]
+		b: binary append/dup #{} 0 5000
+		--assert [904] = binary/read b [skip 4096 crop length?]
+	--test-- "crop small keeps data"
+		b: binary #{01020304}
+		--assert [1 2 3 4] = binary/read b [ui8 crop ui8 ui8 ui8]
 ===end-group===
 
 
