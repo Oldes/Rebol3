@@ -220,7 +220,7 @@ int DecompressCommonDeflate(deflate_mode_t mode, const REBYTE* input, REBLEN len
 	ctx = libdeflate_alloc_decompressor_ex(&options);
 	if (!ctx) return FALSE;
 
-	out_len = (limit != NO_LIMIT) ? limit : len << 2;
+	out_len = (limit != NO_LIMIT) ? limit : (REBU64)len << 2; // widen before shift (len may be > 1GB)
 
 	if (out_len == 0) {
 		*output = Make_Binary(1);
