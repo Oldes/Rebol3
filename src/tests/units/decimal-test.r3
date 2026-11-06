@@ -391,6 +391,12 @@ Rebol [
 		--assert not equiv? 1.#NaN 1.0
 		--assert not strict-equal? 1.#NaN 1.0
 
+	--test-- "almost_equal with distant values (UBSan overflow)"
+		--assert not equal?  1.#INF -1.0
+		--assert not equal? -1.#INF  1.0
+		--assert not equal?  1.#INF -1.#INF
+		--assert equal? [-1.#INF -1.0 0.0 1.0 1.#INF] sort [1.#INF -1.0 1.0 -1.#INF 0.0]
+		--assert equal? 0.0 -0.0
 ===end-group===
 
 ===start-group=== "trigonometric function"
