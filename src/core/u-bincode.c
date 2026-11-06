@@ -148,7 +148,7 @@ typedef union {
 } ms_datetime;
 #pragma pack() 
 
-#define ASSERT_SI_RANGE(v, n) if (VAL_INT64(v) < (- (i64)n) || VAL_INT64(v) > (i64)n) Trap1(RE_OUT_OF_RANGE, v);
+#define ASSERT_SI_RANGE(v, n) if (Bincode_Int_Arg(v) < (- (i64)(n) - 1) || Bincode_Int_Arg(v) > (i64)(n)) Trap1(RE_OUT_OF_RANGE, v); // -(n+1) .. n
 // integer! or char! argument as a 64-bit value (char! uses only 32 bits of the value data)
 static REBI64 Bincode_Int_Arg(REBVAL *v) {
 	return IS_CHAR(v) ? (REBI64)VAL_CHAR(v) : VAL_INT64(v);

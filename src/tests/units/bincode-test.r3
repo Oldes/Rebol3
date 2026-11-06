@@ -108,24 +108,24 @@ is-protected-error?: func[code][
 		binary/init b none
 		; max values... should be ok
 		--assert object? binary/write b [SI8  127]
-		--assert object? binary/write b [SI8 -127]
+		--assert object? binary/write b [SI8 -128]
 		--assert object? binary/write b [SI16  32767]
-		--assert object? binary/write b [SI16 -32767]
+		--assert object? binary/write b [SI16 -32768]
 		--assert object? binary/write b [SI24  8388607]
-		--assert object? binary/write b [SI24 -8388607]
+		--assert object? binary/write b [SI24 -8388608]
 		--assert object? binary/write b [SI32  2147483647]
-		--assert object? binary/write b [SI32 -2147483647]
+		--assert object? binary/write b [SI32 -2147483648]
 		; over range values.. should be "out of range" error
 		--assert is-range-error? [binary/write b [SI8  128]]
-		--assert is-range-error? [binary/write b [SI8 -128]]
+		--assert is-range-error? [binary/write b [SI8 -129]]
 		--assert is-range-error? [binary/write b [SI16  32768]]
-		--assert is-range-error? [binary/write b [SI16 -32768]]
+		--assert is-range-error? [binary/write b [SI16 -32769]]
 		--assert is-range-error? [binary/write b [SI24  8388608]]
-		--assert is-range-error? [binary/write b [SI24 -8388608]]
+		--assert is-range-error? [binary/write b [SI24 -8388609]]
 		--assert is-range-error? [binary/write b [SI32  2147483648]]
-		--assert is-range-error? [binary/write b [SI32 -2147483648]]
+		--assert is-range-error? [binary/write b [SI32 -2147483649]]
 		; results:
-		--assert [127 -127 32767 -32767 8388607 -8388607 2147483647 -2147483647]
+		--assert [127 -128 32767 -32768 8388607 -8388608 2147483647 -2147483648]
 		         = binary/read b [SI8 SI8 SI16 SI16 SI24 SI24 SI32 SI32]
 
 	--test-- "BinCode - write unsigned integers over range"
@@ -1008,6 +1008,26 @@ is-protected-error?: func[code][
 		--assert error? try [binary/write binary 8 [bytes]]
 		--assert error? try [binary/write binary 8 [ub 4]]
 		--assert error? try [binary/write binary 8 [bit]]
+===end-group===
+
+
+===start-group=== "BinCode - signed write range"
+	--test-- "min/max values"
+		bin: binary 32
+		binary/write bin [si8 -128 si8 127 si16 -32768 si16le 32767 si24 -8388608 si24le 8388607 si32 -2147483648 si32le 2147483647]
+		--assert #{807F8000FF7F800000FFFF7F80000000FFFFFF7F} = binary/read bin 'bytes
+		bin: binary 32
+		binary/write bin [si8 -128 si16 -32768 si24 -8388608 si32 -2147483648]
+		--assert [-128 -32768 -8388608 -2147483648] = binary/read bin [si8 si16 si24 si32]
+	--test-- "out of range"
+		--assert error? try [binary/write binary 8 [si8 -129]]
+		--assert error? try [binary/write binary 8 [si8 128]]
+		--assert error? try [binary/write binary 8 [si16le -32769]]
+		--assert error? try [binary/write binary 8 [si32 2147483648]]
+	--test-- "char!"
+		bin: binary 8
+		binary/write bin [si8 #"A" si16 #"€"]
+		--assert #{4120AC} = binary/read bin 'bytes
 ===end-group===
 
 ~~~end-file~~~
