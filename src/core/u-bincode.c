@@ -1467,7 +1467,7 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 						case SYM_INDEX:
 						case SYM_INDEXZ:
 							VAL_SET(temp, REB_INTEGER);
-							SET_INT32(temp, VAL_INDEX(buffer_read)) + (cmd == SYM_INDEX ? 1 : 0);
+							SET_INT32(temp, VAL_INDEX(buffer_read) + (cmd == SYM_INDEX ? 1 : 0));
 							n = 0;
 							break;
 						case SYM_SKIP:

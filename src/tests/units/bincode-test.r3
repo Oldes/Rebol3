@@ -234,6 +234,17 @@ is-protected-error?: func[code][
 		binary/read b [AT 4 i: INDEX j: INDEXz]
 		--assert all [i = 4 j = 3]
 
+		b: binary #{0102030405}
+		--assert 1 = binary/read b 'index
+		--assert 0 = binary/read b 'indexz
+		binary/read b 'ui8
+		--assert 2 = binary/read b 'index
+		--assert 1 = binary/read b 'indexz
+		binary/read b 'ui16
+		--assert [4 3] = binary/read b [index indexz]
+		binary/read b [ui16]
+		--assert [6 5] = binary/read b [index indexz]
+
 	--test-- "BinCode - SKIP"
 		;SKIP is using relative positioning
 		b: binary #{01020304}
