@@ -1520,6 +1520,7 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 								//printf("inbit %d: %d %d\n",i, inBit, VAL_INDEX(buffer_read));
 								NEXT_IN_BIT(inBit);
 							}
+							STORE_IN_BIT(val_ctx, inBit);
 							continue;
 						case SYM_LENGTHQ:
 							VAL_SET(temp, REB_INTEGER);

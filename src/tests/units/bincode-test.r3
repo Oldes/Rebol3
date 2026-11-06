@@ -430,6 +430,24 @@ is-protected-error?: func[code][
 			SKIPBITS 9 UB 2
 			SKIPBITS 3 UB 2
 		]
+	--test-- "BinCode - SKIPBITS then ub in separate call"
+		b: binary #{A5}
+		binary/read b [skipbits 4]
+		--assert [5] = binary/read b [ub 4]
+		b: binary #{A5}
+		binary/read b [skipbits 4]
+		--assert 5 = binary/read/with b 'ub 4
+	--test-- "BinCode - SKIPBITS then bit in separate call"
+		b: binary #{0F}
+		binary/read b [skipbits 4]
+		--assert binary/read b 'bit
+	--test-- "BinCode - SKIPBITS over byte boundary"
+		b: binary #{FF0F}
+		binary/read b [skipbits 12]
+		--assert [15] = binary/read b [ub 4]
+	--test-- "BinCode - SKIPBITS in same block (unchanged)"
+		b: binary #{A5}
+		--assert [5] = binary/read b [skipbits 4 ub 4]
 
 	--test-- "BinCode - ALIGN"
 		--assert [0 1 2] = binary/read #{008002} [
