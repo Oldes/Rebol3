@@ -411,7 +411,7 @@ typedef void(*CFUNC)(void *);
 
 #ifdef ENDIAN_BIG
 
-#define TO_RGBA_COLOR(r,g,b,a) (REBCNT)((r)<<24 | (g)<<16 | (b)<<8 |  (a))
+#define TO_RGBA_COLOR(r,g,b,a) ((REBCNT)(r)<<24 | (REBCNT)(g)<<16 | (REBCNT)(b)<<8 | (REBCNT)(a))
 
 //ARGB pixelformat used on big endian systems
 #define C_A 0
@@ -419,11 +419,11 @@ typedef void(*CFUNC)(void *);
 #define C_G 2
 #define C_B 3
 
-#define TO_PIXEL_COLOR(r,g,b,a) (REBCNT)((a)<<24 | (r)<<16 | (g)<<8 |  (b))
+#define TO_PIXEL_COLOR(r,g,b,a) ((REBCNT)(a)<<24 | (REBCNT)(r)<<16 | (REBCNT)(g)<<8 | (REBCNT)(b))
 
 #else
 
-#define TO_RGBA_COLOR(r,g,b,a) (REBCNT)((a)<<24 | (b)<<16 | (g)<<8 |  (r))
+#define TO_RGBA_COLOR(r,g,b,a) ((REBCNT)(a)<<24 | (REBCNT)(b)<<16 | (REBCNT)(g)<<8 | (REBCNT)(r))
 
 //we use RGBA pixelformat on Android
 #ifdef TO_ANDROID_ARM
@@ -431,14 +431,14 @@ typedef void(*CFUNC)(void *);
 #define C_G 1
 #define C_B 2
 #define C_A 3
-#define TO_PIXEL_COLOR(r,g,b,a) (REBCNT)((a)<<24 | (b)<<16 | (g)<<8 |  (r))
+#define TO_PIXEL_COLOR(r,g,b,a) ((REBCNT)(a)<<24 | (REBCNT)(b)<<16 | (REBCNT)(g)<<8 | (REBCNT)(r))
 #else
 //BGRA pixelformat is used on Windows
 #define C_B 0
 #define C_G 1
 #define C_R 2
 #define C_A 3
-#define TO_PIXEL_COLOR(r,g,b,a) (REBCNT)((a)<<24 | (r)<<16 | (g)<<8 |  (b))
+#define TO_PIXEL_COLOR(r,g,b,a) ((REBCNT)(a)<<24 | (REBCNT)(r)<<16 | (REBCNT)(g)<<8 | (REBCNT)(b))
 #endif
 
 #endif

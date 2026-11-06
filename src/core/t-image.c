@@ -1218,7 +1218,7 @@ find_none:
 		}
 
 		if (action == A_POKE) {
-			REBINT *dp = QUAD_SKIP(series, index));
+			REBINT *dp = QUAD_SKIP(series, index);
 			REBINT n;
 
 			arg = D_ARG(3);
@@ -1237,7 +1237,7 @@ find_none:
 			else
 				Trap_Arg(arg);
 
-			*dp = (*dp & 0xffffff) | (n << 24);
+			*dp = (*dp & 0xffffff) | ((REBCNT)n << 24);
 			DS_RET_VALUE(arg);
 			return R_RET; //was value;
 
@@ -1683,6 +1683,6 @@ REBFLG Get_Image_Source(REBVAL *val, REBYTE **data, REBCNT *len)
 	else return PE_BAD_ARGUMENT;
 
 	dp = (REBCNT*)QUAD_SKIP(series, index);
-	*dp = (*dp & 0xffffff) | (n << 24);
+	*dp = (*dp & 0xffffff) | ((REBCNT)n << 24);
 	return PE_OK;
 }
