@@ -553,6 +553,8 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 
 					case SYM_VINT:
 						if (IS_INTEGER(next)) {
+							// max 8 bytes = 56 data bits (negative values are huge as unsigned)
+							if (VAL_UNT64(next) >= (1ULL << 56)) Trap1(RE_OUT_OF_RANGE, next);
 							count += EncodedVINT_Size(VAL_UNT64(next));
 							continue;
 						}
@@ -1656,6 +1658,7 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 								mask >>= 1;
 								n++;
 							}
+							if (n > 8) Trap1(RE_INVALID_SPEC, value); // first byte 0x00 is not a valid VINT
 							// Extract the VINT value
 							ASSERT_READ_SIZE(value, cp, ep, n);
 							u = (u64)(cp[0] & (0xFF >> n));

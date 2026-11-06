@@ -843,4 +843,22 @@ is-protected-error?: func[code][
 		--assert error? try [binary/read #{8080808080808080808000} 'encodedu32]
 ===end-group===
 
+
+===start-group=== "BinCode - vint"
+	--test-- "write/read valid"
+		bin: binary 32
+		binary/write bin [vint 0 vint 126 vint 128 vint 72057594037927935]
+		--assert #{80FE408001FFFFFFFFFFFFFF} = binary/read bin 'bytes
+		bin: binary 32
+		binary/write bin [vint 0 vint 126 vint 128 vint 72057594037927935]
+		--assert [0 126 128 72057594037927935] = binary/read bin [vint vint vint vint]
+	--test-- "write out of range"
+		--assert error? try [binary/write binary 16 [vint 72057594037927936]]
+		--assert error? try [binary/write binary 16 [vint -1]]
+	--test-- "read invalid"
+		--assert error? try [binary/read #{00} 'vint]
+		--assert error? try [binary/read #{0000000000000000FF} 'vint]
+		--assert error? try [binary/read #{4080} [vint vint]]   ;; truncated 2nd
+===end-group===
+
 ~~~end-file~~~
