@@ -806,4 +806,27 @@ is-protected-error?: func[code][
 		--assert error? try [binary/write binary 8 [random-bytes 4294967297]]
 ===end-group===
 
+
+===start-group=== "BinCode - ub/sb/fb"
+	--test-- "ub"
+		--assert [10 5] = binary/read #{A5} [ub 4 ub 4]
+		--assert [511] = binary/read #{FF80} [ub 9]
+		--assert [4294967295] = binary/read #{FFFFFFFF} [ub 32]
+		--assert [-1] = binary/read #{FFFFFFFFFFFFFFFF} [ub 64]
+		--assert [0] = binary/read #{FF} [ub 0]
+	--test-- "sb"
+		--assert [-6 5] = binary/read #{A5} [sb 4 sb 4]
+		--assert [-1] = binary/read #{FFFFFFFF} [sb 32]
+		--assert [-1] = binary/read #{FFFFFFFFFFFFFFFF} [sb 64]
+	--test-- "fb"
+		--assert [1.0]  = binary/read #{00010000} [fb 32]
+		--assert [-1.0] = binary/read #{FFFF0000} [fb 32]
+	--test-- "invalid / out of data"
+		--assert error? try [binary/read #{FF} [ub -1]]
+		--assert error? try [binary/read #{FF} [ub 65]]
+		--assert error? try [binary/read #{FF} [ub 9]]
+		--assert error? try [binary/read #{} [sb 1]]
+		--assert error? try [binary/read #{} [fb 1]]
+===end-group===
+
 ~~~end-file~~~

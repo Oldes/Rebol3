@@ -1272,58 +1272,34 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 							break;
 						}
 						case SYM_UB:
-							next = ++value;
-							if (IS_GET_WORD(next)) next = Get_Var(next);
-							if (!IS_INTEGER(next)) goto error_next_value;
-							i = 0;
-							// could be optimized?
-							nbits = VAL_INT32(next);
-							//printf("bits: %i %i\n", nbits, 1 << nbits);
-							if (nbits > 0) {
-								if (inBit == 0) inBit = 0x80;
-								nbits = 1 << nbits;
-								ASSERT_READ_SIZE(value, cp, ep, 1);
-								while(nbits > 1) {
-									nbits = nbits >> 1;
-									if(IS_BIT_SET(cp[0], inBit)) i = i | nbits;
-									//printf("?? %i %i\n", inBit, i);
-									NEXT_IN_BIT(inBit);
-									//printf("inBit: %i\n", inBit);
-								}
-								STORE_IN_BIT(val_ctx, inBit);
-							}
-							VAL_SET(temp, REB_INTEGER);
-							SET_INT32(temp, i);
-							break;
 						case SYM_SB:
 						case SYM_FB:
 							next = ++value;
 							if (IS_GET_WORD(next)) next = Get_Var(next);
 							if (!IS_INTEGER(next)) goto error_next_value;
+							if (VAL_INT64(next) < 0 || VAL_INT64(next) > 64) Trap1(RE_OUT_OF_RANGE, next);
+							j = VAL_INT32(next); // number of bits
 							u = 0;
-							// could be optimized?
-							nbits = VAL_INT32(next);
-							if (nbits > 0) {
+							if (j > 0) {
 								if (inBit == 0) inBit = 0x80;
-								// http://graphics.stanford.edu/~seander/bithacks.html#VariableSignExtend
-								u64 m = (u64)1 << (nbits - 1); // sign bit mask
-								nbits = 1 << nbits;
-								//if (nbits > 0) {
-									//printf("SB nbits: %i\n", nbits);
-									while (nbits > 1) {
-										nbits >>= 1;
-										if (IS_BIT_SET(cp[0], inBit)) u = u | nbits;
-										//printf("?? %i %i %u\n", nbits, inBit, u);
-										NEXT_IN_BIT(inBit);
-									}
-									u = (u ^ m) - m;
-								//}
+								for (nbits = (REBCNT)j; nbits > 0; nbits--) {
+									ASSERT_READ_SIZE(value, cp, ep, 1);
+									u <<= 1;
+									if (IS_BIT_SET(cp[0], inBit)) u |= 1;
+									NEXT_IN_BIT(inBit);
+								}
 								STORE_IN_BIT(val_ctx, inBit);
+								if (cmd != SYM_UB && j < 64) {
+									// sign extend: http://graphics.stanford.edu/~seander/bithacks.html#VariableSignExtend
+									u64 m = (u64)1 << (j - 1); // sign bit mask
+									u = (u ^ m) - m;
+								}
 							}
-							if (cmd == SYM_SB) {
-								SET_INTEGER(temp, u);
-							} else {
+							if (cmd == SYM_FB) {
 								SET_DECIMAL(temp, ((double)((i64)u) / 65536.0));
+							} else {
+								VAL_SET(temp, REB_INTEGER);
+								VAL_UNT64(temp) = u;
 							}
 							break;
 						case SYM_BIT:
