@@ -396,8 +396,6 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 			memcpy(VAL_BIN_AT(buffer_write), VAL_BIN_AT(val_write), len);
 			VAL_INDEX(buffer_write) += len;
 			//Dump_Series(bin, "NewBin=>");
-			DS_POP;
-			return R_ARG1;
 			break;
 
 		case REB_BLOCK:

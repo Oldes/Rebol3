@@ -559,7 +559,13 @@ is-protected-error?: func[code][
 		b: binary #{0102}
 		--assert 1 = binary/write/read b [] 'ui8
 		--assert [2] = binary/write/read b [] [ui8]
-
+	--test-- "write binary returns ctx"
+		b: binary 16
+		--assert object? binary/write b #{0102}
+	--test-- "write/read with binary data"
+		b: binary 16
+		--assert [1 2] = binary/write/read b #{0102} [ui8 ui8]
+		--assert 3 = binary/write/read b #{03} 'ui8
 ===end-group===
 
 ===start-group=== "BinCode special read/write functions"
