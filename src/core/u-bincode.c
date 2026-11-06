@@ -247,7 +247,7 @@ static u64 Bincode_Bits_Value(REBCNT cmd, REBINT nbits, REBVAL *arg) {
 //		/write   "Write data into output buffer"
 //			data [binary! block!] "Data dialect"
 //		/read    "Read data from the input buffer"
-//			code [word! block! integer! binary!]   "Input encoding"
+//			code [word! block! integer! binary! struct!]   "Input encoding"
 //		/into    "Put READ results in out block, instead of creating a new block"
 //			out  [block!] "Target block for results, when /into is used"
 //		/with    "Additional input argument"
@@ -469,6 +469,12 @@ static u64 Bincode_Bits_Value(REBCNT cmd, REBINT nbits, REBVAL *arg) {
 				case REB_EMAIL:
 					if (pb) { count++; pb = 0; } // align
 					count += VAL_LEN(data);
+					break;
+				case REB_STRUCT:
+					// raw struct data (structs holding Rebol values would write pointers)
+					if (VAL_STRUCT_PROTECTED(data)) Trap0(RE_PROTECTED);
+					if (pb) { count++; pb = 0; } // align
+					count += VAL_STRUCT_SIZE(data);
 					break;
 				case REB_WORD:
 					next = ++value;
@@ -788,6 +794,11 @@ static u64 Bincode_Bits_Value(REBCNT cmd, REBINT nbits, REBVAL *arg) {
 					n = VAL_LEN(data);
 					//printf("write bytes: %i to #%0X\n", n, cp);
 					memcpy(cp, VAL_BIN_AT(data), n);
+					break;
+				case REB_STRUCT:
+					if (outBit) { outBit = 0; cp++; VAL_INDEX(buffer_write)++; } // align
+					n = VAL_STRUCT_SIZE(data);
+					memcpy(cp, VAL_STRUCT_DATA_BIN(data), n);
 					break;
 
 				case REB_WORD:
@@ -1852,6 +1863,20 @@ static u64 Bincode_Bits_Value(REBCNT cmd, REBINT nbits, REBVAL *arg) {
 					//puts("-- found set-word?");
 					DS_PUSH(value);
 					continue;
+				case REB_GET_WORD:
+					data = Get_Var(value);
+					if (!IS_STRUCT(data)) Trap1(RE_INVALID_SPEC, value);
+					goto read_struct;
+				case REB_STRUCT:
+					// read struct data into a new copy of the given struct
+					data = value;
+				read_struct:
+					if (VAL_STRUCT_PROTECTED(data)) Trap0(RE_PROTECTED);
+					n = VAL_STRUCT_SIZE(data);
+					ASSERT_READ_SIZE(value, cp, ep, n);
+					Copy_Struct_Value(data, temp);
+					COPY_MEM(VAL_STRUCT_DATA_BIN(temp), cp, n);
+					break;
 				case REB_BINARY:
 					// do binary comparison, return TRUE and skip if data matches
 					// or return FALSE and keep position where it is

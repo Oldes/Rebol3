@@ -1047,4 +1047,40 @@ is-protected-error?: func[code][
 		--assert #{01} = binary/read bin 'bytes
 ===end-group===
 
+
+===start-group=== "BinCode - struct!"
+	p: make struct! [x [int16!] y [int16!]]
+	--test-- "write struct"
+		p/x: 1 p/y: -1
+		bin: binary 16
+		binary/write bin [ui8 7 :p]
+		--assert #{070100FFFF} = binary/read bin 'bytes
+	--test-- "read struct (top-level)"
+		s: binary/read #{0200FEFF} :p
+		--assert struct? s
+		--assert all [s/x = 2 s/y = -2]
+		--assert all [p/x = 1 p/y = -1]   ;; prototype untouched
+		--assert not same? s p
+	--test-- "read structs in block"
+		r: binary/read #{070100FFFF0300FDFF} [ui8 :p :p]
+		--assert 7 = r/1
+		--assert all [r/2/x = 1 r/2/y = -1 r/3/x = 3 r/3/y = -3]
+		--assert not same? r/2 r/3
+	--test-- "roundtrip"
+		bin: binary 16
+		binary/write bin [:p ui8 9]
+		r: binary/read bin [:p ui8]
+		--assert all [r/1 = p r/2 = 9]
+	--test-- "nested struct as prototype"
+		n: make struct! [id [uint8!] pos [struct! [x [int16!] y [int16!]]]]
+		s: binary/read #{0502000300} :n
+		--assert all [s/id = 5 s/pos/x = 2 s/pos/y = 3]
+	--test-- "errors"
+		--assert error? try [binary/read #{0100} :p]                        ;; short data
+		--assert error? try [binary/read #{0100} [:x]]                      ;; not a struct
+		r: make struct! [n [uint8!] val [rebval!]]
+		--assert all [error? e: try [binary/read #{FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF} :r] e/id = 'protected]
+		--assert all [error? e: try [binary/write binary 64 [:r]] e/id = 'protected]
+===end-group===
+
 ~~~end-file~~~
