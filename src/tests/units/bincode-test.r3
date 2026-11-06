@@ -919,4 +919,66 @@ is-protected-error?: func[code][
 		--assert [#{AA}] = binary/read #{0001AA} [ui16bytes]
 ===end-group===
 
+
+===start-group=== "BinCode - bit-level write"
+	--test-- "ub/sb"
+		bin: binary 16
+		binary/write bin [ub 4 10 ub 4 5]
+		--assert #{A5} = binary/read bin 'bytes
+		bin: binary 16
+		binary/write bin [sb 4 -6 sb 4 5]
+		--assert #{A5} = binary/read bin 'bytes
+		bin: binary 16
+		binary/write bin [ub 9 511]
+		--assert #{FF80} = binary/read bin 'bytes
+		bin: binary 16
+		binary/write bin [ub 64 -1]
+		--assert #{FFFFFFFFFFFFFFFF} = binary/read bin 'bytes
+	--test-- "fb"
+		bin: binary 16
+		binary/write bin [fb 32 1.0 fb 32 -1 fb 32 0.5]
+		--assert #{00010000FFFF000000008000} = binary/read bin 'bytes
+	--test-- "bit / not-bit / align"
+		bin: binary 16
+		binary/write bin [bit #(true) bit #(false) bit 1 not-bit #(false) align ui8 1]
+		--assert #{B001} = binary/read bin 'bytes
+	--test-- "implicit align before byte commands and raw data"
+		bin: binary 16
+		binary/write bin [ub 3 5 ui8 255 bit #(true) #{CC}]
+		--assert #{A0FF80CC} = binary/read bin 'bytes
+		bin: binary 16
+		binary/write bin [ub 3 5]
+		binary/write bin #{CC}
+		--assert #{A0CC} = binary/read bin 'bytes
+	--test-- "bits continue across write calls"
+		bin: binary 16
+		binary/write bin [ub 4 10]
+		binary/write bin [ub 4 5]
+		--assert #{A5} = binary/read bin 'bytes
+	--test-- "roundtrip with read"
+		bin: binary 16
+		binary/write bin [ub 5 17 sb 7 -33 fb 20 -2.5 bit #(true) align ui16 1234]
+		--assert [17 -33 -2.5 #(true) 1234] = binary/read bin [ub 5 sb 7 fb 20 bit align ui16]
+	--test-- "/init resets bit masks"
+		bin: binary 16
+		binary/write bin [ub 3 5]
+		binary/init bin none
+		binary/write bin [ub 4 10 ub 4 5]
+		--assert #{A5} = binary/read bin 'bytes
+	--test-- "range / argument errors"
+		--assert error? try [binary/write binary 8 [ub 4 16]]
+		--assert error? try [binary/write binary 8 [ub 4 -9]]
+		--assert error? try [binary/write binary 8 [sb 4 8]]
+		--assert error? try [binary/write binary 8 [sb 4 -9]]
+		--assert error? try [binary/write binary 8 [ub 65 1]]
+		--assert error? try [binary/write binary 8 [ub -1 1]]
+		--assert error? try [binary/write binary 8 [ub 0 1]]
+		--assert error? try [binary/write binary 8 [bit 2]]
+		--assert error? try [binary/write binary 8 [bit "x"]]
+		--assert error? try [binary/write binary 8 [ub 4]]
+		bin: binary 8
+		try [binary/write bin [ui8 1 ub 4 16]]
+		--assert 0 = binary/read bin 'length?   ;; nothing written on error
+===end-group===
+
 ~~~end-file~~~
