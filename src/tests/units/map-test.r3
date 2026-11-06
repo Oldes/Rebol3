@@ -641,6 +641,38 @@ Rebol [
 		--assert none? find m 50
 		--assert 99 = length? m
 
+	--test-- "map live count"
+		m: make map! []
+		repeat i 100 [put m i i]           ;; hashed
+		--assert 100 = length? m
+		repeat i 50 [remove/key m i]
+		--assert 50 = length? m
+		remove/key m 1                     ;; already removed
+		--assert 50 = length? m
+		put m 1 1                          ;; re-put of a removed key
+		--assert 51 = length? m
+		put m 1 2                          ;; update of a live key
+		--assert 51 = length? m
+		repeat i 1000 [put m i + 1000 i]   ;; expansions
+		--assert 1051 = length? m
+		--assert not tail? m
+		c: copy m
+		--assert 1051 = length? c          ;; compacted copy
+		--assert equal? m c
+		repeat i 49 [remove/key m i + 51]
+		repeat i 49 [remove/key m i + 1001]
+		d: copy m                          ;; compacted copy, still hashed
+		--assert 953 = length? d
+		clear m
+		--assert 0 = length? m
+		--assert tail? m
+		put m 'a 1
+		--assert 1 = length? m
+		
+	--test-- "list-env length"
+		e: list-env
+		--assert (length? e) = length? words-of e
+
 	--test-- "list-env map keys are protected"
 		e: list-env
 		--assert map? e

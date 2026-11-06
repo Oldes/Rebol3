@@ -291,6 +291,25 @@
 
 /***********************************************************************
 **
+*/	static REBCNT Count_Map(REBSER *series)
+/*
+**		Count not removed entries of the map.
+**
+***********************************************************************/
+{
+	REBCNT n, c = 0;
+	REBVAL *v = BLK_HEAD(series);
+
+	for (n = 0; n < series->tail; n += 2, v += 2) {
+		if (!VAL_MAP_REMOVED(v)) c++; // count only not removed values
+	}
+
+	return c;
+}
+
+
+/***********************************************************************
+**
 */	static void Rehash_Hash(REBSER *series)
 /*
 **		Recompute the entire hash table. Table must be large enough and empty.
@@ -409,6 +428,7 @@
 		//Print("hash added %d", series->tail);
 		series->series = hser = Make_Hash_Array(series->tail);
 		Rehash_Hash(series);
+		MAP_LIVE_COUNT(hser) = Count_Map(series);
 	}
 	hash = Find_Key(series, hser, key, 2, cased, 0);
 	hashes = (REBCNT*)hser->data;
@@ -426,6 +446,7 @@
 	if (n) {  // re-set it:
 		n = (n-1)*2;                    // index of the key
 		set = BLK_SKIP(series, n);      // find the key
+		if (VAL_MAP_REMOVED(set)) MAP_LIVE_COUNT(hser)++; // removed key is used again
 		VAL_CLR_OPT(set++, OPTS_HIDE);  // clear HIDE flag in case it was removed key; change to value position
 		*set = *val;                    // set the value
 		return n+1;                     // index of the value
@@ -436,7 +457,9 @@
 	// Note: series->tail is 2x number of keys, so the load is kept below 25%;
 	// a higher load saves some memory, but makes string keys much slower.
 	if (series->tail > hser->tail/2) {
-		Expand_Hash(hser); // modifies size value
+		n = MAP_LIVE_COUNT(hser);
+		Expand_Hash(hser); // modifies size value (and clears the count)
+		MAP_LIVE_COUNT(hser) = n;
 		Rehash_Hash(series);
 		hash = Find_Key(series, hser, key, 2, cased, 0); // free slot for the new key
 		hashes = (REBCNT*)hser->data;
@@ -475,7 +498,10 @@ new_entry:
 #endif
 	// append value
 	Append_Val(series, val);  // no Copy_Series_Value(val) on strings
-	if (hashes) hashes[hash] = series->tail / 2; // Hash index is not a real index position of the value!
+	if (hashes) {
+		hashes[hash] = series->tail / 2; // Hash index is not a real index position of the value!
+		MAP_LIVE_COUNT(hser)++;
+	}
 	return series->tail;      // Index of the new value.
 }
 
@@ -484,16 +510,13 @@ new_entry:
 **
 */	REBCNT Length_Map(REBSER *series)
 /*
+**		Number of not removed entries. Maps with a hash table keep the count,
+**		small (linear) maps have at most MIN_DICT entries to count.
+**
 ***********************************************************************/
 {
-	REBCNT n, c = 0;
-	REBVAL *v = BLK_HEAD(series);
-
-	for (n = 0; n < series->tail; n += 2, v += 2) {
-		if (!VAL_MAP_REMOVED(v)) c++; // count only not removed values
-	}
-
-	return c;
+	if (series->series) return MAP_LIVE_COUNT(series->series);
+	return Count_Map(series);
 }
 
 
@@ -562,8 +585,10 @@ new_entry:
 			// No removed entries, so just copying is sufficient.
 			COPY_BLK_PART(series, VAL_BLK(val), VAL_TAIL(val));
 			// If existing series has a hashtable, reuse it.
-			if (src->series)
+			if (src->series) {
 				series->series = Copy_Series(src->series);
+				MAP_LIVE_COUNT(series->series) = MAP_LIVE_COUNT(src->series);
+			}
 		}
 		else {
 			// Skip removed entries (compaction), so the hash table must be rebuilt.
@@ -580,6 +605,7 @@ new_entry:
 			if (series->tail > MIN_DICT * 2) {
 				series->series = Make_Hash_Array(series->tail);
 				Rehash_Hash(series);
+				MAP_LIVE_COUNT(series->series) = series->tail / 2;
 			}
 		}
 	}
@@ -699,6 +725,7 @@ new_entry:
 	ser = Make_Hash_Array(size);
 	blk->series = ser;
 	Rehash_Hash(blk);
+	MAP_LIVE_COUNT(ser) = size / 2;
 }
 
 
@@ -799,6 +826,7 @@ new_entry:
 		n = Find_Entry(series, D_ARG(ARG_REMOVE_KEY_ARG), 0, TRUE);
 		if (n != NOT_FOUND) {
 			VAL_SET_OPT(VAL_BLK_SKIP(val, n-1), OPTS_HIDE); // hide the key
+			if (series->series) MAP_LIVE_COUNT(series->series)--;
 			VAL_SET(VAL_BLK_SKIP(val, n), REB_NONE); // set value to none (so the old one may be GCed)
 		}
 		return R_ARG1;

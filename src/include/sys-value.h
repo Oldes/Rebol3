@@ -484,6 +484,8 @@ enum {
 #define DROP_SERIES_HASH(s)  do { if (IS_HASH_SERIES(s)) { SERIES_CLR_FLAG(s, SER_HASH); (s)->series = NULL; } } while (0)
 // Number of block values already added to the hash table (stored in the table's size field)
 #define HASH_COUNT(hser)     ((hser)->size)
+// Number of live (not removed) entries of a map (stored in its hash table's size field)
+#define MAP_LIVE_COUNT(hser) ((hser)->size)
 
 #define TRAP_PROTECT(s) if (IS_PROTECT_SERIES(s)) Trap0(RE_PROTECTED)
 #define TRAP_FIXED_SIZE(s) if (IS_FIXED_SIZE(s)) Trap0(RE_FIXED_SIZED_SERIES)
