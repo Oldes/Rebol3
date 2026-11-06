@@ -1822,6 +1822,24 @@ Rebol [
 		error? e: try [sort/skip/compare/all db 2 func [a b] [reverse b   a/2 < b/2]]
 		e/id = 'protected
 	]
+
+	;; comparator error inside merge must not leak the stable sort buffer
+	b: append collect [repeat i 50 [keep i + 50]] collect [repeat i 50 [keep i]]
+	n: 0
+	--assert all [
+		error? e: try [
+			sort/compare b func [a b] [
+				n: n + 1
+				if n > 110 [1 / 0]
+				a < b
+			]
+		]
+		e/id = 'zero-divide
+		n = 111
+	]
+	--assert 100 = length? b
+	--assert (sort copy b) = sort/compare copy b func [a b] [a < b]
+
 --test-- "SORT/compare block! (#2707)"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2707
 	blk: clear []
