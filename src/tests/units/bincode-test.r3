@@ -462,6 +462,20 @@ is-protected-error?: func[code][
 		--assert b/buffer = #{0038D063105010D0}
 		--assert [0.5 1000.0 32.5 -32.5] = binary/read b [f16le f16le f16le f16le]
 
+	--test-- "BinCode - read f16 zero"
+		--assert 0.0 = binary/read #{0000} 'f16
+		--assert 0.0 = binary/read #{0080} 'f16
+		--assert 0.0 = binary/read #{0000} 'f16be
+	--test-- "BinCode - read f16 subnormals"
+		--assert 5.9604644775390625e-8   = binary/read #{0100} 'f16
+		--assert -5.9604644775390625e-8  = binary/read #{0180} 'f16
+		--assert 6.0975551605224609375e-5 = binary/read #{FF03} 'f16
+		--assert 5.9604644775390625e-8   = binary/read #{0001} 'f16be
+	--test-- "BinCode - read f16 normals (unchanged)"
+		--assert 6.103515625e-5 = binary/read #{0004} 'f16
+		--assert 1.0     = binary/read #{003C} 'f16
+		--assert 65504.0 = binary/read #{FF7B} 'f16
+
 	--test-- "BinCode - F32LE, F32BE"
 		b: binary/write #{} [f32be   0.5 f32be   1000 f32be   32.5 f32be   -32.5]
 		--assert b/buffer = #{3F000000447A000042020000C2020000}

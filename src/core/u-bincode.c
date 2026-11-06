@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -105,6 +105,11 @@ float float16to32(float16_s f16) {
 		return (f16.bits.m == 0) ? (f16.bits.s ? -1.0 : 1.0) * INFINITY : NAN;
 	}
 #endif
+	if (f16.bits.e == 0) {
+		// zero or subnormal: value = m * 2^-24
+		f32.v = (float)f16.bits.m / 16777216.0f;
+		return f16.bits.s ? -f32.v : f32.v;
+	}
 	f32.bits.s = f16.bits.s;
 	f32.bits.e = (f16.bits.e - 15) + 127; // safe in this direction
 	f32.bits.m = ((u32)f16.bits.m) << 13;
