@@ -617,17 +617,16 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 					}
 					break;
 				case REB_SET_WORD:
-					value++; //skip optional INDEX word...
-					if (
-						(VAL_TYPE(value) != REB_WORD) ||
-						(VAL_WORD_CANON(value) != SYM_INDEX && VAL_WORD_CANON(value) != SYM_INDEXZ)
-					) {
-						value--; //... or revert it
+					// optional INDEX (one-based, default) or INDEXZ (zero-based) word
+					j = 1;
+					next = value + 1;
+					if (IS_WORD(next)) {
+						if (VAL_WORD_CANON(next) == SYM_INDEXZ) { j = 0; value++; }
+						else if (VAL_WORD_CANON(next) == SYM_INDEX) value++;
 					}
-
 					VAL_SET(temp, REB_INTEGER);
-					SET_INT32(temp, count + 1);
-					Set_Var(value, temp);
+					SET_INT32(temp, count + j);
+					Set_Var(data, temp);
 
 					break;
 				default:
@@ -1008,8 +1007,15 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 					}
 					break;
 				case REB_SET_WORD:
+					// optional INDEX (one-based, default) or INDEXZ (zero-based) word
+					j = 1;
+					next = value + 1;
+					if (IS_WORD(next)) {
+						if (VAL_WORD_CANON(next) == SYM_INDEXZ) { j = 0; value++; }
+						else if (VAL_WORD_CANON(next) == SYM_INDEX) value++;
+					}
 					VAL_SET(temp, REB_INTEGER);
-					SET_INT32(temp, VAL_INDEX(buffer_write) + 1);
+					SET_INT32(temp, VAL_INDEX(buffer_write) + j);
 					Set_Var(data, temp);
 					continue;
 				}

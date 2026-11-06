@@ -568,6 +568,23 @@ is-protected-error?: func[code][
 		--assert 3 = binary/write/read b #{03} 'ui8
 ===end-group===
 
+
+===start-group=== "BinCode - write set-word with index/indexz"
+	--test-- "set-word positions"
+		bin: binary 16
+		binary/write bin [p1: ui8 1 p2: index ui8 2 p3: indexz ui8 3 p4:]
+		--assert p1 = 1
+		--assert p2 = 2
+		--assert p3 = 2
+		--assert p4 = 4
+		--assert #{010203} = binary/read bin 'bytes
+	--test-- "set-word value usable later in same block"
+		bin: binary 16
+		binary/write bin [ui8 0 p1: indexz ui8 :p1]
+		--assert #{0001} = binary/read bin 'bytes
+===end-group===
+
+
 ===start-group=== "BinCode special read/write functions"
 
 	--test-- "BinCode - CROP"
