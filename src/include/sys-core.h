@@ -107,6 +107,18 @@ typedef struct rebol_mold {
 	REBCNT limit;       // optional length limit of the result (-1 = no limit)
 } REB_MOLD;
 
+typedef struct reb_copy_loop {
+	REBSER *src;        // series being copied
+	REBSER *dst;        // its copy
+	struct reb_copy_loop *prev;
+} REB_COPY_LOOP;
+
+typedef struct reb_cmp_loop {
+	REBSER *a, *b;      // series being compared
+	REBCNT ai, bi;      // and their indexes
+	struct reb_cmp_loop *prev;
+} REB_CMP_LOOP;
+
 #include "reb-file.h"
 #include "reb-filereq.h"
 #include "reb-math.h"
@@ -332,6 +344,9 @@ enum {
 //#else
 #define UP_CASE(c) Upper_Cases[c]
 #define LO_CASE(c) Lower_Cases[c]
+// Characters outside of the case table have no case mapping (and must not index it)
+#define UP_CASE_SAFE(c) (((REBCNT)(c) < UNICODE_CASES) ? Upper_Cases[c] : (c))
+#define LO_CASE_SAFE(c) (((REBCNT)(c) < UNICODE_CASES) ? Lower_Cases[c] : (c))
 //#endif
 
 #define IS_WHITE(c) ((c) <= 32 && (White_Chars[c]&1) != 0)

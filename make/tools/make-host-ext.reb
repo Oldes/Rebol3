@@ -151,27 +151,5 @@ emit-file: func [
 ;	write rejoin [%os/ file %.c] out
 ]
 
-;-- Create Files -------------------------------------------------------------
 
-emit-file %host-ext-window [
-	%src/boot/window.reb
-	%src/mezz/view-funcs.reb
-]
-
-;;emit-file %host-ext-graphics [
-;;	%boot/graphics.reb
-;;	%mezz/view-funcs.reb
-;;]
-
-;;emit-file %host-ext-draw [
-;;	%boot/draw.reb
-;;]
-;;
-;;emit-file %host-ext-shape [
-;;	%boot/shape.reb
-;;]
-;;
-;;emit-file %host-ext-text [
-;;	%boot/text.reb
-;;]
 ] ; end of context

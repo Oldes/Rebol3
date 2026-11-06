@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -105,6 +105,11 @@ float float16to32(float16_s f16) {
 		return (f16.bits.m == 0) ? (f16.bits.s ? -1.0 : 1.0) * INFINITY : NAN;
 	}
 #endif
+	if (f16.bits.e == 0) {
+		// zero or subnormal: value = m * 2^-24
+		f32.v = (float)f16.bits.m / 16777216.0f;
+		return f16.bits.s ? -f32.v : f32.v;
+	}
 	f32.bits.s = f16.bits.s;
 	f32.bits.e = (f16.bits.e - 15) + 127; // safe in this direction
 	f32.bits.m = ((u32)f16.bits.m) << 13;
@@ -143,8 +148,12 @@ typedef union {
 } ms_datetime;
 #pragma pack() 
 
-#define ASSERT_SI_RANGE(v, n) if (VAL_INT64(v) < (- (i64)n) || VAL_INT64(v) > (i64)n) Trap1(RE_OUT_OF_RANGE, v);
-#define ASSERT_UI_RANGE(v, n) if (VAL_INT32(v) > n) Trap1(RE_OUT_OF_RANGE, v);
+#define ASSERT_SI_RANGE(v, n) if (Bincode_Int_Arg(v) < (- (i64)(n) - 1) || Bincode_Int_Arg(v) > (i64)(n)) Trap1(RE_OUT_OF_RANGE, v); // -(n+1) .. n
+// integer! or char! argument as a 64-bit value (char! uses only 32 bits of the value data)
+static REBI64 Bincode_Int_Arg(REBVAL *v) {
+	return IS_CHAR(v) ? (REBI64)VAL_CHAR(v) : VAL_INT64(v);
+}
+#define ASSERT_UI_RANGE(v, n) if (Bincode_Int_Arg(v) < -(REBI64)(n) || Bincode_Int_Arg(v) > (REBI64)(n)) Trap1(RE_OUT_OF_RANGE, v); // negative allowed (two's complement), like ASSERT_U32_RANGE
 #define ASSERT_UIBYTES_RANGE(v, n) if (VAL_LEN(v) > n) Trap1(RE_OUT_OF_RANGE, v);
 #define ASSERT_U32_RANGE(v) if((i64)VAL_UNT64(v) > (i64)0xFFFFFFFFLL || (i64)VAL_UNT64(v) < (i64)0xFFFFFFFF00000001LL)  Trap1(RE_OUT_OF_RANGE, v);
 #define ASSERT_READ_SIZE(v, p, e, n) if((p + n) > e) Trap1(RE_OUT_OF_RANGE, v);
@@ -193,8 +202,36 @@ static REBCNT EncodedU64_Size(u64 value) {
 
 static REBCNT EncodedVINT_Size(REBU64 value) {
 	REBCNT count = 1;
-	while (value >= (1ULL << (7 * count))) count++;
+	// all-ones value of a width is reserved (EBML "unknown size"), so it moves to the next width
+	while (value >= (1ULL << (7 * count)) - 1) count++;
 	return count;
+}
+
+#define IS_BINCODE_BIT_CMD(c) ((c) == SYM_BIT || (c) == SYM_NOT_BIT || (c) == SYM_UB || (c) == SYM_SB || (c) == SYM_FB)
+
+// Validates UB/SB/FB write value for given number of bits (0-64)
+// and returns its bit pattern (lowest nbits bits are used).
+static u64 Bincode_Bits_Value(REBCNT cmd, REBINT nbits, REBVAL *arg) {
+	i64 v, lo, hi;
+	if (cmd == SYM_FB) {
+		REBDEC d = (IS_INTEGER(arg) ? (REBDEC)VAL_INT64(arg) : VAL_DECIMAL(arg)) * 65536.0;
+		if (!(d >= -9223372036854775808.0 && d < 9223372036854775808.0)) Trap1(RE_OUT_OF_RANGE, arg);
+		v = (i64)(d < 0 ? d - 0.5 : d + 0.5);
+	} else {
+		v = VAL_INT64(arg);
+	}
+	if (nbits == 0) {
+		if (v != 0) Trap1(RE_OUT_OF_RANGE, arg);
+		return 0;
+	}
+	if (nbits < 64) {
+		// UB accepts signed or unsigned interpretation, SB/FB only signed
+		lo = -((i64)1 << (nbits - 1));
+		hi = (cmd == SYM_UB) ? (i64)(((u64)1 << nbits) - 1) : ((i64)1 << (nbits - 1)) - 1;
+		if (v < lo || v > hi) Trap1(RE_OUT_OF_RANGE, arg);
+		return (u64)v & (((u64)1 << nbits) - 1);
+	}
+	return (u64)v;
 }
 
 /***********************************************************************
@@ -210,7 +247,7 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 //		/write   "Write data into output buffer"
 //			data [binary! block!] "Data dialect"
 //		/read    "Read data from the input buffer"
-//			code [word! block! integer! binary!]   "Input encoding"
+//			code [word! block! integer! binary! struct!]   "Input encoding"
 //		/into    "Put READ results in out block, instead of creating a new block"
 //			out  [block!] "Target block for results, when /into is used"
 //		/with    "Additional input argument"
@@ -277,6 +314,8 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 			bin = VAL_SERIES(buffer_write);
 
 			VAL_INDEX(buffer_write) = VAL_INDEX(buffer_read) = 0;
+			SET_INT32(VAL_OBJ_VALUE(val_ctx, BINCODE_READ_BITMASK), 0);
+			SET_INT32(VAL_OBJ_VALUE(val_ctx, BINCODE_WRITE_BITMASK), 0);
 
 			switch(VAL_TYPE(val_spec)) {
 				case REB_BINARY:
@@ -359,6 +398,7 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 	//printf("bincode buffer rest: %i tail: %i index: %i\n", SERIES_REST(bin), bin->tail, VAL_INDEX(buffer_write));
 
 	REBOOL as_block;
+	REBCNT outBit = 0, pb = 0; // write bit mask / bits already written in current byte
 
 	if(ref_write) {
 		//printf("In at: %i\n", VAL_INDEX(in));
@@ -377,6 +417,12 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 			// optimized version for RAW binary input
 			len = VAL_LEN(val_write);
 
+			if (VAL_INT32(VAL_OBJ_VALUE(val_ctx, BINCODE_WRITE_BITMASK))) {
+				// finish partially written byte
+				VAL_INDEX(buffer_write)++;
+				index++;
+				SET_INT32(VAL_OBJ_VALUE(val_ctx, BINCODE_WRITE_BITMASK), 0);
+			}
 			tail_new = index + len; //bytes needed to write
 			//printf("index: %i tail: %i len: %i tail_new: %i rest: %i\n", index, tail, len, tail_new, SERIES_REST(bin));
 			if(tail_new > SERIES_REST(bin)) {
@@ -391,17 +437,17 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 			memcpy(VAL_BIN_AT(buffer_write), VAL_BIN_AT(val_write), len);
 			VAL_INDEX(buffer_write) += len;
 			//Dump_Series(bin, "NewBin=>");
-			DS_POP;
-			return R_ARG1;
 			break;
 
 		case REB_BLOCK:
 			// writing data specified in a WRITE dialect
 			value = VAL_BLK_DATA(val_write);
-			if (IS_END(value)) return R_ARG1; //empty block
+			if (IS_END(value)) break; //empty block (DS_DROP below; /read may follow)
 
 			// try to predict number of bytes needed...
 			count = VAL_INDEX(buffer_write);
+			outBit = VAL_INT32(VAL_OBJ_VALUE(val_ctx, BINCODE_WRITE_BITMASK)) & 0xFF;
+			for (pb = 0, nbits = outBit; nbits && nbits < 0x80; nbits <<= 1) pb++;
 
 			for (; NOT_END(value); value++) {
 				switch (VAL_TYPE(value)) {
@@ -421,7 +467,14 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 				case REB_FILE:
 				case REB_URL:
 				case REB_EMAIL:
+					if (pb) { count++; pb = 0; } // align
 					count += VAL_LEN(data);
+					break;
+				case REB_STRUCT:
+					// raw struct data (structs holding Rebol values would write pointers)
+					if (VAL_STRUCT_PROTECTED(data)) Trap0(RE_PROTECTED);
+					if (pb) { count++; pb = 0; } // align
+					count += VAL_STRUCT_SIZE(data);
 					break;
 				case REB_WORD:
 					next = ++value;
@@ -432,42 +485,63 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 						next = DS_POP; // volatile stack reference
 					}
 					cmd = VAL_WORD_CANON(data);
+					if (pb && !IS_BINCODE_BIT_CMD(cmd)) { count++; pb = 0; } // byte commands start at byte boundary
 					switch (cmd) {
 					case SYM_SI8:
 					case SYM_UI8:
 						if (IS_INTEGER(next) || IS_CHAR(next)) {
+							// range check before the buffer is modified
+							if (cmd == SYM_SI8) { ASSERT_SI_RANGE(next, 0x7F) }
+							else { ASSERT_UI_RANGE(next, 0xFF) }
 							count += 1;
 						}
 						else goto error;
 						break;
 					case SYM_SI16:
+					case SYM_SI16BE:
+					case SYM_SI16LE:
 					case SYM_UI16:
 					case SYM_UI16LE:
 					case SYM_UI16BE:
 						if (IS_INTEGER(next) || IS_CHAR(next)) {
+							// range check before the buffer is modified
+							if (cmd == SYM_SI16 || cmd == SYM_SI16BE || cmd == SYM_SI16LE) { ASSERT_SI_RANGE(next, 0x7FFF) }
+							else { ASSERT_UI_RANGE(next, 0xFFFF) }
 							count += 2;
 						}
 						else goto error;
 						break;
 					case SYM_SI24:
+					case SYM_SI24BE:
+					case SYM_SI24LE:
 					case SYM_UI24:
 					case SYM_UI24LE:
 					case SYM_UI24BE:
 						if (IS_INTEGER(next) || IS_CHAR(next)) {
+							// range check before the buffer is modified
+							if (cmd == SYM_SI24 || cmd == SYM_SI24BE || cmd == SYM_SI24LE) { ASSERT_SI_RANGE(next, 0x7FFFFF) }
+							else { ASSERT_UI_RANGE(next, 0xFFFFFF) }
 							count += 3;
 						}
 						else goto error;
 						break;
 					case SYM_SI32:
+					case SYM_SI32BE:
+					case SYM_SI32LE:
 					case SYM_UI32:
 					case SYM_UI32LE:
 					case SYM_UI32BE:
 						if (IS_INTEGER(next) || IS_CHAR(next)) {
+							// range check before the buffer is modified
+							if (cmd == SYM_SI32 || cmd == SYM_SI32BE || cmd == SYM_SI32LE) { ASSERT_SI_RANGE(next, 0x7FFFFFFF) }
+							else { ASSERT_U32_RANGE(next) }
 							count += 4;
 						}
 						else goto error;
 						break;
 					case SYM_SI64:
+					case SYM_SI64BE:
+					case SYM_SI64LE:
 					case SYM_UI64:
 					case SYM_UI64LE:
 					case SYM_UI64BE:
@@ -489,9 +563,15 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 						goto error;
 					case SYM_PAD:
 						if (IS_INTEGER(next)) {
-							if (VAL_INT32(next) < 0) Trap1(RE_INVALID_ARG, next);
+							if (VAL_INT32(next) <= 0) Trap1(RE_INVALID_ARG, next);
 							i = count % VAL_INT32(next);
 							count += (i > 0) ? VAL_UNT32(next) - i : 0;
+							continue;
+						}
+						goto error;
+					case SYM_STRING:
+						if (ANY_BINSTR(next)) {
+							count += VAL_LEN(next) + 1; // + NUL terminator
 							continue;
 						}
 						goto error;
@@ -546,6 +626,8 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 
 					case SYM_VINT:
 						if (IS_INTEGER(next)) {
+							// max 8 bytes = 56 data bits, all-ones reserved (negative values are huge as unsigned)
+							if (VAL_UNT64(next) >= (1ULL << 56) - 1) Trap1(RE_OUT_OF_RANGE, next);
 							count += EncodedVINT_Size(VAL_UNT64(next));
 							continue;
 						}
@@ -587,6 +669,7 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 
 					case SYM_MSDOS_DATE:
 						if (!IS_DATE(next)) goto error; // only date allowed
+						if (VAL_YEAR(next) < 1980 || VAL_YEAR(next) > 2107) Trap1(RE_OUT_OF_RANGE, next); // 7-bit year from 1980
 						//continue..
 					case SYM_MSDOS_TIME:
 						if (IS_DATE(next) || IS_TIME(next)) {
@@ -596,14 +679,44 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 						goto error;
 
 					case SYM_MSDOS_DATETIME:
-						if (IS_DATE(next) || IS_TIME(next)) {
+						if (IS_DATE(next)) { // needs date part
+							if (VAL_YEAR(next) < 1980 || VAL_YEAR(next) > 2107) Trap1(RE_OUT_OF_RANGE, next); // 7-bit year from 1980
 							count += 4;
 							continue;
 						}
 						goto error;
 
+					case SYM_ALIGN:
+						value--; // no argument (aligned above)
+						continue;
+					case SYM_BIT:
+					case SYM_NOT_BIT:
+						if (IS_LOGIC(next) || (IS_INTEGER(next) && (VAL_INT64(next) == 0 || VAL_INT64(next) == 1))) {
+							if (++pb == 8) { count++; pb = 0; }
+							continue;
+						}
+						goto error;
+					case SYM_UB:
+					case SYM_SB:
+					case SYM_FB:
+						if (!IS_INTEGER(next)) goto error;
+						if (VAL_INT64(next) < 0 || VAL_INT64(next) > 64) Trap1(RE_OUT_OF_RANGE, next);
+						j = VAL_INT32(next); // number of bits
+						next = ++value;
+						if (IS_GET_WORD(next)) next = Get_Var(next);
+						else if (IS_GET_PATH(next)) {
+							Do_Path(&next, NULL);
+							next = DS_POP; // volatile stack reference
+						}
+						if (!(IS_INTEGER(next) || (cmd == SYM_FB && IS_DECIMAL(next)))) goto error;
+						Bincode_Bits_Value(cmd, j, next); // range check
+						pb += j;
+						count += pb / 8;
+						pb %= 8;
+						continue;
 					case SYM_RANDOM_BYTES:
 						if (IS_INTEGER(next)) {
+							if (VAL_INT64(next) < 0 || VAL_INT64(next) > 0x7FFFFFFF) Trap1(RE_OUT_OF_RANGE, next);
 							count += VAL_INT32(next);
 							continue;
 						}
@@ -614,17 +727,16 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 					}
 					break;
 				case REB_SET_WORD:
-					value++; //skip optional INDEX word...
-					if (
-						(VAL_TYPE(value) != REB_WORD) ||
-						(VAL_WORD_CANON(value) != SYM_INDEX && VAL_WORD_CANON(value) != SYM_INDEXZ)
-					) {
-						value--; //... or revert it
+					// optional INDEX (one-based, default) or INDEXZ (zero-based) word
+					j = 1;
+					next = value + 1;
+					if (IS_WORD(next)) {
+						if (VAL_WORD_CANON(next) == SYM_INDEXZ) { j = 0; value++; }
+						else if (VAL_WORD_CANON(next) == SYM_INDEX) value++;
 					}
-
 					VAL_SET(temp, REB_INTEGER);
-					SET_INT32(temp, count + 1);
-					Set_Var(value, temp);
+					SET_INT32(temp, count + j);
+					Set_Var(data, temp);
 
 					break;
 				default:
@@ -633,7 +745,8 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 				}
 			} // end of for loop
 
-			tail_new = count; //bytes needed to write
+			tail_new = count + (pb ? 1 : 0); //bytes needed to write (incl. partially written byte)
+			n = SERIES_TAIL(bin); // old tail
 			//printf("index: %i tail: %i count: %i tail_new: %i rest: %i\n", index, tail, count, tail_new, SERIES_REST(bin));
 			if (tail_new > SERIES_REST(bin)) {
 				//puts("expanding");
@@ -643,6 +756,8 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 			if (tail_new > tail) tail = tail_new;
 			SERIES_TAIL(bin) = tail;
 			VAL_TAIL(buffer_read) = tail;
+			// zero newly exposed bytes, so gaps (for example after AT past the tail) don't hold stale data
+			if (tail > n) CLEAR(BIN_DATA(bin) + n, tail - n);
 			
 
 			value = VAL_BLK_DATA(val_write); //resets value at head of the input block
@@ -675,9 +790,15 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 				case REB_FILE:
 				case REB_URL:
 				case REB_EMAIL:
+					if (outBit) { outBit = 0; cp++; VAL_INDEX(buffer_write)++; } // align
 					n = VAL_LEN(data);
 					//printf("write bytes: %i to #%0X\n", n, cp);
 					memcpy(cp, VAL_BIN_AT(data), n);
+					break;
+				case REB_STRUCT:
+					if (outBit) { outBit = 0; cp++; VAL_INDEX(buffer_write)++; } // align
+					n = VAL_STRUCT_SIZE(data);
+					memcpy(cp, VAL_STRUCT_DATA_BIN(data), n);
 					break;
 
 				case REB_WORD:
@@ -688,6 +809,7 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 						next = DS_POP; // volatile stack reference
 					}
 					cmd = VAL_WORD_CANON(data);
+					if (outBit && !IS_BINCODE_BIT_CMD(cmd)) { outBit = 0; cp++; VAL_INDEX(buffer_write)++; } // byte commands start at byte boundary
 					switch (cmd) {
 					case SYM_UI8:
 						ASSERT_UI_RANGE(next, 0xFF);
@@ -731,23 +853,27 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 						break;
 					case SYM_UI16LE:
 						ASSERT_UI_RANGE(next, 0xFFFF);
+					write_ui16le:
 						n = 2;
 						bp = (REBYTE*)&VAL_INT64(next);
 						WRITE_LE_2(cp, bp);
 						break;
 					case SYM_UI24LE:
 						ASSERT_UI_RANGE(next, 0xFFFFFF);
+					write_ui24le:
 						n = 3;
 						bp = (REBYTE*)&VAL_INT64(next);
 						WRITE_LE_3(cp, bp);
 						break;
 					case SYM_UI32LE:
 						ASSERT_U32_RANGE(next);
+					write_ui32le:
 						n = 4;
 						bp = (REBYTE*)&VAL_INT64(next);
 						WRITE_LE_4(cp, bp);
 						break;
 					case SYM_UI64LE:
+					write_ui64le:
 						n = 8;
 						bp = (REBYTE*)&VAL_INT64(next);
 						WRITE_LE_8(cp, bp);
@@ -757,17 +883,37 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 						ASSERT_SI_RANGE(next, 0x7F);
 						goto write_ui8;
 					case SYM_SI16:
+					case SYM_SI16BE:
 						ASSERT_SI_RANGE(next, 0x7FFF);
 						goto write_ui16;
 					case SYM_SI24:
+					case SYM_SI24BE:
 						ASSERT_SI_RANGE(next, 0x7FFFFF);
 						goto write_ui24;
 					case SYM_SI32:
+					case SYM_SI32BE:
 						ASSERT_SI_RANGE(next, 0x7FFFFFFF);
 						goto write_ui32;
 					case SYM_SI64:
+					case SYM_SI64BE:
 						goto write_ui64;
+					case SYM_SI16LE:
+						ASSERT_SI_RANGE(next, 0x7FFF);
+						goto write_ui16le;
+					case SYM_SI24LE:
+						ASSERT_SI_RANGE(next, 0x7FFFFF);
+						goto write_ui24le;
+					case SYM_SI32LE:
+						ASSERT_SI_RANGE(next, 0x7FFFFFFF);
+						goto write_ui32le;
+					case SYM_SI64LE:
+						goto write_ui64le;
 
+					case SYM_STRING:
+						n = VAL_LEN(next);
+						memcpy(cp, VAL_BIN_AT(next), n);
+						cp[n++] = 0; // NUL terminator
+						break;
 					case SYM_BYTES:
 						n = VAL_LEN(next);
 						memcpy(cp, VAL_BIN_AT(next), n);
@@ -994,6 +1140,40 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 						n = 4;
 						break;
 
+					case SYM_ALIGN:
+						value--; // no argument (aligned above)
+						break;
+					case SYM_BIT:
+					case SYM_NOT_BIT:
+						u = IS_LOGIC(next) ? (VAL_LOGIC(next) ? 1 : 0) : (u64)VAL_INT64(next);
+						if (cmd == SYM_NOT_BIT) u ^= 1;
+						j = 1;
+						goto write_bits;
+					case SYM_UB:
+					case SYM_SB:
+					case SYM_FB:
+						j = VAL_INT32(next); // number of bits (validated in the size pass)
+						next = ++value;
+						if (IS_GET_WORD(next)) next = Get_Var(next);
+						else if (IS_GET_PATH(next)) {
+							Do_Path(&next, NULL);
+							next = DS_POP; // volatile stack reference
+						}
+						u = Bincode_Bits_Value(cmd, j, next);
+					write_bits:
+						// MSB first; outBit == 0 means no partially written byte
+						for (; j > 0; j--) {
+							if (outBit == 0) outBit = 0x80;
+							if ((u >> (j - 1)) & 1) cp[0] |= outBit;
+							else cp[0] &= ~outBit;
+							outBit >>= 1;
+							if (outBit == 0) {
+								cp++;
+								VAL_INDEX(buffer_write)++;
+							}
+						}
+						n = 0;
+						break;
 					case SYM_RANDOM_BYTES:
 						if (IS_INTEGER(next)) {
 							n = (REBCNT)VAL_INT32(next);
@@ -1005,8 +1185,15 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 					}
 					break;
 				case REB_SET_WORD:
+					// optional INDEX (one-based, default) or INDEXZ (zero-based) word
+					j = 1;
+					next = value + 1;
+					if (IS_WORD(next)) {
+						if (VAL_WORD_CANON(next) == SYM_INDEXZ) { j = 0; value++; }
+						else if (VAL_WORD_CANON(next) == SYM_INDEX) value++;
+					}
 					VAL_SET(temp, REB_INTEGER);
-					SET_INT32(temp, VAL_INDEX(buffer_write) + 1);
+					SET_INT32(temp, VAL_INDEX(buffer_write) + j);
 					Set_Var(data, temp);
 					continue;
 				}
@@ -1014,6 +1201,7 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 				VAL_INDEX(buffer_write) += n;
 			}
 
+			SET_INT32(VAL_OBJ_VALUE(val_ctx, BINCODE_WRITE_BITMASK), outBit);
 			break; // end of REB_BLOCK write
 
 		} //end of VAL_TYPE switch
@@ -1030,6 +1218,8 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 		inBit = IS_OBJECT(val_ctx) ? VAL_INT32(VAL_OBJ_VALUE(val_ctx, BINCODE_READ_BITMASK)): 0;
 
 		if (IS_INTEGER(val_read)) {
+			// negative counts are huge as unsigned; also avoids 64->32 bit truncation
+			if (VAL_UNT64(val_read) > (REBU64)(ep - cp)) Trap1(RE_OUT_OF_RANGE, val_read);
 			n = (REBCNT)VAL_INT64(val_read);
 			ASSERT_READ_SIZE(val_read, cp, ep, n);
 			if(ref_into) {
@@ -1131,6 +1321,16 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 							if((cp[0] & 0x80) == 0x80) i |= 0xFF000000;
 							SET_INT32(temp, i);
 							break;
+						case SYM_SI24LE:
+							n = 3;
+							ASSERT_READ_SIZE(value, cp, ep, n);
+							VAL_SET(temp, REB_INTEGER);
+							i = ((i32)cp[0] <<  0) |
+								((i32)cp[1] <<  8) |
+								((i32)cp[2] << 16) ;
+							if((cp[2] & 0x80) == 0x80) i |= 0xFF000000;
+							SET_INT32(temp, i);
+							break;
 						case SYM_UI32:
 						case SYM_UI32BE:
 							n = 4;
@@ -1155,20 +1355,22 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 							n = 4;
 							ASSERT_READ_SIZE(value, cp, ep, n);
 							VAL_SET(temp, REB_INTEGER);
-							SET_INT32(temp, ((i32)cp[3] << 0 ) |
-											((i32)cp[2] << 8 ) |
-											((i32)cp[1] << 16) |
-											((i32)cp[0] << 24));
+							SET_INT32(temp, (i32)((u32)cp[3] << 0 ) |
+											     ((u32)cp[2] << 8 ) |
+											     ((u32)cp[1] << 16) |
+											     ((u32)cp[0] << 24));
 							break;
 						case SYM_SI32LE:
 							n = 4;
 							ASSERT_READ_SIZE(value, cp, ep, n);
 							VAL_SET(temp, REB_INTEGER);
-							SET_INT32(temp, ((i32)cp[0] << 0 ) |
-											((i32)cp[1] << 8 ) |
-											((i32)cp[2] << 16) |
-											((i32)cp[3] << 24));
+							SET_INT32(temp, (i32)((u32)cp[0] << 0 ) |
+											     ((u32)cp[1] << 8 ) |
+											     ((u32)cp[2] << 16) |
+											     ((u32)cp[3] << 24));
 							break;
+						case SYM_SI64:
+						case SYM_SI64BE:
 						case SYM_UI64:
 						case SYM_UI64BE:
 							n = 8;
@@ -1184,6 +1386,7 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 								((u64)cp[1] << 48) |
 								((u64)cp[0] << 56) ;
 							break;
+						case SYM_SI64LE:
 						case SYM_UI64LE:
 							n = 8;
 							ASSERT_READ_SIZE(value, cp, ep, n);
@@ -1201,18 +1404,21 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 						case SYM_LENGTH:
 							ASSERT_READ_SIZE(value, cp, ep, 1);
 							VAL_SET(temp, REB_INTEGER);
-							if (cp[0] <= 128) {
+							if (cp[0] < 128) {
+								// short form
 								SET_INT32(temp, cp[0]);
 							}
 							else {
+								// long form: low 7 bits = number of length bytes
 								n = cp[0] & 127;
-								ASSERT_READ_SIZE(value, cp, ep, n);
-								len = 0;
-								//printf("///%i\n", n);
+								if (n == 0) Trap1(RE_INVALID_SPEC, value);  // 0x80 = indefinite length (not DER)
+								if (n > 4) Trap1(RE_OUT_OF_RANGE, value);
+								ASSERT_READ_SIZE(value, cp, ep, n + 1);
+								u = 0;
 								for (i = 1; i <= n; i++) {
-									len = (len << 8) + cp[i];
+									u = (u << 8) | cp[i];
 								}
-								SET_INT32(temp, len);
+								VAL_UNT64(temp) = u;
 							}
 							n++;
 							break;
@@ -1238,6 +1444,8 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 							n = 0;
 							u = 0;
 							do {
+								// max 10 bytes (64 bits); also covers 10-byte sign-extended negative int32 values
+								if (n >= 10) Trap1(RE_OUT_OF_RANGE, value);
 								ASSERT_READ_SIZE(value, cp, ep, n+1);
 								byte = cp[n];
 								u |= (u64)(byte & 0x7F) << shift;
@@ -1250,58 +1458,34 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 							break;
 						}
 						case SYM_UB:
-							next = ++value;
-							if (IS_GET_WORD(next)) next = Get_Var(next);
-							if (!IS_INTEGER(next)) goto error_next_value;
-							i = 0;
-							// could be optimized?
-							nbits = VAL_INT32(next);
-							//printf("bits: %i %i\n", nbits, 1 << nbits);
-							if (nbits > 0) {
-								if (inBit == 0) inBit = 0x80;
-								nbits = 1 << nbits;
-								ASSERT_READ_SIZE(value, cp, ep, 1);
-								while(nbits > 1) {
-									nbits = nbits >> 1;
-									if(IS_BIT_SET(cp[0], inBit)) i = i | nbits;
-									//printf("?? %i %i\n", inBit, i);
-									NEXT_IN_BIT(inBit);
-									//printf("inBit: %i\n", inBit);
-								}
-								STORE_IN_BIT(val_ctx, inBit);
-							}
-							VAL_SET(temp, REB_INTEGER);
-							SET_INT32(temp, i);
-							break;
 						case SYM_SB:
 						case SYM_FB:
 							next = ++value;
 							if (IS_GET_WORD(next)) next = Get_Var(next);
 							if (!IS_INTEGER(next)) goto error_next_value;
+							if (VAL_INT64(next) < 0 || VAL_INT64(next) > 64) Trap1(RE_OUT_OF_RANGE, next);
+							j = VAL_INT32(next); // number of bits
 							u = 0;
-							// could be optimized?
-							nbits = VAL_INT32(next);
-							if (nbits > 0) {
+							if (j > 0) {
 								if (inBit == 0) inBit = 0x80;
-								// http://graphics.stanford.edu/~seander/bithacks.html#VariableSignExtend
-								u64 m = (u64)1 << (nbits - 1); // sign bit mask
-								nbits = 1 << nbits;
-								//if (nbits > 0) {
-									//printf("SB nbits: %i\n", nbits);
-									while (nbits > 1) {
-										nbits >>= 1;
-										if (IS_BIT_SET(cp[0], inBit)) u = u | nbits;
-										//printf("?? %i %i %u\n", nbits, inBit, u);
-										NEXT_IN_BIT(inBit);
-									}
-									u = (u ^ m) - m;
-								//}
+								for (nbits = (REBCNT)j; nbits > 0; nbits--) {
+									ASSERT_READ_SIZE(value, cp, ep, 1);
+									u <<= 1;
+									if (IS_BIT_SET(cp[0], inBit)) u |= 1;
+									NEXT_IN_BIT(inBit);
+								}
 								STORE_IN_BIT(val_ctx, inBit);
+								if (cmd != SYM_UB && j < 64) {
+									// sign extend: http://graphics.stanford.edu/~seander/bithacks.html#VariableSignExtend
+									u64 m = (u64)1 << (j - 1); // sign bit mask
+									u = (u ^ m) - m;
+								}
 							}
-							if (cmd == SYM_SB) {
-								SET_INTEGER(temp, u);
-							} else {
+							if (cmd == SYM_FB) {
 								SET_DECIMAL(temp, ((double)((i64)u) / 65536.0));
+							} else {
+								VAL_SET(temp, REB_INTEGER);
+								VAL_UNT64(temp) = u;
 							}
 							break;
 						case SYM_BIT:
@@ -1354,6 +1538,7 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 								value--;
 							} else {
 								if (!IS_INTEGER(next)) Trap1(RE_INVALID_SPEC, value);
+								if (VAL_UNT64(next) > (REBU64)(ep - cp)) Trap1(RE_OUT_OF_RANGE, value);
 								n = VAL_INT32(next);
 							}
 							ASSERT_READ_SIZE(value, cp, ep, n);
@@ -1380,8 +1565,8 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 						case SYM_STRING:
 							bp = cp;
 							for(;;) {
-								if(bp[0] == 0) break;
-								if(bp == ep) Trap1(RE_OUT_OF_RANGE, value);
+								if (bp >= ep) Trap1(RE_OUT_OF_RANGE, value); // no NUL before end
+								if (bp[0] == 0) break;
 								bp++;
 							}
 							n = (REBCNT)(bp - cp);
@@ -1401,6 +1586,7 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 							VAL_INDEX(buffer_read)++;
 							goto readNBytes;
 						case SYM_UI16BYTES:
+						case SYM_UI16BEBYTES:
 							//puts("ui16bytes");
 							ASSERT_READ_SIZE(value, cp, ep, 2);
 							n = (cp[0] << 8) + cp[1];
@@ -1416,6 +1602,7 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 							VAL_INDEX(buffer_read) += 2;
 							goto readNBytes;
 						case SYM_UI24BYTES:
+						case SYM_UI24BEBYTES:
 							//puts("ui16bytes");
 							ASSERT_READ_SIZE(value, cp, ep, 3);
 							n = cp[2] + (cp[1] << 8) + (cp[0] << 16);
@@ -1432,6 +1619,7 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 							VAL_INDEX(buffer_read) += 3;
 							goto readNBytes;
 						case SYM_UI32BYTES:
+						case SYM_UI32BEBYTES:
 							ASSERT_READ_SIZE(value, cp, ep, 4);
 							n = (REBCNT)(
 								((u64)cp[3]      ) |
@@ -1467,7 +1655,7 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 						case SYM_INDEX:
 						case SYM_INDEXZ:
 							VAL_SET(temp, REB_INTEGER);
-							SET_INT32(temp, VAL_INDEX(buffer_read)) + (cmd == SYM_INDEX ? 1 : 0);
+							SET_INT32(temp, VAL_INDEX(buffer_read) + (cmd == SYM_INDEX ? 1 : 0));
 							n = 0;
 							break;
 						case SYM_SKIP:
@@ -1484,11 +1672,12 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 							next = ++value;
 							if (IS_GET_WORD(next)) next = Get_Var(next);
 							if (!IS_INTEGER(next)) goto error_next_value;
+							if (VAL_INT32(next) <= 0) Trap1(RE_INVALID_ARG, next);
 							i = VAL_INDEX(buffer_read) % VAL_INT32(next);
 							if (i > 0) {
-								i = VAL_INT32(next) - i;
+								i = VAL_INDEX(buffer_read) + VAL_INT32(next) - i; // new index
 								ASSERT_INDEX_RANGE(buffer_read, i, value);
-								VAL_INDEX(buffer_read) += i;
+								VAL_INDEX(buffer_read) = i;
 								cp = BIN_DATA(bin) + VAL_INDEX(buffer_read);
 							}
 							continue;
@@ -1511,6 +1700,7 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 								//printf("inbit %d: %d %d\n",i, inBit, VAL_INDEX(buffer_read));
 								NEXT_IN_BIT(inBit);
 							}
+							STORE_IN_BIT(val_ctx, inBit);
 							continue;
 						case SYM_LENGTHQ:
 							VAL_SET(temp, REB_INTEGER);
@@ -1546,7 +1736,8 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 						case SYM_F32LE:
 							n = 4;
 							ASSERT_READ_SIZE(value, cp, ep, n);
-							SET_DECIMAL(temp, ((float*)cp)[0]);
+							memcpy(&f32.v, cp, 4); // cp may be unaligned
+							SET_DECIMAL(temp, f32.v);
 							break;
 						case SYM_F32BE:
 							n = 4;
@@ -1555,14 +1746,16 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 							buf[1] = cp[2];
 							buf[2] = cp[1];
 							buf[3] = cp[0];
-							SET_DECIMAL(temp, ((float*)buf)[0]);
+							memcpy(&f32.v, buf, 4);
+							SET_DECIMAL(temp, f32.v);
 							break;
 						case SYM_DOUBLE:
 						case SYM_F64:
 						case SYM_F64LE:
 							n = 8;
 							ASSERT_READ_SIZE(value, cp, ep, n);
-							SET_DECIMAL(temp, ((double*)cp)[0]);
+							memcpy(&dbl, cp, 8); // cp may be unaligned
+							SET_DECIMAL(temp, dbl);
 							break;
 						case SYM_F64BE:
 							n = 8;
@@ -1575,6 +1768,7 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 							buf[5] = cp[2];
 							buf[6] = cp[1];
 							buf[7] = cp[0];
+							memcpy(&dbl, buf, 8);
 							SET_DECIMAL(temp, ((double *)buf)[0]);
 							break;
 						case SYM_FIXED8:
@@ -1587,10 +1781,10 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 						case SYM_FIXED16:
 							n = 4;
 							ASSERT_READ_SIZE(value, cp, ep, n);
-							i = ((i32)cp[0] << 0)  |
-								((i32)cp[1] << 8)  |
-								((i32)cp[2] << 16) |
-								((i32)cp[3] << 24) ;
+							i = (i32)((u32)cp[0] << 0)  |
+								     ((u32)cp[1] << 8)  |
+								     ((u32)cp[2] << 16) |
+								     ((u32)cp[3] << 24) ;
 							VAL_SET(temp, REB_DECIMAL);
 							VAL_DECIMAL(temp) = ((float)i / 65536.0f);
 							break;
@@ -1633,6 +1827,7 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 							if (IS_PROTECT_SERIES(bin)) Trap0(RE_PROTECTED);
 							Remove_Series(VAL_SERIES(buffer_read), 0, VAL_INDEX(buffer_read));
 							cp = VAL_BIN_HEAD(buffer_read);
+							ep = cp + VAL_TAIL(buffer_read); // head may move and tail shrinks
 							VAL_INDEX(buffer_write) = MAX(0, (REBI64)VAL_INDEX(buffer_write) - VAL_INDEX(buffer_read));
 							VAL_INDEX(buffer_read) = 0;
 							continue;
@@ -1648,6 +1843,7 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 								mask >>= 1;
 								n++;
 							}
+							if (n > 8) Trap1(RE_INVALID_SPEC, value); // first byte 0x00 is not a valid VINT
 							// Extract the VINT value
 							ASSERT_READ_SIZE(value, cp, ep, n);
 							u = (u64)(cp[0] & (0xFF >> n));
@@ -1667,6 +1863,20 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 					//puts("-- found set-word?");
 					DS_PUSH(value);
 					continue;
+				case REB_GET_WORD:
+					data = Get_Var(value);
+					if (!IS_STRUCT(data)) Trap1(RE_INVALID_SPEC, value);
+					goto read_struct;
+				case REB_STRUCT:
+					// read struct data into a new copy of the given struct
+					data = value;
+				read_struct:
+					if (VAL_STRUCT_PROTECTED(data)) Trap0(RE_PROTECTED);
+					n = VAL_STRUCT_SIZE(data);
+					ASSERT_READ_SIZE(value, cp, ep, n);
+					Copy_Struct_Value(data, temp);
+					COPY_MEM(VAL_STRUCT_DATA_BIN(temp), cp, n);
+					break;
 				case REB_BINARY:
 					// do binary comparison, return TRUE and skip if data matches
 					// or return FALSE and keep position where it is
@@ -1724,6 +1934,7 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 	return R_ARG1;
 
 error:
+	if (IS_END(value)) value--; // missing argument at block end: report the command
 	Trap_Word(RE_DIALECT, SYM_BINCODE, value);
 error_next_value:
 	if (IS_END(next)) value--;

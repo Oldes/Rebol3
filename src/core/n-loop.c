@@ -456,7 +456,7 @@ cont_utf8:
 					}
 
 					else if (IS_VECTOR(value)) {
-						Get_Vector_Value(vars, series, index);
+						Get_Vector_Value(vars, value, index);
 					}
 
 					else if (IS_MAP(value)) {

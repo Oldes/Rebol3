@@ -43,123 +43,123 @@
 #define XXH_IMPLEMENTATION      /* access definitions */
 
 #include "sys-xxhash.h"
+#include "sys-checksum.h"       /* prototypes must match the definitions below */
 
 /***********************************************************************
 **
-*/	REBYTE *HashXXH3(REBYTE *d, REBCNT n, REBYTE *md)
+*/  REBYTE *HashXXH3(REBYTE *d, REBCNT n, REBYTE *md)
 /*
 ***********************************************************************/
 {
-	// d is data, n is length
+    // d is data, n is length
     XXH64_hash_t const hash = XXH3_64bits(d, n);
-	XXH64_canonicalFromHash((XXH64_canonical_t *)md, hash);
+    XXH64_canonicalFromHash((XXH64_canonical_t *)md, hash);
     return md;
 }
 /***********************************************************************
 **
-*/	REBYTE *HashXXH32(REBYTE *d, REBCNT n, REBYTE *md)
+*/  REBYTE *HashXXH32(REBYTE *d, REBCNT n, REBYTE *md)
 /*
 ***********************************************************************/
 {
     XXH32_hash_t const hash = XXH32(d, n, 0);
-	XXH32_canonicalFromHash((XXH32_canonical_t *)md, hash);
+    XXH32_canonicalFromHash((XXH32_canonical_t *)md, hash);
     return md;
 }
 /***********************************************************************
 **
-*/	REBYTE *HashXXH64(REBYTE *d, REBCNT n, REBYTE *md)
+*/  REBYTE *HashXXH64(REBYTE *d, REBCNT n, REBYTE *md)
 /*
 ***********************************************************************/
 {
-	// d is data, n is length
+    // d is data, n is length
     XXH64_hash_t const hash = XXH64(d, n, 0);
-	XXH64_canonicalFromHash((XXH64_canonical_t *)md, hash);
+    XXH64_canonicalFromHash((XXH64_canonical_t *)md, hash);
     return md;
 }
 /***********************************************************************
 **
-*/	REBYTE* HashXXH128(REBYTE* d, REBCNT n, REBYTE* md)
+*/  REBYTE* HashXXH128(REBYTE* d, REBCNT n, REBYTE* md)
 /*
 ***********************************************************************/
 {
-	// d is data, n is length
-	XXH128_hash_t const hash = XXH128(d, n, 0);
-	XXH128_canonicalFromHash((XXH128_canonical_t *)md, hash);
-	return md;
+    // d is data, n is length
+    XXH128_hash_t const hash = XXH128(d, n, 0);
+    XXH128_canonicalFromHash((XXH128_canonical_t *)md, hash);
+    return md;
 }
-int  XXH3_CtxSize(void) { return sizeof(XXH3_state_t); }
+
+// XXH3_state_t requires 64-byte alignment, but the context memory is
+// allocated by the caller without that guarantee. The reported context
+// size includes XXH3_CTX_ALIGN-1 bytes of slack, and every XXH3/XXH128
+// entry point aligns the pointer before using it.
+// NOTE: the context buffer must not be relocated between Starts/Update/Finish.
+#define XXH3_CTX_ALIGN 64
+
+static XXH3_state_t *XXH3_Aligned(void *ctx)
+{
+    return (XXH3_state_t *)(((uintptr_t)ctx + (XXH3_CTX_ALIGN - 1)) & ~(uintptr_t)(XXH3_CTX_ALIGN - 1));
+}
+
+int  XXH3_CtxSize(void) { return sizeof(XXH3_state_t) + XXH3_CTX_ALIGN - 1; }
 int  XXH32_CtxSize(void) { return sizeof(XXH32_state_t); }
 int  XXH64_CtxSize(void) { return sizeof(XXH64_state_t); }
-int  XXH128_CtxSize(void) { return sizeof(XXH3_state_t); }
+int  XXH128_CtxSize(void) { return sizeof(XXH3_state_t) + XXH3_CTX_ALIGN - 1; }
 
-void XXH3_Starts( XXH3_state_t *ctx )
+void XXH3_Starts(void *ctx)
 {
-	XXH3_64bits_reset(ctx);
+    XXH3_64bits_reset(XXH3_Aligned(ctx));
 }
-void XXH3_Update( XXH3_state_t *ctx,
-                         const unsigned char *input,
-                         size_t ilen )
+void XXH3_Update(void *ctx, REBYTE *input, REBCNT ilen)
 {
-    XXH3_64bits_update( ctx, input, ilen );
+    XXH3_64bits_update(XXH3_Aligned(ctx), input, (size_t)ilen);
 }
-void XXH3_Finish(XXH3_state_t*ctx,
-                         unsigned char output[8] )
+void XXH3_Finish(void *ctx, REBYTE *output)
 {
-	XXH64_hash_t const hash = XXH3_64bits_digest(ctx);
-	XXH64_canonicalFromHash((XXH64_canonical_t *)output, hash);
-}
-
-void XXH32_Starts( XXH32_state_t *ctx )
-{
-    ctx = XXH32_createState();
-    XXH32_reset(ctx, 0);
-}
-void XXH32_Update( XXH32_state_t *ctx,
-                         const unsigned char *input,
-                         size_t ilen )
-{
-    XXH32_update( ctx, input, ilen );
-}
-void XXH32_Finish(XXH32_state_t*ctx,
-                         unsigned char output[4] )
-{
-	XXH32_hash_t const hash = XXH32_digest(ctx);
-    XXH32_canonicalFromHash((XXH32_canonical_t *)output, hash);
-}
-
-void XXH64_Starts( XXH64_state_t *ctx )
-{
-    ctx = XXH64_createState();
-    XXH64_reset(ctx, 0);
-}
-void XXH64_Update( XXH64_state_t *ctx,
-                         const unsigned char *input,
-                         size_t ilen )
-{
-    XXH64_update( ctx, input, ilen );
-}
-void XXH64_Finish(XXH64_state_t*ctx,
-                         unsigned char output[8] )
-{
-	XXH64_hash_t const hash = XXH64_digest(ctx);
+    XXH64_hash_t const hash = XXH3_64bits_digest(XXH3_Aligned(ctx));
     XXH64_canonicalFromHash((XXH64_canonical_t *)output, hash);
 }
 
-void XXH128_Starts( XXH3_state_t *ctx )
+void XXH32_Starts(void *ctx)
 {
-    XXH3_128bits_reset(ctx);
+    XXH32_reset((XXH32_state_t *)ctx, 0);
 }
-void XXH128_Update( XXH3_state_t *ctx,
-                         const unsigned char *input,
-                         size_t ilen )
+void XXH32_Update(void *ctx, REBYTE *input, REBCNT ilen)
 {
-    XXH3_128bits_update( ctx, input, ilen );
+    XXH32_update((XXH32_state_t *)ctx, input, (size_t)ilen);
 }
-void XXH128_Finish(XXH3_state_t*ctx,
-                         unsigned char output[16] )
+void XXH32_Finish(void *ctx, REBYTE *output)
 {
-	XXH128_hash_t const hash = XXH3_128bits_digest(ctx);
-    XXH128_canonicalFromHash((XXH128_canonical_t*)output, hash);
+    XXH32_hash_t const hash = XXH32_digest((XXH32_state_t *)ctx);
+    XXH32_canonicalFromHash((XXH32_canonical_t *)output, hash);
+}
+
+void XXH64_Starts(void *ctx)
+{
+    XXH64_reset((XXH64_state_t *)ctx, 0);
+}
+void XXH64_Update(void *ctx, REBYTE *input, REBCNT ilen)
+{
+    XXH64_update((XXH64_state_t *)ctx, input, (size_t)ilen);
+}
+void XXH64_Finish(void *ctx, REBYTE *output)
+{
+    XXH64_hash_t const hash = XXH64_digest((XXH64_state_t *)ctx);
+    XXH64_canonicalFromHash((XXH64_canonical_t *)output, hash);
+}
+
+void XXH128_Starts(void *ctx)
+{
+    XXH3_128bits_reset(XXH3_Aligned(ctx));
+}
+void XXH128_Update(void *ctx, REBYTE *input, REBCNT ilen)
+{
+    XXH3_128bits_update(XXH3_Aligned(ctx), input, (size_t)ilen);
+}
+void XXH128_Finish(void *ctx, REBYTE *output)
+{
+    XXH128_hash_t const hash = XXH3_128bits_digest(XXH3_Aligned(ctx));
+    XXH128_canonicalFromHash((XXH128_canonical_t *)output, hash);
 }
 
 #endif

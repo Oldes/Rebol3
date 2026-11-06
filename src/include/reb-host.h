@@ -40,7 +40,6 @@
 #include "reb-filereq.h"
 #include "reb-codec.h"
 
-#include "reb-gob.h"
 #include "reb-lib.h"
 #include "host-lib.h"		// OS functions
 

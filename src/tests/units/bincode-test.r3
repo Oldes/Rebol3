@@ -83,6 +83,18 @@ is-protected-error?: func[code][
 		--assert 32767 = binary/read b 'UI16
 		--assert 9223372036854775807 = binary/read b 'UI64
 		--assert 127 = binary/read b 'UI8
+	--test-- "BinCode - read signed 32-bit with high bit set (UBSan)"
+		--assert -2147483648 = binary/read #{80000000} 'si32
+		--assert -2147483648 = binary/read #{80000000} 'si32be
+		--assert -2147483648 = binary/read #{00000080} 'si32le
+		--assert -1          = binary/read #{FFFFFFFF} 'si32
+		--assert 32768.0     = binary/read #{00000080} 'fixed16
+		--assert 65535.0     = binary/read #{0000FFFF} 'fixed16
+		;; reading floats from unaligned positions
+		--assert [0 1.5] = binary/read #{000000C03F} [ui8 f32]
+		--assert [0 1.5] = binary/read #{003FC00000} [ui8 f32be]
+		--assert [0 1.5] = binary/read #{00000000000000F83F} [ui8 f64]
+		--assert [0 1.5] = binary/read #{003FF8000000000000} [ui8 f64be]
 	--test-- "BinCode - write negative unsigned integers (big endian)"
 		binary/write b [UI8 -1 UI16 -1 UI24 -1 UI32 -1 UI64 -1]
 		--assert #{FF FFFF FFFFFF FFFFFFFF FFFFFFFFFFFFFFFF} = b/buffer
@@ -96,24 +108,24 @@ is-protected-error?: func[code][
 		binary/init b none
 		; max values... should be ok
 		--assert object? binary/write b [SI8  127]
-		--assert object? binary/write b [SI8 -127]
+		--assert object? binary/write b [SI8 -128]
 		--assert object? binary/write b [SI16  32767]
-		--assert object? binary/write b [SI16 -32767]
+		--assert object? binary/write b [SI16 -32768]
 		--assert object? binary/write b [SI24  8388607]
-		--assert object? binary/write b [SI24 -8388607]
+		--assert object? binary/write b [SI24 -8388608]
 		--assert object? binary/write b [SI32  2147483647]
-		--assert object? binary/write b [SI32 -2147483647]
+		--assert object? binary/write b [SI32 -2147483648]
 		; over range values.. should be "out of range" error
 		--assert is-range-error? [binary/write b [SI8  128]]
-		--assert is-range-error? [binary/write b [SI8 -128]]
+		--assert is-range-error? [binary/write b [SI8 -129]]
 		--assert is-range-error? [binary/write b [SI16  32768]]
-		--assert is-range-error? [binary/write b [SI16 -32768]]
+		--assert is-range-error? [binary/write b [SI16 -32769]]
 		--assert is-range-error? [binary/write b [SI24  8388608]]
-		--assert is-range-error? [binary/write b [SI24 -8388608]]
+		--assert is-range-error? [binary/write b [SI24 -8388609]]
 		--assert is-range-error? [binary/write b [SI32  2147483648]]
-		--assert is-range-error? [binary/write b [SI32 -2147483648]]
+		--assert is-range-error? [binary/write b [SI32 -2147483649]]
 		; results:
-		--assert [127 -127 32767 -32767 8388607 -8388607 2147483647 -2147483647]
+		--assert [127 -128 32767 -32768 8388607 -8388608 2147483647 -2147483648]
 		         = binary/read b [SI8 SI8 SI16 SI16 SI24 SI24 SI32 SI32]
 
 	--test-- "BinCode - write unsigned integers over range"
@@ -170,6 +182,17 @@ is-protected-error?: func[code][
 		--assert #{CAFE} = binary/read #{00000002CAFE} 'UI32BYTES
 		--assert #{CAFE} = binary/read #{02000000CAFE} 'UI32LEBYTES
 
+	--test-- "BinCode - read string (NUL terminated) - valid"
+		--assert "ABC" = binary/read #{41424300} 'string
+		--assert ""    = binary/read #{00} 'string
+		--assert ["A" 66] = binary/read #{410042} [string ui8]
+	--test-- "BinCode - read string (NUL terminated) - missing NUL"
+		--assert error? try [binary/read #{414243} 'string]
+		--assert error? try [binary/read #{} 'string]
+		b: binary #{41}
+		--assert error? try [binary/read b 'string]
+		--assert 1 = binary/read b 'length?  ;; index not moved past tail
+
 	--test-- "BinCode - write GET-WORD"
 		a: 42 b: binary/write #{} [ui8 :a]
 		--assert #{2A} = b/buffer
@@ -222,6 +245,17 @@ is-protected-error?: func[code][
 		binary/read b [AT 4 i: INDEX j: INDEXz]
 		--assert all [i = 4 j = 3]
 
+		b: binary #{0102030405}
+		--assert 1 = binary/read b 'index
+		--assert 0 = binary/read b 'indexz
+		binary/read b 'ui8
+		--assert 2 = binary/read b 'index
+		--assert 1 = binary/read b 'indexz
+		binary/read b 'ui16
+		--assert [4 3] = binary/read b [index indexz]
+		binary/read b [ui16]
+		--assert [6 5] = binary/read b [index indexz]
+
 	--test-- "BinCode - SKIP"
 		;SKIP is using relative positioning
 		b: binary #{01020304}
@@ -238,6 +272,37 @@ is-protected-error?: func[code][
 		binary/write b: #{} [UI8 255 PAD 4 UI8 255]
 		--assert b = #{FF000000FF}
 		--assert [255 255] = binary/read b [UI8 PAD 4 UI8]
+	--test-- "pad 0 / negative"
+		--assert error? try [binary/write binary 8 [pad 0]]
+		--assert error? try [binary/write binary 8 [pad -4]]
+		--assert error? try [binary/read #{0102} [pad 0]]
+		--assert error? try [binary/read #{0102} [pad -4]]
+	--test-- "read pad beyond tail"
+		--assert error? try [binary/read #{0102030405} [ui32 pad 8]]
+	--test-- "read pad valid"
+		--assert [1 5] = binary/read #{0102030405060708} [ui8 pad 4 ui8]
+		--assert [1 2] = binary/read #{01020304} [ui8 pad 1 ui8]
+	--test-- "write pad valid"
+		bin: binary 8
+		binary/write bin [ui8 1 pad 4 ui8 2]
+		--assert #{0100000002} = binary/read bin 'bytes
+
+
+	--test-- "BinCode - read length (DER) - short form"
+		--assert 5   = binary/read #{05} 'length
+		--assert 127 = binary/read #{7F} 'length
+	--test-- "BinCode - read length (DER) - long form"
+		--assert 128   = binary/read #{8180} 'length
+		--assert 256   = binary/read #{820100} 'length
+		--assert 65536 = binary/read #{83010000} 'length
+		--assert 4294967295 = binary/read #{84FFFFFFFF} 'length
+		--assert [256 255] = binary/read #{820100FF} [length ui8]
+	--test-- "BinCode - read length (DER) - invalid"
+		--assert error? try [binary/read #{80} 'length]           ;; indefinite
+		--assert error? try [binary/read #{81} 'length]           ;; truncated
+		--assert error? try [binary/read #{8201} 'length]         ;; truncated
+		--assert error? try [binary/read #{850000000001} 'length] ;; too long
+
 
 	--test-- "BinCode - LENGTH?"
 		;LENGTH? returns number of bytes remaining in the buffer
@@ -407,6 +472,24 @@ is-protected-error?: func[code][
 			SKIPBITS 9 UB 2
 			SKIPBITS 3 UB 2
 		]
+	--test-- "BinCode - SKIPBITS then ub in separate call"
+		b: binary #{A5}
+		binary/read b [skipbits 4]
+		--assert [5] = binary/read b [ub 4]
+		b: binary #{A5}
+		binary/read b [skipbits 4]
+		--assert 5 = binary/read/with b 'ub 4
+	--test-- "BinCode - SKIPBITS then bit in separate call"
+		b: binary #{0F}
+		binary/read b [skipbits 4]
+		--assert binary/read b 'bit
+	--test-- "BinCode - SKIPBITS over byte boundary"
+		b: binary #{FF0F}
+		binary/read b [skipbits 12]
+		--assert [15] = binary/read b [ub 4]
+	--test-- "BinCode - SKIPBITS in same block (unchanged)"
+		b: binary #{A5}
+		--assert [5] = binary/read b [skipbits 4 ub 4]
 
 	--test-- "BinCode - ALIGN"
 		--assert [0 1 2] = binary/read #{008002} [
@@ -438,6 +521,20 @@ is-protected-error?: func[code][
 		b: binary/write #{} [f16le   0.5 f16le   1000 f16le   32.5 f16le   -32.5]
 		--assert b/buffer = #{0038D063105010D0}
 		--assert [0.5 1000.0 32.5 -32.5] = binary/read b [f16le f16le f16le f16le]
+
+	--test-- "BinCode - read f16 zero"
+		--assert 0.0 = binary/read #{0000} 'f16
+		--assert 0.0 = binary/read #{0080} 'f16
+		--assert 0.0 = binary/read #{0000} 'f16be
+	--test-- "BinCode - read f16 subnormals"
+		--assert 5.9604644775390625e-8   = binary/read #{0100} 'f16
+		--assert -5.9604644775390625e-8  = binary/read #{0180} 'f16
+		--assert 6.0975551605224609375e-5 = binary/read #{FF03} 'f16
+		--assert 5.9604644775390625e-8   = binary/read #{0001} 'f16be
+	--test-- "BinCode - read f16 normals (unchanged)"
+		--assert 6.103515625e-5 = binary/read #{0004} 'f16
+		--assert 1.0     = binary/read #{003C} 'f16
+		--assert 65504.0 = binary/read #{FF7B} 'f16
 
 	--test-- "BinCode - F32LE, F32BE"
 		b: binary/write #{} [f32be   0.5 f32be   1000 f32be   32.5 f32be   -32.5]
@@ -493,6 +590,10 @@ is-protected-error?: func[code][
 
 		--assert error? try [binary/write b [MSDOS-DATE 15:33:18]] ;<- date required
 
+	--test-- "write msdos-datetime rejects time!"
+		--assert error? try [binary/write binary 8 [msdos-datetime 10:20:30]]
+
+
 	--test-- "BinCode - STRING-BYTES (read)"
 		;- used for fixed size strings (used for example in TAR files)
 		--assert ["test" 1]= binary/read #{746573740000000001} [STRING-BYTES 8 UI8]
@@ -514,7 +615,39 @@ is-protected-error?: func[code][
 		]
 		--assert [#(true) #{CAFE}] = binary/read b [ATz 0 #{0bad} BYTES 2]
 
+
+	--test-- "write empty block returns ctx"
+		b: binary #{0102}
+		--assert object? binary/write b []
+	--test-- "write/read with empty block still reads"
+		b: binary #{0102}
+		--assert 1 = binary/write/read b [] 'ui8
+		--assert [2] = binary/write/read b [] [ui8]
+	--test-- "write binary returns ctx"
+		b: binary 16
+		--assert object? binary/write b #{0102}
+	--test-- "write/read with binary data"
+		b: binary 16
+		--assert [1 2] = binary/write/read b #{0102} [ui8 ui8]
+		--assert 3 = binary/write/read b #{03} 'ui8
 ===end-group===
+
+
+===start-group=== "BinCode - write set-word with index/indexz"
+	--test-- "set-word positions"
+		bin: binary 16
+		binary/write bin [p1: ui8 1 p2: index ui8 2 p3: indexz ui8 3 p4:]
+		--assert p1 = 1
+		--assert p2 = 2
+		--assert p3 = 2
+		--assert p4 = 4
+		--assert #{010203} = binary/read bin 'bytes
+	--test-- "set-word value usable later in same block"
+		bin: binary 16
+		binary/write bin [ui8 0 p1: indexz ui8 :p1]
+		--assert #{0001} = binary/read bin 'bytes
+===end-group===
+
 
 ===start-group=== "BinCode special read/write functions"
 
@@ -546,6 +679,18 @@ is-protected-error?: func[code][
 			empty? head b/buffer
 			empty? head b/buffer-write
 		]
+
+	--test-- "crop all then read"
+		b: binary #{0102}
+		--assert error? try [binary/read b [ui16 crop ui8]]
+	--test-- "crop large (bias reset) then read"
+		b: binary append/dup #{} 0 5000
+		--assert error? try [binary/read b [skip 4096 crop bytes 905]]
+		b: binary append/dup #{} 0 5000
+		--assert [904] = binary/read b [skip 4096 crop length?]
+	--test-- "crop small keeps data"
+		b: binary #{01020304}
+		--assert [1 2 3 4] = binary/read b [ui8 crop ui8 ui8 ui8]
 ===end-group===
 
 
@@ -585,6 +730,357 @@ is-protected-error?: func[code][
 	--assert all [error? e: try [binary/read #{01} ["foo"]]  e/id = 'invalid-spec]
 	--assert all [error? e: try [binary/read #{01} [ui8 42]]  e/id = 'invalid-spec]
 
+===end-group===
+
+
+===start-group=== "BinCode - write gaps are zeroed"
+	--test-- "at past tail on reused buffer"
+		bin: binary 16
+		binary/write bin #{FFFFFFFFFFFFFFFF}
+		binary/init bin none
+		binary/write bin [at 5 ui8 1]
+		--assert #{0000000001} = binary/read bin 'bytes
+	--test-- "at past tail after existing data"
+		bin: binary 16
+		binary/write bin #{0102030405060708}
+		binary/init bin none
+		binary/write bin [ui8 1 ui8 2]
+		binary/write bin [at 5 ui8 9]
+		--assert #{0102000009} = binary/read bin 'bytes
+	--test-- "at back into existing data keeps it"
+		bin: binary 16
+		binary/write bin [ui32 0#01020304 at 2 ui8 255]
+		--assert #{01FF0304} = binary/read bin 'bytes
+===end-group===
+
+
+===start-group=== "BinCode - unsigned write range"
+	--test-- "negative values (two's complement) accepted"
+		bin: binary 16
+		binary/write bin [ui8 -1 ui16 -1 ui24 -1 ui16le -2 ui24le -2]
+		--assert #{FFFFFFFFFFFFFEFFFEFFFF} = binary/read bin 'bytes
+	--test-- "values not fitting the width rejected"
+		--assert error? try [binary/write binary 8 [ui8 -256]]
+		--assert error? try [binary/write binary 8 [ui16 -65536]]
+		--assert error? try [binary/write binary 8 [ui24 -16777216]]
+		--assert error? try [binary/write binary 8 [ui8 4294967297]]
+		--assert error? try [binary/write binary 8 [ui16 4294967297]]
+	--test-- "upper bounds"
+		--assert error? try [binary/write binary 8 [ui8 256]]
+		--assert error? try [binary/write binary 8 [ui16 65536]]
+		--assert error? try [binary/write binary 8 [ui24 16777216]]
+		--assert error? try [binary/write binary 8 [ui8 #"€"]]
+	--test-- "valid values"
+		bin: binary 16
+		binary/write bin [ui8 255 ui16 65535 ui24le 16777215 ui8 #"A" ui16 #"€"]
+		--assert #{FFFFFFFFFFFF4120AC} = binary/read bin 'bytes
+===end-group===
+
+
+===start-group=== "BinCode - read count validation"
+	--test-- "read N"
+		--assert #{0102} = binary/read #{010203} 2
+		--assert #{}     = binary/read #{010203} 0
+		--assert error? try [binary/read #{0102} 3]
+		--assert error? try [binary/read #{0102} -1]
+		--assert error? try [binary/read #{0102} 4294967297]
+	--test-- "bytes N"
+		--assert [#{0102}] = binary/read #{010203} [bytes 2]
+		--assert error? try [binary/read #{0102} [bytes -1]]
+		--assert error? try [binary/read #{0102} [bytes 4294967297]]
+		--assert error? try [binary/read #{0102} [string-bytes 4294967297]]
+===end-group===
+
+
+===start-group=== "BinCode - random-bytes"
+	--test-- "valid"
+		bin: binary 16
+		binary/write bin [ui8 1 random-bytes 4 ui8 2]
+		--assert 6 = binary/read bin 'length?
+		--assert [1 2] = binary/read bin [ui8 skip 4 ui8]
+		bin: binary 16
+		binary/write bin [random-bytes 0]
+		--assert 0 = binary/read bin 'length?
+	--test-- "invalid counts"
+		--assert error? try [binary/write binary 8 [random-bytes -1]]
+		--assert error? try [binary/write binary 8 [random-bytes 4294967297]]
+===end-group===
+
+
+===start-group=== "BinCode - ub/sb/fb"
+	--test-- "ub"
+		--assert [10 5] = binary/read #{A5} [ub 4 ub 4]
+		--assert [511] = binary/read #{FF80} [ub 9]
+		--assert [4294967295] = binary/read #{FFFFFFFF} [ub 32]
+		--assert [-1] = binary/read #{FFFFFFFFFFFFFFFF} [ub 64]
+		--assert [0] = binary/read #{FF} [ub 0]
+	--test-- "sb"
+		--assert [-6 5] = binary/read #{A5} [sb 4 sb 4]
+		--assert [-1] = binary/read #{FFFFFFFF} [sb 32]
+		--assert [-1] = binary/read #{FFFFFFFFFFFFFFFF} [sb 64]
+	--test-- "fb"
+		--assert [1.0]  = binary/read #{00010000} [fb 32]
+		--assert [-1.0] = binary/read #{FFFF0000} [fb 32]
+	--test-- "invalid / out of data"
+		--assert error? try [binary/read #{FF} [ub -1]]
+		--assert error? try [binary/read #{FF} [ub 65]]
+		--assert error? try [binary/read #{FF} [ub 9]]
+		--assert error? try [binary/read #{} [sb 1]]
+		--assert error? try [binary/read #{} [fb 1]]
+===end-group===
+
+
+===start-group=== "BinCode - read encodedu32/u64"
+	--test-- "valid"
+		--assert 300 = binary/read #{AC02} 'encodedu32
+		--assert 4294967295 = binary/read #{FFFFFFFF0F} 'encodedu32
+		--assert -1 = binary/read #{FFFFFFFFFFFFFFFFFF01} 'encodedu64
+		--assert 4294967295 = binary/read #{FFFFFFFFFFFFFFFFFF01} 'encodedu32
+		--assert [300 1] = binary/read #{AC0201} [encodedu32 ui8]
+	--test-- "invalid"
+		--assert error? try [binary/read #{80} 'encodedu32]
+		--assert error? try [binary/read #{8080808080808080808000} 'encodedu64]
+		--assert error? try [binary/read #{8080808080808080808000} 'encodedu32]
+===end-group===
+
+
+===start-group=== "BinCode - vint"
+	--test-- "write valid"
+		bin: binary 32
+		binary/write bin [vint 0 vint 126 vint 127 vint 128 vint 16382 vint 16383]
+		--assert #{80FE407F40807FFE203FFF} = binary/read bin 'bytes
+		bin: binary 16
+		binary/write bin [vint 72057594037927934]
+		--assert #{01FFFFFFFFFFFFFE} = binary/read bin 'bytes
+	--test-- "write/read roundtrip"
+		bin: binary 32
+		binary/write bin [vint 0 vint 127 vint 16383 vint 72057594037927934]
+		--assert [0 127 16383 72057594037927934] = binary/read bin [vint vint vint vint]
+	--test-- "write out of range"
+		--assert error? try [binary/write binary 16 [vint 72057594037927935]]
+		--assert error? try [binary/write binary 16 [vint -1]]
+	--test-- "read"
+		--assert 127 = binary/read #{FF} 'vint   ;; reserved, but still decoded
+		--assert error? try [binary/read #{00} 'vint]
+		--assert error? try [binary/read #{0000000000000000FF} 'vint]
+		--assert error? try [binary/read #{4080} [vint vint]]
+===end-group===
+
+
+===start-group=== "BinCode - msdos date year range"
+	--test-- "valid bounds"
+		bin: binary 8
+		binary/write bin [msdos-date 1-Jan-1980 msdos-date 31-Dec-2107]
+		--assert [1-Jan-1980 31-Dec-2107] = binary/read bin [msdos-date msdos-date]
+		bin: binary 8
+		binary/write bin [msdos-datetime 1-Jan-1980/0:00 msdos-datetime 31-Dec-2107/23:59:58]
+		--assert [1-Jan-1980/0:00 31-Dec-2107/23:59:58] = binary/read bin [msdos-datetime msdos-datetime]
+	--test-- "out of range"
+		--assert error? try [binary/write binary 8 [msdos-date 31-Dec-1979]]
+		--assert error? try [binary/write binary 8 [msdos-date 1-Jan-2108]]
+		--assert error? try [binary/write binary 8 [msdos-datetime 31-Dec-1979/12:00]]
+		--assert error? try [binary/write binary 8 [msdos-datetime 1-Jan-2108/12:00]]
+===end-group===
+
+
+===start-group=== "BinCode - signed BE/LE variants"
+	--test-- "write signed BE/LE"
+		bin: binary 64
+		binary/write bin [si16be -2 si16le -2 si24be -2 si24le -2 si32be -2 si32le -2 si64be -2 si64le -2]
+		--assert #{FFFEFEFFFFFFFEFEFFFFFFFFFFFEFEFFFFFFFFFFFFFFFFFFFFFEFEFFFFFFFFFFFFFF} = binary/read bin 'bytes
+	--test-- "read signed BE/LE"
+		bin: binary 64
+		binary/write bin [si16be -2 si16le -2 si24be -2 si24le -2 si32be -2 si32le -2 si64be -2 si64le -2]
+		--assert [-2 -2 -2 -2 -2 -2 -2 -2] = binary/read bin [si16be si16le si24be si24le si32be si32le si64be si64le]
+	--test-- "positive values"
+		bin: binary 16
+		binary/write bin [si24le 1193046]
+		--assert #{563412} = binary/read bin 'bytes
+		--assert 1193046 = binary/read #{563412} 'si24le
+		--assert 1 = binary/read #{0000000000000001} 'si64
+		--assert 1 = binary/read #{0100000000000000} 'si64le
+	--test-- "range"
+		--assert error? try [binary/write binary 8 [si16le 32768]]
+		--assert error? try [binary/write binary 8 [si24le 8388608]]
+		--assert error? try [binary/write binary 8 [si32le 2147483648]]
+===end-group===
+
+
+===start-group=== "BinCode - *bebytes read aliases"
+	--test-- "write/read ui16/24/32bebytes"
+		bin: binary 32
+		binary/write bin [ui16bebytes #{0102} ui24bebytes #{03} ui32bebytes #{0405}]
+		--assert #{0002010200000103000000020405} = binary/read bin 'bytes
+		bin: binary 32
+		binary/write bin [ui16bebytes #{0102} ui24bebytes #{03} ui32bebytes #{0405}]
+		--assert [#{0102} #{03} #{0405}] = binary/read bin [ui16bebytes ui24bebytes ui32bebytes]
+	--test-- "same as plain forms"
+		--assert [#{AA}] = binary/read #{0001AA} [ui16bebytes]
+		--assert [#{AA}] = binary/read #{0001AA} [ui16bytes]
+===end-group===
+
+
+===start-group=== "BinCode - bit-level write"
+	--test-- "ub/sb"
+		bin: binary 16
+		binary/write bin [ub 4 10 ub 4 5]
+		--assert #{A5} = binary/read bin 'bytes
+		bin: binary 16
+		binary/write bin [sb 4 -6 sb 4 5]
+		--assert #{A5} = binary/read bin 'bytes
+		bin: binary 16
+		binary/write bin [ub 9 511]
+		--assert #{FF80} = binary/read bin 'bytes
+		bin: binary 16
+		binary/write bin [ub 64 -1]
+		--assert #{FFFFFFFFFFFFFFFF} = binary/read bin 'bytes
+	--test-- "fb"
+		bin: binary 16
+		binary/write bin [fb 32 1.0 fb 32 -1 fb 32 0.5]
+		--assert #{00010000FFFF000000008000} = binary/read bin 'bytes
+	--test-- "bit / not-bit / align"
+		bin: binary 16
+		binary/write bin [bit #(true) bit #(false) bit 1 not-bit #(false) align ui8 1]
+		--assert #{B001} = binary/read bin 'bytes
+	--test-- "implicit align before byte commands and raw data"
+		bin: binary 16
+		binary/write bin [ub 3 5 ui8 255 bit #(true) #{CC}]
+		--assert #{A0FF80CC} = binary/read bin 'bytes
+		bin: binary 16
+		binary/write bin [ub 3 5]
+		binary/write bin #{CC}
+		--assert #{A0CC} = binary/read bin 'bytes
+	--test-- "bits continue across write calls"
+		bin: binary 16
+		binary/write bin [ub 4 10]
+		binary/write bin [ub 4 5]
+		--assert #{A5} = binary/read bin 'bytes
+	--test-- "roundtrip with read"
+		bin: binary 16
+		binary/write bin [ub 5 17 sb 7 -33 fb 20 -2.5 bit #(true) align ui16 1234]
+		--assert [17 -33 -2.5 #(true) 1234] = binary/read bin [ub 5 sb 7 fb 20 bit align ui16]
+	--test-- "/init resets bit masks"
+		bin: binary 16
+		binary/write bin [ub 3 5]
+		binary/init bin none
+		binary/write bin [ub 4 10 ub 4 5]
+		--assert #{A5} = binary/read bin 'bytes
+	--test-- "range / argument errors"
+		--assert error? try [binary/write binary 8 [ub 4 16]]
+		--assert error? try [binary/write binary 8 [ub 4 -9]]
+		--assert error? try [binary/write binary 8 [sb 4 8]]
+		--assert error? try [binary/write binary 8 [sb 4 -9]]
+		--assert error? try [binary/write binary 8 [ub 65 1]]
+		--assert error? try [binary/write binary 8 [ub -1 1]]
+		--assert error? try [binary/write binary 8 [ub 0 1]]
+		--assert error? try [binary/write binary 8 [bit 2]]
+		--assert error? try [binary/write binary 8 [bit "x"]]
+		--assert error? try [binary/write binary 8 [ub 4]]
+		bin: binary 8
+		try [binary/write bin [ui8 1 ub 4 16]]
+		--assert 0 = binary/read bin 'length?   ;; nothing written on error
+===end-group===
+
+
+===start-group=== "BinCode - write string (NUL terminated)"
+	--test-- "write"
+		bin: binary 16
+		binary/write bin [string "ABC" string "" string #{4142} ui8 1]
+		--assert #{41424300004142 0001} = binary/read bin 'bytes
+	--test-- "roundtrip"
+		bin: binary 16
+		binary/write bin [string "Hello" ui16 6523]
+		--assert ["Hello" 6523] = binary/read bin [string ui16]
+	--test-- "after bits (implicit align)"
+		bin: binary 16
+		binary/write bin [ub 3 5 string "A"]
+		--assert #{A04100} = binary/read bin 'bytes
+	--test-- "invalid argument"
+		--assert error? try [binary/write binary 8 [string 1]]
+		--assert error? try [binary/write binary 8 [string]]
+===end-group===
+
+
+===start-group=== "BinCode - missing argument at block end"
+	--test-- "write command without argument"
+		--assert error? try [binary/write binary 8 [ui8]]
+		--assert error? try [binary/write binary 8 [string]]
+		--assert error? try [binary/write binary 8 [bytes]]
+		--assert error? try [binary/write binary 8 [ub 4]]
+		--assert error? try [binary/write binary 8 [bit]]
+===end-group===
+
+
+===start-group=== "BinCode - signed write range"
+	--test-- "min/max values"
+		bin: binary 32
+		binary/write bin [si8 -128 si8 127 si16 -32768 si16le 32767 si24 -8388608 si24le 8388607 si32 -2147483648 si32le 2147483647]
+		--assert #{807F8000FF7F800000FFFF7F80000000FFFFFF7F} = binary/read bin 'bytes
+		bin: binary 32
+		binary/write bin [si8 -128 si16 -32768 si24 -8388608 si32 -2147483648]
+		--assert [-128 -32768 -8388608 -2147483648] = binary/read bin [si8 si16 si24 si32]
+	--test-- "out of range"
+		--assert error? try [binary/write binary 8 [si8 -129]]
+		--assert error? try [binary/write binary 8 [si8 128]]
+		--assert error? try [binary/write binary 8 [si16le -32769]]
+		--assert error? try [binary/write binary 8 [si32 2147483648]]
+	--test-- "char!"
+		bin: binary 8
+		binary/write bin [si8 #"A" si16 #"€"]
+		--assert #{4120AC} = binary/read bin 'bytes
+===end-group===
+
+
+===start-group=== "BinCode - range error leaves buffer untouched"
+	--test-- "unsigned"
+		bin: binary 16
+		--assert error? try [binary/write bin [ui8 1 ui16 2 ui8 256]]
+		--assert 0 = binary/read bin 'length?
+	--test-- "signed"
+		bin: binary 16
+		--assert error? try [binary/write bin [ui8 1 si16le 40000]]
+		--assert 0 = binary/read bin 'length?
+	--test-- "existing data kept"
+		bin: binary 16
+		binary/write bin [ui8 1]
+		--assert error? try [binary/write bin [ui8 2 ui32 4294967296]]
+		--assert #{01} = binary/read bin 'bytes
+===end-group===
+
+
+===start-group=== "BinCode - struct!"
+	p: make struct! [x [int16!] y [int16!]]
+	--test-- "write struct"
+		p/x: 1 p/y: -1
+		bin: binary 16
+		binary/write bin [ui8 7 :p]
+		--assert #{070100FFFF} = binary/read bin 'bytes
+	--test-- "read struct (top-level)"
+		s: binary/read #{0200FEFF} :p
+		--assert struct? s
+		--assert all [s/x = 2 s/y = -2]
+		--assert all [p/x = 1 p/y = -1]   ;; prototype untouched
+		--assert not same? s p
+	--test-- "read structs in block"
+		r: binary/read #{070100FFFF0300FDFF} [ui8 :p :p]
+		--assert 7 = r/1
+		--assert all [r/2/x = 1 r/2/y = -1 r/3/x = 3 r/3/y = -3]
+		--assert not same? r/2 r/3
+	--test-- "roundtrip"
+		bin: binary 16
+		binary/write bin [:p ui8 9]
+		r: binary/read bin [:p ui8]
+		--assert all [r/1 = p r/2 = 9]
+	--test-- "nested struct as prototype"
+		n: make struct! [id [uint8!] pos [struct! [x [int16!] y [int16!]]]]
+		s: binary/read #{0502000300} :n
+		--assert all [s/id = 5 s/pos/x = 2 s/pos/y = 3]
+	--test-- "errors"
+		--assert error? try [binary/read #{0100} :p]                        ;; short data
+		--assert error? try [binary/read #{0100} [:x]]                      ;; not a struct
+		r: make struct! [n [uint8!] val [rebval!]]
+		--assert all [error? e: try [binary/read #{FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF} :r] e/id = 'protected]
+		--assert all [error? e: try [binary/write binary 64 [:r]] e/id = 'protected]
 ===end-group===
 
 ~~~end-file~~~

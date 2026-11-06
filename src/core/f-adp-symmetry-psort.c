@@ -24,8 +24,13 @@
 
 
 #include <stdlib.h>
+#include <stddef.h>
 
 #define Adp_SymPSort unstable_sort
+
+// Signed type for element counts and byte offsets. Must be signed:
+// the algorithm uses negative values (s < 0, (1-i)*es, ...)
+typedef ptrdiff_t sp_int;
 
 // the code for the sorting algorithm begins 
 #define swapvector(TYPE,pi,pj,n)            \
@@ -37,7 +42,7 @@
        n-=sizeof(TYPE);                     \
     } while (n > 0)
  
-void swapfunc(char *a, char *b, int n, int swaptype)
+void swapfunc(char *a, char *b, sp_int n, int swaptype)
 {    if (swaptype <=1 ) swapvector(long,a,b,n);
      else swapvector(char,a,b,n);
 }
@@ -58,9 +63,10 @@ void swapfunc(char *a, char *b, int n, int swaptype)
 #define beta1 256
 #define beta2 512
 // Symmetry Partition Sort
-void SymPartitionSort(char *a, int s, int n, int es, int (*cmp)(const void *,const void *))
+void SymPartitionSort(char *a, sp_int s, sp_int n, sp_int es, int (*cmp)(const void *,const void *))
 {   char *pm,*pb,*pc,*pi,*pj;
-    int i,v,vL,m,left,right,swaptype,sp,eq,ineq,rc;
+    sp_int i,v,vL,m,left,right,sp,eq,ineq;
+    int swaptype,rc;
     left=right=0;
     SWAPINIT(a,es);
     while(1){
@@ -111,7 +117,7 @@ void SymPartitionSort(char *a, int s, int n, int es, int (*cmp)(const void *,con
             while ( (rc=cmp(pb,pm)) < 0 && pb <= pc) pb+=es;
             if(pb >= pc) break;
             if(rc==0){
-				if(pi!=pb) {swap(pb,pi);}
+                if(pi!=pb) {swap(pb,pi);}
                  pi+=es; pb+=es;
                  continue;
             }
@@ -119,7 +125,7 @@ void SymPartitionSort(char *a, int s, int n, int es, int (*cmp)(const void *,con
             if(pb >= pc) break;
             swap(pb,pc);
             if(rc==0){
-				if(pi!=pb) { swap(pb,pi);}
+                if(pi!=pb) { swap(pb,pi);}
                 pi+=es; 
             }
             pb+=es; pc-=es;
@@ -145,9 +151,12 @@ void SymPartitionSort(char *a, int s, int n, int es, int (*cmp)(const void *,con
 }
 
 // Adaptive Symmetry Partition Sort
-void Adp_SymPSort(void *a, int n, int es, int (*cmp)(const void *,const void *))
+// (signature matches the unstable_sort prototype in reb-defs.h)
+void Adp_SymPSort(void *a, size_t nmemb, size_t size, int (*cmp)(const void *,const void *))
 {   char *pb,*pc,*pi,*pj;
-    int swaptype,i,j,ne,rc,D_inv,left,m,Rev=0;
+    sp_int n = (sp_int)nmemb, es = (sp_int)size;
+    sp_int i,j,ne,D_inv,left,m;
+    int swaptype,rc,Rev=0;
   
     SWAPINIT((char *)a,es);
 //Find 1st run
@@ -164,7 +173,7 @@ void Adp_SymPSort(void *a, int n, int es, int (*cmp)(const void *,const void *))
          if(rc>0) D_inv--;
     }
     pb=(char *)a+i-es;
-    if(abs(D_inv) > n/512 ) {     
+    if((D_inv < 0 ? -D_inv : D_inv) > n/512 ) {     
          if(Rev*D_inv < 0) {pb=(char *)a; Rev=-Rev;}  //If 1st run is reverse, re-find it
             pc=(char *)a+n*es; pj=pb;
             while(1){

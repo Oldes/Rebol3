@@ -12,9 +12,9 @@ REBOL [
 		Licensed under the Apache License, Version 2.0
 		See: http://www.apache.org/licenses/LICENSE-2.0
 	}
-	Version: 0.8.4
+	Version: 0.8.6
 	Needs: 3.18.5 ;; because using the new log-* functions
-	Date: 27-May-2026
+	Date: 5-Nov-2026
 	File: %prot-http.r3
 	Purpose: {
 		This program defines the HTTP protocol scheme for REBOL 3.
@@ -30,6 +30,8 @@ REBOL [
 ]
 
 sync-op: func [port body /local header state][
+	;; a port closed by a previous sync operation (or left with an error) must be reopened
+	if any [error? port/state  all [object? port/state  port/state/state = 'closing]][port/state: none]
 	unless port/state [open port port/state/close?: yes]
 	state: port/state
 	state/awake: :read-sync-awake
@@ -116,13 +118,6 @@ read-sync-awake: func [event [event!] /local error state][
 		]
 		close [
 			true
-		]
-		custom [
-			if event/code = 300 [
-				state/state: 'redirect
-				return true
-			]
-			false
 		]
 		error [
 			if all [
@@ -214,7 +209,6 @@ http-awake: func [event /local port http-port state awake res][
 			]
 			log-trace 'HTTP ["Closing:^[[1m" http-port/spec/ref]
 			close http-port
-			if error? state [ do state ]
 			res
 		]
 	][true]
@@ -262,7 +256,7 @@ escape-query: function/with [
 make-http-request: func [
 	"Create an HTTP request (returns binary!)"
 	spec [block! object!] "Request specification from an opened port"
-	/local method path target query headers content request cookies-to-send
+	/local method path target query headers content request cookies-to-send req-path
 ][
 	method:  any [select spec 'method 'GET]
 	path:    any [select spec 'path    %/]
@@ -278,14 +272,25 @@ make-http-request: func [
 	if :target [append request enhex/uri :target]
 	if :query  [append append request #"?" escape-query :query]
 
-	if cookies-to-send: get-cookies spec/host path [
+	req-path: ajoin [path :target]
+	if cookies-to-send: either 'https = select spec 'scheme [
+		get-cookies/secure spec/host req-path
+	][	get-cookies spec/host req-path ][
 		put headers 'Cookie cookies-to-send
 	]
 
 	append request " HTTP/1.1^M^/"
 	
 	foreach [word string] :headers [
-		append request ajoin [form :word #":" SP :string CRLF]
+		;; headers set to none are not sent (allows removing default headers)
+		if :string [
+			string: form :string
+			;; prevent header injection / request splitting
+			unless parse string [any not-crlf-chars end] [
+				cause-error 'Access 'Protocol ajoin ["Invalid character in header: " :word]
+			]
+			append request ajoin [form :word #":" SP string CRLF]
+		]
 	]
 
 	if :content [
@@ -349,9 +354,9 @@ put system/catalog 'http-status-codes http-status-codes: #[
 	201 "Created"
 	202 "Accepted"
 	203 "Non-Authoritative Information"
-	204 "No Connect"
-	205 "Reset"
-	206 "Partial"
+	204 "No Content"
+	205 "Reset Content"
+	206 "Partial Content"
 
 	300 "Multiple Choices"
 	301 "Moved Permanently"
@@ -359,14 +364,15 @@ put system/catalog 'http-status-codes http-status-codes: #[
 	303 "See Other"
 	304 "Not Modified"
 	305 "Use Proxy"
-	308 "Moved Permanently"
+	307 "Temporary Redirect"
+	308 "Permanent Redirect"
 
 	400 "Bad Request"
 	401 "Unauthorized"
 	402 "Payment Required"
 	403 "Forbidden"
 	404 "Not Found"
-	405 "Not Allowed"
+	405 "Method Not Allowed"
 	406 "Not Acceptable"
 	407 "Proxy Authentication Required"
 	408 "Request Timeout"
@@ -394,7 +400,7 @@ put system/catalog 'http-status-codes http-status-codes: #[
 	505 "HTTP Version Not Supported"
 	506 "Variant Also Negotiates"
 	507 "Insufficient Storage"
-	508 "Loop Detected "
+	508 "Loop Detected"
 	510 "Not Extended"
 	511 "Network Authentication Required"
 ]
@@ -413,12 +419,12 @@ check-response: func [port /local conn res headers d1 d2 line info state awake s
 			all [
 				d1: find conn/data crlfbin
 				d2: find/tail d1 crlf2bin
-				;log-trace 'HTML "server using standard content separator of #{0D0A0D0A}"
+				;log-trace 'HTTP "server using standard content separator of #{0D0A0D0A}"
 			]
 			all [
 				d1: find conn/data #{0A}
 				d2: find/tail d1 #{0A0A}
-				log-trace 'HTML "Server using malformed line separator of #{0A0A}"
+				log-trace 'HTTP "Server using malformed line separator of #{0A0A}"
 			]
 		]
 	][
@@ -436,8 +442,8 @@ check-response: func [port /local conn res headers d1 d2 line info state awake s
 			awake make event! [type: 'error port: port]
 		]
 		if cookies: select headers 'set-cookie [
-			set-cookies port/spec/host cookies
-		] 
+			set-cookies/from port/spec/host cookies ajoin [spec/path spec/target]
+		]
 		if date: any [
 			;@@ https://github.com/Oldes/Rebol-issues/issues/2496
 			select headers 'last-modified
@@ -455,10 +461,12 @@ check-response: func [port /local conn res headers d1 d2 line info state awake s
 	]
 	res: false
 	unless info/status-code [
-		if parse line [
+		either parse line [
 			"HTTP/1." [#"0" | #"1"] some #" " copy code: 3 digits to end
 		][
 			info/status-code: to integer! code
+		][
+			return throw-http-error port ["Invalid status line: " mold line]
 		]
 	]
 	code: info/status-code
@@ -469,7 +477,8 @@ check-response: func [port /local conn res headers d1 d2 line info state awake s
 		code < 200 [ ;= Information responses
 			info/headers: info/response-line: info/status-code: port/data: none
 			state/state: 'reading-headers
-			read conn
+			;; the final response may already be buffered after the interim one
+			either empty? conn/data [read conn][res: check-response port]
 		]
 		find [204 304] code [ ;= No Content | Not Modified
 			state/state: 'ready
@@ -515,7 +524,8 @@ check-result: func[ result [block!] all [logic! none!]][
 
 crlfbin:  #{0D0A}
 crlf2bin: #{0D0A0D0A}
-crlf2: to string! crlf2bin
+not-crlf-chars: complement charset "^M^/"
+
 http-response-headers: construct [
 	Content-Length:
 	Content-Encoding:
@@ -523,38 +533,66 @@ http-response-headers: construct [
 	Last-Modified:
 ]
 
-do-redirect: func [port [port!] new-uri [url! string! file!] /local spec state headers temp][
+do-redirect: func [port [port!] new-uri [url! string! file!] /local spec state headers temp same-origin? code base q][
 	spec: port/spec
 	state: port/state
 	port/data: none
-
-	;new-uri: as url! new-uri
 
 	log-info 'HTTP ["Redirect to:^[[m" mold new-uri]
 
 	state/redirects: state/redirects + 1
 	if state/redirects > system/options/http-redirects [
-		res: throw-http-error port {Too many redirections}
+		return throw-http-error port {Too many redirections}
 	]
 
+	;; current request path, used to resolve relative references
+	base: ajoin [spec/path spec/target]
 	spec/query: spec/target: none ; old parts not used in redirection!
+
+	;; RFC 9110 15.4: 303 (and 301/302 after POST) switch the method to GET without a body
+	code: state/info/status-code
+	if any [
+		all [code = 303  spec/method <> 'HEAD]
+		all [find [301 302] code  spec/method = 'POST]
+	][
+		spec/method: 'GET
+		spec/content: none
+		spec/headers: to map! spec/headers
+		foreach name [Content-Type Content-Length Content-Encoding][
+			remove/key spec/headers name
+		]
+	]
+
+	;; protocol-relative reference (//host/path)
+	if find/match new-uri "//" [new-uri: ajoin [spec/scheme #":" new-uri]]
 
 	;; If decoding of the new uri fails, then it must be just change of the path
 	either temp: decode-url new-uri [
 		new-uri: temp
 	][
-		;; Some servers may have invalid location (missing slash) - Rebol-issues/issues/2604
-		if new-uri/1 != #"/" [insert new-uri #"/"]
+		;; RFC 3986 5.2: resolve a relative reference against the current path
+		new-uri: to string! new-uri
+		if q: find new-uri #"?" [
+			spec/query: copy next q
+			new-uri: copy/part new-uri q
+		]
+		case [
+			empty? new-uri [new-uri: base]
+			#"/" <> first new-uri [
+				new-uri: ajoin [copy/part base find/last/tail base #"/" new-uri]
+			]
+		]
 		spec/path: new-uri: as file! new-uri
 		;; If it's redirection under same url, we can reuse the opened connection
 		if "keep-alive" = select state/info/headers 'Connection [
 			do-request port
 			return true
 		]
-		new-uri: decode-url as url! ajoin [spec/scheme "://" spec/host #":" spec/port new-uri]
+		new-uri: decode-url as url! ajoin [
+			spec/scheme "://" spec/host #":" spec/port new-uri
+			if spec/query [ajoin [#"?" spec/query]]
+		]
 	]
-
-	spec/headers/host: new-uri/host
 
 	unless select new-uri 'port [
 		switch new-uri/scheme [
@@ -562,8 +600,14 @@ do-redirect: func [port [port!] new-uri [url! string! file!] /local spec state h
 			'http  [append new-uri [port: 80 ]]
 		]
 	]
+	same-origin?: all [
+		spec/scheme = new-uri/scheme
+		spec/host = new-uri/host
+		spec/port = new-uri/port
+	]
 	new-uri: construct/with new-uri port/scheme/spec
-	new-uri/method: spec/method
+	new-uri/method:  spec/method
+	new-uri/content: spec/content  ;; 307/308 must resend the body (already none after 303 handling)
 	new-uri/ref: as url! ajoin either find [#(none) 80 443] new-uri/port [
 		[new-uri/scheme "://" new-uri/host new-uri/path]
 	][	[new-uri/scheme "://" new-uri/host #":" new-uri/port new-uri/path]]
@@ -573,18 +617,37 @@ do-redirect: func [port [port!] new-uri [url! string! file!] /local spec state h
 	]
 
 	; store original request headers
-	headers: spec/headers
+	headers: make map! spec/headers
+	; Host must be recomputed for the new target (including a non-default port)
+	remove/key headers 'Host
+
+	; Do not forward origin credentials to another origin
+	unless same-origin? [
+		foreach name [
+			Authorization
+			Proxy-Authorization
+			Cookie
+			Cookie2
+			Origin
+			Referer
+		][
+			remove/key headers name
+		]
+	]
 	; we need to reset tcp connection here before doing a redirect
 	close port/state/connection
 	port/spec: new-uri
 	port/state: none
 	open port
+	; keep the redirection counter and close request across connections
+	port/state/redirects: state/redirects
+	port/state/close?:    state/close?
 	; restore original request headers
 	port/spec/headers: headers
 	port
 ]
 
-check-data: func [port /local headers res data available out chunk-size pos trailer state conn][
+check-data: func [port /local headers res data available out chunk-size pos trailer state conn n][
 	state: port/state
 	headers: state/info/headers
 	conn: state/connection
@@ -604,26 +667,34 @@ check-data: func [port /local headers res data available out chunk-size pos trai
 
 			if state/chunk-size [
 				;- rests from previous unfinished chunk
-				either state/chunk-size <= available [
-					; we have enough data to end the chunk
+				either state/chunk-size + 2 <= available [
+					;; we have enough data to end the chunk (including its CRLF)
 					append out take/part data state/chunk-size
 					state/chunk-size: none
 					if crlfbin <> take/part data 2 [
 						throw-http-error port "Missing CRLF after chunk end!"
 					]
 				][
-					append out take/part data available
-					state/chunk-size: state/chunk-size - available
+					;; consume only the payload; the CRLF may still be pending
+					n: min available state/chunk-size
+					append out take/part data n
+					state/chunk-size: state/chunk-size - n
 				]
 			]
-			if not empty? data [
+			if all [none? state/chunk-size  not empty? data][
 				until [
 					either parse data [
 						copy chunk-size some hex-digits
+						opt [#";" to crlfbin] ;; ignore chunk extensions
 						crlfbin pos: to end
 					][
-						;- ugly conversion of the chunk size from hexadecimal string to integer
-						chunk-size: to integer! to issue! to string! :chunk-size
+						chunk-size: transcode/one ajoin ["0#" to string! :chunk-size]
+						if all [
+							chunk-size = 0
+							not parse pos [crlfbin to end | to crlf2bin to end]
+						][
+							break ;; last chunk's trailer not complete yet; keep its size line and wait
+						]
 						remove/part data pos
 						available: length? data
 						log-debug 'HTTP ["Chunk-size:^[[m" chunk-size " ^[[36mavailable:^[[m " available]
@@ -639,24 +710,27 @@ check-data: func [port /local headers res data available out chunk-size pos trai
 							]
 							true ; end of loop
 						][
-							available: length? data
-							either chunk-size <= available [
+							either chunk-size + 2 <= available [
 								append out take/part data :chunk-size
 								if crlfbin <> take/part data 2 [
-									throw-http-error port "Missing CRLF after chunk end!???"
+									throw-http-error port "Missing CRLF after chunk end!"
 								]
 								empty? data
 							][
-								;print "unfinished chunk.."
-								state/chunk-size: chunk-size - available
-								append out take/part data available
+								;; unfinished chunk (or its CRLF not received yet)
+								n: min available chunk-size
+								append out take/part data n
+								state/chunk-size: chunk-size - n
 								true ; end of loop
 							]
 						]
 					][
-						throw-http-error port "Invalid chunk data!"
+						;; an incomplete size line just waits for more data
+						if find data crlfbin [
+							throw-http-error port "Invalid chunk data!"
+						]
 						true ; end of loop
-					] 
+					]
 				]
 			]
 			unless state/state = 'ready [
@@ -690,21 +764,26 @@ check-data: func [port /local headers res data available out chunk-size pos trai
 	res
 ]
 
-decode-result: func[
+decode-result: function/with [
 	result [block!] {[header body]}
-	/local body content-type code-page encoding
 ][
-	if encoding: attempt [to word! result/2/Content-Encoding] [
-		either find system/catalog/compressions encoding [
-			try/with [
-				result/3: decompress result/3 encoding
+	if string? encoding: select result/2 'Content-Encoding [
+		;; multiple encodings are listed in the order applied, so decode in reverse
+		foreach enc reverse split encoding #"," [
+			unless enc: attempt [to word! trim enc] [continue]
+			if enc = 'identity [continue]
+			either find system/catalog/compressions enc [
+				try/with [
+					result/3: decompress result/3 enc
+				][
+					log-info 'HTTP ["Failed to decode data using:^[[22m" enc]
+					return result
+				]
+				log-info 'HTTP ["Extracted using:^[[22m" enc "^[[1mto:^[[22m" length? result/3 "bytes"]
 			][
-				log-info 'HTTP ["Failed to decode data using:^[[22m" encoding]
+				log-info 'HTTP ["Unknown Content-Encoding:^[[m" enc]
 				return result
 			]
-			log-info 'HTTP ["Extracted using:^[[22m" encoding "^[[1mto:^[[22m" length? result/3 "bytes"]
-		][
-			log-info 'HTTP ["Unknown Content-Encoding:^[[m" encoding]
 		]
 	]
 	if all [
@@ -713,8 +792,8 @@ decode-result: func[
 			; consider content to be a text if charset specification is included
 			parse content-type [
 				to #";" thru "charset=" [
-					  #"^"" copy code-page to #"^"" to end ; Facebook is using this!
-					| copy code-page to end
+					  #"^"" copy code-page: to #"^"" to end ; Facebook is using this!
+					| copy code-page: some charset-char to end
 				]
 			]
 			; or when it is without charset, but of type text/*
@@ -726,11 +805,11 @@ decode-result: func[
 			; using also deline to normalize possible CRLF to LF
 			try [result/3: deline iconv result/3 code-page]
 		][
-			result/3: to string! result/3
+			result/3: attempt [to string! result/3]
 		]
 	]
 	result
-]
+][	charset-char: complement charset {;" ^-} ]
 
 anonymize: func[
 	;; remove identifying information from data
@@ -739,8 +818,8 @@ anonymize: func[
 	parse data [
 		any [
 			thru LF [
-				  "Authorization:" some SP some uri
-				| ["X-Token:" | "X-Auth-Token:" | "X-goog-api-key:"]
+				  ["Authorization:" | "Proxy-Authorization:"] some SP some uri
+				| ["Cookie:" | "X-Token:" | "X-Auth-Token:" | "X-goog-api-key:"]
 			] some SP 0 4 uri change to LF "****"
 			| skip
 		]
@@ -749,7 +828,7 @@ anonymize: func[
 ] system/catalog/bitsets
 
 hex-digits: system/catalog/bitsets/hex-digits
-    digits: system/catalog/bitsets/numeric
+	digits: system/catalog/bitsets/numeric
 
 sys/make-scheme [
 	name: 'http
@@ -787,13 +866,19 @@ sys/make-scheme [
 			]
 			if lib/all [string binary] [cause-error 'Script 'bad-refines none]
 
+			;; a port closed by a previous sync operation (or left with an error) must be reopened
+			if any [error? port/state  lib/all [object? port/state  port/state/state = 'closing]][port/state: none]
 			unless port/state [open port port/state/close?: yes]
 
-			if lib/all [any [part seek] not string] [
+			either lib/all [any [part seek] not string] [
 				either seek [ binary: true assert [index >= 0]][ index: 0 ]
 				length: either part [ assert [length > 0] length + index][ none ]
 				put port/spec/headers quote Range: ajoin ["bytes=" index #"-" any [lib/all [length length - 1] ""]]
+			][
+				;; don't reuse a Range header from a previous partial read on this port
+				if select port/spec/headers 'Range [put port/spec/headers quote Range: none]
 			]
+
 			either any-function? :port/awake [
 				unless open? port [cause-error 'Access 'not-open port/spec/ref]
 				if port/state/state <> 'ready [throw-http-error port "Port not ready"]
@@ -811,8 +896,8 @@ sys/make-scheme [
 				][
 					decode-result result
 					case/all [
-						string [ try [result/3: to string! result/3] ]
-						lines  [ try [result/3: split-lines to string! result/3] ]
+						string [ attempt [result/3:  to string! result/3]]
+						lines  [ attempt [result/3: split-lines result/3]]
 						index  [ result/3: skip result/3 index ]
 						length [ clear skip result/3 length]
 					]
@@ -860,7 +945,7 @@ sys/make-scheme [
 				result: sync-op port [parse-write-dialect port value]
 				if lib/all [
 					not binary
-					find [GET POST PATCH] port/spec/method
+					port/spec/method <> 'HEAD
 				] [decode-result result]
 				check-result result :all
 			]
@@ -868,10 +953,7 @@ sys/make-scheme [
 		update: func[
 			port [port!]
 		][
-			? port
-			? port/state
 			read port/state/connection
-
 		]
 		open: func [
 			port [port!]
@@ -890,7 +972,6 @@ sys/make-scheme [
 				info: make port/scheme/info [type: 'url]
 				awake: :port/awake
 				redirects: 0
-				chunk: none
 				chunk-size: none
 			]
 			spec: port/spec
@@ -1014,6 +1095,7 @@ with cookies-rules: context [
 	cookie-octet: make bitset! #{000000005FF7FFEFFFFFFFF7FFFFFFFE}
 	cookie-octet-sp: make bitset! #{00400000DFF7FFEFFFFFFFF7FFFFFFFE} ; includes SPACE
 	; any CHAR except CTLs or separators:
+	value-char: complement charset ";"
 	token-char: complement charset [{()<>@,;:\"/[]?={} ^-} 0 - 31 127]
 	domain-char: charset [#"a"-#"z" #"A"-#"Z" ".-"]
 	path-char: complement charset [0 - 31 #";"]
@@ -1039,17 +1121,27 @@ with cookies-rules: context [
 		"Cookies are stored in `system/state/cookies` map."
 		host [string!] "Current host (used when the cookie doesn't set its domain)"
 		data [string! block!] "Either a string or block containing `Set-Cookie` lines."
+		/from "Request path (used to compute the default cookie path)"
+			request-path [string! file!]
 	][
 		timestamp: to integer! now/utc
-		foreach line to block! data [
+		;; RFC 6265 5.1.4: default-path is the request path up to (not including) its last slash
+		default-path: either all [
+			request-path
+			#"/" = first request-path
+			pos: find/last request-path #"/"
+			1 < index? pos
+		][	to string! copy/part request-path pos ][ "/" ]
+
+		foreach line either string? data [reduce [data]][data] [
 			Expires: domain: path: max-age: none
 			attr: parse line [
 				copy c-name:  =cookie-name #"="
 				[
-					#"^"" copy c-value: any cookie-octet-sp #"^""
-					| copy c-value: any cookie-octet
+					#"^"" copy c-value: any cookie-octet-sp #"^"" any SP ahead [#";" | end]
+					| copy c-value: any value-char (trim c-value)
 				]
-				collect any ["; " [
+				collect any [#";" any SP [
 					"Expires=" copy Expires: =rfc1123-date |
 					"Domain="  copy Domain: any domain-char |
 					"Path="    copy Path:   any path-char |
@@ -1065,6 +1157,8 @@ with cookies-rules: context [
 			;; the Max-Age attribute has precedence and controls the expiration date of the cookie!
 			if Max-Age [Expires: timestamp + to integer! Max-Age]
 			unless Expires [Expires: timestamp + 3600 append attr 'not-persistent]
+			;; RFC 6265 5.2.4: use default-path when Path is missing or doesn't start with a slash
+			if any [none? Path  #"/" != first Path][Path: copy default-path]
 
 			;; https://datatracker.ietf.org/doc/html/rfc6265#section-4.1.2.3
 			either Domain [
@@ -1072,6 +1166,15 @@ with cookies-rules: context [
 				;; agent will include the cookie in the Cookie header to example.com,
 				;; www.example.com, and www.corp.example.com
 				if #"." != Domain/1 [insert Domain #"."]
+				;; RFC 6265 5.3 step 6: ignore cookie if Domain doesn't domain-match the host
+				dot-host: ajoin [#"." host]
+				unless all [
+					pos: find/last dot-host Domain
+					tail? skip pos length? Domain
+				][
+					log-info 'COOKIES ["IGNORED" c-name "for domain" Domain "from host" host]
+					continue
+				]
 			][
 				;; When domain is not specified, use host name without the leading dot!
 				;; So when host was: "example.com", cookie must be available only to this
@@ -1121,9 +1224,12 @@ with cookies-rules: context [
 		"Retrieves and formats valid cookies for HTTP requests."
 		host [string!] "The host for which cookies are being retrieved."
 		path [string! file!] "The path for which cookies are being retrieved."
+		/secure "Include cookies with the Secure attribute (for HTTPS requests)"
 		return: [string! "Cookies formated into a single string suitable for HTTP requests."]
 	][
 		clear values
+		secure?: secure
+		req-path: to string! path
 		timestamp: to integer! now/utc
 		domain: ajoin ["." host]
 		;; collect values for subdomains
@@ -1142,14 +1248,29 @@ with cookies-rules: context [
 	][
 		values: make map! []
 		str: make string! 500
-		timestamp: domain: none
+		timestamp: domain: secure?: req-path: none
+		;; RFC 6265 5.1.4 (case-sensitive)
+		path-match?: func [cookie-path [string!] request-path [string!]][
+			to logic! all [
+				find/match/case request-path cookie-path
+				any [
+					cookie-path == request-path
+					#"/" = last cookie-path
+					#"/" = pick request-path 1 + length? cookie-path
+				]
+			]
+		]
 		get-host-cookies: func[domain /local data Expires Path Name Value attr][
-			;print ["get-host-cookies for" domain]
 			if block? data: cookies-data/:domain [
 				while [not tail? data][
 					set [Expires: Path: Name: Value: attr:] data
 					either Expires >= timestamp [
-						values/:Name: Value
+						unless any [
+							all [not secure?  block? attr  find attr 'Secure]
+							not path-match? any [Path "/"] req-path
+						][
+							values/:Name: Value
+						]
 						data: skip data 5
 					][
 						log-info 'COOKIES ["DEL" domain path name]

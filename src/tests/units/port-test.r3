@@ -373,7 +373,7 @@ if system/platform = 'Windows [
 		f: open %zeroes-445.txt
 		write/part f #{1020304050} 100
 		close f
-		--assert 10873462 = checksum read %zeroes-445.txt 'crc24
+		--assert 2851051 = checksum read %zeroes-445.txt 'crc24
 		delete %zeroes-445.txt
 
 	--test-- "write/append"
@@ -565,14 +565,16 @@ if system/platform = 'Windows [
 		--assert all [
 			not error? try [
 				p: open/new %issue-1894
-				write/append p "Hello"
+				write/append p #{CAFE 00}
 				write/append p newline
+				write/append p #"č"    ;; 2 bytes in UTF-8
+				write/append p #"😀"   ;; 4 bytes in UTF-8
 				close p
 				p: open %issue-1894
-				write/append p #{5265626F6C}
+				write/append p #{00 DEAD}
 				close p
 			]
-			"Hello^/Rebol" = read/string %issue-1894
+			#{CAFE 00 0A C48D F09F9880 00 DEAD} = read %issue-1894
 		]
 
 	--test-- "APPEND file-port"
@@ -644,6 +646,163 @@ if all [system/platform != 'Windows exists? %/proc/cpuinfo] [
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1373
 	;; not implemented yet!
 		--assert all [error? e: try [query system:// object!]  e/id = 'no-port-action]
+
+	--test-- "event scheme removed"
+		--assert none? in system/schemes 'event
+		--assert none? in system/ports 'event
+		--assert error? try [open [scheme: 'event]]
+	--test-- "system/view removed"
+		--assert none? in system 'view
+	--test-- "system and callback ports still open"
+		--assert port? system/ports/system
+		--assert port? system/ports/callback
+	--test-- "system ports cannot be closed"
+		--assert error? try [close system/ports/system]
+		--assert error? try [close system/ports/callback]
+	--test-- "open of a system port is a no-op"
+		--assert same? system/ports/system open system/ports/system
+	--test-- "events still processed after the close attempts"
+		--assert none? wait 0.01
+		;; async callbacks still reach their port
+		--assert port? system/ports/callback
+===end-group===
+
+
+===start-group=== "timer scheme"
+	--test-- "repeating timer"
+		n: 0  e: none
+		t: open [scheme: 'timer timeout: repeat: 0.1]
+		t/awake: func [event] [n: n + 1  e: event  false]
+		wait 0.55
+		--assert all [n >= 4  n <= 6]
+		--assert event? e
+		--assert e/type = 'time
+		--assert same? e/port t
+	--test-- "close and reopen"
+		--assert open? t
+		close t
+		--assert not open? t
+		n: 0  wait 0.3
+		--assert n = 0
+		open t
+		wait 0.35
+		--assert n >= 2
+		close t
+	--test-- "one-shot timer"
+		m: 0
+		t1: open [scheme: 'timer timeout: 0.1 awake: func [event] [m: m + 1  false]]
+		wait 0.4
+		--assert m = 1
+		--assert not open? t1
+	--test-- "time! value"
+		m: 0
+		t1: open [scheme: 'timer timeout: 0:0:0.1 awake: func [event] [m: m + 1  false]]
+		wait 0.25
+		--assert m = 1
+	--test-- "wait on a timer port"
+		t1: open [scheme: 'timer timeout: 0.1] ;; default awake returns true
+		--assert same? t1 wait [t1 1]
+	--test-- "invalid timer specs"
+		--assert error? try [open [scheme: 'timer]]
+		--assert error? try [open [scheme: 'timer timeout: -1]]
+		--assert error? try [open [scheme: 'timer repeat: "1"]]
+	--test-- "unreferenced timer is released by GC"
+		n: 0
+		t: open [scheme: 'timer repeat: 0.05 awake: func [event] [n: n + 1  false]]
+		wait 0.2
+		--assert n > 0
+		t: none
+		n1: n  wait 0.2
+		--assert n > n1        ;; still active until GC
+		loop 2 [recycle recycle]
+		n: 0  wait 0.2
+		--assert n = 0         ;; released
+	--test-- "kept handle does not keep the timer alive"
+		n: 0
+		t: open [scheme: 'timer repeat: 0.05 awake: func [event] [n: n + 1  false]]
+		h: t/state  t: none
+		loop 2 [recycle recycle]
+		n: 0  wait 0.2
+		--assert n = 0
+		h: none
+
+	--test-- "two timers in the same wait"
+		a: b: 0  wrong: 0
+		t1: open [scheme: 'timer timeout: repeat: 0.1]
+		t2: open [scheme: 'timer timeout: repeat: 0.25]
+		t1/awake: func [e] [if not same? e/port t1 [++ wrong]  ++ a  false]
+		t2/awake: func [e] [if not same? e/port t2 [++ wrong]  ++ b  false]
+		wait 1.05
+		close t1  close t2
+		--assert all [a >= 9  a <= 11]   ;; ~10 ticks of 0.1s
+		--assert all [b >= 3  b <= 5]    ;; ~4 ticks of 0.25s
+		--assert zero? wrong             ;; each event went to its own port
+
+	--test-- "one-shot and repeating timer in the same wait"
+		a: b: 0
+		t1: open [scheme: 'timer timeout: 0.2   awake: func [e] [++ a  false]]
+		t2: open [scheme: 'timer repeat:  0.1   awake: func [e] [++ b  false]]
+		wait 0.55
+		--assert a = 1                   ;; one-shot fired exactly once
+		--assert not open? t1            ;; ...and disarmed itself
+		--assert all [b >= 4  b <= 6]    ;; repeating one kept going
+		--assert open? t2
+		close t2
+
+	--test-- "closing one timer does not stop the other"
+		a: b: 0
+		t1: open [scheme: 'timer timeout: repeat: 0.1 awake: func [e] [++ a  false]]
+		t2: open [scheme: 'timer timeout: repeat: 0.1 awake: func [e] [++ b  if b = 2 [close t1]  false]]
+		wait 0.55
+		close t2
+		--assert a <= 3                  ;; t1 stopped early (closed from t2's awake)
+		--assert all [b >= 4  b <= 6]    ;; t2 kept running
+
+	--test-- "dt measures wait"
+		t: dt [wait 0.2]
+		--assert all [t >= 0:0:0.19  t < 0:0:0.5]
+	--test-- "timer interval matches measured time"
+		n: 0
+		t: open [scheme: 'timer timeout: repeat: 0.1 awake: func [e] [n: n + 1  false]]
+		d: dt [wait 1.05]
+		close t
+		--assert all [n >= 9  n <= 11]
+		--assert all [d >= 0:0:1  d < 0:0:1.5]
+===end-group===
+
+===start-group=== "timer precision"
+	--test-- "60 fps timer"
+		n: 0
+		t: open [scheme: 'timer repeat: 1 / 60 awake: func [e] [++ n  false]]
+		wait 1
+		close t
+		--assert all [n >= 58  n <= 61]
+	--test-- "60 fps timer in a short wait"
+		n: 0
+		t: open [scheme: 'timer repeat: 1 / 60 awake: func [e] [++ n  false]]
+		loop 4 [wait 0.25]               ;; res < 1000 path
+		close t
+		--assert all [n >= 57  n <= 61]
+	--test-- "late ticks are caught up"
+		n: 0  slow: true
+		t: open [scheme: 'timer repeat: 0.05 awake: func [e] [
+			++ n
+			if slow [slow: false  s: stats/timer  until [stats/timer - s > 0:0:0.12]] ;; block ~2 ticks
+			false
+		]]
+		wait 1.01
+		close t
+		--assert all [n >= 19  n <= 21]  ;; missed ticks were delivered
+	--test-- "too late ticks are dropped (resync)"
+		n: 0  slow: true
+		t: open [scheme: 'timer repeat: 0.05 awake: func [e] [
+			++ n
+			if slow [slow: false  s: stats/timer  until [stats/timer - s > 0:0:0.5]] ;; block ~10 ticks
+			false
+		]]
+		wait 1.01
+		close t
+		--assert n < 17                  ;; backlog over 4 ticks was dropped
 ===end-group===
 
 ~~~end-file~~~

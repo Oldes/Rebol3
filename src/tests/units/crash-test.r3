@@ -154,7 +154,8 @@ Rebol [
 
 --test-- "write clipboard:// [a]"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1619
-	--assert to logic! try [write clipboard:// [a]] ;- no crash
+	;; (There is clipboard scheme on Linux, but just as a placeholder - returns none)
+	--assert not error? try [write clipboard:// [a]] ;- no crash
 
 --test-- "unset 'self"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1569
@@ -224,9 +225,9 @@ foreach [n s] system/schemes [
 	insert/only a a
 	b: copy []
 	insert/only b b
-	--assert all [error? e: try [equal? a b] e/id = 'stack-overflow]
-	--assert all [error? e: try [equiv? a b] e/id = 'stack-overflow] 
-	--assert all [error? e: try [strict-equal? a b] e/id = 'stack-overflow] 
+	--assert attempt [equal? a b]
+	--assert attempt [equiv? a b]
+	--assert attempt [strict-equal? a b]
 
 --test-- "copy action!"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/767

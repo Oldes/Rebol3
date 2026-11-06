@@ -146,6 +146,7 @@ extension:
 	"RX_Init"
 	"RX_Quit"
 	"RX_Call"
+	"RX_Abi"
 
 ;plugin:
 ;	"cannot open"

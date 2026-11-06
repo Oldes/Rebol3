@@ -41,7 +41,7 @@
 	
 	if (mode >= 0) {
 		if (mode < 2)
-			num = LO_CASE(VAL_CHAR(a)) - LO_CASE(VAL_CHAR(b));
+			num = LO_CASE_SAFE(VAL_CHAR(a)) - LO_CASE_SAFE(VAL_CHAR(b));
 		else
 			num = VAL_CHAR(a) - VAL_CHAR(b);
 		return (num == 0);

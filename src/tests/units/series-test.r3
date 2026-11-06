@@ -1822,6 +1822,24 @@ Rebol [
 		error? e: try [sort/skip/compare/all db 2 func [a b] [reverse b   a/2 < b/2]]
 		e/id = 'protected
 	]
+
+	;; comparator error inside merge must not leak the stable sort buffer
+	b: append collect [repeat i 50 [keep i + 50]] collect [repeat i 50 [keep i]]
+	n: 0
+	--assert all [
+		error? e: try [
+			sort/compare b func [a b] [
+				n: n + 1
+				if n > 110 [1 / 0]
+				a < b
+			]
+		]
+		e/id = 'zero-divide
+		n = 111
+	]
+	--assert 100 = length? b
+	--assert (sort copy b) = sort/compare copy b func [a b] [a < b]
+
 --test-- "SORT/compare block! (#2707)"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2707
 	blk: clear []
@@ -2023,6 +2041,16 @@ try/with [
 		[Bob 25 Alice 30 Carol 30] == sort/unstable/skip/compare [Carol 30 Alice 30 Bob 25] 2 2 ;= not stable
 		[Bob 25 Carol 30 Alice 30] == sort/unstable/skip/compare [Carol 30 Bob 25 Alice 30] 2 2
 	]
+
+	;; unstable sort (Adaptive Symmetry Partition Sort) correctness
+	b: collect [repeat i 10000 [keep (i * 7919) // 1013]]   ; many duplicates
+	--assert (sort copy b) = sort/unstable copy b
+	b: collect [repeat i 1000 [keep i]]                     ; ascending run
+	--assert b = sort/unstable copy b
+	b: collect [repeat i 1000 [keep 1001 - i]]              ; descending run
+	--assert (sort copy b) = sort/unstable copy b
+	b: collect [repeat i 500 [keep (i * 37) // 101 keep i]] ; records
+	--assert (sort/skip copy b 2) = sort/skip/unstable copy b 2
 
 
 --test-- "SORT vectors"
@@ -3469,6 +3497,87 @@ try/with [
 	--assert 2 = average #(uint8! [1 2 3])
 	--assert 17.5 = average #(uint8! [10 25])  
 
+===end-group===
+
+
+===start-group=== "HASH!"
+	--test-- "hash! find/select"
+		h: make hash! []
+		repeat i 1000 [append h reduce [ajoin ["k" i] i]]
+		--assert 500 = select h "k500"
+		--assert 500 = select h "K500"
+		--assert none? select/case h "K500"
+		--assert "k1000" = first find h "k1000"
+		--assert none? find h "k1001"
+		k: "k500"
+		--assert 500 = h/:k
+		;; map-like equality
+		append h [1 one 1.0 dec]
+		--assert 'one = select skip h 4 1
+		--assert 'dec = select h 1.0
+		;; words match by canon (any word type), /case needs exact word
+		append h [foo: 1 Bar 2]
+		--assert 1 = select h 'foo
+		--assert 2 = select h 'bar
+		--assert none? select/case h 'bar
+		;; block semantics kept for sequences
+		--assert "k2" = first find h ["k2" 2]
+
+	--test-- "copy hash!"
+		small: make hash! [1 a 1.0 b]
+		--assert 4 = length? copy small
+		--assert small = copy small
+		--assert hash? copy small
+		--assert [a 1.0] = to block! copy/part next small 2
+		--assert 2 = length? copy/part small 2
+		--assert 'b = select copy small 1.0
+	--test-- "to hash!"
+		--assert hash? to hash! 1
+		--assert 1 = length? to hash! 1
+		--assert [1 2] = to block! to hash! [1 2]
+
+	--test-- "hash! small and large behave the same"
+		small: make hash! [1 a 1.0 b]
+		large: copy small
+		repeat i 100 [append large reduce [i + 1000 none]]
+		--assert 'a = select small 1
+		--assert 'a = probe select large 1
+		--assert 'b = select small 1.0
+		--assert 'b = select large 1.0
+
+	--test-- "hash! duplicates and position"
+		h: make hash! []
+		repeat i 100 [append h 'x]
+		append h 'y
+		--assert 1 = index? find h 'x
+		--assert 50 = index? find at h 50 'x
+		--assert 101 = index? find h 'y
+		--assert none? find next find h 'y 'x
+
+	--test-- "hash! after modification"
+		h: make hash! []
+		repeat i 100 [append h i]
+		--assert 50 = index? find h 50
+		insert h 0
+		--assert 51 = index? find h 50
+		--assert 1 = index? find h 0
+		remove h
+		--assert 50 = index? find h 50
+		h/50: 'changed
+		--assert none? find h 50
+		--assert 50 = index? find h 'changed
+		poke h 1 'first
+		--assert none? find h 1
+		reverse h
+		--assert 1 = index? find h 100
+		clear at h 51
+		--assert none? find h 'first
+		--assert 50 = index? find h 51
+		change h 'a
+		--assert 1 = index? find h 'a
+		--assert none? find h 100
+		append h 1000
+		--assert 51 = index? find h 1000
 ===end-group===
 
 ~~~end-file~~~

@@ -82,7 +82,220 @@ Rebol [
 			e/id = 'protected
 		]
 
+	--test-- "load of molded map"
+		m: make map! [a "x" b [1 2] c #{01} d 1.5]
+		--assert equal? m load mold/all m
+		--assert equal? m load mold m
 
+	--test-- "map rehash"
+		m: make map! []
+		repeat i 1000 [put m append copy "k" i i]
+		--assert 1000 = length? m
+		--assert 1 = select m "K1"
+		--assert 1000 = select m "k1000"
+		repeat i 500 [remove/key m append copy "k" i]
+		repeat i 2000 [put m i i]   ;; more rehashing with removed keys
+		--assert none? select m "k1"
+		--assert 501 = select m "k501"
+		--assert 2000 = select m 2000
+		--assert 2500 = length? m
+		;; keys differing only by case
+		m: make map! []
+		repeat i 100 [put m to word! append copy "w" i i]
+		put/case m 'W1 -1
+		repeat i 100 [put m i i]
+		--assert 1 = select/case m 'w1
+		--assert -1 = select/case m 'W1
+		--assert 201 = length? m
+
+	--test-- "map hash table grows only on insert"
+		m: make map! []
+		repeat i 100 [put m i i]
+		protect m
+		repeat i 200 [select m i]  ;; reads on a protected map
+		--assert 100 = select m 100
+		--assert none? select m 101
+		unprotect m
+		repeat i 100 [put m i i * 2]   ;; updates of existing keys
+		--assert 200 = select m 100
+		--assert 100 = length? m
+		repeat i 1000 [put m i + 100 i]   ;; inserts with expansion
+		--assert 1100 = length? m
+		--assert 1000 = select m 1100
+		--assert 200 = select m 100
+
+	--test-- "hash of circular block"
+		b: copy [1]
+		append/only b b
+		--assert integer? hash b
+		c: copy [x]
+		append/only c reduce [c c]  ;; multiple self-references
+		--assert integer? hash c
+		--assert (hash [a [b [c]]]) = hash [a [b [c]]]
+		;; as a map key
+		m: make map! []
+		put m b 1
+		--assert 1 = select m b
+
+	--test-- "map with percent keys"
+		m: make map! []
+		print ["percent put:" dt [repeat i 20000 [put m to percent! i i]]]
+		--assert 20000 = length? m
+		--assert   1 = select m 100%
+		--assert 200 = select m 20000%
+		--assert none? select m 1
+		--assert (hash 50%) <> hash 51%
+
+	--test-- "hash of pair!"
+		--assert (hash 1x1) <> hash 2x2
+		--assert (hash 1x2) <> hash 2x1
+		--assert (hash 0x0) = hash negate 0x0
+		m: make map! []
+		repeat i 1000 [put m as-pair i i i]
+		--assert 1000 = length? m
+		--assert 500 = select m 500x500
+		--assert none? select m 500x501
+
+	--test-- "hash of char!"
+		--assert 20000 = length? unique collect [
+			repeat i 20000 [keep hash to char! 19967 + i]
+		]
+		--assert (hash #"a") = hash #"A"
+		--assert (hash #"č") = hash #"Č"
+		m: make map! []
+		repeat i 20000 [put m to char! 19967 + i i]
+		--assert 20000 = length? m
+		--assert 1 = select m #"^(4E00)"
+
+	--test-- "hash of datatype!"
+		--assert (hash integer!) = hash integer!
+		--assert (hash integer!) <> hash string!
+		--assert [integer! string!] = unique [integer! string! integer! string!]
+		m: make map! []
+		foreach t [integer! decimal! string! block! map!] [put m get t form t]
+		--assert "string!" = select m string!
+		--assert none? select m char!
+
+	--test-- "hash of date! ignores zone"
+		d1: 1-Jan-2020/10:00+1:00
+		d2: 1-Jan-2020/9:00
+		--assert d1 = d2
+		--assert (hash d1) = hash d2
+		m: make map! []
+		repeat i 100 [put m i i]   ;; force the hash table
+		put m d1 1
+		--assert 1 = select m d2
+
+	--test-- "hash of date! without time"
+		--assert 1-Jan-2020 = 1-Jan-2020/0:00
+		--assert (hash 1-Jan-2020) = hash 1-Jan-2020/0:00
+		--assert (hash 1-Jan-2020) = hash 1-Jan-2020/1:00+1:00
+		m: make map! []
+		repeat i 100 [put m i i]   ;; force the hash table
+		put m 1-Jan-2020 1
+		--assert 1 = select m 1-Jan-2020/0:00
+		--assert 1 = select m 1-Jan-2020/1:00+1:00
+
+	--test-- "hash of decimal! normalizes -0.0"
+		--assert 0.0 = negate 0.0
+		--assert (hash 0.0) = hash negate 0.0
+		--assert (hash 0%) = hash negate 0%
+		--assert (hash 1.5) <> hash 2.5
+		m: make map! []
+		repeat i 100 [put m i i]   ;; force the hash table
+		put m 0.0 1
+		--assert 1 = select m negate 0.0
+
+	--test-- "exact decimal map keys"
+		a: 0.1 + 0.2
+		--assert a = 0.3                ;; equal? is still tolerant
+		m: make map! reduce [a 1]
+		--assert none? select m 0.3     ;; linear map: exact
+		--assert 1 = select m a
+		repeat i 100 [put m i i]        ;; force the hash table
+		--assert none? select m 0.3     ;; hashed map: exact
+		--assert 1 = select m a
+		put m 0.3 2
+		--assert 102 = length? m
+		;; -0.0 and 0.0 are still the same key
+		put m 0.0 3
+		--assert 3 = select m negate 0.0
+		--assert 2 = length? unique reduce [a 0.3]
+
+	--test-- "hash of tuple! ignores trailing zeros"
+		--assert (hash 1.2.3.4.5) = hash 1.2.3.4.5.0
+		--assert (hash 1.2.3.4) = hash 1.2.3.4.0
+		--assert (hash 1.2.3) = hash 1.2.3.0
+		--assert (hash 1.2.3) <> hash 1.2.4
+		m: make map! []
+		repeat i 100 [put m i i]   ;; force the hash table
+		put m 1.2.3.4.5.0 1
+		--assert 1 = select m 1.2.3.4.5
+		--assert 1 = select m 1.2.3.4.5.0.0
+
+	--test-- "murmur3 reference vectors"
+		--assert 0          = hash #{}
+		--assert 1009084850 = hash #{61}                     ;; "a"    0x3c2569b2
+		--assert 3017643002 = hash to binary! "abc"          ;;        0xb3dd93fa
+		--assert 3127628307 = hash to binary! "test"         ;;        0xba6bd213
+		--assert 776992547  = hash to binary! "The quick brown fox jumps over the lazy dog"
+		;; unaligned data
+		--assert 1139631978 = hash next #{0061626364}        ;; "abcd" 0x43ed676a
+		--assert (hash next #{00616263}) = hash #{616263}
+
+	--test-- "hash of UTF-8 strings is case-insensitive"
+		--assert (hash "Čau") = hash "čau"
+		--assert (hash "ŽLUŤOUČKÝ") = hash "žluťoučký"
+		--assert (hash "abc") = hash "ABC"
+		m: make map! []
+		repeat i 100 [put m ajoin ["k" i] i]   ;; force the hash table
+		put m "Čau" 1
+		--assert 1 = select m "čau"
+		--assert 1 = select m "ČAU"
+		--assert none? select/case m "čau"
+		--assert 1 = select/case m "Čau"
+
+	--test-- "typeset! in Cmp_Value and hash"
+		t1: make typeset! [integer!]
+		t2: make typeset! [string!]
+		m: make map! reduce [t1 1]
+		--assert none? select m t2
+		--assert 1 = select m make typeset! [integer!]
+		--assert 2 = length? unique reduce [t1 t2 t1]
+		--assert (hash t1) <> hash t2
+		--assert (hash t1) = hash make typeset! [integer!]
+		;; hashed map
+		repeat i 100 [put m i i]
+		put m t2 2
+		--assert 2 = select m t2
+		--assert 1 = select m t1
+
+	--test-- "hash of money! is canonical"
+		--assert $1 = $1.00
+		--assert (hash $1) = hash $1.0
+		--assert (hash $1) = hash $1.00
+		--assert (hash $100) = hash $1e2
+		--assert (hash $0) = hash negate $0
+		--assert (hash $1.5) <> hash $2.5
+		--assert (hash $1) <> hash negate $1
+		m: make map! []
+		repeat i 100 [put m i i]   ;; force the hash table
+		put m $1.00 1
+		--assert 1 = select m $1
+		--assert 1 = select m $1.0
+
+	--test-- "Cmp_Value on hash! and closure!"
+		;; hash!
+		h1: make hash! [1]
+		h2: make hash! [2]
+		--assert 2 = length? unique reduce [h1 h2]
+		m: make map! reduce [h1 1]
+		--assert none? select m h2
+		;; closure!
+		c1: closure [x][x + 1]
+		c2: closure [x][x + 2]
+		--assert 2 = length? unique reduce [:c1 :c2]
+		--assert 1 = length? unique reduce [:c1 :c1]
 ===end-group===
 
 ===start-group=== "APPEND on map!"
@@ -146,6 +359,19 @@ Rebol [
 		mf4-m: make map! [b 1]
 		--assert 'b	= find mf4-m first [b:]
 		--assert 'b	= find mf4-m first [b:]
+
+	--test-- "find on removed map key"
+		m: make map! [a 1 b 2]
+		remove/key m 'a
+		--assert none? find m 'a
+		--assert none? select m 'a
+		--assert 1 = length? m
+		m: make map! []
+		repeat i 100 [put m i i] ;; large enough to use the hash table
+		remove/key m 1
+		--assert none? find m 1
+		--assert none? select m 1
+		--assert 99 = length? m
 ===end-group===
 
 
@@ -194,6 +420,34 @@ Rebol [
 	--assert not equal? #[a: 1 b: 2] :m
 
 
+	--test-- "equal? on self-referencing maps"
+		eqm1-a: #[x: 1]  eqm1-a/self: eqm1-a
+		eqm1-b: #[x: 1]  eqm1-b/self: eqm1-b
+		--assert attempt [equal? eqm1-a eqm1-b]
+		--assert attempt [equal? eqm1-a eqm1-a]  ;; same series, short-circuits
+		eqm1-b/x: 2
+		--assert not attempt [equal? eqm1-a eqm1-b]
+
+	--test-- "equal? on copied self-referencing map"
+		eqm2-m: #[]  eqm2-m/self: eqm2-m
+		eqm2-c: copy/deep/types eqm2-m map!
+		--assert attempt [equal? eqm2-c eqm2-m]
+
+	--test-- "equal? on self-referencing blocks"
+		eqb1-a: [1]  append/only eqb1-a eqb1-a
+		eqb1-b: [1]  append/only eqb1-b eqb1-b
+		--assert attempt [equal? eqb1-a eqb1-b]
+
+	--test-- "compare maps with removed keys (no hash table)"
+		a: make map! [y 1 w 1]
+		put a 'x none
+		remove/key a 'w     ;; a: y 1, x none (tail 6)
+		b: make map! [x 1 y 1 z 1]
+		remove/key b 'x     ;; b: y 1, z 1 (tail 6, removed x holds none)
+		--assert a <> b
+		--assert b <> a
+		--assert not equal? a b
+
 ===end-group===
 
 
@@ -222,14 +476,20 @@ Rebol [
 			1 = m/([a])
 			2 = pick m [b]
 		]
-		;- note that keys are not implicitly protected!
+		;- block keys are copied (deeply) and protected
 		k: [c]
 		poke m :k 3
 		--assert [[a] [b] [c]] = keys-of m
-		;- so it's possible to create a map with multiple same keys!
+		--assert not same? k last keys-of m
+		;- so modifying the original block does not change the key
 		append clear k 'b
-		--assert [[a] [b] [b]] = keys-of m
-		;- it's still possible to protect keys manually like:
+		--assert [[a] [b] [c]] = keys-of m
+		--assert 3 = select m [c]
+		--assert 2 = select m k    ;; k is now [b]
+		;- and the stored key itself cannot be modified
+		--assert error? try [append last keys-of m 'x]
+		--assert [[a] [b] [c]] = keys-of m
+		;- an already protected block is copied as well
 		k: protect [d] clear m
 		poke m :k 4
 		--assert [[d]] = keys-of m
@@ -320,6 +580,150 @@ Rebol [
 		repeat i 100 [k: join "a" i m/:k: i] ;; no crash
 		--assert 100 == m/("a100")
 
+	--test-- "map string key copied from offset"
+		k: next "xab"
+		m: make map! []
+		put m k 1
+		--assert "ab" = first words-of m
+		--assert 1 = select m "ab"
+		--assert "ab" = find m "AB"
+		k: next #{FF0102}
+		put m k 2
+		--assert #{0102} = pick words-of m 2
+		--assert 2 = select m #{0102}
+
+	--test-- "copy/deep keeps map keys protected"
+		m: make map! ["ab" 1 #{01} 2 c [3]]
+		m2: copy/deep m
+		k: first words-of m2
+		--assert error? try [append k "x"]
+		k: second words-of m2
+		--assert error? try [append k #{02}]
+		--assert 1 = select m2 "ab"
+		--assert 2 = select m2 #{01}
+		;; values are still deep copied
+		--assert not same? select m 'c select m2 'c
+		--assert [3] = select m2 'c
+
+	--test-- "append invalid value to map"
+		m: make map! []
+		e: try [append m 1]
+		--assert e/id = 'invalid-arg
+		--assert e/arg1 = 1
+		e: try [insert m "x"]
+		--assert e/id = 'invalid-arg
+		--assert e/arg1 = "x"
+
+	--test-- "to object! on map with keys differing by case"
+		m: make map! [a 1 A 2]
+		e: try [make object! m]
+		--assert error? e
+		--assert e/id = 'dup-vars
+		;; removed or none-valued duplicates are ignored
+		remove/key m 'A
+		o: make object! m
+		--assert 1 = o/a
+		m: make map! [a 1 b 2]
+		o: make object! m
+		--assert [a b] = words-of o
+
+	--test-- "clear on hashed map"
+		m: make map! []
+		repeat i 100 [put m i i]
+		clear m
+		--assert 0 = length? m
+		--assert none? select m 1
+		repeat i 100 [put m i i * 2]
+		--assert 100 = length? m
+		--assert 200 = select m 100
+		--assert none? select m 101
+		remove/key m 50
+		--assert none? find m 50
+		--assert 99 = length? m
+
+	--test-- "map live count"
+		m: make map! []
+		repeat i 100 [put m i i]           ;; hashed
+		--assert 100 = length? m
+		repeat i 50 [remove/key m i]
+		--assert 50 = length? m
+		remove/key m 1                     ;; already removed
+		--assert 50 = length? m
+		put m 1 1                          ;; re-put of a removed key
+		--assert 51 = length? m
+		put m 1 2                          ;; update of a live key
+		--assert 51 = length? m
+		repeat i 1000 [put m i + 1000 i]   ;; expansions
+		--assert 1051 = length? m
+		--assert not tail? m
+		c: copy m
+		--assert 1051 = length? c          ;; compacted copy
+		--assert equal? m c
+		repeat i 49 [remove/key m i + 51]
+		repeat i 49 [remove/key m i + 1001]
+		d: copy m                          ;; compacted copy, still hashed
+		--assert 953 = length? d
+		clear m
+		--assert 0 = length? m
+		--assert tail? m
+		put m 'a 1
+		--assert 1 = length? m
+		
+	--test-- "list-env length"
+		e: list-env
+		--assert (length? e) = length? words-of e
+
+	--test-- "list-env map keys are protected"
+		e: list-env
+		--assert map? e
+		k: first words-of e
+		--assert error? try [append k "x"]
+		--assert string? select e k
+
+	--test-- "block keys in map are copied and protected"
+		b: [1 [2 "x"]]
+		m: make map! []
+		put m b 1
+		append b 3          ;; must not affect the stored key
+		append b/2/2 "y"
+		--assert 1 = select m [1 [2 "x"]]
+		k: first words-of m
+		--assert error? try [append k 4]
+		--assert error? try [append k/2 4]
+		--assert error? try [append k/2/2 "z"]
+		--assert 1 = select m [1 [2 "x"]]
+		;; path keys too
+		p: 'a/b
+		put m p 2
+		--assert 2 = select m 'a/b
+		--assert error? try [append first find words-of m 'a/b 'c]
+
+	--test-- "copy of map skips removed entries"
+		;; result is small enough to be linear
+		m: make map! []
+		repeat i 100 [put m i i]
+		repeat i 95 [remove/key m i]
+		c: copy m
+		--assert 5 = length? c
+		--assert equal? m c
+		--assert [96 97 98 99 100] = keys-of c
+		--assert 100 = select c 100
+		--assert none? select c 1
+		put c 1 1
+		--assert 6 = length? c
+		--assert 1 = select c 1
+		;; result is still hashed
+		m: make map! []
+		repeat i 100 [put m i i]
+		remove/key m 1
+		c: copy m
+		--assert 99 = length? c
+		--assert equal? m c
+		--assert none? find c 1
+		repeat i 100 [put c i + 100 i]
+		--assert 199 = length? c
+		--assert 1 = select c 101
+		--assert 100 = select c 100
 ===end-group===
 
 
@@ -429,6 +833,42 @@ Rebol [
 		--assert 2 = length? m
 		--assert [ab: 1      ]  = to block! remove/key m 'AB
 		--assert 1 = length? m
+
+	--test-- "put after remove/key"
+	;@@ https://github.com/Oldes/Rebol-issues/issues/2722
+		;; small map (linear search, no hash table)
+		m: make map! 100
+		put m 'a [1]
+		remove/key m 'a
+		--assert [2] = put m 'a [2]
+		--assert 1 = length? m
+		--assert [a] = keys-of m
+		--assert [2] = m/a
+		--assert not empty? m
+		;; same using path set
+		m: make map! [a: 1 b: 2]
+		remove/key m 'a
+		m/a: 3
+		--assert all [m/a = 3 m/b = 2]
+		;; large map (hashed)
+		m: make map! []
+		repeat i 20 [put m join "k" i i]
+		remove/key m "k1"
+		--assert 19 = length? m
+		put m "k1" 100
+		--assert 20 = length? m
+		--assert 100 = m/("k1")
+
+	--test-- "remove/key on map is case-sensitive"
+		m: make map! ["a" 1 b 2]
+		remove/key m "A"
+		remove/key m 'B
+		--assert 2 = length? m
+		--assert 1 = select m "a"
+		--assert 2 = select m 'b
+		remove/key m "a"
+		remove/key m 'b
+		--assert 0 = length? m
 
 ===end-group===
 

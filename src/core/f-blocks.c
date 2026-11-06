@@ -113,6 +113,64 @@
 
 /***********************************************************************
 **
+*/	void Copy_Deep_Values_Loop(REBSER *block, REBCNT index, REBCNT tail, REBU64 types, REB_COPY_LOOP *loop)
+/*
+**		Copy the contents of values specified by types. If the
+**		DEEP flag is set, recurse into sub-blocks and objects.
+**		The loop chain holds source/copy pairs of series being copied,
+**		so references back to them are redirected to their copies.
+**
+***********************************************************************/
+{
+	REBVAL *val;
+	REBU64 ts;
+	REBSER *src;
+	REB_COPY_LOOP *l;
+	REB_COPY_LOOP node;
+
+	for (; index < tail; index++) {
+
+		val = BLK_SKIP(block, index);
+		ts = types & TYPESET(VAL_TYPE(val));
+		if ((ts & (TS_SERIES_OBJ | TYPESET(REB_MAP))) != 0) {
+			// Circular reference? Use the already made copy.
+			src = VAL_SERIES(val);
+			for (l = loop; l; l = l->prev) {
+				if (l->src == src) break;
+			}
+			if (l) {
+				VAL_SERIES(val) = l->dst;
+				continue;
+			}
+		}
+		if ((ts & TS_SERIES_OBJ) != 0) {
+			// Replace just the series field of the value
+			// Note that this should work for objects too (the frame).
+			src = VAL_SERIES(val);
+			VAL_SERIES(val) = Copy_Series(src);
+			if ((types & TYPESET(VAL_TYPE(val)) & TS_BLOCKS_OBJ) != 0) {
+				PG_Reb_Stats->Blocks++;
+				// If we need to copy recursively (deep):
+				if ((types & CP_DEEP) != 0) {
+					node.src  = src;
+					node.dst  = VAL_SERIES(val);
+					node.prev = loop;
+					Copy_Deep_Values_Loop(VAL_SERIES(val), 0, VAL_TAIL(val), types, &node);
+				}
+			}
+		}
+		else if (ts & TS_FUNCLOS) {
+			Clone_Function(val, val);
+		}
+		else if (ts & TYPESET(REB_MAP)) {
+			Set_Series(REB_MAP, val, Copy_Map_Loop(val, types, loop));
+		}
+	}
+}
+
+
+/***********************************************************************
+**
 */	void Copy_Deep_Values(REBSER *block, REBCNT index, REBCNT tail, REBU64 types)
 /*
 **		Copy the contents of values specified by types. If the
@@ -120,31 +178,7 @@
 **
 ***********************************************************************/
 {
-	REBVAL *val;
-	REBU64 ts;
-
-	for (; index < tail; index++) {
-
-		val = BLK_SKIP(block, index);
-		ts = types & TYPESET(VAL_TYPE(val));
-		if ((ts & TS_SERIES_OBJ) != 0) {
-			// Replace just the series field of the value
-			// Note that this should work for objects too (the frame).
-			VAL_SERIES(val) = Copy_Series(VAL_SERIES(val));
-			if ((types & TYPESET(VAL_TYPE(val)) & TS_BLOCKS_OBJ) != 0) {
-				PG_Reb_Stats->Blocks++;
-				// If we need to copy recursively (deep):
-				if ((types & CP_DEEP) != 0)
-					Copy_Deep_Values(VAL_SERIES(val), 0, VAL_TAIL(val), types);
-			}
-		}
-		else if (ts & TS_FUNCLOS) {
-			Clone_Function(val, val);
-		}
-		else if (ts & TYPESET(REB_MAP)) {
-			Set_Series(REB_MAP, val, Copy_Map(val, types));
-		}
-	}
+	Copy_Deep_Values_Loop(block, index, tail, types, NULL);
 }
 
 
@@ -163,7 +197,11 @@
 
 	series = Copy_Values(BLK_SKIP(block, index), tail - index);
 
-	if (types != 0) Copy_Deep_Values(series, 0, SERIES_TAIL(series), types);
+	if (types != 0) {
+		REB_COPY_LOOP root = {block, series, NULL};
+		Copy_Deep_Values_Loop(series, 0, SERIES_TAIL(series), types,
+			(index == 0 && (types & CP_DEEP)) ? &root : NULL);
+	}
 	
 	return series;
 }

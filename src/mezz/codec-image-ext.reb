@@ -89,7 +89,7 @@ if find codecs 'png [
 			; get raw data...
 			dat: binary/read/with bin 'BYTES len
 			; read CRC and compare with computed value...
-			if crc <> binary/read bin 'si32be [
+			if crc <> binary/read bin 'ui32be [
 				log-error 'PNG "CRC check failed!"
 				return none
 			]

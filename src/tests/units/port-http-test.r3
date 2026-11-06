@@ -11,6 +11,81 @@ Rebol [
 ;; it looks that httpbin.org has long response times:/
 ;; so let's give it more time...
 system/schemes/http/spec/timeout: 30
+;system/options/quiet: false
+;system/options/log/http: 4
+
+===start-group=== "HTTP scheme - log anonymization"
+	anonymize: :system/modules/http/anonymize
+	--test-- "anonymize cookies and proxy credentials"
+		r: anonymize ajoin [
+			"GET / HTTP/1.1^/"
+			"Cookie: session=secret123^/"
+			"Proxy-Authorization: Basic dXNlcjpwYXNz^/"
+			"Host: example.com^/"
+		]
+		--assert not find r "secret123"
+		--assert not find r "dXNlcjpwYXNz"
+		--assert did find r "Host: example.com"
+===end-group===
+
+===start-group=== "HTTP scheme - decode result"
+	decode-result: :system/modules/http/decode-result
+	--test-- "multiple Content-Encoding values"
+		body: compress compress "hello" 'deflate 'gzip
+		res: decode-result reduce [200 object [Content-Encoding: "deflate, gzip" Content-Type: "text/plain"] body]
+		--assert "hello" == res/3
+	--test-- "unknown Content-Encoding keeps binary"
+		res: decode-result reduce [200 object [Content-Encoding: "foo" Content-Type: "text/plain"] #{0102}]
+		--assert #{0102} == res/3
+===end-group===
+
+===start-group=== "HTTP scheme - chunked decoding"
+	check-data: :system/modules/http/check-data
+	chunked-feed: function [parts [block!]][
+		port: make port! http://localhost/
+		conn: object [data: make binary! 64]
+		port/state: object [
+			state: 'reading-data
+			error: none
+			connection: conn
+			info: object [headers: object [transfer-encoding: "chunked"]]
+			awake: func [e][true]
+			chunk-size: none
+		]
+		foreach part parts [
+			append conn/data to binary! part
+			check-data port
+		]
+		reduce [port/state/state  port/state/error  to string! port/data]
+	]
+	--test-- "chunked - whole response"
+		--assert ['ready #(none) "Wiki"] = chunked-feed ["4^M^/Wiki^M^/0^M^/^M^/"]
+	--test-- "chunked - CRLF not yet received"
+		--assert ['ready #(none) "Wiki"] = chunked-feed ["4^M^/Wiki" "^M^/0^M^/^M^/"]
+	--test-- "chunked - split between CR and LF"
+		--assert ['ready #(none) "Wiki"] = chunked-feed ["4^M^/Wiki^M" "^/0^M^/^M^/"]
+	--test-- "chunked - payload split, then CRLF later"
+		--assert ['ready #(none) "Wiki"] = chunked-feed ["4^M^/Wi" "ki" "^M^/0^M^/^M^/"]
+	--test-- "chunked - two chunks"
+		--assert ['ready #(none) "Wikipedia"] = chunked-feed ["4^M^/Wiki^M^/5^M^/pe" "dia^M^/0^M^/^M^/"]
+
+	--test-- "chunked - size line split"
+		--assert ['ready #(none) "Wiki"] = chunked-feed ["4" "^M^/Wiki^M^/0^M^/^M^/"]
+		--assert ['ready #(none) "0123456789abcdef"] = chunked-feed ["1" "0^M^/0123456789abcdef^M^/0^M^/^M^/"]
+	--test-- "chunked - size line CRLF split"
+		--assert ['ready #(none) "Wiki"] = chunked-feed ["4^M" "^/Wiki^M^/0^M^/^M^/"]
+	--test-- "chunked - chunk extension"
+		--assert ['ready #(none) "Wiki"] = chunked-feed ["4;name=value^M^/Wiki^M^/0^M^/^M^/"]
+	--test-- "chunked - invalid size line"
+		--assert error? second chunked-feed ["xyz^M^/"]
+
+	--test-- "chunked - final CRLF in later read"
+		--assert ['ready #(none) "Wiki"] = chunked-feed ["4^M^/Wiki^M^/0^M^/" "^M^/"]
+		--assert ['ready #(none) "Wiki"] = chunked-feed ["4^M^/Wiki^M^/0^M^/^M" "^/"]
+	--test-- "chunked - trailer in later read"
+		--assert ['ready #(none) "Wiki"] = chunked-feed ["4^M^/Wiki^M^/0^M^/X-T: 1^M^/" "^M^/"]
+		--assert ['ready #(none) "Wiki"] = chunked-feed ["4^M^/Wiki^M^/0^M^/X-T" ": 1^M^/^M^/"]
+===end-group===
 
 ===start-group=== "HTTP scheme"
 	--test-- "read HTTP"
@@ -57,16 +132,174 @@ system/schemes/http/spec/timeout: 30
 		--assert     #{646F63747970652068746D6C3E} = read/seek/part http://example.com 2 13
 
 	--test-- "read/lines/seek/part"
-		--assert ["<!doctype html>" "<html>" "<head>"] = read/lines/part http://example.com 3
-		--assert ["<!doctype html>" "<html>" "<head>"] = read/lines/seek/part http://example.com 0 3
-		--assert                   ["<html>" "<head>"] = read/lines/seek/part http://example.com 1 2
+		--assert ["<!doctype html>" "<html><head>" {<meta name="generator" content="REBOL WIP Wiki"/>}] = read/lines/part http://rebol.com 3
+		--assert ["<!doctype html>" "<html><head>" {<meta name="generator" content="REBOL WIP Wiki"/>}]  = read/lines/seek/part http://rebol.com 0 3
+		--assert ["<html><head>" {<meta name="generator" content="REBOL WIP Wiki"/>}]  = read/lines/seek/part http://rebol.com 1 2
 		; using /lines with /binary is not allowed
-		--assert all [error? e: try [read/lines/binary http://example.com] e/id = 'bad-refine]
-		--assert all [block? b: try [read/lines/seek http://example.com 2] b/1 = "<head>"]
+		--assert all [error? e: try [read/lines/binary http://rebol.com] e/id = 'bad-refine]
+		--assert all [block? b: try [read/lines/seek http://rebol.com 2] b/1 = "<!doctype html>"]
 
 	--test-- "read/string/binary"
 		--assert all [error? e: try [read/string/binary http://example.com] e/id = 'bad-refines]
 
+	--test-- "invalid status line"
+		srv: open tcp://:8124
+		srv/awake: func [event /local client][
+			if event/type = 'accept [
+				client: first event/port
+				client/awake: func [event /local p][
+					p: event/port
+					switch event/type [
+						read [
+							either find p/data #{0D0A0D0A} [
+								write p to binary! "FOO 200 OK^M^/Content-Length: 0^M^/Connection: close^M^/^M^/"
+							][	read p ]
+						]
+						wrote [close p]
+					]
+					false
+				]
+				read client
+			]
+			false
+		]
+		e: try [read http://127.0.0.1:8124/]
+		close srv
+		--assert all [
+			error? e
+			e/id = 'Protocol
+			did find/match e/arg1 "Invalid status line"
+		]
+	--test-- "interim 1xx response followed by final response in one packet"
+		srv: open tcp://:8125
+		srv/awake: func [event /local client][
+			if event/type = 'accept [
+				client: first event/port
+				client/awake: func [event /local p][
+					p: event/port
+					switch event/type [
+						read [
+							either find p/data #{0D0A0D0A} [
+								write p to binary! ajoin [
+									"HTTP/1.1 100 Continue^M^/^M^/"
+									"HTTP/1.1 200 OK^M^/Content-Type: text/plain^M^/"
+									"Content-Length: 2^M^/Connection: close^M^/^M^/ok"
+								]
+							][	read p ]
+						]
+						wrote [close p]
+					]
+					false
+				]
+				read client
+			]
+			false
+		]
+		r: try [read http://127.0.0.1:8125/]
+		close srv
+		--assert r == "ok"
+
+	make-http-request: :system/modules/http/make-http-request
+	--test-- "header value with CRLF is rejected"
+		--assert all [
+			error? e: try [make-http-request [host: "example.com" headers: [X-Test: "a^M^/Evil: 1"]]]
+			e/id = 'Protocol
+		]
+		--assert binary? make-http-request [host: "example.com" headers: [X-Test: "a"]]
+
+	--test-- "repeated read on the same port"
+		p: make port! http://httpbin.org/uuid
+		a: try [read p]
+		b: try [read p]
+		--assert all [string? a  string? b  a <> b]
+	--test-- "repeated write on the same port"
+		p: make port! http://httpbin.org/uuid
+		a: try [write p [GET]]
+		b: try [write p [GET]]
+		--assert all [string? a  string? b  a <> b]
+
+	--test-- "Range header not reused by a later read on the same port"
+		p: make port! http://example.com
+		a: try [read/part p 15]
+		b: try [read p]
+		--assert a == "<!doctype html>"
+		--assert all [string? b  15 < length? b]
+
+	--test-- "relative Location resolved against current path"
+		loc: none
+		srv: open tcp://:8127
+		srv/awake: func [event /local client][
+			if event/type = 'accept [
+				client: first event/port
+				client/awake: func [event /local p req path][
+					p: event/port
+					switch event/type [
+						read [
+							req: to string! p/data
+							either find req "^M^/^M^/" [
+								parse req ["GET " copy path to #" "]
+								write p to binary! either path = "/dir/page" [
+									ajoin ["HTTP/1.1 302 Found^M^/Location: " loc "^M^/Content-Length: 0^M^/Connection: close^M^/^M^/"]
+								][
+									ajoin ["HTTP/1.1 200 OK^M^/Content-Type: text/plain^M^/Content-Length: " length? path "^M^/Connection: close^M^/^M^/" path]
+								]
+							][	read p ]
+						]
+						wrote [close p]
+					]
+					false
+				]
+				read client
+			]
+			false
+		]
+		saved: system/options/http-redirects
+		system/options/http-redirects: 5
+		loc: "other"                 r1: try [read http://127.0.0.1:8127/dir/page]
+		loc: "?x=1"                  r2: try [read http://127.0.0.1:8127/dir/page]
+		loc: "//127.0.0.1:8127/abs"  r3: try [read http://127.0.0.1:8127/dir/page]
+		system/options/http-redirects: saved
+		close srv
+		--assert r1 == "/dir/other"
+		--assert r2 == "/dir/page?x=1"
+		--assert r3 == "/abs"
+
+	--test-- "keep-alive redirect with response body"
+		close-after?: false
+		srv: open tcp://:8128
+		srv/awake: func [event /local client][
+			if event/type = 'accept [
+				client: first event/port
+				client/awake: func [event /local p req path][
+					p: event/port
+					switch event/type [
+						read [
+							req: to string! p/data
+							either find req "^M^/^M^/" [
+								parse req ["GET " copy path to #" "]
+								clear p/data
+								close-after?: path <> "/start"
+								write p to binary! either path = "/start" [
+									{HTTP/1.1 302 Found^M^/Location: /target^M^/Connection: keep-alive^M^/Content-Length: 5^M^/^M^/moved}
+								][
+									{HTTP/1.1 200 OK^M^/Content-Type: text/plain^M^/Content-Length: 2^M^/Connection: close^M^/^M^/ok}
+								]
+							][	read p ]
+						]
+						wrote [either close-after? [close p][read p]]
+					]
+					false
+				]
+				read client
+			]
+			false
+		]
+		saved: system/options/http-redirects
+		system/options/http-redirects: 5
+		r: try [read http://127.0.0.1:8128/start]
+		system/options/http-redirects: saved
+		close srv
+		--assert r == "ok"
 ===end-group===
 
 ===start-group=== "HTTP scheme - Successful responses"
@@ -144,10 +377,122 @@ system/schemes/http/spec/timeout: 30
 	--test-- "GET request with Unicode character in query"
 		--assert "hergé at DuckDuckGo" = parse read https://duckduckgo.com/?q=hergé [thru "<title>" return copy title to "<"]
 		--assert "hergé at DuckDuckGo" = parse read https://duckduckgo.com/?q=herg%25C3%25A9 [thru "<title>" return copy title to "<"]
+
+	--test-- "charset followed by other content-type parameters"
+		--assert string? try [
+			read append http://httpbin.org/response-headers? "Content-Type=text/plain%3B charset=utf-8%3B foo=bar"
+		]
+
+	--test-- "header with none value is not sent"
+		--assert all [
+			block? res: try [write/all http://httpbin.org/headers [GET [Accept-Encoding: #(none) X-Test: "1"]]]
+			res/1 = 200
+			map? data: try [decode 'json res/3]
+			none? data/headers/Accept-Encoding
+			did data/headers/X-Test
+		]
+
+	--test-- "PUT and DELETE responses are decoded"
+		--assert all [
+			block? res: try [write/all http://httpbin.org/put [PUT "a=1"]]
+			res/1 = 200
+			string? res/3
+		]
+		--assert all [
+			block? res: try [write/all http://httpbin.org/delete [DELETE]]
+			res/1 = 200
+			string? res/3
+		]
 		
 ===end-group===
 
 ===start-group=== "HTTP scheme - Redirection messages"
+	--test-- "too many redirections"
+		saved: system/options/http-redirects
+		system/options/http-redirects: 2
+		e: try [read http://httpbin.org/redirect/3]
+		system/options/http-redirects: saved
+		--assert all [error? e  e/id = 'Protocol  e/arg1 = "Too many redirections"]
+	--test-- "redirections within limit"
+		saved: system/options/http-redirects
+		system/options/http-redirects: 3
+		r: try [read http://httpbin.org/redirect/3]
+		system/options/http-redirects: saved
+		--assert string? r
+	--test-- "port closed after sync read with redirect"
+		;; redirect to a different origin forces a new connection
+		p: make port! http://httpbin.org/redirect-to?url=https://httpbin.org/get
+		--assert string? try [read p]
+		--assert not open? p
+
+	--test-- "redirect keeps non-default port in Host header"
+		srv: open tcp://:8123
+		srv/awake: func [event /local client][
+			if event/type = 'accept [
+				client: first event/port
+				client/awake: func [event /local p req host][
+					p: event/port
+					switch event/type [
+						read [
+							req: to string! p/data
+							either find req "^M^/^M^/" [
+								host: none
+								parse req [thru "^/Host: " copy host to "^M" to end]
+								write p to binary! either find req "GET /echo" [
+									ajoin [
+										"HTTP/1.1 200 OK^M^/Content-Type: text/plain^M^/"
+										"Content-Length: " length? host "^M^/Connection: close^M^/^M^/" host
+									]
+								][
+									{HTTP/1.1 302 Found^M^/Location: http://127.0.0.1:8123/echo^M^/Content-Length: 0^M^/Connection: close^M^/^M^/}
+								]
+							][	read p ]
+						]
+						wrote [close p]
+					]
+					false
+				]
+				read client
+			]
+			false
+		]
+		saved: system/options/http-redirects
+		system/options/http-redirects: 5
+		r: try [read http://127.0.0.1:8123/]
+		system/options/http-redirects: saved
+		close srv
+		--assert r == "127.0.0.1:8123"
+
+	--test-- "303 redirect changes POST to GET"
+		--assert all [
+			block? res: try [write/all http://httpbin.org/redirect-to?url=/get&status_code=303 [POST "a=1"]]
+			res/1 = 200
+			map? data: try [decode 'json res/3]
+			data/method == "GET"
+		]
+	--test-- "302 redirect changes POST to GET"
+		--assert all [
+			block? res: try [write/all http://httpbin.org/redirect-to?url=/get&status_code=302 [POST "a=1"]]
+			res/1 = 200
+			map? data: try [decode 'json res/3]
+			data/method == "GET"
+		]
+	--test-- "307 redirect resends POST body"
+		--assert all [
+			block? res: try [write/all http://httpbin.org/redirect-to?url=/post&status_code=307 [POST "a=1"]]
+			res/1 = 200
+			map? data: try [decode 'json res/3]
+			data/method == "POST"
+			data/data == "a=1"
+		]
+	--test-- "308 redirect resends POST body"
+		--assert all [
+			block? res: try [write/all http://httpbin.org/redirect-to?url=/post&status_code=308 [POST "a=1"]]
+			res/1 = 200
+			map? data: try [decode 'json res/3]
+			data/method == "POST"
+			data/data == "a=1"
+		]
 	--test-- "redirect http"
 		--assert all [ ;= Multiple Choices
 			block? res: try [read/all http://httpbin.org/status/300]
@@ -201,6 +546,20 @@ system/schemes/http/spec/timeout: 30
 		--assert all [ ;= Use Proxy
 			block? res: try [read/all https://httpbin.org/status/305]
 			res/1 = 200
+		]
+	--test-- "redirect strips credentials on origin change"
+		--assert all [
+			block? res: try [write/all http://httpbin.org/redirect-to?url=https://httpbin.org/headers [GET [Authorization: "Bearer secret"]]]
+			res/1 = 200
+			map? data: try [decode 'json res/3]
+			none? data/headers/Authorization
+		]
+	--test-- "redirect keeps credentials on same origin"
+		--assert all [
+			block? res: try [write/all http://httpbin.org/redirect-to?url=/headers [GET [Authorization: "Bearer secret"]]]
+			res/1 = 200
+			map? data: try [decode 'json res/3]
+			data/headers/Authorization == "Bearer secret"
 		]
 ===end-group===
 
@@ -444,6 +803,52 @@ system/schemes/http/spec/timeout: 30
 			block? res: try [read/all http://httpbin.org/status/511]
 			res/1 = 511
 		]
+===end-group===
+
+===start-group=== "HTTP cookies"
+	--test-- "cookie Domain must match host"
+		set-cookies "www.cookie-test.example" ["a=1; Domain=evil.example"]
+		--assert none? get-cookies "evil.example" "/"
+		--assert none? select system/state/cookies ".evil.example"
+		set-cookies "www.cookie-test.example" ["b=2; Domain=cookie-test.example"]
+		--assert did find get-cookies "www.cookie-test.example" "/" "b=2"
+		--assert did find get-cookies "sub.cookie-test.example" "/" "b=2"
+		--assert did find get-cookies "cookie-test.example" "/" "b=2"
+		--assert none? get-cookies "other-cookie-test.example" "/"
+
+	--test-- "Secure cookie sent only over https"
+		set-cookies "secure-test.example" ["s=1; Secure" "p=2"]
+		--assert "p=2" == get-cookies "secure-test.example" "/"
+		--assert did all [
+			c: get-cookies/secure "secure-test.example" "/"
+			find c "s=1"
+			find c "p=2"
+		]
+
+	--test-- "cookie Path matching"
+		set-cookies "path-test.example" ["a=1; Path=/docs"]
+		--assert "a=1" == get-cookies "path-test.example" "/docs"
+		--assert "a=1" == get-cookies "path-test.example" "/docs/web"
+		--assert none? get-cookies "path-test.example" "/docsets"
+		--assert none? get-cookies "path-test.example" "/"
+	--test-- "cookie default Path"
+		set-cookies/from "path-test2.example" ["b=2"] "/app/login"
+		--assert "b=2" == get-cookies "path-test2.example" "/app/x"
+		--assert none? get-cookies "path-test2.example" "/other"
+		set-cookies/from "path-test3.example" ["c=3"] "/login"
+		--assert "c=3" == get-cookies "path-test3.example" "/anything"
+
+	--test-- "set-cookies with a single string"
+		set-cookies "string-test.example" "s=1; Path=/"
+		--assert "s=1" == get-cookies "string-test.example" "/"
+
+	--test-- "cookie value with spaces"
+		set-cookies "value-test.example" "q=a b; Path=/"
+		--assert "q=a b" == get-cookies "value-test.example" "/"
+	--test-- "cookie value trimmed, attribute without space after separator"
+		set-cookies "value-test2.example" "t= x ;Path=/docs"
+		--assert none? get-cookies "value-test2.example" "/"
+		--assert "t=x" == get-cookies "value-test2.example" "/docs"
 ===end-group===
 
 ~~~end-file~~~

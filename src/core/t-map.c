@@ -53,6 +53,7 @@
 */
 
 #include "sys-core.h"
+#include "sys-hash.h"
 
 // Use following define to speed map creation a little bit as the key words
 // will not be normalized to set-words and or words when using words-of
@@ -83,8 +84,18 @@
 **
 */	REBINT Cmp_Map(REBVAL* sval, REBVAL* tval, REBFLG is_case)
 /*
+***********************************************************************/
+{
+	return Cmp_Map_Loop(sval, tval, is_case, NULL);
+}
+
+/***********************************************************************
+**
+*/	REBINT Cmp_Map_Loop(REBVAL* sval, REBVAL* tval, REBFLG is_case, REB_CMP_LOOP *loop)
+/*
 **		Compare two maps and return 0 if maps have same keys and equal values.
 **		Keys may be in different order!
+**		A pair of maps already being compared is considered equal.
 **
 ***********************************************************************/
 {
@@ -94,16 +105,18 @@
 	REBSER* hser;
 	REBCNT* hashes = NULL;
 	REBCNT  slen, tlen;
+	REB_CMP_LOOP node;
 
 	if (VAL_SERIES(sval) == VAL_SERIES(tval))
 		return 0;
+
+	if (In_Cmp_Loop(loop, sval, tval)) return 0;
 
 	// Compare real map lengths (ignoring deleted values)
 	slen = Length_Map(VAL_SERIES(sval));
 	tlen = Length_Map(VAL_SERIES(tval));
 	if (slen != tlen) return -1;
 
-	hser = VAL_SERIES(tval)->series;
 	if (VAL_TAIL(sval) < VAL_TAIL(tval)) {
 		// Make sure that the larger map will be on the left side!
 		val = sval;	sval = tval; tval = val;
@@ -111,6 +124,11 @@
 
 	hser = VAL_SERIES(tval)->series;
 	if (hser) hashes = (REBCNT*)hser->data;
+
+	node.a  = VAL_SERIES(sval);
+	node.b  = VAL_SERIES(tval);
+	node.ai = node.bi = 0;
+	node.prev = loop;
 
 	// Traverse all keys of the left map and compare values if found in the second map
 	for (key = VAL_BLK(sval); NOT_END(key) && NOT_END(key + 1); key += 2) {
@@ -120,11 +138,11 @@
 		if (hashes) {
 			// the target map has a hash table, so get the real index of the key
 			idx = ((hashes[idx] - 1) * 2);
-			// check if the target key is not removed; if so, we can end
-			if (VAL_MAP_REMOVED(VAL_BLK_SKIP(tval,idx))) return -1;
 		}
+		// check if the target key is not removed; if so, we can end
+		if (VAL_MAP_REMOVED(VAL_BLK_SKIP(tval,idx))) return -1;
 		// compare both values
-		if (Cmp_Value(key + 1, VAL_BLK_SKIP(tval, idx + 1), is_case) != 0) return -1;
+		if (Cmp_Value_Loop(key + 1, VAL_BLK_SKIP(tval, idx + 1), is_case, &node) != 0) return -1;
 	}
 	return 0;
 }
@@ -157,6 +175,22 @@
 
 /***********************************************************************
 **
+*/	REBINT Cmp_Key_Value(REBVAL *key, REBVAL *val, REBFLG cased)
+/*
+**		Compare two values of the same type used as keys (maps, set operations).
+**		Same as Cmp_Value, but decimals are compared exactly (without tolerance),
+**		so the result is consistent with Hash_Value. Only 0 (equal) is meaningful.
+**
+***********************************************************************/
+{
+	if (IS_DECIMAL(key) || IS_PERCENT(key))
+		return Eq_Decimal2(VAL_DECIMAL(key), VAL_DECIMAL(val)) ? 0 : 1;
+	return Cmp_Value(key, val, cased);
+}
+
+
+/***********************************************************************
+**
 */	REBCNT Find_Key(REBSER *series, REBSER *hser, REBVAL *key, REBINT wide, REBCNT cased, REBYTE mode)
 /*
 **		Returns hash index (either the match or the new one).
@@ -178,6 +212,7 @@
 	REBCNT n;
 	REBVAL *val;
 	REBCNT i;
+	REBCNT step;
 
 	if (!hser) {
 		// If there are no hashes for the keys, use plain linear search...
@@ -200,8 +235,7 @@
 		hashed = Hash_Value(key);
 
 		if (ANY_WORD(key)) {
-			for(i = 0; i < len; i++) {
-				hash = Hash_Probe(hashed, i, len);
+			for (PROBE_START(hash, step, hashed, len), i = 0; i < len; i++, PROBE_NEXT(hash, step, len)) {
 				n = hashes[hash];
 				if (!n) break;
 				val = BLK_SKIP(series, (n - 1) * wide);
@@ -218,8 +252,7 @@
 		}
 		else if (ANY_BINSTR(key)) {
 			cased = !(IS_BINARY(key) || cased);
-			for (i = 0; i < len; i++) {
-				hash = Hash_Probe(hashed, i, len);
+			for (PROBE_START(hash, step, hashed, len), i = 0; i < len; i++, PROBE_NEXT(hash, step, len)) {
 				n = hashes[hash];
 				if (!n) break;
 				val = BLK_SKIP(series, (n - 1) * wide);
@@ -231,12 +264,11 @@
 			}
 		}
 		else {
-			for (i = 0; i < len; i++) {
-				hash = Hash_Probe(hashed, i, len);
+			for (PROBE_START(hash, step, hashed, len), i = 0; i < len; i++, PROBE_NEXT(hash, step, len)) {
 				n = hashes[hash];
 				if (!n) break;
 				val = BLK_SKIP(series, (n - 1) * wide);
-				if (VAL_TYPE(val) == VAL_TYPE(key) && 0 == Cmp_Value(key, val, cased))
+				if (VAL_TYPE(val) == VAL_TYPE(key) && 0 == Cmp_Key_Value(key, val, cased))
 					return hash;
 #ifdef DEBUG_HASH_COLLISIONS
 				++ Eval_Collisions;
@@ -259,26 +291,94 @@
 
 /***********************************************************************
 **
+*/	static REBCNT Count_Map(REBSER *series)
+/*
+**		Count not removed entries of the map.
+**
+***********************************************************************/
+{
+	REBCNT n, c = 0;
+	REBVAL *v = BLK_HEAD(series);
+
+	for (n = 0; n < series->tail; n += 2, v += 2) {
+		if (!VAL_MAP_REMOVED(v)) c++; // count only not removed values
+	}
+
+	return c;
+}
+
+
+/***********************************************************************
+**
 */	static void Rehash_Hash(REBSER *series)
 /*
-**		Recompute the entire hash table. Table must be large enough.
+**		Recompute the entire hash table. Table must be large enough and empty.
+**		Map keys are unique, so there is no need to compare them,
+**		just find the first free slot for each key.
 **
 ***********************************************************************/
 {
 	REBVAL *val;
-	REBCNT n;
-	REBCNT key;
+	REBCNT n, i, len, hashed, step;
+	REBCNT slot = 0;
 	REBCNT *hashes;
+	REBSER *hser = series->series;
 
-	if (!series->series) return;
+	if (!hser) return;
 
-	hashes = (REBCNT*)(series->series->data);
+	hashes = (REBCNT*)hser->data;
+	len = hser->tail;
 
 	val = BLK_HEAD(series);
 	for (n = 0; n < series->tail; n += 2, val += 2) {
-		key = Find_Key(series, series->series, val, 2, TRUE, 0);
-		hashes[key] = n/2+1;
+		hashed = Hash_Value(val);
+		for (PROBE_START(slot, step, hashed, len), i = 0; i < len; i++, PROBE_NEXT(slot, step, len)) {
+			if (!hashes[slot]) break;
+		}
+		hashes[slot] = n/2+1;
 	}
+}
+
+
+/***********************************************************************
+**
+*/	static void Protect_Key_Block(REBSER *blk)
+/*
+**		Protects the block and all its nested blocks and strings.
+**		Used only on a fresh deep copy of a block key, so nothing shared
+**		with user's data is protected. The protection flag is also used
+**		as the recursion guard (for circular blocks).
+**
+***********************************************************************/
+{
+	REBVAL *val;
+
+	if (IS_PROTECT_SERIES(blk)) return;
+	PROTECT_SERIES(blk);
+	for (val = BLK_HEAD(blk); NOT_END(val); val++) {
+		if (ANY_BLOCK(val)) Protect_Key_Block(VAL_SERIES(val));
+		else if (ANY_BINSTR(val)) PROTECT_SERIES(VAL_SERIES(val));
+	}
+}
+
+
+/***********************************************************************
+**
+*/	static void Append_Key_Block(REBSER *series, REBVAL *key)
+/*
+**		Appends a deep copy of the block key and protects it,
+**		as the key is hashed and so it must not be modified.
+**
+***********************************************************************/
+{
+	REBSER *blk = Copy_Block_Values(VAL_SERIES(key), VAL_INDEX(key), VAL_TAIL(key), CP_DEEP | TS_DEEP_COPIED);
+	REBVAL *set;
+
+	Protect_Key_Block(blk);
+	set = Append_Value(series);
+	*set = *key;
+	VAL_SERIES(set) = blk;
+	VAL_INDEX(set) = 0;
 }
 
 
@@ -308,45 +408,61 @@
 		if (series->tail <= MIN_DICT * 2) {
 			hash = Find_Block_Key(series, key, 2, cased);
 			if (hash != NOT_FOUND) {
+				// Ignore removed key when only getting the value
+				if (!val && VAL_MAP_REMOVED(BLK_SKIP(series, hash))) return NOT_FOUND;
 				hash++; // position of the value
 				// Key already exists so update the value, if needed...
 				if (val) {
 					set = BLK_SKIP(series, hash);
+					VAL_CLR_OPT(set - 1, OPTS_HIDE); // clear HIDE flag in case it was removed key
 					*set = *val;
 				}
 				// Return 
 				return hash;
 			}
 			if (!val) return NOT_FOUND;
-			hash /= 2;
-			goto new_entry;
+			goto new_entry; // `hash` is not used there, as there are no hashes yet
 		}
 
 		// Add hash table:
 		//Print("hash added %d", series->tail);
 		series->series = hser = Make_Hash_Array(series->tail);
 		Rehash_Hash(series);
+		MAP_LIVE_COUNT(hser) = Count_Map(series);
 	}
-	// Get hash table, expand it if needed:
-	if (series->tail > hser->tail/2) {
-		Expand_Hash(hser); // modifies size value
-		Rehash_Hash(series);
-	}
-
 	hash = Find_Key(series, hser, key, 2, cased, 0);
 	hashes = (REBCNT*)hser->data;
 	n = hashes[hash];
 
 	// Just a GET of value:
-	if (!val) return ((n-1)*2)+1;
+	if (!val) {
+		if (!n) return NOT_FOUND;
+		n = (n-1)*2; // index of the key
+		if (VAL_MAP_REMOVED(BLK_SKIP(series, n))) return NOT_FOUND;
+		return n+1;  // index of the value
+	}
 
 	// Must set the value:
 	if (n) {  // re-set it:
 		n = (n-1)*2;                    // index of the key
 		set = BLK_SKIP(series, n);      // find the key
+		if (VAL_MAP_REMOVED(set)) MAP_LIVE_COUNT(hser)++; // removed key is used again
 		VAL_CLR_OPT(set++, OPTS_HIDE);  // clear HIDE flag in case it was removed key; change to value position
 		*set = *val;                    // set the value
 		return n+1;                     // index of the value
+	}
+
+	// A new key: expand the hash table first, if needed
+	// (only here, so reads and updates of existing keys never reallocate it).
+	// Note: series->tail is 2x number of keys, so the load is kept below 25%;
+	// a higher load saves some memory, but makes string keys much slower.
+	if (series->tail > hser->tail/2) {
+		n = MAP_LIVE_COUNT(hser);
+		Expand_Hash(hser); // modifies size value (and clears the count)
+		MAP_LIVE_COUNT(hser) = n;
+		Rehash_Hash(series);
+		hash = Find_Key(series, hser, key, 2, cased, 0); // free slot for the new key
+		hashes = (REBCNT*)hser->data;
 	}
 new_entry:
 	// Create new entry:
@@ -363,6 +479,8 @@ new_entry:
 		VAL_SERIES(set) = Copy_String(VAL_SERIES(key), VAL_INDEX(key), VAL_LEN(key));
 		VAL_TYPE(set) = VAL_TYPE(key);
 		PROTECT_SERIES(VAL_SERIES(set));
+	} else if (ANY_BLOCK(key)) {
+		Append_Key_Block(series, key);
 	} else {
 		Append_Val(series, key);
 	}
@@ -372,13 +490,18 @@ new_entry:
 		set = Append_Value(series);
 		VAL_SERIES(set) = Copy_String(VAL_SERIES(key), VAL_INDEX(key), VAL_LEN(key));
 		VAL_TYPE(set) = VAL_TYPE(key);
+	} else if (ANY_BLOCK(key)) {
+		Append_Key_Block(series, key);
 	} else {
 		Append_Val(series, key);
 	}
 #endif
 	// append value
 	Append_Val(series, val);  // no Copy_Series_Value(val) on strings
-	if (hashes) hashes[hash] = series->tail / 2; // Hash index is not a real index position of the value!
+	if (hashes) {
+		hashes[hash] = series->tail / 2; // Hash index is not a real index position of the value!
+		MAP_LIVE_COUNT(hser)++;
+	}
 	return series->tail;      // Index of the new value.
 }
 
@@ -387,16 +510,13 @@ new_entry:
 **
 */	REBCNT Length_Map(REBSER *series)
 /*
+**		Number of not removed entries. Maps with a hash table keep the count,
+**		small (linear) maps have at most MIN_DICT entries to count.
+**
 ***********************************************************************/
 {
-	REBCNT n, c = 0;
-	REBVAL *v = BLK_HEAD(series);
-
-	for (n = 0; n < series->tail; n += 2, v += 2) {
-		if (!VAL_MAP_REMOVED(v)) c++; // count only not removed values
-	}
-
-	return c;
+	if (series->series) return MAP_LIVE_COUNT(series->series);
+	return Count_Map(series);
 }
 
 
@@ -448,29 +568,75 @@ new_entry:
 
 /***********************************************************************
 **
-*/	REBSER *Copy_Map(REBVAL *val, REBU64 types)
+*/	REBSER *Copy_Map_Loop(REBVAL *val, REBU64 types, REB_COPY_LOOP *loop)
 /*
 **		Copy the given map's key/value pairs. Don't hash until necessary.
+**		Loop is a chain of series being copied (circularity detection).
 **
 ***********************************************************************/
 {
 	REBSER *series;
+	REB_COPY_LOOP node;
 	ASSERT1(IS_MAP(val) || IS_BLOCK(val) || IS_PAREN(val), RP_INTERNAL);
 	series = Make_Map(VAL_BLK_LEN(val) / 2);
 	if (IS_MAP(val)) {
-		// There should be valid key/value pairs, so just copying is sufficient.
-		COPY_BLK_PART(series, VAL_BLK(val), VAL_TAIL(val));
-		// If existing series has a hashtable, reuse it.
-		if (VAL_SERIES(val)->series)
-			series->series = Copy_Series(VAL_SERIES(val)->series);
+		REBSER *src = VAL_SERIES(val);
+		if (Length_Map(src) * 2 == SERIES_TAIL(src)) {
+			// No removed entries, so just copying is sufficient.
+			COPY_BLK_PART(series, VAL_BLK(val), VAL_TAIL(val));
+			// If existing series has a hashtable, reuse it.
+			if (src->series) {
+				series->series = Copy_Series(src->series);
+				MAP_LIVE_COUNT(series->series) = MAP_LIVE_COUNT(src->series);
+			}
+		}
+		else {
+			// Skip removed entries (compaction), so the hash table must be rebuilt.
+			REBVAL *key;
+			REBVAL *out = BLK_HEAD(series);
+			for (key = BLK_HEAD(src); NOT_END(key) && NOT_END(key+1); key += 2) {
+				if (VAL_MAP_REMOVED(key)) continue;
+				*out++ = key[0];
+				*out++ = key[1];
+			}
+			SET_END(out);
+			series->tail = out - BLK_HEAD(series);
+			// Use hashing only when there is more than MIN_DICT keys (like in Find_Entry)
+			if (series->tail > MIN_DICT * 2) {
+				series->series = Make_Hash_Array(series->tail);
+				Rehash_Hash(series);
+				MAP_LIVE_COUNT(series->series) = series->tail / 2;
+			}
+		}
 	}
 	else {
 		// There may be duplicates, so we must append each key/value pair.
 		Append_Map(series, val, UNKNOWN);
 	}
-	if (types != 0) Copy_Deep_Values(series, 0, SERIES_TAIL(series), types);
-	//Rehash_Hash(series); // It will be rehashed only when needed.
+	if (types != 0) {
+		REBCNT n, tail = SERIES_TAIL(series);
+		if (IS_MAP(val)) {
+			node.src  = VAL_SERIES(val);
+			node.dst  = series;
+			node.prev = loop;
+			loop = &node;
+		}
+		// Copy only values! Keys are hashed, so they must stay unmodified
+		// (string keys are already copied and protected when inserted).
+		for (n = 1; n < tail; n += 2) {
+			Copy_Deep_Values_Loop(series, n, n + 1, types, loop);
+		}
+	}
 	return series;
+}
+
+/***********************************************************************
+**
+*/	REBSER *Copy_Map(REBVAL *val, REBU64 types)
+/*
+***********************************************************************/
+{
+	return Copy_Map_Loop(val, types, NULL);
 }
 
 /***********************************************************************
@@ -487,7 +653,7 @@ new_entry:
 	n = VAL_BLK_LEN(data);
 	if (n & 1) return FALSE;
 
-	Set_Series(REB_MAP, out, Copy_Map(data, type));
+	Set_Series(REB_MAP, out, Copy_Map(data, 0)); // `type` is a datatype, not a copy typeset!
 
 	return TRUE;
 }
@@ -503,14 +669,9 @@ new_entry:
 ***********************************************************************/
 {
 	REBVAL *val;
-	REBCNT cnt = 0;
+	REBCNT cnt = Length_Map(mapser); // number of not removed entries
 	REBSER *blk;
 	REBVAL *out;
-
-	// Count number of set entries:
-	for (val = BLK_HEAD(mapser); NOT_END(val) && NOT_END(val+1); val += 2) {
-		if (!VAL_MAP_REMOVED(val)) cnt++; // must not be removed
-	}
 
 	// Copy entries to new block:
 	blk = Make_Block(cnt * ((what == 0) ? 2 : 1));
@@ -546,15 +707,25 @@ new_entry:
 */	void Block_As_Map(REBSER *blk)
 /*
 **		Convert existing block to a map.
+**		Keys must be unique (case-sensitively), no deduplication is done!
 **
 ***********************************************************************/
 {
 	REBSER *ser = 0;
 	REBCNT size = SERIES_TAIL(blk);
+	REBCNT n;
+	REBVAL *key;
+
+	// Keys are hashed, so string keys must not be modifiable (like in Find_Entry)
+	for (n = 0; n < size; n += 2) {
+		key = BLK_SKIP(blk, n);
+		if (ANY_BINSTR(key)) PROTECT_SERIES(VAL_SERIES(key));
+	}
 
 	ser = Make_Hash_Array(size);
 	blk->series = ser;
 	Rehash_Hash(blk);
+	MAP_LIVE_COUNT(ser) = size / 2;
 }
 
 
@@ -569,6 +740,7 @@ new_entry:
 	REBSER *frame;
 	REBVAL *word;
 	REBVAL *mval;
+	REBVAL *w;
 
 	// Count number of set entries:
 	for (mval = BLK_HEAD(mapser); NOT_END(mval) && NOT_END(mval+1); mval += 2) {
@@ -582,6 +754,10 @@ new_entry:
 	val  = FRM_VALUE(frame, 1);
 	for (mval = BLK_HEAD(mapser); NOT_END(mval) && NOT_END(mval+1); mval += 2) {
 		if (ANY_WORD(mval) && !IS_NONE(mval+1)) {
+			// Keys which differ only by case would be duplicate words in the object
+			for (w = FRM_WORD(frame, 1); w < word; w++) {
+				if (VAL_BIND_CANON(w) == VAL_WORD_CANON(mval)) Trap1(RE_DUP_VARS, mval);
+			}
 			VAL_SET(word, REB_SET_WORD);
 			VAL_SET_OPT(word, OPTS_UNWORD);
 			VAL_BIND_SYM(word) = VAL_WORD_SYM(mval);
@@ -626,7 +802,7 @@ new_entry:
 
 	case A_INSERT:
 	case A_APPEND:
-		if (!IS_BLOCK(arg)) Trap_Arg(val);
+		if (!IS_BLOCK(arg)) Trap_Arg(arg);
 		*D_RET = *val;
 		if (DS_REF(AN_DUP)) {
 			Trap0(RE_BAD_REFINES);
@@ -645,9 +821,12 @@ new_entry:
 
 	case A_REMOVE:
 		//O: throw an error if /part is used?
+		// NOTE: the key is matched case-sensitively (unlike SELECT and PUT without /case),
+		//       so only an exact key is removed: `remove/key m "A"` does not remove "a".
 		n = Find_Entry(series, D_ARG(ARG_REMOVE_KEY_ARG), 0, TRUE);
 		if (n != NOT_FOUND) {
 			VAL_SET_OPT(VAL_BLK_SKIP(val, n-1), OPTS_HIDE); // hide the key
+			if (series->series) MAP_LIVE_COUNT(series->series)--;
 			VAL_SET(VAL_BLK_SKIP(val, n), REB_NONE); // set value to none (so the old one may be GCed)
 		}
 		return R_ARG1;
@@ -695,7 +874,9 @@ new_entry:
 	}
 	case A_CLEAR:
 		Clear_Series(series);
-		if (series->series) Clear_Series(series->series);
+		// Drop the hash table (Clear_Series would reset its prime size to zero);
+		// the map uses linear search again until it grows above MIN_DICT.
+		series->series = NULL;
 		Set_Series(REB_MAP, D_RET, series);
 		break;
 

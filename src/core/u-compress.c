@@ -127,6 +127,13 @@ typedef struct {
 	decompress_ex_fn_t  decompress_ex;
 } deflate_handlers_t;
 
+// libdeflate contexts are not GC-managed. If a Rebol error is thrown while
+// a context is in use (e.g. out of memory in Make_Binary or Resize_Series),
+// it would leak. So the compressor is remembered and released on the next
+// call, and one decompressor is reused (all released in Dispose_Compression).
+static struct libdeflate_compressor*   Deflate_Compressor = NULL;
+static struct libdeflate_decompressor* Deflate_Decompressor = NULL;
+
 static const deflate_handlers_t handlers[] = {
 	[DEFLATE_MODE_DEFLATE] = {
 		.compress = libdeflate_deflate_compress,
@@ -157,19 +164,23 @@ int CompressCommonDeflate(deflate_mode_t mode, const REBYTE* input, REBLEN len, 
 	if (!h->compress || !h->compress_bound) return FALSE;
 
 	if (level > 12) level = 12;
-	ctx = libdeflate_alloc_compressor_ex(level, &options);
+	// release a compressor left after an error in a previous call
+	if (Deflate_Compressor) libdeflate_free_compressor(Deflate_Compressor);
+	ctx = Deflate_Compressor = libdeflate_alloc_compressor_ex(level, &options);
 	if (!ctx) return FALSE;
 
 	size_t size = h->compress_bound(ctx, len);
 	if (size == 0 || size > MAX_I32) {
 		libdeflate_free_compressor(ctx);
+		Deflate_Compressor = NULL;
 		return FALSE;
 	}
-	*output = Make_Binary((REBLEN)size);
+	*output = Make_Binary((REBLEN)size); // may throw an error
 
 	size = h->compress(ctx, input, len, BIN_HEAD(*output), SERIES_REST(*output));
 
 	libdeflate_free_compressor(ctx);
+	Deflate_Compressor = NULL;
 
 	if (size == 0) return FALSE;
 	SERIES_TAIL(*output) = (REBLEN)size;
@@ -217,14 +228,17 @@ int DecompressCommonDeflate(deflate_mode_t mode, const REBYTE* input, REBLEN len
 
 	if (mode >= sizeof(handlers) / sizeof(handlers[0]) || !h->decompress) return FALSE;
 
-	ctx = libdeflate_alloc_decompressor_ex(&options);
-	if (!ctx) return FALSE;
+	// one decompressor is reused, so it cannot leak when an error is thrown
+	if (!Deflate_Decompressor) {
+		Deflate_Decompressor = libdeflate_alloc_decompressor_ex(&options);
+		if (!Deflate_Decompressor) return FALSE;
+	}
+	ctx = Deflate_Decompressor;
 
-	out_len = (limit != NO_LIMIT) ? limit : len << 2;
+	out_len = (limit != NO_LIMIT) ? limit : (REBU64)len << 2; // widen before shift (len may be > 1GB)
 
 	if (out_len == 0) {
 		*output = Make_Binary(1);
-		libdeflate_free_decompressor(ctx);
 		return TRUE;
 	}
 	if (out_len > MAX_I32) out_len = MAX_I32;
@@ -235,23 +249,28 @@ int DecompressCommonDeflate(deflate_mode_t mode, const REBYTE* input, REBLEN len
 		result = h->decompress(ctx, input, len, BIN_HEAD(*output), out_bytes, NULL);
 	}
 	else {
-	retry:
-		result = h->decompress_ex(ctx, input, len, BIN_HEAD(*output), SERIES_REST(*output), &in_bytes, &out_bytes);
-		if (result == LIBDEFLATE_INSUFFICIENT_SPACE) {
-			SERIES_TAIL(*output) = SERIES_REST(*output);
-			Expand_Series(*output, AT_TAIL, len >> 1);
-			goto retry;
+		for (;;) {
+			// keep one byte for the terminator
+			result = h->decompress_ex(ctx, input, len, BIN_HEAD(*output), SERIES_REST(*output) - 1, &in_bytes, &out_bytes);
+			if (result != LIBDEFLATE_INSUFFICIENT_SPACE) break;
+			// libdeflate restarts from the beginning, so the content does not
+			// have to be kept, just a bigger buffer is needed.
+			out_len = (REBU64)SERIES_REST(*output) * 2;
+			if (out_len > MAX_I32) {
+				*error = result;
+				return FALSE;
+			}
+			Resize_Series(*output, (REBCNT)out_len); // may throw an error
 		}
 	}
 
 	if (result > 0) {
 		*error = result;
-		libdeflate_free_decompressor(ctx);
 		return FALSE;
 	}
 	if (limit != NO_LIMIT && out_bytes > limit) out_bytes = limit;
-	libdeflate_free_decompressor(ctx);
 	SERIES_TAIL(*output) = (REBLEN)out_bytes;
+	TERM_SERIES(*output);
 	return TRUE;
 }
 
@@ -1013,4 +1032,14 @@ static DECOMPRESS_FUNC Find_Decompress_Handler(REBINT sym) {
 	if (compress_registry) {
 		Free_Mem(compress_registry, compress_method_size * sizeof(COMPRESS_METHOD));
 	}
+#ifdef INCLUDE_DEFLATE
+	if (Deflate_Compressor) {
+		libdeflate_free_compressor(Deflate_Compressor);
+		Deflate_Compressor = NULL;
+	}
+	if (Deflate_Decompressor) {
+		libdeflate_free_decompressor(Deflate_Decompressor);
+		Deflate_Decompressor = NULL;
+	}
+#endif
 }
