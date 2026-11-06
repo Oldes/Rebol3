@@ -1447,6 +1447,7 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 							VAL_INDEX(buffer_read)++;
 							goto readNBytes;
 						case SYM_UI16BYTES:
+						case SYM_UI16BEBYTES:
 							//puts("ui16bytes");
 							ASSERT_READ_SIZE(value, cp, ep, 2);
 							n = (cp[0] << 8) + cp[1];
@@ -1462,6 +1463,7 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 							VAL_INDEX(buffer_read) += 2;
 							goto readNBytes;
 						case SYM_UI24BYTES:
+						case SYM_UI24BEBYTES:
 							//puts("ui16bytes");
 							ASSERT_READ_SIZE(value, cp, ep, 3);
 							n = cp[2] + (cp[1] << 8) + (cp[0] << 16);
@@ -1478,6 +1480,7 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 							VAL_INDEX(buffer_read) += 3;
 							goto readNBytes;
 						case SYM_UI32BYTES:
+						case SYM_UI32BEBYTES:
 							ASSERT_READ_SIZE(value, cp, ep, 4);
 							n = (REBCNT)(
 								((u64)cp[3]      ) |

@@ -905,4 +905,18 @@ is-protected-error?: func[code][
 		--assert error? try [binary/write binary 8 [si32le 2147483648]]
 ===end-group===
 
+
+===start-group=== "BinCode - *bebytes read aliases"
+	--test-- "write/read ui16/24/32bebytes"
+		bin: binary 32
+		binary/write bin [ui16bebytes #{0102} ui24bebytes #{03} ui32bebytes #{0405}]
+		--assert #{0002010200000103000000020405} = binary/read bin 'bytes
+		bin: binary 32
+		binary/write bin [ui16bebytes #{0102} ui24bebytes #{03} ui32bebytes #{0405}]
+		--assert [#{0102} #{03} #{0405}] = binary/read bin [ui16bebytes ui24bebytes ui32bebytes]
+	--test-- "same as plain forms"
+		--assert [#{AA}] = binary/read #{0001AA} [ui16bebytes]
+		--assert [#{AA}] = binary/read #{0001AA} [ui16bytes]
+===end-group===
+
 ~~~end-file~~~
