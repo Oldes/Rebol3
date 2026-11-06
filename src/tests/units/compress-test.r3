@@ -145,6 +145,12 @@ text: {Lorem ipsum dolor sit amet, consectetur adipisici elit, sed eiusmod tempo
 		--assert bin = decompress compress bin 'gzip 'gzip
 		bin: #{41}
 		--assert bin = decompress compress bin 'zlib 'zlib
+
+	--test-- "reused deflate decompressor works after a failure"
+		--assert error? try [decompress #{0102030405} 'zlib]
+		--assert #{41} = decompress compress #{41} 'zlib 'zlib
+		--assert error? try [decompress #{0102030405} 'gzip]
+		--assert #{41} = decompress compress #{41} 'gzip 'gzip
 ===end-group===
 
 
