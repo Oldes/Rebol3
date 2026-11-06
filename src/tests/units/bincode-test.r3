@@ -753,4 +753,27 @@ is-protected-error?: func[code][
 		--assert #{01FF0304} = binary/read bin 'bytes
 ===end-group===
 
+
+===start-group=== "BinCode - unsigned write range"
+	--test-- "negative values (two's complement) accepted"
+		bin: binary 16
+		binary/write bin [ui8 -1 ui16 -1 ui24 -1 ui16le -2 ui24le -2]
+		--assert #{FFFFFFFFFFFFFEFFFEFFFF} = binary/read bin 'bytes
+	--test-- "values not fitting the width rejected"
+		--assert error? try [binary/write binary 8 [ui8 -256]]
+		--assert error? try [binary/write binary 8 [ui16 -65536]]
+		--assert error? try [binary/write binary 8 [ui24 -16777216]]
+		--assert error? try [binary/write binary 8 [ui8 4294967297]]
+		--assert error? try [binary/write binary 8 [ui16 4294967297]]
+	--test-- "upper bounds"
+		--assert error? try [binary/write binary 8 [ui8 256]]
+		--assert error? try [binary/write binary 8 [ui16 65536]]
+		--assert error? try [binary/write binary 8 [ui24 16777216]]
+		--assert error? try [binary/write binary 8 [ui8 #"€"]]
+	--test-- "valid values"
+		bin: binary 16
+		binary/write bin [ui8 255 ui16 65535 ui24le 16777215 ui8 #"A" ui16 #"€"]
+		--assert #{FFFFFFFFFFFF4120AC} = binary/read bin 'bytes
+===end-group===
+
 ~~~end-file~~~

@@ -149,7 +149,11 @@ typedef union {
 #pragma pack() 
 
 #define ASSERT_SI_RANGE(v, n) if (VAL_INT64(v) < (- (i64)n) || VAL_INT64(v) > (i64)n) Trap1(RE_OUT_OF_RANGE, v);
-#define ASSERT_UI_RANGE(v, n) if (VAL_INT32(v) > n) Trap1(RE_OUT_OF_RANGE, v);
+// integer! or char! argument as a 64-bit value (char! uses only 32 bits of the value data)
+static REBI64 Bincode_Int_Arg(REBVAL *v) {
+	return IS_CHAR(v) ? (REBI64)VAL_CHAR(v) : VAL_INT64(v);
+}
+#define ASSERT_UI_RANGE(v, n) if (Bincode_Int_Arg(v) < -(REBI64)(n) || Bincode_Int_Arg(v) > (REBI64)(n)) Trap1(RE_OUT_OF_RANGE, v); // negative allowed (two's complement), like ASSERT_U32_RANGE
 #define ASSERT_UIBYTES_RANGE(v, n) if (VAL_LEN(v) > n) Trap1(RE_OUT_OF_RANGE, v);
 #define ASSERT_U32_RANGE(v) if((i64)VAL_UNT64(v) > (i64)0xFFFFFFFFLL || (i64)VAL_UNT64(v) < (i64)0xFFFFFFFF00000001LL)  Trap1(RE_OUT_OF_RANGE, v);
 #define ASSERT_READ_SIZE(v, p, e, n) if((p + n) > e) Trap1(RE_OUT_OF_RANGE, v);
