@@ -344,6 +344,9 @@ enum {
 //#else
 #define UP_CASE(c) Upper_Cases[c]
 #define LO_CASE(c) Lower_Cases[c]
+// Characters outside of the case table have no case mapping (and must not index it)
+#define UP_CASE_SAFE(c) (((REBCNT)(c) < UNICODE_CASES) ? Upper_Cases[c] : (c))
+#define LO_CASE_SAFE(c) (((REBCNT)(c) < UNICODE_CASES) ? Lower_Cases[c] : (c))
 //#endif
 
 #define IS_WHITE(c) ((c) <= 32 && (White_Chars[c]&1) != 0)
