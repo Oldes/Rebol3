@@ -599,7 +599,7 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 						goto error;
 
 					case SYM_MSDOS_DATETIME:
-						if (IS_DATE(next) || IS_TIME(next)) {
+						if (IS_DATE(next)) { // needs date part
 							count += 4;
 							continue;
 						}

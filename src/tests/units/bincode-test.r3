@@ -563,6 +563,10 @@ is-protected-error?: func[code][
 
 		--assert error? try [binary/write b [MSDOS-DATE 15:33:18]] ;<- date required
 
+	--test-- "write msdos-datetime rejects time!"
+		--assert error? try [binary/write binary 8 [msdos-datetime 10:20:30]]
+
+
 	--test-- "BinCode - STRING-BYTES (read)"
 		;- used for fixed size strings (used for example in TAR files)
 		--assert ["test" 1]= binary/read #{746573740000000001} [STRING-BYTES 8 UI8]
