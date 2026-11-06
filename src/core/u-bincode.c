@@ -403,7 +403,7 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 		case REB_BLOCK:
 			// writing data specified in a WRITE dialect
 			value = VAL_BLK_DATA(val_write);
-			if (IS_END(value)) return R_ARG1; //empty block
+			if (IS_END(value)) break; //empty block (DS_DROP below; /read may follow)
 
 			// try to predict number of bytes needed...
 			count = VAL_INDEX(buffer_write);

@@ -551,6 +551,15 @@ is-protected-error?: func[code][
 		]
 		--assert [#(true) #{CAFE}] = binary/read b [ATz 0 #{0bad} BYTES 2]
 
+
+	--test-- "write empty block returns ctx"
+		b: binary #{0102}
+		--assert object? binary/write b []
+	--test-- "write/read with empty block still reads"
+		b: binary #{0102}
+		--assert 1 = binary/write/read b [] 'ui8
+		--assert [2] = binary/write/read b [] [ui8]
+
 ===end-group===
 
 ===start-group=== "BinCode special read/write functions"
