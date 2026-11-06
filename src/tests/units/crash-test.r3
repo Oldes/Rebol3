@@ -225,9 +225,9 @@ foreach [n s] system/schemes [
 	insert/only a a
 	b: copy []
 	insert/only b b
-	--assert all [error? e: try [equal? a b] e/id = 'stack-overflow]
-	--assert all [error? e: try [equiv? a b] e/id = 'stack-overflow] 
-	--assert all [error? e: try [strict-equal? a b] e/id = 'stack-overflow] 
+	--assert attempt [equal? a b]
+	--assert attempt [equiv? a b]
+	--assert attempt [strict-equal? a b]
 
 --test-- "copy action!"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/767
