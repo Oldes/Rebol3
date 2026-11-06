@@ -488,9 +488,9 @@ void Find_Maximum_Of_Vector(REBVAL *vect, REBVAL *ret) {
 		if (vqv) RETURN_NUMBER(vqv->maximum);
 		Find_Maximum_Of_Vector(vec, ret);
 		break;
-	default:
+	default: {
+		REBVQV out; // must outlive the `if` below - vqv may point to it
 		if (!vqv) {
-			REBVQV out;
 			Query_Vector_Statictics(vec, &out);
 			vqv = &out;
 		}
@@ -507,7 +507,7 @@ void Find_Maximum_Of_Vector(REBVAL *vect, REBVAL *ret) {
 			RETURN_DECIMAL(field == SYM_SAMPLE_VARIANCE ? sample_var : sqrt(sample_var));
 		}
 		return FALSE;
-	}
+	}}
 	return TRUE;
 return_number:
 	// Return integer if vector type is integer, else keep decimal
@@ -2765,4 +2765,4 @@ void Mold_Vector_Struct(REBVAL *value, REB_MOLD *mold, REBFLG molded)
 		}
 		Append_Byte(mold->series, ')');
 	}
-}
+}
