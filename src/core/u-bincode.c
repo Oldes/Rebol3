@@ -551,6 +551,12 @@ static u64 Bincode_Bits_Value(REBCNT cmd, REBINT nbits, REBVAL *arg) {
 							continue;
 						}
 						goto error;
+					case SYM_STRING:
+						if (ANY_BINSTR(next)) {
+							count += VAL_LEN(next) + 1; // + NUL terminator
+							continue;
+						}
+						goto error;
 					case SYM_BYTES:
 						if (ANY_BINSTR(next)) {
 							count += VAL_LEN(next);
@@ -880,6 +886,11 @@ static u64 Bincode_Bits_Value(REBCNT cmd, REBINT nbits, REBVAL *arg) {
 					case SYM_SI64LE:
 						goto write_ui64le;
 
+					case SYM_STRING:
+						n = VAL_LEN(next);
+						memcpy(cp, VAL_BIN_AT(next), n);
+						cp[n++] = 0; // NUL terminator
+						break;
 					case SYM_BYTES:
 						n = VAL_LEN(next);
 						memcpy(cp, VAL_BIN_AT(next), n);

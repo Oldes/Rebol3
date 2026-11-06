@@ -981,4 +981,23 @@ is-protected-error?: func[code][
 		--assert 0 = binary/read bin 'length?   ;; nothing written on error
 ===end-group===
 
+
+===start-group=== "BinCode - write string (NUL terminated)"
+	--test-- "write"
+		bin: binary 16
+		binary/write bin [string "ABC" string "" string #{4142} ui8 1]
+		--assert #{41424300004142 0001} = binary/read bin 'bytes
+	--test-- "roundtrip"
+		bin: binary 16
+		binary/write bin [string "Hello" ui16 6523]
+		--assert ["Hello" 6523] = binary/read bin [string ui16]
+	--test-- "after bits (implicit align)"
+		bin: binary 16
+		binary/write bin [ub 3 5 string "A"]
+		--assert #{A04100} = binary/read bin 'bytes
+	--test-- "invalid argument"
+		--assert error? try [binary/write binary 8 [string 1]]
+		--assert error? try [binary/write binary 8 [string]]
+===end-group===
+
 ~~~end-file~~~
