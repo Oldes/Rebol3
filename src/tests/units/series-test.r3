@@ -2042,6 +2042,16 @@ try/with [
 		[Bob 25 Carol 30 Alice 30] == sort/unstable/skip/compare [Carol 30 Bob 25 Alice 30] 2 2
 	]
 
+	;; unstable sort (Adaptive Symmetry Partition Sort) correctness
+	b: collect [repeat i 10000 [keep (i * 7919) // 1013]]   ; many duplicates
+	--assert (sort copy b) = sort/unstable copy b
+	b: collect [repeat i 1000 [keep i]]                     ; ascending run
+	--assert b = sort/unstable copy b
+	b: collect [repeat i 1000 [keep 1001 - i]]              ; descending run
+	--assert (sort copy b) = sort/unstable copy b
+	b: collect [repeat i 500 [keep (i * 37) // 101 keep i]] ; records
+	--assert (sort/skip copy b 2) = sort/skip/unstable copy b 2
+
 
 --test-- "SORT vectors"
 	--assert #(uint8! [1 2 3 3 3 4 4 5 7]) == sort #(uint8! [1 4 3 2 3 5 7 4 3])
