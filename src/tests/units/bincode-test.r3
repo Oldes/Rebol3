@@ -829,4 +829,18 @@ is-protected-error?: func[code][
 		--assert error? try [binary/read #{} [fb 1]]
 ===end-group===
 
+
+===start-group=== "BinCode - read encodedu32/u64"
+	--test-- "valid"
+		--assert 300 = binary/read #{AC02} 'encodedu32
+		--assert 4294967295 = binary/read #{FFFFFFFF0F} 'encodedu32
+		--assert -1 = binary/read #{FFFFFFFFFFFFFFFFFF01} 'encodedu64
+		--assert 4294967295 = binary/read #{FFFFFFFFFFFFFFFFFF01} 'encodedu32
+		--assert [300 1] = binary/read #{AC0201} [encodedu32 ui8]
+	--test-- "invalid"
+		--assert error? try [binary/read #{80} 'encodedu32]
+		--assert error? try [binary/read #{8080808080808080808000} 'encodedu64]
+		--assert error? try [binary/read #{8080808080808080808000} 'encodedu32]
+===end-group===
+
 ~~~end-file~~~

@@ -1260,6 +1260,8 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 							n = 0;
 							u = 0;
 							do {
+								// max 10 bytes (64 bits); also covers 10-byte sign-extended negative int32 values
+								if (n >= 10) Trap1(RE_OUT_OF_RANGE, value);
 								ASSERT_READ_SIZE(value, cp, ep, n+1);
 								byte = cp[n];
 								u |= (u64)(byte & 0x7F) << shift;
