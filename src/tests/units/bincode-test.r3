@@ -1030,4 +1030,21 @@ is-protected-error?: func[code][
 		--assert #{4120AC} = binary/read bin 'bytes
 ===end-group===
 
+
+===start-group=== "BinCode - range error leaves buffer untouched"
+	--test-- "unsigned"
+		bin: binary 16
+		--assert error? try [binary/write bin [ui8 1 ui16 2 ui8 256]]
+		--assert 0 = binary/read bin 'length?
+	--test-- "signed"
+		bin: binary 16
+		--assert error? try [binary/write bin [ui8 1 si16le 40000]]
+		--assert 0 = binary/read bin 'length?
+	--test-- "existing data kept"
+		bin: binary 16
+		binary/write bin [ui8 1]
+		--assert error? try [binary/write bin [ui8 2 ui32 4294967296]]
+		--assert #{01} = binary/read bin 'bytes
+===end-group===
+
 ~~~end-file~~~

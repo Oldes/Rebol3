@@ -484,6 +484,9 @@ static u64 Bincode_Bits_Value(REBCNT cmd, REBINT nbits, REBVAL *arg) {
 					case SYM_SI8:
 					case SYM_UI8:
 						if (IS_INTEGER(next) || IS_CHAR(next)) {
+							// range check before the buffer is modified
+							if (cmd == SYM_SI8) { ASSERT_SI_RANGE(next, 0x7F) }
+							else { ASSERT_UI_RANGE(next, 0xFF) }
 							count += 1;
 						}
 						else goto error;
@@ -495,6 +498,9 @@ static u64 Bincode_Bits_Value(REBCNT cmd, REBINT nbits, REBVAL *arg) {
 					case SYM_UI16LE:
 					case SYM_UI16BE:
 						if (IS_INTEGER(next) || IS_CHAR(next)) {
+							// range check before the buffer is modified
+							if (cmd == SYM_SI16 || cmd == SYM_SI16BE || cmd == SYM_SI16LE) { ASSERT_SI_RANGE(next, 0x7FFF) }
+							else { ASSERT_UI_RANGE(next, 0xFFFF) }
 							count += 2;
 						}
 						else goto error;
@@ -506,6 +512,9 @@ static u64 Bincode_Bits_Value(REBCNT cmd, REBINT nbits, REBVAL *arg) {
 					case SYM_UI24LE:
 					case SYM_UI24BE:
 						if (IS_INTEGER(next) || IS_CHAR(next)) {
+							// range check before the buffer is modified
+							if (cmd == SYM_SI24 || cmd == SYM_SI24BE || cmd == SYM_SI24LE) { ASSERT_SI_RANGE(next, 0x7FFFFF) }
+							else { ASSERT_UI_RANGE(next, 0xFFFFFF) }
 							count += 3;
 						}
 						else goto error;
@@ -517,6 +526,9 @@ static u64 Bincode_Bits_Value(REBCNT cmd, REBINT nbits, REBVAL *arg) {
 					case SYM_UI32LE:
 					case SYM_UI32BE:
 						if (IS_INTEGER(next) || IS_CHAR(next)) {
+							// range check before the buffer is modified
+							if (cmd == SYM_SI32 || cmd == SYM_SI32BE || cmd == SYM_SI32LE) { ASSERT_SI_RANGE(next, 0x7FFFFFFF) }
+							else { ASSERT_U32_RANGE(next) }
 							count += 4;
 						}
 						else goto error;
