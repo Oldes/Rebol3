@@ -285,6 +285,9 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 
 	MARK_SERIES(series);
 
+	// Hash table of a hash! series (it holds just indexes)
+	if (IS_HASH_SERIES(series)) MARK_SERIES(series->series);
+
 	// If not a block or if sliced block, go no further
 	if (
 		SERIES_WIDE(series) != sizeof(REBVAL)

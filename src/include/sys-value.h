@@ -448,6 +448,7 @@ enum {
 	SER_UTF8 = 1<<9,	// Series contains not only ASCII characters
 	SER_SLICE= 1<<10,	// Series is sliced (side link contains the original)
 	SER_SIZEP= 1<<11,   // Series is protected from length modification only (e.g. sliced series)
+	SER_HASH = 1<<12,   // Block series has a hash table of its values in the series link (hash!)
 };
 
 #define SERIES_SET_FLAG(s, f) (SERIES_FLAGS(s) |=  (f))
@@ -477,6 +478,12 @@ enum {
 #define IS_SLICE_SERIES(s)   SERIES_GET_FLAG(s, SER_SLICE)
 #define IS_FIXED_SIZE(s)     SERIES_GET_FLAG(s, SER_LOCK|SER_SIZEP)
 #define IS_FIXED_SIZE_VALUE(v) SERIES_GET_FLAG(VAL_SERIES(v), SER_LOCK|SER_SIZEP)
+#define IS_HASH_SERIES(s)    SERIES_GET_FLAG(s, SER_HASH)
+#define SET_HASH_SERIES(s,h) ((s)->series = (h), SERIES_SET_FLAG(s, SER_HASH))
+// Drops the hash table of a modified series (it is rebuilt when needed again)
+#define DROP_SERIES_HASH(s)  do { if (IS_HASH_SERIES(s)) { SERIES_CLR_FLAG(s, SER_HASH); (s)->series = NULL; } } while (0)
+// Number of block values already added to the hash table (stored in the table's size field)
+#define HASH_COUNT(hser)     ((hser)->size)
 
 #define TRAP_PROTECT(s) if (IS_PROTECT_SERIES(s)) Trap0(RE_PROTECTED)
 #define TRAP_FIXED_SIZE(s) if (IS_FIXED_SIZE(s)) Trap0(RE_FIXED_SIZED_SERIES)
@@ -1461,7 +1468,7 @@ typedef struct Reb_All {
 	} data;
 };
 
-#define ANY_SERIES(v)		(VAL_TYPE(v) >= REB_BINARY && VAL_TYPE(v) <= REB_LIT_PATH)
+#define ANY_SERIES(v)		(VAL_TYPE(v) >= REB_BINARY && VAL_TYPE(v) <= REB_HASH)
 #define ANY_STR(v)			(VAL_TYPE(v) >= REB_STRING && VAL_TYPE(v) <= REB_TAG)
 #define ANY_BINSTR(v)		(VAL_TYPE(v) >= REB_BINARY && VAL_TYPE(v) <= REB_TAG)
 #define ANY_BLOCK(v)		(VAL_TYPE(v) >= REB_BLOCK  && VAL_TYPE(v) <= REB_HASH)
@@ -1474,7 +1481,7 @@ typedef struct Reb_All {
 #define ANY_NUMBER(v)	    (VAL_TYPE(v) >= REB_INTEGER && VAL_TYPE(v) <= REB_MONEY)
 #define ANY_SCALAR(v)	    (VAL_TYPE(v) >= REB_UNSET  && VAL_TYPE(v) <= REB_DATE)
 
-#define ANY_BLOCK_TYPE(t)   (t >= REB_BLOCK   && t <= REB_LIT_PATH)
+#define ANY_BLOCK_TYPE(t)   (t >= REB_BLOCK   && t <= REB_HASH)
 #define ANY_STR_TYPE(t)     (t >= REB_STRING  && t <= REB_TAG)
 
 #pragma pack()

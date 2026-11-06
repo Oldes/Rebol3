@@ -72,6 +72,10 @@
 	if (delta == 0) return;
 	ASSERT1(!IS_FIXED_SIZE(series), RP_BAD_SERIES);
 
+	// Inserting before the tail moves values, so the hash table is invalid
+	// (appending keeps it; new values are hashed when needed)
+	if (index < series->tail) DROP_SERIES_HASH(series);
+
 	// Optimized case of head insertion:
 	if (index == 0 && SERIES_BIAS(series) >= delta) {
 		series->data -= SERIES_WIDE(series) * delta;
@@ -371,6 +375,8 @@
 
 	if (len <= 0) return;
 
+	DROP_SERIES_HASH(series);
+
 	// Optimized case of head removal:
 	if (index == 0) {
 		if ((REBCNT)len > series->tail) len = series->tail;
@@ -441,6 +447,7 @@
 ***********************************************************************/
 {
 	if (series->tail == 0) return;
+	DROP_SERIES_HASH(series);
 	series->tail--;
 	CLEAR(series->data + SERIES_WIDE(series) * series->tail, SERIES_WIDE(series));
 }
@@ -475,6 +482,7 @@
 **
 ***********************************************************************/
 {
+	DROP_SERIES_HASH(series);
 	series->tail = 0;
 	if (SERIES_BIAS(series)) Reset_Bias(series);
 	CLEAR(series->data, SERIES_WIDE(series)); // re-terminate
@@ -490,6 +498,7 @@
 **
 ***********************************************************************/
 {
+	DROP_SERIES_HASH(series);
 	series->tail = 0;
 	if (SERIES_BIAS(series)) Reset_Bias(series);
 	CLEAR(series->data, SERIES_SPACE(series));
@@ -505,6 +514,7 @@
 **
 ***********************************************************************/
 {
+	DROP_SERIES_HASH(series);
 	series->tail = 0;
 	if (SERIES_BIAS(series)) Reset_Bias(series);
 	EXPAND_SERIES_TAIL(series, size);

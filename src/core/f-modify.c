@@ -56,6 +56,9 @@
 	if (dups < 0) return (action == A_APPEND) ? 0 : dst_idx;
 	if (action == A_APPEND || dst_idx > tail) dst_idx = tail;
 
+	// CHANGE overwrites values (INSERT drops the hash table in Expand_Series)
+	if (action == A_CHANGE) DROP_SERIES_HASH(dst_ser);
+
 	// Check /PART, compute LEN:
 	if (!GET_FLAG(flags, AN_ONLY) && ANY_BLOCK(src_val)) {
 		is_blk = TRUE; // src_val is a block
