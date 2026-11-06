@@ -1210,18 +1210,21 @@ static REBCNT EncodedVINT_Size(REBU64 value) {
 						case SYM_LENGTH:
 							ASSERT_READ_SIZE(value, cp, ep, 1);
 							VAL_SET(temp, REB_INTEGER);
-							if (cp[0] <= 128) {
+							if (cp[0] < 128) {
+								// short form
 								SET_INT32(temp, cp[0]);
 							}
 							else {
+								// long form: low 7 bits = number of length bytes
 								n = cp[0] & 127;
-								ASSERT_READ_SIZE(value, cp, ep, n);
-								len = 0;
-								//printf("///%i\n", n);
+								if (n == 0) Trap1(RE_INVALID_SPEC, value);  // 0x80 = indefinite length (not DER)
+								if (n > 4) Trap1(RE_OUT_OF_RANGE, value);
+								ASSERT_READ_SIZE(value, cp, ep, n + 1);
+								u = 0;
 								for (i = 1; i <= n; i++) {
-									len = (len << 8) + cp[i];
+									u = (u << 8) | cp[i];
 								}
-								SET_INT32(temp, len);
+								VAL_UNT64(temp) = u;
 							}
 							n++;
 							break;

@@ -277,6 +277,22 @@ is-protected-error?: func[code][
 		--assert #{0100000002} = binary/read bin 'bytes
 
 
+	--test-- "BinCode - read length (DER) - short form"
+		--assert 5   = binary/read #{05} 'length
+		--assert 127 = binary/read #{7F} 'length
+	--test-- "BinCode - read length (DER) - long form"
+		--assert 128   = binary/read #{8180} 'length
+		--assert 256   = binary/read #{820100} 'length
+		--assert 65536 = binary/read #{83010000} 'length
+		--assert 4294967295 = binary/read #{84FFFFFFFF} 'length
+		--assert [256 255] = binary/read #{820100FF} [length ui8]
+	--test-- "BinCode - read length (DER) - invalid"
+		--assert error? try [binary/read #{80} 'length]           ;; indefinite
+		--assert error? try [binary/read #{81} 'length]           ;; truncated
+		--assert error? try [binary/read #{8201} 'length]         ;; truncated
+		--assert error? try [binary/read #{850000000001} 'length] ;; too long
+
+
 	--test-- "BinCode - LENGTH?"
 		;LENGTH? returns number of bytes remaining in the buffer
 		b: binary #{01020304}
