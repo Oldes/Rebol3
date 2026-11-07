@@ -595,6 +595,13 @@ if find codecs 'zip [
 			info: unzip/info encode 'zip src
 			--assert 8 = info/2/5             ; level 9 -> deflate
 			system/codecs/zip/level: old
+
+		--test-- "zip-crc-high-bit"
+			unzip: :system/codecs/zip/decode
+			bin: encode 'zip [%a.txt "a"]
+			data: unzip/validate bin
+			--assert 3904355907 = data/2/3    ; 0#E8B7BE43
+			--assert #{61} = data/2/2
 	===end-group===
 	system/options/log/zip: v
 ]

@@ -13,6 +13,7 @@ REBOL [
 			* Decoder skips encrypted and ZIP64 entries (with an error log) and refuses ZIP64 archives
 			* Using the `level` setting for deflate compression
 			* Fixed LZMA input length (compressed size includes the 4-byte header)
+			* Local header CRC read as unsigned (as in the central directory)
 		}
 		30-Nov-2021 "Oldes" {
 			* Access to comment and extra field of uncompressed data
@@ -370,7 +371,7 @@ register-codec [
 			          BITSET16       ; flags
 			          UI16LE         ; compression
 			          MSDOS-DATETIME ; last modified
-			          SI32LE         ; crc-32
+			          UI32LE         ; crc-32
 			          UI32LE         ; compressed size
 			          UI32LE         ; uncompressed size
 			len-name: UI16LE
