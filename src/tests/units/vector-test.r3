@@ -1008,6 +1008,11 @@ Rebol [
 		    sample-deviation: _
 		]
 
+	--test-- "statistics of uint64 vectors above 2^^63"
+		v: make vector! [uint64! [-1]]          ;; 18446744073709551615
+		--assert 1.8446744073709552e19 = query v 'mean
+		--assert 1.8446744073709552e19 = query v 'median
+
 ===end-group===
 
 

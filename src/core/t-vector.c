@@ -206,7 +206,7 @@ static REBDEC get_vect_decimal(REBCNT type, REBYTE *data, REBCNT n) {
 	REBVAL val;
 	getters[type](data, n, &val);
 	if (type >= VTSF08) return VAL_DECIMAL(&val);
-	if (type <= VTUI64) return (REBDEC)VAL_INT64(&val);
+	if (type <= VTSI64) return (REBDEC)VAL_INT64(&val);
 	return (REBDEC)VAL_UNT64(&val);
 }
 
