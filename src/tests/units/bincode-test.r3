@@ -1139,4 +1139,71 @@ is-protected-error?: func[code][
 		--assert error? try [binary/read #{00} [not-registered-struct!]]  ;; unknown word
 ===end-group===
 
+
+===start-group=== "bincode - vectors"
+	register point3d!: make struct! [x [f32!] y [f32!] z [f32!]]
+	--test-- "read numeric vector"
+		--assert  #(u16! [1 2 3 4])  = first binary/read #{0100020003000400} [vector uint16! 4]
+		--assert [#(u16! [1 2 3 4])] =       binary/read #{0001000200030004} [vector-be uint16! 4]
+		--assert  #(f32! [1.0 2.0])  = first binary/read #{3F80000040000000} [vector-be f32! 2]
+		--assert  #(f32! [1.0 2.0])  = first binary/read #{0000803F00000040} [vector-le f32! 2]
+	--test-- "count from data"
+		r: binary/read #{020000803F00000040FF} [n: ui8 v: vector f32! :n ui8]
+		--assert all [n = 2 v = #(f32! [1.0 2.0]) r/3 = 255]
+	--test-- "empty vector"
+		--assert 0 = length? first binary/read #{} [vector uint8! 0]
+	--test-- "read vector of structs"
+		probe v: first binary/read #{0000803F000000400000404000008040000000000000000000} [vector point3d! 2]
+		--assert all [vector? v 2 = length? v v/1/x = 1.0 v/1/z = 3.0 v/2/x = 4.0]
+		p: make struct! [a [uint8!] b [uint16!]]
+		v: first binary/read #{01020003040005} [vector :p 2]
+		--assert all [2 = length? v v/1/a = 1 v/1/b = 2 v/2/a = 3]
+	--test-- "write vectors"
+		bin: binary 32
+		binary/write bin [#(u16! [1 2]) vector-be #(u16! [1 2]) vector-le #(u16! [3])]
+		--assert #{01000200000100020300} = binary/read bin 'bytes
+		bin: binary 32
+		binary/write bin [ub 3 5 #(u8! [255])]
+		--assert #{A0FF} = binary/read bin 'bytes   ;; aligned like other raw data
+	--test-- "roundtrip"
+		bin: binary 64
+		binary/write bin [ui32 3 vector-be #(i32! [-1 0 1])]
+		--assert [3 #(i32! [-1 0 1])] = binary/read bin [ui32 vector-be i32! 3]
+	--test-- "read/into vector"
+		v: #(u16! [0 0])
+		r: binary/read/into #{01000200} 'vector v
+		--assert all [same? r v v = #(u16! [1 2])]
+		binary/read/into #{00030004} 'vector-be v
+		--assert v = #(u16! [3 4])
+	--test-- "errors"
+		--assert error? try [binary/read #{0100} [vector uint16! 2]]            ;; short data
+		--assert error? try [binary/read #{}     [vector uint64! 2147483647]]   ;; huge count, no allocation
+		--assert error? try [binary/read #{00}   [vector uint8! -1]]
+		--assert error? try [binary/read #{00}   [vector not-a-type! 1]]
+		--assert error? try [binary/read #{00}   [vector uint8!]]               ;; missing count
+		--assert error? try [binary/read #{000000000000000000000000} [vector-be point3d! 1]]
+		--assert error? try [binary/read/into #{01} 'vector #(u16! [0])]
+		--assert error? try [binary/read/into #{0100} 'ui8 #(u16! [0])]
+===end-group===
+
+
+===start-group=== "swap-endian"
+	--test-- "widths"
+		--assert #{0100}             = swap-endian #{0001}
+		--assert #{03020100}         = swap-endian/width #{00010203} 4
+		--assert #{0706050403020100} = swap-endian/width #{0001020304050607} 8
+	--test-- "unaligned position"
+		b: #{00 01020304 05060708 09}
+		swap-endian/width next b 4
+		--assert b = #{00 04030201 08070605 09}
+	--test-- "trailing bytes untouched"
+		--assert #{010002} = swap-endian #{000102}
+	--test-- "/part"
+		--assert #{01000203} = swap-endian/part #{00010203} 2
+	--test-- "invalid width"
+		--assert error? try [swap-endian/width #{0001} 3]
+		--assert error? try [swap-endian/width #{0001} 1]
+===end-group===
+
 ~~~end-file~~~
+

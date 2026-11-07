@@ -234,6 +234,17 @@ static u64 Bincode_Bits_Value(REBCNT cmd, REBINT nbits, REBVAL *arg) {
 	return (u64)v;
 }
 
+// Should vector data be byte swapped for the given command (VECTOR, VECTOR-BE or VECTOR-LE)?
+static REBOOL Bincode_Swap_Needed(REBCNT cmd) {
+	const u16 one = 1;
+	REBOOL host_le = (*(const u8*)&one == 1);
+	return (cmd == SYM_VECTOR_BE && host_le) || (cmd == SYM_VECTOR_LE && !host_le);
+}
+// vector element widths are 1, 2, 4 or 8 (struct elements are never swapped)
+static void Bincode_Swap_Endian(REBYTE *p, REBCNT len, REBCNT wide) { if (wide > 1) Swap_Endian(p, len, wide); }
+#define VECTOR_DATA_AT(v) SERIES_SKIP(VAL_SERIES(v), VAL_INDEX(v))
+#define VECTOR_BYTES(v)   ((REBU64)VAL_LEN(v) * SERIES_WIDE(VAL_SERIES(v)))
+
 /***********************************************************************
 **
 */	REBNATIVE(binary)
@@ -249,7 +260,7 @@ static u64 Bincode_Bits_Value(REBCNT cmd, REBINT nbits, REBVAL *arg) {
 //		/read    "Read data from the input buffer"
 //			code [word! block! integer! binary! struct!]   "Input encoding"
 //		/into    "Put READ results in out block, instead of creating a new block"
-//			out  [block! struct!] "Target block for results, or a struct to be filled, when /into is used"
+//			out  [block! struct! vector!] "Target block for results, or a struct/vector to be filled, when /into is used"
 //		/with    "Additional input argument"
 //			num  [integer!] "Bits/bytes number used with WORD! code type to resolve just single value"
 //	]
@@ -470,6 +481,12 @@ static u64 Bincode_Bits_Value(REBCNT cmd, REBINT nbits, REBVAL *arg) {
 					if (pb) { count++; pb = 0; } // align
 					count += VAL_LEN(data);
 					break;
+				case REB_VECTOR:
+					// raw vector data (native byte order)
+					if (pb) { count++; pb = 0; } // align
+					if (VECTOR_BYTES(data) > 0x7FFFFFFF) Trap1(RE_SIZE_LIMIT, data);
+					count += (REBCNT)VECTOR_BYTES(data);
+					break;
 				case REB_STRUCT:
 					// raw struct data (structs holding Rebol values would write pointers)
 					if (VAL_STRUCT_PROTECTED(data)) Trap0(RE_PROTECTED);
@@ -686,6 +703,15 @@ static u64 Bincode_Bits_Value(REBCNT cmd, REBINT nbits, REBVAL *arg) {
 						}
 						goto error;
 
+					case SYM_VECTOR:
+					case SYM_VECTOR_BE:
+					case SYM_VECTOR_LE:
+						if (!IS_VECTOR(next)) goto error;
+						// byte order of struct elements is not defined
+						if (cmd != SYM_VECTOR && VAL_VEC_IS_STRUCT(next)) Trap1(RE_INVALID_SPEC, next);
+						if (VECTOR_BYTES(next) > 0x7FFFFFFF) Trap1(RE_SIZE_LIMIT, next);
+						count += (REBCNT)VECTOR_BYTES(next);
+						continue;
 					case SYM_ALIGN:
 						value--; // no argument (aligned above)
 						continue;
@@ -794,6 +820,11 @@ static u64 Bincode_Bits_Value(REBCNT cmd, REBINT nbits, REBVAL *arg) {
 					n = VAL_LEN(data);
 					//printf("write bytes: %i to #%0X\n", n, cp);
 					memcpy(cp, VAL_BIN_AT(data), n);
+					break;
+				case REB_VECTOR:
+					if (outBit) { outBit = 0; cp++; VAL_INDEX(buffer_write)++; } // align
+					n = (REBCNT)VECTOR_BYTES(data);
+					memcpy(cp, VECTOR_DATA_AT(data), n);
 					break;
 				case REB_STRUCT:
 					if (outBit) { outBit = 0; cp++; VAL_INDEX(buffer_write)++; } // align
@@ -1140,6 +1171,13 @@ static u64 Bincode_Bits_Value(REBCNT cmd, REBINT nbits, REBVAL *arg) {
 						n = 4;
 						break;
 
+					case SYM_VECTOR:
+					case SYM_VECTOR_BE:
+					case SYM_VECTOR_LE:
+						n = (REBCNT)VECTOR_BYTES(next);
+						memcpy(cp, VECTOR_DATA_AT(next), n);
+						if (Bincode_Swap_Needed(cmd)) Bincode_Swap_Endian(cp, n, SERIES_WIDE(VAL_SERIES(next)));
+						break;
 					case SYM_ALIGN:
 						value--; // no argument (aligned above)
 						break;
@@ -1241,6 +1279,21 @@ static u64 Bincode_Bits_Value(REBCNT cmd, REBINT nbits, REBVAL *arg) {
 				Trap_Arg(val_into);
 			ASSERT_READ_SIZE(val_read, cp, ep, n);
 			COPY_MEM(VAL_STRUCT_DATA_BIN(val_into), cp, n);
+			VAL_INDEX(buffer_read) += n;
+			*D_RET = *val_into;
+			return R_RET;
+		}
+		if (ref_into && IS_VECTOR(val_into)) {
+			// fill an existing vector in place (type and length are given by the vector)
+			cmd = IS_WORD(val_read) ? VAL_WORD_CANON(val_read) : 0;
+			if (cmd != SYM_VECTOR && cmd != SYM_VECTOR_BE && cmd != SYM_VECTOR_LE) Trap_Arg(val_read);
+			if (cmd != SYM_VECTOR && VAL_VEC_IS_STRUCT(val_into)) Trap_Arg(val_read);
+			if (IS_PROTECT_SERIES(VAL_SERIES(val_into))) Trap0(RE_PROTECTED);
+			if (VECTOR_BYTES(val_into) > (REBU64)(ep - cp)) Trap1(RE_OUT_OF_RANGE, val_read);
+			n = (REBCNT)VECTOR_BYTES(val_into);
+			bp = VECTOR_DATA_AT(val_into);
+			COPY_MEM(bp, cp, n);
+			if (Bincode_Swap_Needed(cmd)) Bincode_Swap_Endian(bp, n, SERIES_WIDE(VAL_SERIES(val_into)));
 			VAL_INDEX(buffer_read) += n;
 			*D_RET = *val_into;
 			return R_RET;
@@ -1870,6 +1923,49 @@ static u64 Bincode_Bits_Value(REBCNT cmd, REBINT nbits, REBVAL *arg) {
 							break;
 						}
 
+						case SYM_VECTOR:
+						case SYM_VECTOR_BE:
+						case SYM_VECTOR_LE: {
+							// [vector <type> <count>], type: vector type word, registered struct name or a struct
+							REBVAL *vtype;
+							REBSER *fields = NULL;
+							REBCNT vt = 0, wide;
+							next = ++value;
+							if (IS_GET_WORD(next)) next = Get_Var(next);
+							vtype = next;
+							if (IS_WORD(vtype)) {
+								REBCNT sym = Normalize_Vector_Type_Symbol(VAL_WORD_CANON(vtype));
+								if (sym >= SYM_INT8X && sym <= SYM_FLOAT64X) {
+									vt = sym - SYM_INT8X; // same mapping as in t-vector.c
+								} else {
+									REBVAL *spec = Find_Struct_Spec(vtype);
+									if (!spec) goto error_next_value;
+									fields = VAL_SERIES(spec)->series;
+								}
+							}
+							else if (IS_STRUCT(vtype)) fields = VAL_STRUCT_FIELDS(vtype);
+							else goto error_next_value;
+							next = ++value;
+							if (IS_GET_WORD(next)) next = Get_Var(next);
+							if (!IS_INTEGER(next)) goto error_next_value;
+							if (VAL_INT64(next) < 0 || VAL_INT64(next) > 0x7FFFFFFF) Trap1(RE_OUT_OF_RANGE, next);
+							j = VAL_INT32(next); // number of values
+							if (fields) {
+								if (cmd != SYM_VECTOR) Trap1(RE_INVALID_SPEC, value); // byte order of struct elements is not defined
+								if (FIELDS_NEED_MARK(fields)) Trap0(RE_PROTECTED);
+								wide = FIELDS_INFO(fields)->size;
+							} else {
+								wide = VECT_WIDE(vt);
+							}
+							// validate the size before allocation (the count usually comes from the data)
+							if ((REBU64)j * wide > (REBU64)(ep - cp)) Trap1(RE_OUT_OF_RANGE, value);
+							if (!(fields ? Make_Vector_Struct(temp, fields, j, 1) : Make_Vector(temp, vt, j, 1)))
+								Trap1(RE_INVALID_SPEC, vtype);
+							n = j * wide;
+							COPY_MEM(SERIES_DATA(VAL_SERIES(temp)), cp, n);
+							if (Bincode_Swap_Needed(cmd)) Bincode_Swap_Endian(SERIES_DATA(VAL_SERIES(temp)), n, wide);
+							break;
+						}
 						default:
 							// registered struct name, e.g.: register point3d!: make struct! [...]
 							if (!Find_Struct_Spec(value)) Trap1(RE_INVALID_SPEC, value);

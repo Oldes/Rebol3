@@ -369,3 +369,6 @@ population-deviation
 sample-deviation
 sample-variance
 element-type
+
+vector-be
+vector-le

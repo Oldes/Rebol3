@@ -517,6 +517,53 @@ chkMoney:
 	return R_RET;
 }
 
+
+/***********************************************************************
+**
+*/	REBFLG Swap_Endian(REBYTE *data, REBCNT len, REBCNT width)
+/*
+**		Reverses the byte order of each `width` sized value (2, 4 or 8)
+**		in `len` bytes of data. Trailing bytes which don't form a whole
+**		value are left untouched. The data don't have to be aligned.
+**		Returns FALSE for an unsupported width.
+**
+***********************************************************************/
+{
+	REBCNT i;
+	switch (width) {
+		case 2:
+			for (i = 0; i + 2 <= len; i += 2) {
+				u16 n;
+				memcpy(&n, data + i, 2);
+				n = (u16)((n << 8) | (n >> 8));
+				memcpy(data + i, &n, 2);
+			}
+			break;
+		case 4:
+			for (i = 0; i + 4 <= len; i += 4) {
+				u32 n;
+				memcpy(&n, data + i, 4);
+				n = ((n & 0x000000FFu) << 24) | ((n & 0x0000FF00u) <<  8)
+				  | ((n & 0x00FF0000u) >>  8) | ((n & 0xFF000000u) >> 24);
+				memcpy(data + i, &n, 4);
+			}
+			break;
+		case 8:
+			for (i = 0; i + 8 <= len; i += 8) {
+				u64 n;
+				memcpy(&n, data + i, 8);
+				n = ((n <<  8) & 0xFF00FF00FF00FF00ULL) | ((n >>  8) & 0x00FF00FF00FF00FFULL);
+				n = ((n << 16) & 0xFFFF0000FFFF0000ULL) | ((n >> 16) & 0x0000FFFF0000FFFFULL);
+				n = (n << 32) | (n >> 32);
+				memcpy(data + i, &n, 8);
+			}
+			break;
+		default:
+			return FALSE;
+	}
+	return TRUE;
+}
+
 /***********************************************************************
 **
 */	REBNATIVE(swap_endian)
@@ -530,57 +577,11 @@ chkMoney:
 ]
 ***********************************************************************/
 {
-	REBCNT i;
-	REBCNT width = 2;
 	REBVAL *val = D_ARG(1);
-	REBYTE *bin = VAL_BIN_DATA(D_ARG(1));
-	if (D_REF(2)) width = VAL_INT32(D_ARG(3));
-
+	REBCNT width = D_REF(2) ? VAL_INT32(D_ARG(3)) : 2;
 	REBCNT len = D_REF(4) ? Partial(val, 0, D_ARG(5), 0) : VAL_LEN(val);
-	if (len <= 0) return R_ARG1;
 
-	switch(width) {
-		case 2: {
-			u16 *bp = (u16 *)bin;
-			u16  num;
-			len >>= 1;
-			for (i = 0; i < len; i++) {
-				num = bp[i];
-				bp[i] = (((num & 0x00FF) << 8) |
-				         ((num & 0xFF00) >> 8));
-			}
-			break;
-		}
-		case 4: {
-			u32 *bp = (u32 *)bin;
-			u32  num;
-			len >>= 2;
-			for (i = 0; i < len; i++) {
-				num = bp[i];
-				bp[i] = (((num & 0x000000FF) << 24) |
-				         ((num & 0x0000FF00) <<  8) |
-				         ((num & 0x00FF0000) >>  8) |
-				         ((num & 0xFF000000) >> 24));
-			}
-			break;
-		}
-		case 8: {
-			u64 *bp = (u64 *)bin;
-			u64  num;
-			len >>= 3;
-			for (i = 0; i < len; i++) {
-				num = bp[i];
-				num =  ((num <<  8) & 0xFF00FF00FF00FF00ULL) |
-				       ((num >>  8) & 0x00FF00FF00FF00FFULL);
-				num =  ((num << 16) & 0xFFFF0000FFFF0000ULL) |
-				       ((num >> 16) & 0x0000FFFF0000FFFFULL);
-    			bp[i] = (num << 32) | (num >> 32);
-			}
-			break;
-		}
-		default:
-			Trap1(RE_INVALID_ARG, D_ARG(3));
-	}
-
+	if (len == 0) return R_ARG1;
+	if (!Swap_Endian(VAL_BIN_DATA(val), len, width)) Trap1(RE_INVALID_ARG, D_ARG(3));
 	return R_ARG1;
 }
