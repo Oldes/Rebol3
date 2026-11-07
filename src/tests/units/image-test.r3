@@ -330,6 +330,14 @@ Rebol [
 		--assert img/gray == #{7F}
 		img/rgba: big                       ;; 1M pixels for 1
 		--assert img/rgba == #{7F7F7F7F}
+
+	--test-- "integer gray keeps the alpha"
+		img: make image! [2x1 0.0.0 100]    ;; black, alpha 100
+		img/gray: 50
+		--assert img/rgb   == #{323232323232}
+		--assert img/alpha == #{6464}
+		img/gray: 0
+		--assert img/alpha == #{6464}       ;; was set to 0 before
 ===end-group===
 
 

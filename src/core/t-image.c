@@ -1607,7 +1607,7 @@ REBFLG Get_Image_Source(REBVAL *val, REBYTE **data, REBCNT *len)
 				if (IS_INTEGER(val)) {
 					n = VAL_INT32(val);
 					if (n < 0 || n > 255) return PE_BAD_RANGE;
-					Fill_Line((REBCNT*)src, TO_PIXEL_COLOR(n, n, n, n), len, FALSE);
+					Fill_Line((REBCNT*)src, TO_PIXEL_COLOR(n, n, n, 0xff), len, TRUE); // only RGB, keep alpha
 				}
 				else if (Get_Image_Source(val, &bin, &blen)) {
 					Bin_To_Color(src, bin, MIN(blen, (REBCNT)len), sym);
