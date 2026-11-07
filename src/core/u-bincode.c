@@ -1871,7 +1871,19 @@ static u64 Bincode_Bits_Value(REBCNT cmd, REBINT nbits, REBVAL *arg) {
 						}
 
 						default:
-							Trap1(RE_INVALID_SPEC, value);
+							// registered struct name, e.g.: register point3d!: make struct! [...]
+							if (!Find_Struct_Spec(value)) Trap1(RE_INVALID_SPEC, value);
+							{
+								REBVAL spec[2]; // virtual block: [name] (no initial values)
+								spec[0] = *value;
+								SET_END(&spec[1]);
+								if (!MT_Struct(temp, spec, REB_STRUCT)) Trap1(RE_INVALID_SPEC, value);
+							}
+							if (VAL_STRUCT_PROTECTED(temp)) Trap0(RE_PROTECTED);
+							n = VAL_STRUCT_SIZE(temp);
+							ASSERT_READ_SIZE(value, cp, ep, n);
+							COPY_MEM(VAL_STRUCT_DATA_BIN(temp), cp, n);
+							break;
 					}
 					break;
 				case REB_SET_WORD:

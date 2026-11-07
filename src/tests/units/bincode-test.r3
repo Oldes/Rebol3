@@ -1118,4 +1118,25 @@ is-protected-error?: func[code][
 		--assert error? try [binary/read/into append/dup #{} #{FF} 64 :r :r]
 ===end-group===
 
+
+===start-group=== "bincode - registered struct names"
+	register point3d!: make struct! [x [f32!] y [f32!] z [f32!]]
+	--test-- "read registered struct in block"
+		r: binary/read #{0000803F000000400000404001} [p: point3d! ui8]
+		--assert struct? p
+		--assert all [p/x = 1.0 p/y = 2.0 p/z = 3.0]
+		--assert same? p r/1
+		--assert 1 = r/2
+	--test-- "read registered struct as single word"
+		s: binary/read #{000000000000803F00000000} 'point3d!
+		--assert all [struct? s s/x = 0.0 s/y = 1.0 s/z = 0.0]
+	--test-- "new struct on each read"
+		r: binary/read #{0000803F0000000000000000000000400000000000000000} [point3d! point3d!]
+		--assert not same? r/1 r/2
+		--assert all [r/1/x = 1.0 r/2/x = 2.0]
+	--test-- "errors"
+		--assert error? try [binary/read #{0000803F} [point3d!]]          ;; short data
+		--assert error? try [binary/read #{00} [not-registered-struct!]]  ;; unknown word
+===end-group===
+
 ~~~end-file~~~
