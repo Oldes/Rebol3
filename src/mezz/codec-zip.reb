@@ -9,6 +9,7 @@ REBOL [
 		7-Nov-2026 "Oldes" {
 			* Fixed file name length of non-ASCII names (length in UTF-8 bytes, not chars)
 			* Setting the UTF-8 flag (bit 11) for non-ASCII file names
+			* Invalid data specification is skipped using `exit` (not relying on the caller's loop)
 		}
 		30-Nov-2021 "Oldes" {
 			* Access to comment and extra field of uncompressed data
@@ -199,7 +200,7 @@ register-codec [
 			any [file? file cause-error 'user 'message reduce [reform ["found" type? file "where file! expected"]]]
 			data: date: none
 			compressed-size: size: crc: filename-length: extra-length: comm-length: att-ext: att-int: 0
-			any [
+			unless any [
 				all [
 					block? spec 
 					parse spec [any [
@@ -222,11 +223,9 @@ register-codec [
 				all [string? spec data: to binary! spec]
 				none? spec ; just a directory
 				spec = 'none
-				;else..
-				all [
-					log-error 'ZIP ["Invalid zip file's data specification:" as-red mold/part spec 30]
-					continue
-				]
+			][
+				log-error 'ZIP ["Invalid zip file's data specification:" as-red mold/part spec 30]
+				exit
 			]
 			data: any [data #{}]
 			crc: checksum data 'CRC32

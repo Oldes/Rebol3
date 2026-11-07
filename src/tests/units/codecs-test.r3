@@ -544,6 +544,13 @@ if find codecs 'zip [
 			data: decode 'zip bin
 			--assert %ěščř.txt = data/1
 			--assert #{68656C6C6F} = data/2/2
+
+		--test-- "zip-encode-invalid-spec"
+			--assert not error? try [bin: encode 'zip [%a.txt 42 %b.txt "x"]]
+			data: decode 'zip bin
+			--assert 2 = length? data  ; only %b.txt is stored
+			--assert %b.txt = data/1
+			--assert #{78} = data/2/2
 	===end-group===
 	system/options/log/zip: v
 ]
