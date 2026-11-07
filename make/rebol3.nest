@@ -2298,6 +2298,7 @@ eggs: [
 
 	"Amalgamate extension include file" [
 		name: %rebol-extension.h
+		strip: off
 		do %make/tools/amalgamate-ext.r3
 	]
 	

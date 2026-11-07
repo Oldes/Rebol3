@@ -54,9 +54,9 @@
 #define HAS_BOOL // don't redefine BOOL in objective-c code
 #endif
 
-#if defined (__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
+#if (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L) \
+ || (defined(_MSC_VER) && _MSC_VER >= 1600)
 /* C-code types: use C99 */
-
 #include <stdint.h>
 
 typedef int8_t			i8;
@@ -121,9 +121,9 @@ typedef unsigned long long u64;
 #define I64_C(c) c ## LL
 #define U64_C(c) c ## ULL
 #endif
-#ifdef __LLP64__
-typedef long long		REBIPT;		// integral counterpart of void*
-typedef unsigned long long	REBUPT;		// unsigned counterpart of void*
+#if defined(__LLP64__) || defined(_WIN64)
+typedef long long		    REBIPT; // integral counterpart of void*
+typedef unsigned long long	REBUPT; // unsigned counterpart of void*
 #else
 typedef long			REBIPT;		// integral counterpart of void*
 typedef unsigned long	REBUPT;		// unsigned counterpart of void*
@@ -136,6 +136,10 @@ typedef unsigned long	REBUPT;		// unsigned counterpart of void*
 
 #endif
 /* C-code types */
+
+// REBUPT/REBIPT carry pointers through the extension API (RL_Series...)
+typedef char REBUPT_holds_a_pointer[(sizeof(REBUPT) == sizeof(void*)) ? 1 : -1];
+typedef char REBIPT_holds_a_pointer[(sizeof(REBIPT) == sizeof(void*)) ? 1 : -1];
 
 #define MAX_U32 U32_C(0xffffffff)
 #define MAX_U64 U64_C(0xffffffffffffffff)
