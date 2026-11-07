@@ -640,6 +640,33 @@ if find codecs 'zip [
 			--assert not zid #{504B0102 00000000}
 			--assert not zid to binary! "PKfoo"
 			--assert not zid #{504B}
+
+		--test-- "zip-encode-align-4"
+			bin: encode 'zip [%a.txt [store "hello" align: 4]]
+			;; 30 + 5 (name) + 6 (field) = 41 -> 3 bytes padding -> data at 44
+			--assert #{0900} = copy/part skip bin 28 2                ; local extra length
+			--assert #{35D9 0500 0400 000000} = copy/part skip bin 35 9
+			--assert "hello" = to string! copy/part skip bin 44 5
+			data: decode 'zip bin
+			--assert #{68656C6C6F} = data/2/2
+
+		--test-- "zip-encode-align-page"
+			bin: encode 'zip [%a.txt "x" %lib.so [store "world" align: 4096]]
+			--assert zero? ((index? find bin to binary! "world") - 1) % 4096
+			--assert #{776F726C64} = second select decode 'zip bin %lib.so
+
+		--test-- "zip-encode-align-default"
+			src: reduce [%a.txt [store "a"] %b.txt [store "bb"] %c.txt append/dup copy "" "abc" 1000]
+			bin: encode 'zip src
+			--assert #{0000} = copy/part skip bin 28 2                ; no alignment by default
+			old: system/codecs/zip/align
+			system/codecs/zip/align: 4
+			bin: encode 'zip src
+			system/codecs/zip/align: old
+			--assert zero? ((index? find bin #{61   504B0304}) - 1) % 4 ; "a" data
+			--assert zero? ((index? find bin #{6262 504B0304}) - 1) % 4 ; "bb" data
+			data: decode 'zip bin
+			--assert 3000 = length? data/6/2                           ; deflated, still fine
 	===end-group===
 	system/options/log/zip: v
 ]

@@ -2,7 +2,7 @@ REBOL [
 	title: "Codec: ZIP"
 	name:  zip
 	type:  module
-	version: 0.0.5
+	version: 0.0.6
 	author: "Oldes"
 	specification: https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT
 	;history: [
@@ -17,6 +17,8 @@ REBOL [
 	;		* Root path is removed only as a prefix of the added file name
 	;		* Decoder returns none (not an empty block) when the end of central directory record is missing
 	;		* Stricter identify (checks the full 4-byte signature)
+	;		* Optional alignment of stored files (Android ZIP Alignment Extra Field 0xD935)
+	;		* Encoder is a plain function (no state kept between calls)
 	;	}
 	;	30-Nov-2021 "Oldes" {
 	;		* Access to comment and extra field of uncompressed data
@@ -186,30 +188,33 @@ register-codec [
 		result
 	]
 
-	encode: wrap [
-		bin: dir: data: date: file: add-data: root: none
-		compressed-data: method: att-ext: att-int:
-		compressed-size: size: crc: entries: filename-length: offset: 0
+	encode: func [
+		"Compress given block of files."
+		files [block! file!] "[file! binary! ..] or [file! [date! crc binary!] or [dir! none!] ..]"
+		/local bin dir entries root add-file add-data dir-size bin-size
+	][
+		bin: binary 10000
+		dir: binary 1000
+		entries: 0
 
-		add-file: func[file [file!] /local dir spec][
+		add-file: func[file [file!] /local path spec file-name][
 			try/with [
 				spec: query file [type: date:]
 				either spec [
 					file-name: any [find/match/tail file root file]
 					either spec/type = 'dir [
-						dir: file
 						add-data file-name spec
-						foreach file read dir  [
-							add-file dir/:file
+						foreach f read file [
+							add-file file/:f
 						]
 					][
 						add-data file-name reduce [spec/date read file]
 					]
 				][
 					; wildcard?
-					dir: first split-path file
-					foreach file read file [
-						add-file dir/:file
+					path: first split-path file
+					foreach f read file [
+						add-file path/:f
 					]
 				]
 			][
@@ -217,12 +222,17 @@ register-codec [
 			]
 		]
 
-		add-data: func[file spec /local no-compress? extra extra-length comm comm-length name flags][
+		add-data: func[
+			file spec
+			/local data date compressed-data method compressed-size size crc offset
+			       att-ext att-int no-compress? extra extra-length comm comm-length
+			       name filename-length flags
+			       file-align lfh-extra-length pad-length pad-size padding
+		][
 			if verbose [log-info 'ZIP ["Adding:" as-green file]]
 
 			any [file? file cause-error 'user 'message reduce [reform ["found" type? file "where file! expected"]]]
-			data: date: none
-			compressed-size: size: crc: filename-length: extra-length: comm-length: att-ext: att-int: 0
+			extra-length: comm-length: att-ext: att-int: 0
 			unless any [
 				all [
 					block? spec 
@@ -239,6 +249,7 @@ register-codec [
 						)
 						| quote att-int: set att-int integer!
 						| quote att-ext: set att-ext integer!
+						| quote align:   set file-align integer!
 						| 1 skip
 					]]
 				]
@@ -278,6 +289,19 @@ register-codec [
 			flags: either filename-length = length? file [0][2048]
 			offset: indexZ? bin/buffer-write
 
+			;; optional alignment of stored data (required for some files in Android APKs)
+			;; using the Android ZIP Alignment Extra Field (0xD935) in the local header only
+			lfh-extra-length: 0
+			file-align: any [file-align align]
+			if all [method = 0 file-align > 1][
+				;; data start = offset + local header (30) + name + alignment field (min 6)
+				pad-length: offset + 36 + filename-length
+				pad-length: (file-align - (pad-length % file-align)) % file-align
+				pad-size: 2 + pad-length ; alignment value + padding
+				padding: append/dup make binary! pad-length 0 pad-length
+				lfh-extra-length: 6 + pad-length
+			]
+
 			unless extra [extra: #{}]
 			unless comm  [comm:  #{}]
 
@@ -290,8 +314,18 @@ register-codec [
 				UI32LE         :compressed-size
 				UI32LE         :size
 				UI16LE         :filename-length
-				UI16LE         0 ; extra
+				UI16LE         :lfh-extra-length
 				BYTES          :name
+			]
+			if padding [
+				binary/write bin [
+					UI16LE         0#D935        ; Android ZIP Alignment Extra Field
+					UI16LE         :pad-size
+					UI16LE         :file-align
+					BYTES          :padding
+				]
+			]
+			binary/write bin [
 				BYTES          :compressed-data
 			]
 			binary/write dir [
@@ -317,40 +351,31 @@ register-codec [
 		]
 
 		;- ENCODE:
-		func [
-			"Compress given block of files."
-			files [block! file!] "[file! binary! ..] or [file! [date! crc binary!] or [dir! none!] ..]"
+		either file? files [
+			root: first split-path files
+			add-file files
 		][
-			bin: binary 10000
-			dir: binary 1000
-			entries: 0
-
-			either file? files [
-				root: first split-path files
-				add-file files
-			][
-				foreach [file spec] files [
-					add-data file spec
-				]
+			foreach [file spec] files [
+				add-data file spec
 			]
-
-			dir-size: length? dir/buffer
-			bin-size: length? bin/buffer
-
-			binary/write bin [
-				BYTES :dir/buffer
-				#{504B0506}      ; End of central directory signature
-				UI16LE 0         ; Number of this disk
-				UI16LE 0         ; Disk where central directory starts
-				UI16LE :entries  ; Number of central directory records on this disk
-				UI16LE :entries  ; Total number of central directory records
-				UI32LE :dir-size ; Size of central directory
-				UI32LE :bin-size ; Offset of start of central directory
-				UI16LE 0         ; Comment length
-				;#{}             ; Comment
-			]
-			bin/buffer
 		]
+
+		dir-size: length? dir/buffer
+		bin-size: length? bin/buffer
+
+		binary/write bin [
+			BYTES :dir/buffer
+			#{504B0506}      ; End of central directory signature
+			UI16LE 0         ; Number of this disk
+			UI16LE 0         ; Disk where central directory starts
+			UI16LE :entries  ; Number of central directory records on this disk
+			UI16LE :entries  ; Total number of central directory records
+			UI32LE :dir-size ; Size of central directory
+			UI32LE :bin-size ; Offset of start of central directory
+			UI16LE 0         ; Comment length
+			;#{}             ; Comment
+		]
+		bin/buffer
 	]
 
 	identify: function [data [binary!]][
@@ -483,4 +508,5 @@ register-codec [
 	validate-crc?: true
 	verbose: true
 	level: 9
+	align: 0 ; default alignment of stored (uncompressed) files; 0 = no alignment
 ]
