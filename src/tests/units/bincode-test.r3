@@ -88,8 +88,8 @@ is-protected-error?: func[code][
 		--assert -2147483648 = binary/read #{80000000} 'si32be
 		--assert -2147483648 = binary/read #{00000080} 'si32le
 		--assert -1          = binary/read #{FFFFFFFF} 'si32
-		--assert 32768.0     = binary/read #{00000080} 'fixed16
-		--assert 65535.0     = binary/read #{0000FFFF} 'fixed16
+		--assert -32768.0    = binary/read #{00000080} 'fixed16
+		--assert -1.0        = binary/read #{0000FFFF} 'fixed16
 		;; reading floats from unaligned positions
 		--assert [0 1.5] = binary/read #{000000C03F} [ui8 f32]
 		--assert [0 1.5] = binary/read #{003FC00000} [ui8 f32be]

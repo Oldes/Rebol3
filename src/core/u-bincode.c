@@ -1893,19 +1893,14 @@ static void Bincode_Check_Bitset(REBVAL *v, REBCNT n) {
 						case SYM_FIXED8:
 							n = 2;
 							ASSERT_READ_SIZE(value, cp, ep, n);
-							i = ((i32)cp[0] << 0)  |
-								((i32)cp[1] << 8)  ;
-							SET_DECIMAL(temp, (float)i / 256.0f);
+							// signed 8.8 (`i` is unsigned, so the value is converted directly)
+							SET_DECIMAL(temp, (REBDEC)(i16)((u16)cp[0] | ((u16)cp[1] << 8)) / 256.0);
 							break;
 						case SYM_FIXED16:
 							n = 4;
 							ASSERT_READ_SIZE(value, cp, ep, n);
-							i = (i32)((u32)cp[0] << 0)  |
-								     ((u32)cp[1] << 8)  |
-								     ((u32)cp[2] << 16) |
-								     ((u32)cp[3] << 24) ;
-							VAL_SET(temp, REB_DECIMAL);
-							VAL_DECIMAL(temp) = ((float)i / 65536.0f);
+							// signed 16.16 (`i` is unsigned, so the value is converted directly)
+							SET_DECIMAL(temp, (REBDEC)(i32)((u32)cp[0] | ((u32)cp[1] << 8) | ((u32)cp[2] << 16) | ((u32)cp[3] << 24)) / 65536.0);
 							break;
 						case SYM_MSDOS_DATETIME:
 							n = 4;
