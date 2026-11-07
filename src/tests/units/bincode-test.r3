@@ -1205,5 +1205,28 @@ is-protected-error?: func[code][
 		--assert error? try [swap-endian/width #{0001} 1]
 ===end-group===
 
+
+===start-group=== "bincode - char! in 32/64-bit writes"
+	--test-- "char from a reused stack slot"
+		;; SET_CHAR sets only 32 bits of the value data, so the upper bytes may
+		;; hold a previous value (here the integer evaluated just before)
+		c: do [0#7FFFFFFF00000000 first "A"]
+		bin: binary 32
+		binary/write bin [ui64 :c ui64le :c si64 :c]
+		--assert #{0000000000000041 4100000000000000 0000000000000041} = binary/read bin 'bytes
+	--test-- "big endian"
+		bin: binary 32
+		binary/write bin [ui32 #"A" ui64 #"€" si32 #"B" si64 #"C"]
+		--assert #{00000041 00000000000020AC 00000042 0000000000000043} = binary/read bin 'bytes
+	--test-- "little endian"
+		bin: binary 32
+		binary/write bin [ui32le #"A" ui64le #"€" si32le #"B" si64le #"C"]
+		--assert #{41000000 AC20000000000000 42000000 4300000000000000} = binary/read bin 'bytes
+	--test-- "max char"
+		bin: binary 8
+		binary/write bin [ui32 #"^(10FFFF)"]
+		--assert #{0010FFFF} = binary/read bin 'bytes
+===end-group===
+
 ~~~end-file~~~
 

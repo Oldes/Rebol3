@@ -155,7 +155,7 @@ static REBI64 Bincode_Int_Arg(REBVAL *v) {
 }
 #define ASSERT_UI_RANGE(v, n) if (Bincode_Int_Arg(v) < -(REBI64)(n) || Bincode_Int_Arg(v) > (REBI64)(n)) Trap1(RE_OUT_OF_RANGE, v); // negative allowed (two's complement), like ASSERT_U32_RANGE
 #define ASSERT_UIBYTES_RANGE(v, n) if (VAL_LEN(v) > n) Trap1(RE_OUT_OF_RANGE, v);
-#define ASSERT_U32_RANGE(v) if((i64)VAL_UNT64(v) > (i64)0xFFFFFFFFLL || (i64)VAL_UNT64(v) < (i64)0xFFFFFFFF00000001LL)  Trap1(RE_OUT_OF_RANGE, v);
+#define ASSERT_U32_RANGE(v) if (Bincode_Int_Arg(v) > (REBI64)0xFFFFFFFFLL || Bincode_Int_Arg(v) < -(REBI64)0xFFFFFFFFLL) Trap1(RE_OUT_OF_RANGE, v);
 #define ASSERT_READ_SIZE(v, p, e, n) if((p + n) > e) Trap1(RE_OUT_OF_RANGE, v);
 #define ASSERT_INDEX_RANGE(v, p, e) if(i < 0 || i > VAL_TAIL(v)) Trap1(RE_OUT_OF_RANGE, e);
 
@@ -409,6 +409,7 @@ static void Bincode_Swap_Endian(REBYTE *p, REBCNT len, REBCNT wide) { if (wide >
 	//printf("bincode buffer rest: %i tail: %i index: %i\n", SERIES_REST(bin), bin->tail, VAL_INDEX(buffer_write));
 
 	REBOOL as_block;
+	REBVAL char_arg; // char! argument converted to integer! (only 32 bits of a char's value data are valid)
 	REBCNT outBit = 0, pb = 0; // write bit mask / bits already written in current byte
 
 	if(ref_write) {
@@ -841,6 +842,7 @@ static void Bincode_Swap_Endian(REBYTE *p, REBCNT len, REBCNT wide) { if (wide >
 					}
 					cmd = VAL_WORD_CANON(data);
 					if (outBit && !IS_BINCODE_BIT_CMD(cmd)) { outBit = 0; cp++; VAL_INDEX(buffer_write)++; } // byte commands start at byte boundary
+					if (IS_CHAR(next)) { SET_INTEGER(&char_arg, VAL_CHAR(next)); next = &char_arg; } // integer commands copy bytes of the 64-bit value
 					switch (cmd) {
 					case SYM_UI8:
 						ASSERT_UI_RANGE(next, 0xFF);
