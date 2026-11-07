@@ -624,6 +624,14 @@ if find codecs 'zip [
 				delete %zip-test./a.txt
 				delete %zip-test./
 			]
+
+		--test-- "zip-decode-invalid-data"
+			unzip: :system/codecs/zip/decode
+			--assert none? unzip #{0102030405}
+			--assert all [error? err: try [decode 'zip #{0102030405}] err/id = 'no-codec]
+
+		--test-- "zip-decode-empty-archive"
+			--assert [] = decode 'zip encode 'zip []
 	===end-group===
 	system/options/log/zip: v
 ]

@@ -15,6 +15,7 @@ REBOL [
 			* Fixed LZMA input length (compressed size includes the 4-byte header)
 			* Local header CRC read as unsigned (as in the central directory)
 			* Root path is removed only as a prefix of the added file name
+			* Decoder returns none (not an empty block) when the end of central directory record is missing
 		}
 		30-Nov-2021 "Oldes" {
 			* Access to comment and extra field of uncompressed data
@@ -43,7 +44,7 @@ register-codec [
 		/only     "Extract only specified files if found in the achive"
 			files [block!] "Block with file names to extract"
 		/info              "Does not decode data. Instead of data there is reported uncompressed size."
-		return:   [block!] "Result is in format: [NAME [MODIFIED CRC DATA] ...]"
+		return:   [block! none!] "Result is in format: [NAME [MODIFIED DATA CRC] ...] or none if data are not supported"
 	] [
 		unless binary? zip-data [ zip-data: read zip-data ]
 		if verbose [
@@ -55,7 +56,10 @@ register-codec [
 
 		;-[ reading central directory end record ]-
 		; it must be present in each zip file
-		unless pos: find/last/tail bin/buffer #{504B0506} [	return copy [] ]
+		unless pos: find/last/tail bin/buffer #{504B0506} [
+			log-error 'ZIP "End of central directory record not found!"
+			return none
+		]
 
 		bin/buffer: pos
 		if verbose [ log-trace 'ZIP "End of central directory record" ]
