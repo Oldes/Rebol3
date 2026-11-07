@@ -1228,5 +1228,24 @@ is-protected-error?: func[code][
 		--assert #{0010FFFF} = binary/read bin 'bytes
 ===end-group===
 
+
+===start-group=== "bincode - write UTF-8 strings"
+	--test-- "raw string value"
+		bin: binary 16
+		binary/write bin ["ž€a"]
+		--assert #{C5BE E282AC 61} = binary/read bin 'bytes
+	--test-- "string at non-ASCII offset"
+		bin: binary 16
+		binary/write bin reduce [next "ž€a"]
+		--assert #{E282AC 61} = binary/read bin 'bytes
+	--test-- "string command and roundtrip"
+		bin: binary 16
+		binary/write bin compose [string (next "ž€a") ui16bytes "€"]
+		--assert #{E282AC 61 00 0003 E282AC} = binary/read bin 'bytes
+		bin: binary 16
+		binary/write bin [string "ž€a"]
+		--assert "ž€a" = binary/read bin 'string
+===end-group===
+
 ~~~end-file~~~
 
