@@ -366,6 +366,34 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 
 /***********************************************************************
 **
+*/	static int Bincode_Mold(REBHOB *hob, REBSER *str)
+/*
+**		Molds the handle's info, like: 0#55d0c8a1b2e0 r: 3 w: 5 len: 16
+**		The pointer identifies the context in logs (stable for its lifetime).
+**		Bit masks are included only when not zero.
+**
+***********************************************************************/
+{
+	BINCODE_CTX *bc;
+	char buf[128];
+
+	if (!str || !hob || !(bc = (BINCODE_CTX*)hob->data)) return 0;
+
+	SERIES_TAIL(str) = 0;
+	// unsigned long long, because long is only 32-bit on 64-bit Windows
+	snprintf(buf, sizeof(buf), "0#%llx r: %u w: %u len: %u",
+		(unsigned long long)(REBUPT)hob->data, bc->r_index, bc->w_index,
+		hob->series ? SERIES_TAIL(hob->series) : 0);
+	Append_Bytes(str, buf);
+	if (bc->r_mask || bc->w_mask) {
+		snprintf(buf, sizeof(buf), " r-mask: %u w-mask: %u", bc->r_mask, bc->w_mask);
+		Append_Bytes(str, buf);
+	}
+	return (int)SERIES_TAIL(str);
+}
+
+/***********************************************************************
+**
 */	void Init_Bincode(void)
 /*
 **		Registers the BINCODE handle type.
@@ -377,6 +405,7 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 	spec.size     = sizeof(BINCODE_CTX);
 	spec.get_path = Bincode_Get_Path;
 	spec.set_path = Bincode_Set_Path;
+	spec.mold     = Bincode_Mold;
 	Register_Handle_Spec(SYM_BINCODE, &spec);
 }
 

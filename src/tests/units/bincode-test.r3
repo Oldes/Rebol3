@@ -1609,5 +1609,27 @@ is-protected-error?: func[code][
 		--assert #{A0 010203} = binary/read bin 'bytes
 ===end-group===
 
+
+===start-group=== "BinCode - mold"
+	--test-- "mold shows positions"
+		b: binary 16
+		binary/write b #{01020304}
+		binary/read b 'ui8
+		m: mold b
+		--assert did find m "bincode"
+		--assert did find m "0#"
+		--assert did find m "r: 1 w: 4 len: 4"
+		--assert not find m "mask"
+	--test-- "mold shows bit masks when used"
+		binary/read b [ub 4]
+		--assert did find mold b "r: 1 w: 4 len: 4 r-mask: 8 w-mask: 0"
+	--test-- "pointer identifies the context"
+		b2: binary 16
+		p1: find/tail mold b "0#"
+		p2: find/tail mold b2 "0#"
+		--assert (copy/part p1 find p1 " ") <> (copy/part p2 find p2 " ")
+		--assert (mold b) = mold b
+===end-group===
+
 ~~~end-file~~~
 
