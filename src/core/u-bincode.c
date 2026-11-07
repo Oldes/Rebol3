@@ -24,14 +24,13 @@
 **  Summary: binary data encoder/decoder
 **  Section: utility
 **  Author:  Oldes
-**  Version: 0.1.0
+**  Version: 1.0.0
 **  History: 15-10-2018 Initial release with limited set of functionality
-**
-**  NOTE:    WORK in PROGRESS! Use with care!
+**           07-11-2026 Context is a `bincode` handle; read/write symmetry; many fixes
 **
 ***********************************************************************/
 /*
-	General idea of usage (does not have to be exact yet or may change):
+	Usage:
 
 	bin: binary 256 ;creates ctx of size 256 bytes
 	;or
@@ -51,9 +50,9 @@
 
 	binary/read b 'ui8    ; to read just single byte as integer
 
-	binary/clear bin      ; clear buffers, preallocated space is still available
-	binary/free bin       ; to release internal resources
+	binary/init bin none  ; clears buffers, preallocated space is still available
 
+	;; NOTE: not implemented, just an idea...
 	;- using port?
 	bin: open binary://
 	write bin [UI16 6523 STRING "Hello"]
