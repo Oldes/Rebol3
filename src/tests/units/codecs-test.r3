@@ -602,6 +602,28 @@ if find codecs 'zip [
 			data: unzip/validate bin
 			--assert 3904355907 = data/2/3    ; 0#E8B7BE43
 			--assert #{61} = data/2/2
+
+		--test-- "zip-encode-directory"
+			make-dir/deep %zip-test/sub/
+			write %zip-test/sub/a.txt "a"
+			data: decode 'zip encode 'zip %zip-test/
+			--assert %zip-test/ = data/1
+			--assert %zip-test/sub/ = data/3
+			--assert %zip-test/sub/a.txt = data/5
+			delete %zip-test/sub/a.txt
+			delete %zip-test/sub/
+			delete %zip-test/
+
+		--test-- "zip-encode-root-prefix-only"
+			;; directory names with a trailing dot are not allowed on Windows
+			if system/platform != 'Windows [
+				make-dir %zip-test./
+				write %zip-test./a.txt "a"
+				data: decode 'zip encode 'zip %zip-test./
+				--assert %zip-test./a.txt = data/3   ; not %a.txt
+				delete %zip-test./a.txt
+				delete %zip-test./
+			]
 	===end-group===
 	system/options/log/zip: v
 ]

@@ -14,6 +14,7 @@ REBOL [
 			* Using the `level` setting for deflate compression
 			* Fixed LZMA input length (compressed size includes the 4-byte header)
 			* Local header CRC read as unsigned (as in the central directory)
+			* Root path is removed only as a prefix of the added file name
 		}
 		30-Nov-2021 "Oldes" {
 			* Access to comment and extra field of uncompressed data
@@ -189,7 +190,7 @@ register-codec [
 			try/with [
 				spec: query file [type: date:]
 				either spec [
-					file-name: any [find/tail file root file]
+					file-name: any [find/match/tail file root file]
 					either spec/type = 'dir [
 						dir: file
 						add-data file-name spec
