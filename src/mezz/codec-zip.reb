@@ -16,6 +16,7 @@ REBOL [
 			* Local header CRC read as unsigned (as in the central directory)
 			* Root path is removed only as a prefix of the added file name
 			* Decoder returns none (not an empty block) when the end of central directory record is missing
+			* Stricter identify (checks the full 4-byte signature)
 		}
 		30-Nov-2021 "Oldes" {
 			* Access to comment and extra field of uncompressed data
@@ -353,10 +354,11 @@ register-codec [
 	]
 
 	identify: function [data [binary!]][
-		all [
-			4 < length? data
-			#"P" = data/1
-			#"K" = data/2
+		parse data [
+			#"P" #"K" [
+				  #"^(03)" #"^(04)" ; local file header
+				| #"^(05)" #"^(06)" ; end of central directory (empty archive)
+			] to end
 		]
 	]
 

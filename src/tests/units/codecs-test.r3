@@ -632,6 +632,14 @@ if find codecs 'zip [
 
 		--test-- "zip-decode-empty-archive"
 			--assert [] = decode 'zip encode 'zip []
+
+		--test-- "zip-identify"
+			zid: :system/codecs/zip/identify
+			--assert zid encode 'zip [%a.txt "a"]
+			--assert zid encode 'zip []
+			--assert not zid #{504B0102 00000000}
+			--assert not zid to binary! "PKfoo"
+			--assert not zid #{504B}
 	===end-group===
 	system/options/log/zip: v
 ]
