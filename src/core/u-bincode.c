@@ -264,6 +264,13 @@ static void Bincode_Swap_Endian(REBYTE *p, REBCNT len, REBCNT wide) { if (wide >
 #define VECTOR_DATA_AT(v) SERIES_SKIP(VAL_SERIES(v), VAL_INDEX(v))
 #define VECTOR_BYTES(v)   ((REBU64)VAL_LEN(v) * SERIES_WIDE(VAL_SERIES(v)))
 
+// Number of bytes of a DER length (definite form, minimal encoding, max 4 length bytes)
+static REBCNT Der_Length_Size(u64 v) {
+	REBCNT n = 1;
+	if (v < 128) return 1; // short form
+	while (v > 0xFF) { v >>= 8; n++; }
+	return n + 1;         // long form: 0x80|n followed by n bytes
+}
 #define BITSET_CMD_BYTES(c) ((c) == SYM_BITSET8 ? 1 : (c) == SYM_BITSET16 ? 2 : 4)
 // Validates that a bitset fits into `n` bytes (no bits set above them, not negated)
 static void Bincode_Check_Bitset(REBVAL *v, REBCNT n) {
@@ -817,6 +824,12 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 						}
 						goto error;
 
+					case SYM_LENGTH:
+						if (!IS_INTEGER(next)) goto error;
+						// DER length (as read): 0 .. 0xFFFFFFFF
+						if (VAL_INT64(next) < 0 || VAL_INT64(next) > (REBI64)0xFFFFFFFFLL) Trap1(RE_OUT_OF_RANGE, next);
+						count += Der_Length_Size(VAL_UNT64(next));
+						continue;
 					case SYM_FIXED8:
 					case SYM_FIXED16:
 						if (!(IS_INTEGER(next) || IS_DECIMAL(next))) goto error;
@@ -1260,6 +1273,16 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 						n = 4;
 						break;
 
+					case SYM_LENGTH:
+						// DER length, validated in the size pass
+						u = VAL_UNT64(next);
+						n = Der_Length_Size(u);
+						if (n == 1) cp[0] = (REBYTE)u;
+						else {
+							cp[0] = (REBYTE)(0x80 | (n - 1));
+							for (j = (REBINT)n - 1; j > 0; j--) { cp[j] = (REBYTE)u; u >>= 8; }
+						}
+						break;
 					case SYM_FIXED8:
 					case SYM_FIXED16:
 						// little endian (as read), validated in the size pass

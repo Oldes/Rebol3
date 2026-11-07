@@ -1486,5 +1486,30 @@ is-protected-error?: func[code][
 		--assert [5.9604644775390625e-8 -0.333251953125 65504.0] = binary/read bin [f16 f16be f16]
 ===end-group===
 
+
+===start-group=== "bincode - write length (DER)"
+	--test-- "short and long form"
+		bin: binary 32
+		binary/write bin [length 0 length 127 length 128 length 255 length 256 length 65536 length 4294967295]
+		--assert #{00 7F 8180 81FF 820100 83010000 84FFFFFFFF} = binary/read bin 'bytes
+	--test-- "roundtrip"
+		bin: binary 32
+		binary/write bin [length 5 length 300 length 70000 ui8 1]
+		--assert [5 300 70000 1] = binary/read bin [length length length ui8]
+	--test-- "typical TLV"
+		bin: binary 300
+		data: append/dup #{} #{AA} 200
+		binary/write bin [ui8 4 length 200 :data]
+		--assert [4 200] = binary/read bin [ui8 length]
+		--assert data = binary/read bin 200
+	--test-- "errors"
+		--assert error? try [binary/write binary 8 [length -1]]
+		--assert error? try [binary/write binary 8 [length 4294967296]]
+		--assert error? try [binary/write binary 8 [length "1"]]
+		bin: binary 8
+		try [binary/write bin [ui8 1 length -1]]
+		--assert 0 = binary/read bin 'length?
+===end-group===
+
 ~~~end-file~~~
 
