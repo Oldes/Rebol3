@@ -106,6 +106,11 @@ is-protected-error?: func[code][
 		b: binary 16
 		--assert [1 2] = binary/write/read b #{0102} [ui8 ui8]
 		--assert 3 = binary/write/read b #{03} 'ui8
+	--test-- "write/read 'bytes returns the written data"
+		--assert #{0000000201020000000103} = binary/write/read 32 [
+			UI32BYTES #{0102}
+			UI32BYTES #{03}
+		] 'bytes
 	--test-- "write into user's binary at position"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2637
 	bin: #{010203} binary/write at bin 2 [ui8 255]
