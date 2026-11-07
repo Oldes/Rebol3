@@ -1081,7 +1081,7 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 							ushort = 0x7e00;
 						} else {
 							// based on: https://stackoverflow.com/a/15118210/494472
-							ulong = *((u32*)&d32);
+							memcpy(&ulong, &d32, 4); // float bits (no pointer cast aliasing)
 							u32 t1 = (ulong & 0x7fffffff) >> 13;   // Non-sign bits; Align mantissa on MSB
 							u32 t2 = (ulong & 0x80000000) >> 16;   // Sign bit; Shift sign bit into position
 							u32 t3 =  ulong & 0x7f800000;          // Exponent
@@ -1870,7 +1870,7 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 							buf[6] = cp[1];
 							buf[7] = cp[0];
 							memcpy(&dbl, buf, 8);
-							SET_DECIMAL(temp, ((double *)buf)[0]);
+							SET_DECIMAL(temp, dbl);
 							break;
 						case SYM_FIXED8:
 							n = 2;

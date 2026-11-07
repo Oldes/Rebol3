@@ -1382,5 +1382,19 @@ is-protected-error?: func[code][
 		--assert error? try [binary/read #{21} 'msdos-date]
 ===end-group===
 
+
+===start-group=== "bincode - float encodings"
+	--test-- "f64be / f64le"
+		bin: binary 32
+		binary/write bin [f64be 1.5 f64le -2.25]
+		--assert #{3FF8000000000000 00000000000002C0} = binary/read bin 'bytes
+		--assert [1.5 -2.25] = binary/read #{3FF8000000000000 00000000000002C0} [f64be f64le]
+	--test-- "f16"
+		bin: binary 8
+		binary/write bin [f16 1.0 f16be -2.0 f16 65504.0]
+		--assert #{003C C000 FF7B} = binary/read bin 'bytes
+		--assert [1.0 -2.0 65504.0] = binary/read #{003C C000 FF7B} [f16 f16be f16]
+===end-group===
+
 ~~~end-file~~~
 
