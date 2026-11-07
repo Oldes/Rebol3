@@ -5,31 +5,31 @@ REBOL [
 	version: 0.0.5
 	author: "Oldes"
 	specification: https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT
-	history: [
-		7-Nov-2026 "Oldes" {
-			* Fixed file name length of non-ASCII names (length in UTF-8 bytes, not chars)
-			* Setting the UTF-8 flag (bit 11) for non-ASCII file names
-			* Invalid data specification is skipped using `exit` (not relying on the caller's loop)
-			* Decoder skips encrypted and ZIP64 entries (with an error log) and refuses ZIP64 archives
-			* Using the `level` setting for deflate compression
-			* Fixed LZMA input length (compressed size includes the 4-byte header)
-			* Local header CRC read as unsigned (as in the central directory)
-			* Root path is removed only as a prefix of the added file name
-			* Decoder returns none (not an empty block) when the end of central directory record is missing
-			* Stricter identify (checks the full 4-byte signature)
-		}
-		30-Nov-2021 "Oldes" {
-			* Access to comment and extra field of uncompressed data
-			* Added support to include file comments, extras or insternal and external attributes
-			* Added support to include uncompressed data (useful when making APK targeting version 30 and above)
-		}
-		24-Oct-2019 "Oldes" {
-			* Refactored decoder so it is using central directory structure
-			* Added decode/info refinement used to resolve just the info about files without decompressing
-			* Added access to decompress-file function which may be used to decompress single file using info from the info records
-			* Added basic extra field data decoder
-		}
-		15-Mar-2019 "Oldes" {Initial version of the ZIP decoder}]
+	;history: [
+	;	7-Nov-2026 "Oldes" {
+	;		* Fixed file name length of non-ASCII names (length in UTF-8 bytes, not chars)
+	;		* Setting the UTF-8 flag (bit 11) for non-ASCII file names
+	;		* Invalid data specification is skipped using `exit` (not relying on the caller's loop)
+	;		* Decoder skips encrypted and ZIP64 entries (with an error log) and refuses ZIP64 archives
+	;		* Using the `level` setting for deflate compression
+	;		* Fixed LZMA input length (compressed size includes the 4-byte header)
+	;		* Local header CRC read as unsigned (as in the central directory)
+	;		* Root path is removed only as a prefix of the added file name
+	;		* Decoder returns none (not an empty block) when the end of central directory record is missing
+	;		* Stricter identify (checks the full 4-byte signature)
+	;	}
+	;	30-Nov-2021 "Oldes" {
+	;		* Access to comment and extra field of uncompressed data
+	;		* Added support to include file comments, extras or internal and external attributes
+	;		* Added support to include uncompressed data (useful when making APK targeting version 30 and above)
+	;	}
+	;	24-Oct-2019 "Oldes" {
+	;		* Refactored decoder so it is using central directory structure
+	;		* Added decode/info refinement used to resolve just the info about files without decompressing
+	;		* Added access to decompress-file function which may be used to decompress single file using info from the info records
+	;		* Added basic extra field data decoder
+	;	}
+	;	15-Mar-2019 "Oldes" {Initial version of the ZIP decoder}]
 ]
 
 register-codec [
