@@ -551,6 +551,28 @@ if find codecs 'zip [
 			--assert 2 = length? data  ; only %b.txt is stored
 			--assert %b.txt = data/1
 			--assert #{78} = data/2/2
+
+		--test-- "zip-decode-skip-encrypted"
+			bin: encode 'zip [%a.txt "hello" %b.txt "x"]
+			p: find bin #{504B0102}           ; first central record (%a.txt)
+			change skip p 8 #{0100}           ; set encryption flag
+			data: decode 'zip bin
+			--assert 2 = length? data
+			--assert %b.txt = data/1
+
+		--test-- "zip-decode-skip-zip64-entry"
+			bin: encode 'zip [%a.txt "hello" %b.txt "x"]
+			p: find bin #{504B0102}
+			change skip p 24 #{FFFFFFFF}      ; uncompressed size
+			data: decode 'zip bin
+			--assert 2 = length? data
+			--assert %b.txt = data/1
+
+		--test-- "zip-decode-zip64-archive"
+			bin: encode 'zip [%a.txt "hello"]
+			p: find/last bin #{504B0506}
+			change skip p 16 #{FFFFFFFF}      ; central directory offset
+			--assert all [error? err: try [decode 'zip bin] err/id = 'no-codec]
 	===end-group===
 	system/options/log/zip: v
 ]

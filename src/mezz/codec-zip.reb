@@ -10,6 +10,7 @@ REBOL [
 			* Fixed file name length of non-ASCII names (length in UTF-8 bytes, not chars)
 			* Setting the UTF-8 flag (bit 11) for non-ASCII file names
 			* Invalid data specification is skipped using `exit` (not relying on the caller's loop)
+			* Decoder skips encrypted and ZIP64 entries (with an error log) and refuses ZIP64 archives
 		}
 		30-Nov-2021 "Oldes" {
 			* Access to comment and extra field of uncompressed data
@@ -77,6 +78,10 @@ register-codec [
 			log-error 'ZIP "Splitted zip files not supported!"
 			return none
 		] 
+		if any [data/5 = 4294967295 pos = 4294967295][
+			log-error 'ZIP "ZIP64 archives not supported!"
+			return none
+		]
 
 		result: make block! 2 * data/4
 
@@ -89,7 +94,7 @@ register-codec [
 			cheader: binary/read bin [
 				          UI16LE         ; version made by
 				          UI16LE         ; version needed to extract
-				flags:    BITSET16       ; general purpose bit flag
+				flags:    UI16LE         ; general purpose bit flag
 				method:   UI16LE         ; compression method
 				modified: MSDOS-DATETIME ; last modified
 				crc:      UI32LE         ; crc-32
@@ -116,7 +121,18 @@ register-codec [
 				if verbose [ log-debug 'ZIP ["Not extracting: ^[[33m" name] ]
 				continue
 			]
-
+			if 1 = (flags and 1) [
+				log-error 'ZIP ["Encrypted files not supported:^[[33m" name]
+				continue
+			]
+			if any [
+				cmp-size = 4294967295
+				unc-size = 4294967295
+				offset   = 4294967295
+			][
+				log-error 'ZIP ["ZIP64 files not supported:^[[33m" name]
+				continue
+			]
 
 			either info [
 				repend result [name reduce [modified offset cmp-size unc-size method crc extr comm]]
