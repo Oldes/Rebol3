@@ -1396,5 +1396,28 @@ is-protected-error?: func[code][
 		--assert [1.0 -2.0 65504.0] = binary/read #{003C C000 FF7B} [f16 f16be f16]
 ===end-group===
 
+
+===start-group=== "bincode - /init"
+	--test-- "init from part of own buffer (overlap)"
+		b: binary #{01020304 05060708}
+		binary/init b skip b/buffer 2
+		--assert #{030405060708} = binary/read b 'bytes
+		b: binary #{01020304 05060708}
+		binary/read b 'ui16
+		binary/init b b/buffer          ;; buffer at its current index
+		--assert #{030405060708} = binary/read b 'bytes
+	--test-- "init with integer"
+		b: binary #{0102}
+		binary/init b 1024
+		--assert 0 = binary/read b 'length?
+		binary/write b append/dup #{} #{FF} 1024
+		--assert 1024 = binary/read b 'length?
+	--test-- "init resets bit position"
+		b: binary 8
+		binary/write b [ub 3 5]
+		binary/init b #{A5}
+		--assert [10 5] = binary/read b [ub 4 ub 4]
+===end-group===
+
 ~~~end-file~~~
 

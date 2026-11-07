@@ -347,11 +347,11 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 				case REB_BINARY:
 					n = VAL_TAIL(val_spec) - VAL_INDEX(val_spec);
 					//Dump_Series(bin, "BIN1:");
-					if (n > SERIES_REST(bin)) {
-
-						Expand_Series(bin, AT_TAIL, n - SERIES_TAIL(bin) );
+					if (n >= SERIES_REST(bin)) { // keep space for the terminator
+						Expand_Series(bin, AT_TAIL, n - SERIES_TAIL(bin));
 					}
-					memcpy(BIN_DATA(bin), VAL_DATA(val_spec), n);
+					// the spec may be a part of the context's own buffer, so the data may overlap!
+					memmove(BIN_DATA(bin), VAL_DATA(val_spec), n);
 					VAL_TAIL(buffer_write) = VAL_TAIL(buffer_read) = n;
 					//Dump_Series(bin, "BIN2:");
 					break;
@@ -359,8 +359,8 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 					//printf("resize from %i, needs %i\n", SERIES_REST(bin), VAL_INT32(val_spec));
 					if (VAL_INT64(val_spec) < 0 || VAL_UNT64(val_spec) >= MAX_U32)
 						Trap1(RE_INVALID_ARG, val_spec);
-					if (VAL_UNT32(val_spec) > SERIES_REST(bin)){
-						Expand_Series(bin, AT_TAIL, VAL_INT32(val_spec) - SERIES_TAIL(bin) - 1 );
+					if (VAL_UNT32(val_spec) >= SERIES_REST(bin)) { // keep space for the terminator
+						Expand_Series(bin, AT_TAIL, VAL_INT32(val_spec) - SERIES_TAIL(bin));
 					}
 					//printf("resiz? new: %i\n", SERIES_REST(bin));
 					VAL_TAIL(buffer_write) = VAL_TAIL(buffer_read) = 0;
@@ -452,7 +452,7 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 			}
 			tail_new = index + len; //bytes needed to write
 			//printf("index: %i tail: %i len: %i tail_new: %i rest: %i\n", index, tail, len, tail_new, SERIES_REST(bin));
-			if(tail_new > SERIES_REST(bin)) {
+			if (tail_new >= SERIES_REST(bin)) { // keep space for the terminator
 				//printf("expanding by delta: %i\n", tail_new - SERIES_TAIL(bin));
 				Expand_Series(bin, AT_TAIL, tail_new - SERIES_TAIL(bin));
 				//Dump_Series(bin, "BIN");
@@ -810,7 +810,7 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 			tail_new = count + (pb ? 1 : 0); //bytes needed to write (incl. partially written byte)
 			n = SERIES_TAIL(bin); // old tail
 			//printf("index: %i tail: %i count: %i tail_new: %i rest: %i\n", index, tail, count, tail_new, SERIES_REST(bin));
-			if (tail_new > SERIES_REST(bin)) {
+			if (tail_new >= SERIES_REST(bin)) { // keep space for the terminator
 				//puts("expanding");
 				Expand_Series(bin, AT_TAIL, tail_new - SERIES_TAIL(bin));
 			}
