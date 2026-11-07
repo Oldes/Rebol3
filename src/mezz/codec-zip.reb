@@ -11,6 +11,7 @@ REBOL [
 			* Setting the UTF-8 flag (bit 11) for non-ASCII file names
 			* Invalid data specification is skipped using `exit` (not relying on the caller's loop)
 			* Decoder skips encrypted and ZIP64 entries (with an error log) and refuses ZIP64 archives
+			* Using the `level` setting for deflate compression
 		}
 		30-Nov-2021 "Oldes" {
 			* Access to comment and extra field of uncompressed data
@@ -247,7 +248,7 @@ register-codec [
 			method: either any [
 				no-compress?
 				zero? size
-				lesser-or-equal? size length? compressed-data: compress data 'deflate
+				lesser-or-equal? size length? compressed-data: compress/level data 'deflate level
 			][
 				compressed-data: data
 				0 ;store

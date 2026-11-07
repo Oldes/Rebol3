@@ -583,6 +583,18 @@ if find codecs 'zip [
 			data: decode 'zip bin
 			--assert none? data/2/2
 			--assert 3000 = length? data/4/2
+
+		--test-- "zip-encode-level"
+			unzip: :system/codecs/zip/decode
+			src: reduce [%big.txt append/dup copy "" "abc" 1000]
+			old: system/codecs/zip/level
+			system/codecs/zip/level: 0
+			info: unzip/info encode 'zip src
+			--assert 0 = info/2/5             ; level 0 -> stored
+			system/codecs/zip/level: 9
+			info: unzip/info encode 'zip src
+			--assert 8 = info/2/5             ; level 9 -> deflate
+			system/codecs/zip/level: old
 	===end-group===
 	system/options/log/zip: v
 ]
