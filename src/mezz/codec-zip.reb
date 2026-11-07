@@ -12,6 +12,7 @@ REBOL [
 			* Invalid data specification is skipped using `exit` (not relying on the caller's loop)
 			* Decoder skips encrypted and ZIP64 entries (with an error log) and refuses ZIP64 archives
 			* Using the `level` setting for deflate compression
+			* Fixed LZMA input length (compressed size includes the 4-byte header)
 		}
 		30-Nov-2021 "Oldes" {
 			* Access to comment and extra field of uncompressed data
@@ -395,7 +396,8 @@ register-codec [
 				output: decompress/size data 'deflate unc-size
 			]
 			14 [ ;- LZMA
-				output: decompress/part/size (skip data 4) 'lzma cmp-size unc-size
+				;; skip LZMA version (2 bytes) and properties size (2 bytes)
+				output: decompress/part/size (skip data 4) 'lzma (cmp-size - 4) unc-size
 			]
 			0  [ ;- store
 				output: copy/part data cmp-size
