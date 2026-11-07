@@ -1247,5 +1247,24 @@ is-protected-error?: func[code][
 		--assert "ž€a" = binary/read bin 'string
 ===end-group===
 
+
+===start-group=== "bincode - read get-path arguments"
+	o: object [n: 2 i: 3 p: 4 b: 4 s: make struct! [a [uint8!]]]
+	--test-- "integer arguments"
+		--assert [#{0102}] = binary/read #{010203} [bytes :o/n]
+		--assert [3]       = binary/read #{010203} [at :o/i ui8]
+		--assert [1 5]     = binary/read #{01020304 05} [ui8 pad :o/p ui8]
+		--assert [5]       = binary/read #{A5} [skipbits :o/b ub :o/b]
+		--assert [#(u8! [1 2])] = binary/read #{0102} [vector uint8! :o/n]
+	--test-- "struct prototype"
+		r: binary/read #{07} [:o/s]
+		--assert all [struct? r/1 r/1/a = 7]
+		v: first binary/read #{0708} [vector :o/s :o/n]
+		--assert all [2 = length? v v/1/a = 7 v/2/a = 8]
+	--test-- "invalid"
+		--assert error? try [binary/read #{01} [bytes :o/s]]
+		--assert error? try [binary/read #{01} [:o/n]]
+===end-group===
+
 ~~~end-file~~~
 

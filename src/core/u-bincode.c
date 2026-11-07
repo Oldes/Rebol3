@@ -159,6 +159,12 @@ static REBI64 Bincode_Int_Arg(REBVAL *v) {
 #define ASSERT_READ_SIZE(v, p, e, n) if((p + n) > e) Trap1(RE_OUT_OF_RANGE, v);
 #define ASSERT_INDEX_RANGE(v, p, e) if(i < 0 || i > VAL_TAIL(v)) Trap1(RE_OUT_OF_RANGE, e);
 
+// Resolves a :get-word or :get-path argument (a path result is a volatile stack reference!)
+#define BINCODE_GET_ARG(v) \
+	do { \
+		if (IS_GET_WORD(v)) v = Get_Var(v); \
+		else if (IS_GET_PATH(v)) { Do_Path(&v, NULL); v = DS_POP; } \
+	} while (0)
 #define IS_BIT_SET(v, b) ((v & b) == b)
 #define NEXT_IN_BIT(inBit) \
 	do { \
@@ -1531,7 +1537,7 @@ static void Bincode_Swap_Endian(REBYTE *p, REBCNT len, REBCNT wide) { if (wide >
 						case SYM_SB:
 						case SYM_FB:
 							next = ++value;
-							if (IS_GET_WORD(next)) next = Get_Var(next);
+							BINCODE_GET_ARG(next);
 							if (!IS_INTEGER(next)) goto error_next_value;
 							if (VAL_INT64(next) < 0 || VAL_INT64(next) > 64) Trap1(RE_OUT_OF_RANGE, next);
 							j = VAL_INT32(next); // number of bits
@@ -1600,7 +1606,7 @@ static void Bincode_Swap_Endian(REBYTE *p, REBCNT len, REBCNT wide) { if (wide >
 						case SYM_STRING_BYTES:
 							//puts("bytes");
 							next = ++value;
-							if (IS_GET_WORD(next)) next = Get_Var(next);
+							BINCODE_GET_ARG(next);
 							if (IS_END(next)) {
 								// reads all bytes to tail of the buffer
 								// used in case like: bincode/read b 'bytes
@@ -1715,7 +1721,7 @@ static void Bincode_Swap_Endian(REBYTE *p, REBCNT len, REBCNT wide) { if (wide >
 						case SYM_ATZ:
 							// uses absolute positioning from series HEAD!
 							next = ++value;
-							if (IS_GET_WORD(next)) next = Get_Var(next);
+							BINCODE_GET_ARG(next);
 							if (!IS_INTEGER(next)) goto error_next_value;
 							i = VAL_INT32(next) - (cmd == SYM_AT ? 1 : 0);
 							ASSERT_INDEX_RANGE(buffer_read, i, value);
@@ -1740,7 +1746,7 @@ static void Bincode_Swap_Endian(REBYTE *p, REBCNT len, REBCNT wide) { if (wide >
 							continue;
 						case SYM_PAD:
 							next = ++value;
-							if (IS_GET_WORD(next)) next = Get_Var(next);
+							BINCODE_GET_ARG(next);
 							if (!IS_INTEGER(next)) goto error_next_value;
 							if (VAL_INT32(next) <= 0) Trap1(RE_INVALID_ARG, next);
 							i = VAL_INDEX(buffer_read) % VAL_INT32(next);
@@ -1753,7 +1759,7 @@ static void Bincode_Swap_Endian(REBYTE *p, REBCNT len, REBCNT wide) { if (wide >
 							continue;
 						case SYM_SKIPBITS:
 							next = ++value;
-							if (IS_GET_WORD(next)) next = Get_Var(next);
+							BINCODE_GET_ARG(next);
 							if (!IS_INTEGER(next)) goto error_next_value;
 							i = VAL_INT32(next);
 							if (i >= 8) {
@@ -1933,7 +1939,7 @@ static void Bincode_Swap_Endian(REBYTE *p, REBCNT len, REBCNT wide) { if (wide >
 							REBSER *fields = NULL;
 							REBCNT vt = 0, wide;
 							next = ++value;
-							if (IS_GET_WORD(next)) next = Get_Var(next);
+							BINCODE_GET_ARG(next);
 							vtype = next;
 							if (IS_WORD(vtype)) {
 								REBCNT sym = Normalize_Vector_Type_Symbol(VAL_WORD_CANON(vtype));
@@ -1948,7 +1954,7 @@ static void Bincode_Swap_Endian(REBYTE *p, REBCNT len, REBCNT wide) { if (wide >
 							else if (IS_STRUCT(vtype)) fields = VAL_STRUCT_FIELDS(vtype);
 							else goto error_next_value;
 							next = ++value;
-							if (IS_GET_WORD(next)) next = Get_Var(next);
+							BINCODE_GET_ARG(next);
 							if (!IS_INTEGER(next)) goto error_next_value;
 							if (VAL_INT64(next) < 0 || VAL_INT64(next) > 0x7FFFFFFF) Trap1(RE_OUT_OF_RANGE, next);
 							j = VAL_INT32(next); // number of values
@@ -1989,7 +1995,9 @@ static void Bincode_Swap_Endian(REBYTE *p, REBCNT len, REBCNT wide) { if (wide >
 					DS_PUSH(value);
 					continue;
 				case REB_GET_WORD:
-					data = Get_Var(value);
+				case REB_GET_PATH:
+					data = value;
+					BINCODE_GET_ARG(data);
 					if (!IS_STRUCT(data)) Trap1(RE_INVALID_SPEC, value);
 					goto read_struct;
 				case REB_STRUCT:
