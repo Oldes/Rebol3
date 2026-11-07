@@ -699,6 +699,14 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 							continue;
 						}
 						goto error;
+					case SYM_SKIP:
+						// relative to the write position (may be negative, may go past the tail)
+						if (!IS_INTEGER(next)) goto error;
+						if (count > tail) tail = count;
+						si = (REBI64)count + VAL_INT64(next);
+						if (si < 0 || si > 0x7FFFFFFF) Trap1(RE_OUT_OF_RANGE, next);
+						count = (REBCNT)si;
+						continue;
 					case SYM_PAD:
 						if (IS_INTEGER(next)) {
 							if (VAL_INT32(next) <= 0) Trap1(RE_INVALID_ARG, next);
@@ -1207,6 +1215,12 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 						n = 0;
 						break;
 
+					case SYM_SKIP:
+						// validated in the size pass
+						VAL_INDEX(buffer_write) = (REBCNT)((REBI64)VAL_INDEX(buffer_write) + VAL_INT64(next));
+						cp = BIN_DATA(bin) + VAL_INDEX(buffer_write);
+						n = 0;
+						break;
 					case SYM_PAD:
 						n = VAL_INDEX(buffer_write) % VAL_INT32(next);
 						if (n > 0) {
@@ -1866,8 +1880,7 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 							break;
 						case SYM_SKIP:
 							next = ++value;
-							if (IS_GET_WORD(next))
-								next = Get_Var(next);
+							BINCODE_GET_ARG(next);
 							if (!IS_INTEGER(next)) goto error_next_value;
 							i = VAL_INDEX(buffer_read) + VAL_INT32(next);
 							ASSERT_INDEX_RANGE(buffer_read, i, value);

@@ -1511,5 +1511,47 @@ is-protected-error?: func[code][
 		--assert 0 = binary/read bin 'length?
 ===end-group===
 
+
+===start-group=== "bincode - write skip"
+	--test-- "forward and backward"
+		bin: binary 16
+		binary/write bin [ui8 1 skip 2 ui8 4 skip -3 ui8 2]
+		--assert #{01 02 00 04} = binary/read bin 'bytes
+	--test-- "past tail is zero filled"
+		bin: binary 16
+		binary/write bin #{FFFFFFFF}
+		binary/init bin none
+		binary/write bin [skip 3 ui8 1]
+		--assert #{000000 01} = binary/read bin 'bytes
+	--test-- "after bits (aligned first)"
+		bin: binary 16
+		binary/write bin [ub 3 5 skip 1 ui8 255]
+		--assert #{A0 00 FF} = binary/read bin 'bytes
+	--test-- "get-word / get-path argument"
+		o: object [n: 2]
+		bin: binary 16
+		binary/write bin [skip :o/n ui8 1]
+		--assert #{0000 01} = binary/read bin 'bytes
+		--assert [1] = binary/read #{0000 01} [skip :o/n ui8]   ;; read skip with get-path
+	--test-- "errors"
+		--assert error? try [binary/write binary 8 [ui8 1 skip -2]]
+		--assert error? try [binary/write binary 8 [skip 1.5]]
+		bin: binary 8
+		try [binary/write bin [ui8 1 skip -5]]
+		--assert 0 = binary/read bin 'length?
+===end-group===
+
+===start-group=== "bincode - buffer size when moving back"
+	--test-- "at/skip back after a large write"
+		bin: binary 2
+		data: append/dup #{} #{AA} 64
+		binary/write bin [:data at 1 ui8 1]
+		--assert 64 = length? bin/buffer
+		--assert #{01AA} = copy/part bin/buffer 2
+		bin: binary 2
+		binary/write bin [:data skip -64 ui8 1]
+		--assert 64 = length? bin/buffer
+===end-group===
+
 ~~~end-file~~~
 
