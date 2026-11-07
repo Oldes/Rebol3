@@ -710,6 +710,13 @@ static void Bincode_Swap_Endian(REBYTE *p, REBCNT len, REBCNT wide) { if (wide >
 						}
 						goto error;
 
+					case SYM_UNIXTIME:
+					case SYM_UNIXTIME_LE:
+						if (!IS_DATE(next)) goto error;
+						si = Date_To_Timestamp(next);
+						if (si < 0 || si > (REBI64)0xFFFFFFFFLL) Trap1(RE_OUT_OF_RANGE, next); // unsigned 32-bit (1970..2106)
+						count += 4;
+						continue;
 					case SYM_VECTOR:
 					case SYM_VECTOR_BE:
 					case SYM_VECTOR_LE:
@@ -1179,6 +1186,16 @@ static void Bincode_Swap_Endian(REBYTE *p, REBCNT len, REBCNT wide) { if (wide >
 						n = 4;
 						break;
 
+					case SYM_UNIXTIME:
+					case SYM_UNIXTIME_LE:
+						ulong = (u32)Date_To_Timestamp(next); // range validated in the size pass
+						if (cmd == SYM_UNIXTIME) {
+							cp[0] = (REBYTE)(ulong >> 24); cp[1] = (REBYTE)(ulong >> 16); cp[2] = (REBYTE)(ulong >> 8); cp[3] = (REBYTE)ulong;
+						} else {
+							cp[0] = (REBYTE)ulong; cp[1] = (REBYTE)(ulong >> 8); cp[2] = (REBYTE)(ulong >> 16); cp[3] = (REBYTE)(ulong >> 24);
+						}
+						n = 4;
+						break;
 					case SYM_VECTOR:
 					case SYM_VECTOR_BE:
 					case SYM_VECTOR_LE:
@@ -1931,6 +1948,17 @@ static void Bincode_Swap_Endian(REBYTE *p, REBCNT len, REBCNT wide) { if (wide >
 							break;
 						}
 
+						case SYM_UNIXTIME:
+						case SYM_UNIXTIME_LE:
+							// unsigned 32-bit unix timestamp (1970..2106) as UTC date
+							n = 4;
+							ASSERT_READ_SIZE(value, cp, ep, n);
+							if (cmd == SYM_UNIXTIME)
+								ulong = ((u32)cp[0] << 24) | ((u32)cp[1] << 16) | ((u32)cp[2] << 8) | (u32)cp[3];
+							else
+								ulong = (u32)cp[0] | ((u32)cp[1] << 8) | ((u32)cp[2] << 16) | ((u32)cp[3] << 24);
+							Timestamp_To_Date(temp, (REBI64)ulong);
+							break;
 						case SYM_VECTOR:
 						case SYM_VECTOR_BE:
 						case SYM_VECTOR_LE: {

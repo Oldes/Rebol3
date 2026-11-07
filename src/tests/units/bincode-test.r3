@@ -1266,5 +1266,39 @@ is-protected-error?: func[code][
 		--assert error? try [binary/read #{01} [:o/n]]
 ===end-group===
 
+
+===start-group=== "bincode - unixtime"
+	--test-- "read"
+		--assert 1-Jan-1970/0:00     = binary/read #{00000000} 'unixtime
+		--assert 19-Jan-2038/3:14:07 = binary/read #{7FFFFFFF} 'unixtime
+		--assert 7-Feb-2106/6:28:15  = binary/read #{FFFFFFFF} 'unixtime
+		--assert 19-Jan-2038/3:14:07 = binary/read #{FFFFFF7F} 'unixtime-le
+		--assert [1-Jan-2020/0:00 1] = binary/read #{5E0BE100 01} [unixtime ui8]
+	--test-- "write"
+		bin: binary 16
+		binary/write bin [unixtime 1-Jan-2020/0:00 unixtime-le 1-Jan-2020/0:00]
+		--assert #{5E0BE100 00E10B5E} = binary/read bin 'bytes
+		bin: binary 16
+		binary/write bin [unixtime 1-Jan-2020/1:00+1:00 unixtime 1-Jan-2020]
+		--assert #{5E0BE100 5E0BE100} = binary/read bin 'bytes   ;; zone and missing time
+	--test-- "roundtrip"
+		bin: binary 16
+		d: 7-Nov-2026/13:30:15
+		binary/write bin [unixtime :d unixtime-le :d]
+		--assert [7-Nov-2026/13:30:15 7-Nov-2026/13:30:15] = binary/read bin [unixtime unixtime-le]
+	--test-- "unixtime-now reads back"
+		bin: binary 8
+		binary/write bin [unixtime-now]
+		--assert 5 > abs to integer! difference now/utc binary/read bin 'unixtime
+	--test-- "errors"
+		--assert error? try [binary/read #{000000} 'unixtime]
+		--assert error? try [binary/write binary 8 [unixtime 31-Dec-1969/23:59:59]]
+		--assert error? try [binary/write binary 8 [unixtime 7-Feb-2106/6:28:16]]
+		--assert error? try [binary/write binary 8 [unixtime 0]]
+		bin: binary 8
+		try [binary/write bin [ui8 1 unixtime 1-Jan-1900]]
+		--assert 0 = binary/read bin 'length?
+===end-group===
+
 ~~~end-file~~~
 
