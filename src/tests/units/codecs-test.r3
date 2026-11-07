@@ -531,7 +531,19 @@ if find codecs 'zip [
 			--assert %issue-2186-UTF16-LE.txt = data/3
 			delete %temp.zip
 
+		--test-- "zip-encode-ascii-name"
+			bin: encode 'zip [%a.txt "hello"]
+			--assert #{0000} = copy/part skip bin 6 2   ; flags
+			--assert #{0500} = copy/part skip bin 26 2  ; name length
+			--assert %a.txt = first decode 'zip bin
 
+		--test-- "zip-encode-non-ascii-name"
+			bin: encode 'zip [%ěščř.txt "hello"]
+			--assert #{0008} = copy/part skip bin 6 2   ; UTF-8 flag (bit 11)
+			--assert #{0C00} = copy/part skip bin 26 2  ; 12 bytes, not 8 chars
+			data: decode 'zip bin
+			--assert %ěščř.txt = data/1
+			--assert #{68656C6C6F} = data/2/2
 	===end-group===
 	system/options/log/zip: v
 ]

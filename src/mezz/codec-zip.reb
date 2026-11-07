@@ -2,10 +2,14 @@ REBOL [
 	title: "Codec: ZIP"
 	name:  zip
 	type:  module
-	version: 0.0.4
+	version: 0.0.5
 	author: "Oldes"
 	specification: https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT
 	history: [
+		7-Nov-2026 "Oldes" {
+			* Fixed file name length of non-ASCII names (length in UTF-8 bytes, not chars)
+			* Setting the UTF-8 flag (bit 11) for non-ASCII file names
+		}
 		30-Nov-2021 "Oldes" {
 			* Access to comment and extra field of uncompressed data
 			* Added support to include file comments, extras or insternal and external attributes
@@ -189,7 +193,7 @@ register-codec [
 			]
 		]
 
-		add-data: func[file spec /local no-compress? extra extra-length comm comm-length][
+		add-data: func[file spec /local no-compress? extra extra-length comm comm-length name flags][
 			if verbose [log-info 'ZIP ["Adding:" as-green file]]
 
 			any [file? file cause-error 'user 'message reduce [reform ["found" type? file "where file! expected"]]]
@@ -249,14 +253,19 @@ register-codec [
 				"?date?" = form date ; temp fix for invalid date!
 			][	date: now ]
 
-			filename-length: length? file
+			;; file name is stored as UTF-8 bytes, so its length must be counted in bytes
+			name: to binary! file
+			filename-length: length? name
+			;; general purpose bit 11: file name (and comment) is UTF-8 encoded
+			flags: either filename-length = length? file [0][2048]
 			offset: indexZ? bin/buffer-write
 
 			unless extra [extra: #{}]
 			unless comm  [comm:  #{}]
 
 			binary/write bin [
-				#{504B0304 1400 0000} ;signature / version / flags
+				#{504B0304 1400} ;signature / version
+				UI16LE         :flags
 				UI16LE         :method
 				MSDOS-DATETIME :date
 				UI32LE         :crc
@@ -264,11 +273,12 @@ register-codec [
 				UI32LE         :size
 				UI16LE         :filename-length
 				UI16LE         0 ; extra
-				BYTES          :file
+				BYTES          :name
 				BYTES          :compressed-data
 			]
 			binary/write dir [
-				#{504B0102 1703 1400 0000} ; signature / version made / version needed / flags
+				#{504B0102 1703 1400} ; signature / version made / version needed
+				UI16LE         :flags
 				UI16LE         :method
 				MSDOS-DATETIME :date
 				UI32LE         :crc
@@ -281,7 +291,7 @@ register-codec [
 				UI16LE         :att-int      ; Internal file attributes
 				UI32LE         :att-ext      ; External file attributes
 				UI32LE         :offset       ; Relative offset of local file header
-				BYTES          :file
+				BYTES          :name
 				BYTES          :extra        ; Extra field
 				BYTES          :comm         ; File comment
 			]
