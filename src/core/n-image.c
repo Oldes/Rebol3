@@ -746,4 +746,129 @@ double weighted_rgb_color_distance(long r1, long g1, long b1, long r2, long g2, 
 	return R_RET;
 }
 
+// Copies the `esize` bytes of the entry each index selects. One unsigned
+// compare rejects both negative and too large indexes.
+#define REMAP_LOOP(T) { \
+		T *ip = (T*)idata; \
+		for (n = 0; n < len; n++, dst += esize) { \
+			u64 i = (u64)(i64)ip[n]; \
+			if (i >= entries) Trap_Range(D_ARG(1)); \
+			COPY_MEM(dst, src + i * esize, esize); \
+		} \
+	} break;
+
+/***********************************************************************
+**
+*/	REBNATIVE(remap)
+/*
+**	The palette may be any numeric vector (entries of `width` elements)
+**	or an image (entries are its pixels, alpha included). The result has
+**	the palette's type: a vector of its element type, or an image, sized
+**	by the shape of the indices when it has one, else a single row.
+**	(An image is limited to 65535 pixels per row, so a long unshaped
+**	vector of indices needs /into an image of the wanted size.)
+**
+**	An out of range index is an error. When /into is used, the target
+**	may then already be partly written.
+**
+//	remap: native [
+//		"Replaces each index with the palette entry it selects"
+//		indices [vector! binary!] "Integer values, 0-based entry numbers"
+//		palette [vector! image!]  "Entries: elements of a vector, or pixels of an image (from its index)"
+//		/stride "Elements per entry of a vector palette (default 1)"
+//		 width  [integer!]
+//		/into   "Write into an existing series (from its index) instead of a new one"
+//		 target [vector! image!] "A vector of the palette's element type, or an image for an image palette"
+//	]
+***********************************************************************/
+{
+	REBVAL *val_idx = D_ARG(1);
+	REBVAL *val_pal = D_ARG(2);
+	REBOOL  ref_stride = D_REF(3);
+	REBVAL *val_width  = D_ARG(4);
+	REBOOL  ref_into   = D_REF(5);
+	REBVAL *val_target = D_ARG(6);
+
+	REBCNT  len = VAL_LEN(val_idx);    // number of indices
+	REBCNT  itype = VTUI08;            // index element type (binary: bytes)
+	REBYTE *idata;
+	REBYTE *src;                       // palette data
+	REBYTE *dst;                       // result data
+	REBCNT  esize;                     // bytes per palette entry
+	u64     entries;                   // number of palette entries
+	REBINT  width = 1;
+	REBCNT  n;
+
+	// Indices
+	if (IS_VECTOR(val_idx)) {
+		itype = VAL_VEC_TYPE(val_idx);
+		if (VAL_VEC_IS_STRUCT(val_idx) || VECT_DECI(itype)) Trap_Arg(val_idx);
+		idata = VAL_VEC_DATA(val_idx);
+	} else {
+		idata = VAL_BIN_DATA(val_idx);
+	}
+
+	// Palette
+	if (IS_IMAGE(val_pal)) {
+		if (ref_stride) Trap_Arg(val_width);
+		esize   = 4;
+		entries = VAL_IMAGE_LEN(val_pal);
+		src     = VAL_IMAGE_DATA(val_pal);
+	} else {
+		REBCNT plen = VAL_LEN(val_pal);
+		if (VAL_VEC_IS_STRUCT(val_pal)) Trap_Arg(val_pal);
+		if (ref_stride) {
+			width = VAL_INT32(val_width);
+			if (width < 1 || plen % (REBCNT)width) Trap_Range(val_width);
+		}
+		esize   = width * VAL_VEC_WIDE(val_pal);
+		entries = plen / width;
+		src     = VAL_VEC_DATA(val_pal);
+	}
+
+	// Result
+	if (ref_into) {
+		REBSER *ser = VAL_SERIES(val_target);
+		TRAP_PROTECT(ser);
+		if (IS_IMAGE(val_pal)) {
+			if (!IS_IMAGE(val_target)) Trap_Arg(val_target);
+			if (VAL_IMAGE_LEN(val_target) < len) Trap_Range(val_target);
+			dst = VAL_IMAGE_DATA(val_target);
+		} else {
+			if (!IS_VECTOR(val_target) || VAL_VEC_IS_STRUCT(val_target)
+				|| VAL_VEC_TYPE(val_target) != VAL_VEC_TYPE(val_pal)) Trap_Arg(val_target);
+			if (VAL_LEN(val_target) < (u64)len * width) Trap_Range(val_target);
+			dst = VAL_VEC_DATA(val_target);
+		}
+		*D_RET = *val_target;
+	}
+	else if (IS_IMAGE(val_pal)) {
+		// A whole shaped vector of indices gives the image its shape.
+		REBCNT rows = 1, cols = len;
+		if (IS_VECTOR(val_idx) && VAL_INDEX(val_idx) == 0 && VAL_VEC_ROWS(val_idx) > 1) {
+			rows = VAL_VEC_ROWS(val_idx);
+			cols = len / rows;
+		}
+		SET_IMAGE(D_RET, Make_Image(cols, rows, TRUE));
+		dst = VAL_IMAGE_HEAD(D_RET);
+	}
+	else {
+		if (!Make_Vector(D_RET, VAL_VEC_TYPE(val_pal), len * width, 1)) Trap0(RE_NO_MEMORY);
+		dst = VAL_VEC_HEAD(D_RET);
+	}
+
+	switch (itype) {
+	case VTSI08: REMAP_LOOP(i8)
+	case VTSI16: REMAP_LOOP(i16)
+	case VTSI32: REMAP_LOOP(i32)
+	case VTSI64: REMAP_LOOP(i64)
+	case VTUI08: REMAP_LOOP(u8)
+	case VTUI16: REMAP_LOOP(u16)
+	case VTUI32: REMAP_LOOP(u32)
+	case VTUI64: REMAP_LOOP(u64)
+	}
+	return R_RET;
+}
+#undef REMAP_LOOP
+
 #endif // INCLUDE_IMAGE_NATIVES

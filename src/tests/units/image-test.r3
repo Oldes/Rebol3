@@ -668,6 +668,46 @@ if value? 'blur [
 ===end-group===
 ]
 
+if any-function? :remap [
+===start-group=== "REMAP"
+	--test-- "remap with a vector palette"
+		--assert (remap #{0201} make vector! [uint8! [7 8 9]]) == make vector! [uint8! [9 8]]
+		pal: make vector! [uint8! [10 11 20 21 30 31]]
+		--assert (remap/stride make vector! [uint16! [2 0]] pal 2) == make vector! [uint8! [30 31 10 11]]
+		--assert (remap make vector! [int32! [1]] make vector! [float32! [0.5 1.5]]) == make vector! [float32! [1.5]]
+		;; from the index of the indices
+		--assert (remap next #{0001} make vector! [uint8! [7 8]]) == make vector! [uint8! [8]]
+
+	--test-- "remap/into a vector"
+		out: make vector! [uint8! 5]
+		--assert 2 = index? remap/into #{0100} make vector! [uint8! [7 8]] next out
+		--assert out == make vector! [uint8! [0 8 7 0 0]]
+
+	--test-- "remap refuses invalid input"
+		--assert error? try [remap #{03} make vector! [uint8! [1 2 3]]]                 ;; index too large
+		--assert error? try [remap make vector! [int8! [-1]] make vector! [uint8! [1 2]]] ;; negative index
+		--assert error? try [remap make vector! [float32! [0.0]] make vector! [uint8! [1]]] ;; float indices
+		--assert error? try [remap/stride #{00} make vector! [uint8! [1 2 3]] 2]         ;; partial entry
+		--assert error? try [remap/stride #{00} make vector! [uint8! [1 2]] 0]
+		--assert error? try [remap/into #{0000} make vector! [uint8! [1]] make vector! [uint8! 1]]   ;; no room
+		--assert error? try [remap/into #{00} make vector! [uint8! [1]] make vector! [uint16! 1]]    ;; other type
+
+	--test-- "remap with an image palette"
+		pal: make image! [2x1 #{FF000000FF00}]
+		img: remap #{000101} pal
+		--assert img/size == 3x1
+		--assert img/rgb == #{FF000000FF0000FF00}
+		;; a shaped vector of indices gives the image its shape
+		img: remap make vector! [uint8! 2x2 [0 1 1 0]] pal
+		--assert img/size == 2x2
+		--assert img/rgb == #{FF000000FF0000FF00FF0000}
+		;; into an existing image
+		img: make image! 2x2
+		--assert same? img remap/into #{01000100} pal img
+		--assert img/rgb == #{00FF00FF000000FF00FF0000}
+		--assert error? try [remap/into #{0000000000} pal img]   ;; does not fit
+===end-group===
+]
 
 ===start-group=== "Save/load image"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2534
