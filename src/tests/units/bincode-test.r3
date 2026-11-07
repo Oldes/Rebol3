@@ -1588,5 +1588,26 @@ is-protected-error?: func[code][
 		--assert 0 = binary/read bin 'length?
 ===end-group===
 
+
+===start-group=== "bincode - write tuple!"
+	--test-- "raw bytes"
+		bin: binary 16
+		binary/write bin [1.2.3 255.0.128.64 ui8 9]
+		--assert #{010203 FF008040 09} = binary/read bin 'bytes
+	--test-- "roundtrip"
+		bin: binary 16
+		c: 10.20.30.40
+		binary/write bin [1.2.3 :c]
+		--assert [1.2.3 10.20.30.40] = binary/read bin [tuple3 tuple4]
+	--test-- "longer tuple"
+		bin: binary 16
+		binary/write bin [1.2.3.4.5.6]
+		--assert #{010203040506} = binary/read bin 'bytes
+	--test-- "after bits (aligned)"
+		bin: binary 8
+		binary/write bin [ub 3 5 1.2.3]
+		--assert #{A0 010203} = binary/read bin 'bytes
+===end-group===
+
 ~~~end-file~~~
 

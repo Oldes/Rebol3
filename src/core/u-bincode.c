@@ -608,6 +608,11 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 					if (pb) { count++; pb = 0; } // align
 					count += VAL_LEN(data);
 					break;
+				case REB_TUPLE:
+					// raw tuple bytes (read using TUPLE3 or TUPLE4)
+					if (pb) { count++; pb = 0; } // align
+					count += VAL_TUPLE_LEN(data);
+					break;
 				case REB_VECTOR:
 					// raw vector data (native byte order)
 					if (pb) { count++; pb = 0; } // align
@@ -1003,6 +1008,11 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 					n = VAL_LEN(data);
 					//printf("write bytes: %i to #%0X\n", n, cp);
 					memcpy(cp, VAL_BIN_AT(data), n);
+					break;
+				case REB_TUPLE:
+					if (outBit) { outBit = 0; cp++; VAL_INDEX(buffer_write)++; } // align
+					n = VAL_TUPLE_LEN(data);
+					memcpy(cp, VAL_TUPLE(data), n);
 					break;
 				case REB_VECTOR:
 					if (outBit) { outBit = 0; cp++; VAL_INDEX(buffer_write)++; } // align
