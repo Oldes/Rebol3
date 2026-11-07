@@ -1094,6 +1094,9 @@ static void Set_Option_File(REBCNT field, REBYTE* src, REBOOL dir )
 	Init_Contexts_Object();
 	Init_Main_Args(rargs);
 	Init_Ports();
+   #ifndef IGNORE_BINCODE
+   	Init_Bincode();
+   #endif
 	Init_Codecs();
 	Init_Errors(&Boot_Block->errors); // Needs system/standard/error object
 	PG_Boot_Phase = BOOT_ERRORS;

@@ -70,6 +70,7 @@
 #ifndef IGNORE_BINCODE
 
 #include "sys-core.h"
+#include "reb-ext.h" // RXT_* types used by the handle path callbacks
 #include <stdio.h>
 #include <time.h>
 
@@ -165,29 +166,24 @@ static REBI64 Bincode_Int_Arg(REBVAL *v) {
 			VAL_INDEX(buffer_read)++; \
 		} \
 	} while (0)
-#define STORE_IN_BIT(val, inBit)  SET_INT32(VAL_OBJ_VALUE(val, BINCODE_READ_BITMASK), inBit);
+#define STORE_IN_BIT(val, inBit)  (r_mask = (inBit)) // committed into the context on success
 
 //**********************************************************************
-//MUST be in order like the values in system/standard/bincode object bellow!!!
-enum BincodeContextValues {
-	BINCODE_TYPE = 1,
-	BINCODE_READ,
-	BINCODE_WRITE,
-	BINCODE_READ_BITMASK,
-	BINCODE_WRITE_BITMASK
-};
-/***********************************************************************
-**  Base-code:
+// Bincode context is a BINCODE handle. Its buffer is kept in hob->series
+// (marked by GC), the positions and bit masks in this struct.
+typedef struct rebol_bincode_ctx {
+	REBCNT r_index;  // read position
+	REBCNT w_index;  // write position
+	REBCNT r_mask;   // read bit mask (0 = no bit read yet in the current byte)
+	REBCNT w_mask;   // write bit mask (0 = no partially written byte)
+	REBFLG owned;    // TRUE when the buffer was made by bincode (not user's binary)
+} BINCODE_CTX;
 
-system/standard/bincode: make object! [
-	type: 'bincode
-	buffer:
-	buffer-write: none
-	r-mask:
-	w-mask: 0
-]
+// Commits the local buffer positions and masks into the context
+#define BINCODE_COMMIT() (bc->r_index = VAL_INDEX(buffer_read), bc->w_index = VAL_INDEX(buffer_write), \
+                          bc->r_mask = r_mask, bc->w_mask = w_mask)
+#define BINCODE_RETURN(r) do { BINCODE_COMMIT(); return (r); } while (0)
 
-***********************************************************************/
 
 static REBCNT EncodedU64_Size(u64 value) {
 	REBCNT count = 1;
@@ -264,12 +260,93 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 
 /***********************************************************************
 **
+*/	static int Bincode_Get_Path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg)
+/*
+**		ctx/buffer and ctx/buffer-write are the buffer at the read/write
+**		position, ctx/r-mask and ctx/w-mask the bit masks.
+**
+***********************************************************************/
+{
+	BINCODE_CTX *bc = (BINCODE_CTX*)hob->data;
+	switch (word) {
+	case SYM_BUFFER:
+	case SYM_BUFFER_WRITE:
+		arg->series = hob->series;
+		arg->index  = (word == SYM_BUFFER) ? bc->r_index : bc->w_index;
+		if (arg->index > SERIES_TAIL(hob->series)) arg->index = SERIES_TAIL(hob->series);
+		*type = RXT_BINARY;
+		break;
+	case SYM_R_MASK:
+		*type = RXT_INTEGER;
+		arg->int64 = bc->r_mask;
+		break;
+	case SYM_W_MASK:
+		*type = RXT_INTEGER;
+		arg->int64 = bc->w_mask;
+		break;
+	default:
+		return PE_BAD_SELECT;
+	}
+	return PE_USE;
+}
+
+/***********************************************************************
+**
+*/	static int Bincode_Set_Path(REBHOB *hob, REBCNT word, REBCNT *type, RXIARG *arg)
+/*
+**		Allows setting positions in the context's own buffer and the bit masks.
+**
+***********************************************************************/
+{
+	BINCODE_CTX *bc = (BINCODE_CTX*)hob->data;
+	switch (word) {
+	case SYM_BUFFER:
+	case SYM_BUFFER_WRITE:
+		if (*type != RXT_BINARY) return PE_BAD_SET_TYPE;
+		// only a position in the context's own buffer (use /init to use other data)
+		if (arg->series != hob->series || arg->index > SERIES_TAIL(hob->series)) return PE_BAD_SET;
+		if (word == SYM_BUFFER) bc->r_index = arg->index;
+		else bc->w_index = arg->index;
+		break;
+	case SYM_R_MASK:
+	case SYM_W_MASK:
+		if (*type != RXT_INTEGER) return PE_BAD_SET_TYPE;
+		// 0 or a single bit (a partially written byte has at least one bit written)
+		if (arg->int64 < 0 || arg->int64 > ((word == SYM_R_MASK) ? 0x80 : 0x40)
+			|| (arg->int64 & (arg->int64 - 1))) return PE_BAD_RANGE;
+		if (word == SYM_R_MASK) bc->r_mask = (REBCNT)arg->int64;
+		else bc->w_mask = (REBCNT)arg->int64;
+		break;
+	default:
+		return PE_BAD_SET;
+	}
+	return PE_OK;
+}
+
+/***********************************************************************
+**
+*/	void Init_Bincode(void)
+/*
+**		Registers the BINCODE handle type.
+**
+***********************************************************************/
+{
+	REBHSP spec;
+	CLEARS(&spec);
+	spec.size     = sizeof(BINCODE_CTX);
+	spec.get_path = Bincode_Get_Path;
+	spec.set_path = Bincode_Set_Path;
+	Register_Handle_Spec(SYM_BINCODE, &spec);
+}
+
+/***********************************************************************
+**
 */	REBNATIVE(binary)
 /*
 //	binary: native [
 //		"Entry point of the binary DSL (Bincode)"
 //
-//		ctx [object! binary! integer! none!] "Bincode context. If none, it will create a new one."
+//		ctx [handle! binary! integer! none!] "Bincode context. If none, it will create a new one."
 //		/init    "Initializes buffers in the context"
 //			spec [binary! integer! none!]
 //		/write   "Write data into output buffer"
@@ -298,9 +375,13 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 	REBVAL *ret = D_RET;
 	//REBVAL *buf;
 	REBSER *bin, *bin_new;
-	REBSER *obj;
-	REBVAL *buffer_write;
-	REBVAL *buffer_read;
+	REBHOB *hob;
+	BINCODE_CTX *bc;
+	REBVAL buf_w, buf_r; // local views of the context's buffer (committed on success)
+	REBVAL *buffer_write = &buf_w;
+	REBVAL *buffer_read  = &buf_r;
+	REBCNT r_mask, w_mask;
+	REBFLG existing = FALSE;
 	REBCNT inBit, nbits;
 	REBYTE *cp, *bp, *ep;
 	REBCNT n, count, index, tail, tail_new;
@@ -327,99 +408,89 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 
 	//printf("\nDS_TOP start: %x\n", DS_TOP);
 
-	value = DS_TOP;
-
-	//Oldes: note: change val_ctx from OBJECT to HANDLE or keep it as it is?
-	//       the object has advantage of direct access to buffers (at least for reading)
-	if(ref_init) {
-		if(IS_OBJECT(val_ctx)) {
-			//puts("existing context... so just reset it");
-			
-			buffer_write = VAL_OBJ_VALUE(val_ctx, BINCODE_WRITE);
-			buffer_read  = VAL_OBJ_VALUE(val_ctx, BINCODE_READ);
-			bin = VAL_SERIES(buffer_write);
-
-			VAL_INDEX(buffer_write) = VAL_INDEX(buffer_read) = 0;
-			SET_INT32(VAL_OBJ_VALUE(val_ctx, BINCODE_READ_BITMASK), 0);
-			SET_INT32(VAL_OBJ_VALUE(val_ctx, BINCODE_WRITE_BITMASK), 0);
-
-			switch(VAL_TYPE(val_spec)) {
-				case REB_BINARY:
-					n = VAL_TAIL(val_spec) - VAL_INDEX(val_spec);
-					//Dump_Series(bin, "BIN1:");
-					if (n >= SERIES_REST(bin)) { // keep space for the terminator
-						Expand_Series(bin, AT_TAIL, n - SERIES_TAIL(bin));
-					}
-					// the spec may be a part of the context's own buffer, so the data may overlap!
-					memmove(BIN_DATA(bin), VAL_DATA(val_spec), n);
-					VAL_TAIL(buffer_write) = VAL_TAIL(buffer_read) = n;
-					//Dump_Series(bin, "BIN2:");
-					break;
-				case REB_INTEGER:
-					//printf("resize from %i, needs %i\n", SERIES_REST(bin), VAL_INT32(val_spec));
-					if (VAL_INT64(val_spec) < 0 || VAL_UNT64(val_spec) >= MAX_U32)
-						Trap1(RE_INVALID_ARG, val_spec);
-					if (VAL_UNT32(val_spec) >= SERIES_REST(bin)) { // keep space for the terminator
-						Expand_Series(bin, AT_TAIL, VAL_INT32(val_spec) - SERIES_TAIL(bin));
-					}
-					//printf("resiz? new: %i\n", SERIES_REST(bin));
-					VAL_TAIL(buffer_write) = VAL_TAIL(buffer_read) = 0;
-					//Dump_Series(bin, "BIN2:");
-					break;
-				case REB_NONE:
-					// just reset the index and tail pointers
-					VAL_INDEX(buffer_write) = VAL_INDEX(buffer_read) = 0;
-					VAL_TAIL(buffer_write) = VAL_TAIL(buffer_read) = 0;
-					break;
-			}
-		}
-	}
-
-	if(IS_BINARY(val_ctx) || IS_NONE(val_ctx) || IS_INTEGER(val_ctx)) {
-		REBVAL *ctx = Get_System(SYS_STANDARD, STD_BINCODE);
-		if (!IS_OBJECT(ctx)) Trap_Arg(ctx);
-		obj = CLONE_OBJECT(VAL_OBJ_FRAME(ctx));
-
-		//IN and OUT buffers share the series, but may have different positions
-		buffer_write = Get_Field(obj, BINCODE_WRITE);
-		buffer_read  = Get_Field(obj, BINCODE_READ);
-
-		if(IS_BINARY(val_ctx)) {
+	if (IS_BINARY(val_ctx) || IS_NONE(val_ctx) || IS_INTEGER(val_ctx)) {
+		// make a new context
+		REBVAL hnd;
+		REBCNT start = 0;
+		REBFLG owned = !IS_BINARY(val_ctx);
+		if (IS_BINARY(val_ctx)) {
 			bin = VAL_SERIES(val_ctx);
-			if (ref_write && IS_PROTECT_SERIES(bin)) Trap0(RE_PROTECTED);
-			SET_BINARY(buffer_write, bin);
-			SET_BINARY(buffer_read, bin);
-			VAL_INDEX(buffer_write) = VAL_INDEX(val_ctx);
-			VAL_INDEX(buffer_read) = VAL_INDEX(val_ctx);
-			//should be copied? locked? protected?
+			start = VAL_INDEX(val_ctx);
+			n = 0;
 		} else {
-
+			bin = NULL;
+			if (IS_INTEGER(val_ctx) && (VAL_INT64(val_ctx) < 0 || VAL_INT64(val_ctx) > 0x7FFFFFFF)) Trap_Arg(val_ctx);
 			n = (IS_INTEGER(val_ctx)) ? VAL_INT32(val_ctx) : 1024;
-			if(n <= 1) n = 16;
-			bin = Make_Binary(n-1);			
-			SET_BINARY(buffer_write, bin);
-			SET_BINARY(buffer_read, bin);
-			SET_OBJECT(val_ctx, obj);
-			PROTECT_SERIES(bin);
-			//LOCK_SERIES(bin);
-			//printf("Making new bincode ctx of size: %i\n", n);
+			if (n <= 1) n = 16;
 		}
-
-		//printf("Making new bincode ctx of size: %i\n", bin->tail);
-		
-		SET_OBJECT(val_ctx, obj);
-
-	} else {
-		if (!IS_OBJECT(val_ctx)) Trap_Arg(val_ctx);
-
-		//obj = VAL_OBJ_FRAME(val_ctx);
-		//bin = VAL_SERIES(VAL_OBJ_VALUE(val_ctx, BINCODE_WRITE));
-
-		//obj = VAL_OBJ_FRAME(val_ctx);
-		buffer_write = VAL_OBJ_VALUE(val_ctx, BINCODE_WRITE);
-		buffer_read  = VAL_OBJ_VALUE(val_ctx, BINCODE_READ);
-		bin = VAL_SERIES(buffer_write);
+		VAL_HANDLE_FLAGS(&hnd) = 0; // SET_HANDLE ORs into this
+		MAKE_HANDLE(&hnd, SYM_BINCODE);
+		hob = VAL_HANDLE_CTX(&hnd);
+		if (!hob) Trap0(RE_NO_MEMORY);
+		bc = (BINCODE_CTX*)hob->data;
+		CLEARS(bc);
+		hob->series = bin;
+		*val_ctx = hnd; // the handle (and so the buffer) is referenced from now
+		if (!bin) bin = hob->series = Make_Binary(n - 1);
+		bc->r_index = bc->w_index = start;
+		bc->owned = owned;
 	}
+	else if (IS_HANDLE(val_ctx) && IS_CONTEXT_HANDLE(val_ctx) && IS_VALID_CONTEXT_HANDLE(val_ctx, SYM_BINCODE)) {
+		hob = VAL_HANDLE_CTX(val_ctx);
+		bc = (BINCODE_CTX*)hob->data;
+		bin = hob->series;
+		existing = TRUE;
+	}
+	else Trap_Arg(val_ctx);
+
+	// The buffer may be modified by user code between calls (it is accessible as ctx/buffer)
+	if (bc->r_index > SERIES_TAIL(bin)) bc->r_index = SERIES_TAIL(bin);
+	if (bc->w_index > SERIES_TAIL(bin)) bc->w_index = SERIES_TAIL(bin);
+
+	// Local views of the context; the context is updated only when the call succeeds
+	SET_BINARY(buffer_read,  bin);
+	SET_BINARY(buffer_write, bin);
+	VAL_INDEX(buffer_read)  = bc->r_index;
+	VAL_INDEX(buffer_write) = bc->w_index;
+	r_mask = bc->r_mask;
+	w_mask = bc->w_mask;
+
+	if (ref_init && existing) {
+		// reset the existing context
+		VAL_INDEX(buffer_write) = VAL_INDEX(buffer_read) = 0;
+		r_mask = w_mask = 0;
+		switch(VAL_TYPE(val_spec)) {
+			case REB_BINARY:
+				n = VAL_TAIL(val_spec) - VAL_INDEX(val_spec);
+				//Dump_Series(bin, "BIN1:");
+				if (n >= SERIES_REST(bin)) { // keep space for the terminator
+					Expand_Series(bin, AT_TAIL, n - SERIES_TAIL(bin));
+				}
+				// the spec may be a part of the context's own buffer, so the data may overlap!
+				memmove(BIN_DATA(bin), VAL_DATA(val_spec), n);
+				VAL_TAIL(buffer_write) = VAL_TAIL(buffer_read) = n;
+				//Dump_Series(bin, "BIN2:");
+				break;
+			case REB_INTEGER:
+				//printf("resize from %i, needs %i\n", SERIES_REST(bin), VAL_INT32(val_spec));
+				if (VAL_INT64(val_spec) < 0 || VAL_UNT64(val_spec) >= MAX_U32)
+					Trap1(RE_INVALID_ARG, val_spec);
+				if (VAL_UNT32(val_spec) >= SERIES_REST(bin)) { // keep space for the terminator
+					Expand_Series(bin, AT_TAIL, VAL_INT32(val_spec) - SERIES_TAIL(bin));
+				}
+				//printf("resiz? new: %i\n", SERIES_REST(bin));
+				VAL_TAIL(buffer_write) = VAL_TAIL(buffer_read) = 0;
+				//Dump_Series(bin, "BIN2:");
+				break;
+			case REB_NONE:
+				// just reset the index and tail pointers
+				VAL_INDEX(buffer_write) = VAL_INDEX(buffer_read) = 0;
+				VAL_TAIL(buffer_write) = VAL_TAIL(buffer_read) = 0;
+				break;
+		}
+	}
+
+	if (ref_write && IS_PROTECT_SERIES(bin)) Trap0(RE_PROTECTED);
 
 	//printf("bincode buffer rest: %i tail: %i index: %i\n", SERIES_REST(bin), bin->tail, VAL_INDEX(buffer_write));
 
@@ -444,11 +515,11 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 			// optimized version for RAW binary input
 			len = VAL_LEN(val_write);
 
-			if (VAL_INT32(VAL_OBJ_VALUE(val_ctx, BINCODE_WRITE_BITMASK))) {
+			if (w_mask) {
 				// finish partially written byte
 				VAL_INDEX(buffer_write)++;
 				index++;
-				SET_INT32(VAL_OBJ_VALUE(val_ctx, BINCODE_WRITE_BITMASK), 0);
+				w_mask = 0;
 			}
 			tail_new = index + len; //bytes needed to write
 			//printf("index: %i tail: %i len: %i tail_new: %i rest: %i\n", index, tail, len, tail_new, SERIES_REST(bin));
@@ -473,7 +544,7 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 
 			// try to predict number of bytes needed...
 			count = VAL_INDEX(buffer_write);
-			outBit = VAL_INT32(VAL_OBJ_VALUE(val_ctx, BINCODE_WRITE_BITMASK)) & 0xFF;
+			outBit = w_mask & 0xFF;
 			for (pb = 0, nbits = outBit; nbits && nbits < 0x80; nbits <<= 1) pb++;
 
 			for (; NOT_END(value); value++) {
@@ -1272,7 +1343,7 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 				VAL_INDEX(buffer_write) += n;
 			}
 
-			SET_INT32(VAL_OBJ_VALUE(val_ctx, BINCODE_WRITE_BITMASK), outBit);
+			w_mask = outBit;
 			break; // end of REB_BLOCK write
 
 		} //end of VAL_TYPE switch
@@ -1286,7 +1357,7 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 		cp = BIN_DATA(bin) + VAL_INDEX(buffer_read);
 		ep = BIN_DATA(bin) + VAL_TAIL(buffer_read);
 
-		inBit = IS_OBJECT(val_ctx) ? VAL_INT32(VAL_OBJ_VALUE(val_ctx, BINCODE_READ_BITMASK)): 0;
+		inBit = r_mask;
 
 		if (IS_INTEGER(val_read)) {
 			// negative counts are huge as unsigned; also avoids 64->32 bit truncation
@@ -1299,7 +1370,7 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 			Set_Binary(D_RET, Copy_Series_Part(bin, VAL_INDEX(buffer_read), n));
 			VAL_TAIL(D_RET) = n;
 			VAL_INDEX(buffer_read) += n;
-			return R_RET;
+			BINCODE_RETURN(R_RET);
 		}
 		if (ref_into && IS_STRUCT(val_into)) {
 			// fill an existing struct in place (no new struct is made)
@@ -1314,7 +1385,7 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 			COPY_MEM(VAL_STRUCT_DATA_BIN(val_into), cp, n);
 			VAL_INDEX(buffer_read) += n;
 			*D_RET = *val_into;
-			return R_RET;
+			BINCODE_RETURN(R_RET);
 		}
 		if (ref_into && IS_VECTOR(val_into)) {
 			// fill an existing vector in place (type and length are given by the vector)
@@ -1329,14 +1400,14 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 			if (Bincode_Swap_Needed(cmd)) Bincode_Swap_Endian(bp, n, SERIES_WIDE(VAL_SERIES(val_into)));
 			VAL_INDEX(buffer_read) += n;
 			*D_RET = *val_into;
-			return R_RET;
+			BINCODE_RETURN(R_RET);
 		}
 		as_block = IS_BLOCK(val_read);
 
 		if(as_block) {
 			// encoding is block, so we can use its values normally
 			value = VAL_BLK_DATA(val_read);
-			if (IS_END(value)) return R_NONE; //empty block
+			if (IS_END(value)) BINCODE_RETURN(R_NONE); //empty block
 											  
 			// create a block for results if needed
 			if(ref_into) {
@@ -2088,11 +2159,11 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 
 		if(ref_into) *ret = *val_into;
 
-		return R_RET;
+		BINCODE_RETURN(R_RET);
 	}
 
 	//printf("DS_TOP end: %x\n", DS_TOP);
-	return R_ARG1;
+	BINCODE_RETURN(R_ARG1);
 
 error:
 	if (IS_END(value)) value--; // missing argument at block end: report the command

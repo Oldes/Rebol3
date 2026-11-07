@@ -373,3 +373,4 @@ element-type
 vector-be
 vector-le
 unixtime-le
+buffer-write

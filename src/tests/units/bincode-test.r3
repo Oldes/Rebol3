@@ -24,30 +24,77 @@ is-protected-error?: func[code][
 	] 
 ]
 
+===start-group=== "bincode - handle context"
+	--test-- "context type"
+		b: binary 16
+		--assert handle? b
+		--assert 'bincode = b/type
+	--test-- "path access"
+		b: binary 16
+		binary/write b #{01020304}
+		--assert #{01020304} = b/buffer
+		--assert #{} = b/buffer-write
+		binary/read b 'ui8
+		--assert #{020304} = b/buffer
+		binary/read b [ub 4]
+		--assert 8 = b/r-mask
+		--assert 0 = b/w-mask
+	--test-- "set path"
+		b: binary #{01020304}
+		b/buffer: skip b/buffer 2
+		--assert 3 = binary/read b 'ui8
+		--assert error? try [b/buffer: #{00}]           ;; not the context's buffer
+		--assert error? try [b/r-mask: 3]               ;; not a single bit
+		--assert error? try [b/w-mask: 128]
+		--assert error? try [b/type: 'foo]
+	--test-- "crop on own buffer"
+		b: binary 16
+		binary/write b #{010203}
+		--assert [1] = binary/read b [ui8 crop]
+		--assert #{0203} = b/buffer
+	--test-- "errors leave context unchanged"
+		b: binary #{0102}
+		--assert error? try [binary/read b [ui8 ui32]]
+		--assert #{0102} = b/buffer
+		b: binary 8
+		--assert error? try [binary/write b [ui8 1 ui8 256]]
+		--assert #{} = b/buffer
+	--test-- "invalid contexts"
+		--assert error? try [binary/read object [type: 'bincode] 'ui8]
+		--assert error? try [binary/read b/buffer 'ui8]  ;; binary makes a new context, so this works...
+		--assert error? try [binary -1]
+	--test-- "GC keeps the buffer"
+		b: binary 16
+		binary/write b #{0102}
+		recycle
+		--assert [1 2] = binary/read b [ui8 ui8]
+===end-group===
+
+
 ===start-group=== "BinCode initialization"
 	--test-- "BinCode-0"
-		--assert object? b: binary none ; create bincode with default size
+		--assert handle? b: binary none ; create bincode with default size
 		--assert b/type = 'bincode
 		--assert empty? b/buffer
 		--assert empty? b/buffer-write
 	--test-- "BinCode-1"
-		--assert object? b: binary 16 ; pre-allocate buffer for 16 bytes
+		--assert handle? b: binary 16 ; pre-allocate buffer for 16 bytes
 		--assert b/type = 'bincode
 		--assert empty? b/buffer
 		--assert empty? b/buffer-write
 	--test-- "BinCode-2"
-		--assert object? b: binary #{0badCafe} ; init with data already
+		--assert handle? b: binary #{0badCafe} ; init with data already
 		--assert not empty? b/buffer
 		--assert not empty? b/buffer-write
 		--assert 4 = length? b/buffer
 		--assert 4 = length? b/buffer-write
-		--assert object? binary/init b 1024 ; reinitialize existing bincode
+		--assert handle? binary/init b 1024 ; reinitialize existing bincode
 		--assert empty? b/buffer
 		--assert empty? b/buffer-write
-		--assert object? binary/init b #{0badCafe} ; reinitialize with data
+		--assert handle? binary/init b #{0badCafe} ; reinitialize with data
 		--assert not empty? b/buffer
 		--assert not empty? b/buffer-write
-		--assert object? binary/init b none ; just clear existing bincode
+		--assert handle? binary/init b none ; just clear existing bincode
 		--assert empty? b/buffer
 		--assert empty? b/buffer-write
 
@@ -57,10 +104,10 @@ is-protected-error?: func[code][
 
 	--test-- "BinCode - write positive unsigned integers (big endian)"
 		b: binary 64
-		--assert object? binary/write b [ui64 1 ui32 1 ui24 1 ui16 1 ui8 1]
+		--assert handle? binary/write b [ui64 1 ui32 1 ui24 1 ui16 1 ui8 1]
 		--assert #{000000000000000100000001000001000101} = b/buffer
 		binary/init b none
-		--assert object? binary/write b [ui64 1  ui32BE 1  ui24BE 1  ui16BE 1 ui8 1]
+		--assert handle? binary/write b [ui64 1  ui32BE 1  ui24BE 1  ui16BE 1 ui8 1]
 		--assert #{000000000000000100000001000001000101} = b/buffer
 		--assert "11111" = rejoin binary/read b [ui64 ui32 ui24 ui16 ui8]
 		--assert "11111" = rejoin binary/read b [AT 1 ui64be ui32be ui24be ui16be ui8]
@@ -101,20 +148,20 @@ is-protected-error?: func[code][
 		--assert "255 65535 16777215 4294967295 -1" = reform binary/read b [ui8 ui16 ui24 ui32 ui64]
 	--test-- "BinCode - unsigned integers (little endian)"
 		binary/init b none
-		--assert object? binary/write b [ui8 1  ui16LE 1  ui24LE 1  ui32LE 1]
+		--assert handle? binary/write b [ui8 1  ui16LE 1  ui24LE 1  ui32LE 1]
 		--assert #{01010001000001000000} = b/buffer
 		--assert "1111" = rejoin binary/read b [at 1 ui8 ui16LE ui24LE ui32LE]
 	--test-- "BinCode - write signed integers over range"
 		binary/init b none
 		; max values... should be ok
-		--assert object? binary/write b [SI8  127]
-		--assert object? binary/write b [SI8 -128]
-		--assert object? binary/write b [SI16  32767]
-		--assert object? binary/write b [SI16 -32768]
-		--assert object? binary/write b [SI24  8388607]
-		--assert object? binary/write b [SI24 -8388608]
-		--assert object? binary/write b [SI32  2147483647]
-		--assert object? binary/write b [SI32 -2147483648]
+		--assert handle? binary/write b [SI8  127]
+		--assert handle? binary/write b [SI8 -128]
+		--assert handle? binary/write b [SI16  32767]
+		--assert handle? binary/write b [SI16 -32768]
+		--assert handle? binary/write b [SI24  8388607]
+		--assert handle? binary/write b [SI24 -8388608]
+		--assert handle? binary/write b [SI32  2147483647]
+		--assert handle? binary/write b [SI32 -2147483648]
 		; over range values.. should be "out of range" error
 		--assert is-range-error? [binary/write b [SI8  128]]
 		--assert is-range-error? [binary/write b [SI8 -129]]
@@ -131,11 +178,11 @@ is-protected-error?: func[code][
 	--test-- "BinCode - write unsigned integers over range"
 		binary/init b none
 		; max values... should be ok
-		--assert object? binary/write b [UI8  255]
-		--assert object? binary/write b [UI16 65535]
-		--assert object? binary/write b [UI24 16777215]
-		--assert object? binary/write b [UI32 4294967295]
-		; --assert object? binary/write b [UI64 18446744073709551615.0] ;- not yet suported
+		--assert handle? binary/write b [UI8  255]
+		--assert handle? binary/write b [UI16 65535]
+		--assert handle? binary/write b [UI24 16777215]
+		--assert handle? binary/write b [UI32 4294967295]
+		; --assert handle? binary/write b [UI64 18446744073709551615.0] ;- not yet suported
 
 		; over range values.. should be "out of range" error
 		--assert is-range-error? [binary/write b [UI8  256]]
@@ -151,33 +198,33 @@ is-protected-error?: func[code][
 
 	b: binary 32
 	--test-- "BinCode - strings"
-	     --assert object? binary/write b [%ščř%20 "- " http://foo " " e@foo.com]
+	     --assert handle? binary/write b [%ščř%20 "- " http://foo " " e@foo.com]
 	     --assert "ščř - http://foo e@foo.com" = to string! b/buffer
 	--test-- "BinCode - BYTES"
 	b: binary 32
-	     --assert object? binary/write b [#{cafe}]
+	     --assert handle? binary/write b [#{cafe}]
 	     --assert #{CAFE} = binary/read b 'bytes
-	     --assert object? binary/write b [BYTES %ščř%20 BYTES http://foo]
+	     --assert handle? binary/write b [BYTES %ščř%20 BYTES http://foo]
 	     --assert "ščř http://foo" = to string! binary/read b 'bytes
 	--test-- "BinCode - UI8BYTES"
-		--assert object? binary/write b [UI8BYTES #{cafe}]
+		--assert handle? binary/write b [UI8BYTES #{cafe}]
 		--assert #{02CAFE} = binary/read b 'bytes
 		--assert #{CAFE} = binary/read #{02CAFE} 'UI8BYTES
 	--test-- "BinCode - UI16BYTES"
-		--assert object? binary/write b [UI16BYTES #{cafe}]
+		--assert handle? binary/write b [UI16BYTES #{cafe}]
 		--assert #{0002CAFE} = binary/read b 'bytes
 		--assert #{CAFE} = binary/read #{0002CAFE} 'UI16BYTES
 	--test-- "BinCode - UI16LEBYTES"
-		--assert object? binary/write b [UI16LEBYTES #{cafe}]
+		--assert handle? binary/write b [UI16LEBYTES #{cafe}]
 		--assert #{0200CAFE} = binary/read b 'bytes
 		--assert #{CAFE} = binary/read #{0200CAFE} 'UI16LEBYTES
 	--test-- "BinCode - UI24BYTES"
-		--assert object? binary/write b [UI24BYTES #{cafe}]
+		--assert handle? binary/write b [UI24BYTES #{cafe}]
 		--assert #{000002CAFE} = binary/read b 'bytes
 		--assert #{CAFE} = binary/read #{000002CAFE} 'UI24BYTES
 		--assert #{CAFE} = binary/read #{020000CAFE} 'UI24LEBYTES
 	--test-- "BinCode - UI32BYTES"
-		--assert object? binary/write b [UI32BYTES #{cafe}]
+		--assert handle? binary/write b [UI32BYTES #{cafe}]
 		--assert #{00000002CAFE} = binary/read b 'bytes
 		--assert #{CAFE} = binary/read #{00000002CAFE} 'UI32BYTES
 		--assert #{CAFE} = binary/read #{02000000CAFE} 'UI32LEBYTES
@@ -330,7 +377,7 @@ is-protected-error?: func[code][
 	--test-- "BinCode - overwrite protected values"
 		out: copy #{} ;not yet protected
 		blk: copy []
-		--assert object? binary/write out #{babe}
+		--assert handle? binary/write out #{babe}
 		--assert (binary/read out [AT 1 i: ui8] i = 186)
 
 		protect :out
@@ -618,14 +665,14 @@ is-protected-error?: func[code][
 
 	--test-- "write empty block returns ctx"
 		b: binary #{0102}
-		--assert object? binary/write b []
+		--assert handle? binary/write b []
 	--test-- "write/read with empty block still reads"
 		b: binary #{0102}
 		--assert 1 = binary/write/read b [] 'ui8
 		--assert [2] = binary/write/read b [] [ui8]
 	--test-- "write binary returns ctx"
 		b: binary 16
-		--assert object? binary/write b #{0102}
+		--assert handle? binary/write b #{0102}
 	--test-- "write/read with binary data"
 		b: binary 16
 		--assert [1 2] = binary/write/read b #{0102} [ui8 ui8]
