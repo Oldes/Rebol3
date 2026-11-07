@@ -1584,7 +1584,7 @@ REBFLG Get_Image_Source(REBVAL *val, REBYTE **data, REBCNT *len)
 					if (n < 0 || n > 255) return PE_BAD_RANGE;
 					Fill_Line((REBCNT *)src, TO_PIXEL_COLOR(n,n,n,n), len, FALSE);
 				} else if (Get_Image_Source(val, &bin, &blen)) {
-					Bin_To_Color(src, bin, blen / 4, sym);
+					Bin_To_Color(src, bin, MIN(blen / 4, (REBCNT)len), sym);
 				} else return PE_BAD_SET;
 				break;
 
@@ -1610,7 +1610,7 @@ REBFLG Get_Image_Source(REBVAL *val, REBYTE **data, REBCNT *len)
 					Fill_Line((REBCNT*)src, TO_PIXEL_COLOR(n, n, n, n), len, FALSE);
 				}
 				else if (Get_Image_Source(val, &bin, &blen)) {
-					Bin_To_Color(src, bin, blen, sym);
+					Bin_To_Color(src, bin, MIN(blen, (REBCNT)len), sym);
 				}
 				else return PE_BAD_SET;
 				break;

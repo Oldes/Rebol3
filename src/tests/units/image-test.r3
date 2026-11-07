@@ -321,9 +321,15 @@ Rebol [
 				vector? img/:format: make vector! compose [uint8! (bin)]
 				img/:format = bin
 			]
-
-
 	]
+
+	--test-- "image setters do not write past the image"
+		img: make image! 1x1
+		big: append/dup make binary! 4'000'000 #{7F} 4'000'000
+		img/gray: big                       ;; 4M values for 1 pixel
+		--assert img/gray == #{7F}
+		img/rgba: big                       ;; 1M pixels for 1
+		--assert img/rgba == #{7F7F7F7F}
 ===end-group===
 
 
