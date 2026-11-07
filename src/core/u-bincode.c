@@ -271,6 +271,12 @@ static REBCNT Der_Length_Size(u64 v) {
 	while (v > 0xFF) { v >>= 8; n++; }
 	return n + 1;         // long form: 0x80|n followed by n bytes
 }
+// Number of octal digits needed for a value
+static REBCNT Octal_Digits(u64 v) {
+	REBCNT d = 1;
+	while (v >>= 3) d++;
+	return d;
+}
 #define BITSET_CMD_BYTES(c) ((c) == SYM_BITSET8 ? 1 : (c) == SYM_BITSET16 ? 2 : 4)
 // Validates that a bitset fits into `n` bytes (no bits set above them, not negated)
 static void Bincode_Check_Bitset(REBVAL *v, REBCNT n) {
@@ -851,6 +857,27 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 						Bincode_Check_Bitset(next, BITSET_CMD_BYTES(cmd));
 						count += BITSET_CMD_BYTES(cmd);
 						continue;
+					case SYM_STRING_BYTES:
+					case SYM_OCTAL_BYTES:
+						// fixed width field: <width> <value> (as read)
+						if (!IS_INTEGER(next)) goto error;
+						if (VAL_INT64(next) < (cmd == SYM_OCTAL_BYTES ? 1 : 0) || VAL_INT64(next) > 0x7FFFFFFF) Trap1(RE_OUT_OF_RANGE, next);
+						len = VAL_INT32(next); // field width
+						next = ++value;
+						if (IS_GET_WORD(next)) next = Get_Var(next);
+						else if (IS_GET_PATH(next)) {
+							Do_Path(&next, NULL);
+							next = DS_POP; // volatile stack reference
+						}
+						if (cmd == SYM_STRING_BYTES) {
+							if (!ANY_BINSTR(next)) goto error;
+							if (VAL_LEN(next) > len) Trap1(RE_OUT_OF_RANGE, next); // longer than the field
+						} else {
+							if (!IS_INTEGER(next)) goto error;
+							if (VAL_INT64(next) < 0 || Octal_Digits(VAL_UNT64(next)) > len) Trap1(RE_OUT_OF_RANGE, next);
+						}
+						count += len;
+						continue;
 					case SYM_UNIXTIME:
 					case SYM_UNIXTIME_LE:
 						if (!IS_DATE(next)) goto error;
@@ -1312,6 +1339,27 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 						n = BITSET_CMD_BYTES(cmd);
 						memset(cp, 0, n);
 						memcpy(cp, BIN_DATA(VAL_SERIES(next)), MIN(n, SERIES_TAIL(VAL_SERIES(next))));
+						break;
+					case SYM_STRING_BYTES:
+					case SYM_OCTAL_BYTES:
+						// validated in the size pass; unused bytes are NUL
+						n = VAL_INT32(next); // field width
+						next = ++value;
+						if (IS_GET_WORD(next)) next = Get_Var(next);
+						else if (IS_GET_PATH(next)) {
+							Do_Path(&next, NULL);
+							next = DS_POP; // volatile stack reference
+						}
+						memset(cp, 0, n);
+						if (cmd == SYM_STRING_BYTES) {
+							memcpy(cp, VAL_BIN_AT(next), VAL_LEN(next));
+						} else {
+							// zero padded octal digits followed by NUL (like in TAR headers),
+							// the NUL is omitted only when the value needs the whole field
+							u = VAL_UNT64(next);
+							len = (Octal_Digits(u) < n) ? n - 1 : n;
+							for (i = len; i > 0; i--) { cp[i - 1] = (REBYTE)('0' + (u & 7)); u >>= 3; }
+						}
 						break;
 					case SYM_UNIXTIME:
 					case SYM_UNIXTIME_LE:

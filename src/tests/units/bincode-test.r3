@@ -1553,5 +1553,40 @@ is-protected-error?: func[code][
 		--assert 64 = length? bin/buffer
 ===end-group===
 
+
+===start-group=== "bincode - write string-bytes/octal-bytes"
+	--test-- "string-bytes"
+		bin: binary 32
+		binary/write bin [string-bytes 6 "abc" string-bytes 3 "xyz" string-bytes 4 #{0102} string-bytes 0 ""]
+		--assert #{616263000000 78797A 01020000} = binary/read bin 'bytes
+		bin: binary 16
+		binary/write bin [string-bytes 6 "ž€"]
+		--assert #{C5BE E282AC 00} = binary/read bin 'bytes
+	--test-- "octal-bytes"
+		bin: binary 32
+		binary/write bin [octal-bytes 8 420 octal-bytes 12 1234 octal-bytes 8 16777215 octal-bytes 1 5]
+		--assert #{30303030363434 00  30303030303030 32333232 00  3737373737373737  35} = binary/read bin 'bytes
+	--test-- "roundtrip (TAR-like header fields)"
+		bin: binary 64
+		binary/write bin [string-bytes 10 "file.txt" octal-bytes 8 420 octal-bytes 12 1234]
+		--assert ["file.txt" 420 1234] = binary/read bin [string-bytes 10 octal-bytes 8 octal-bytes 12]
+	--test-- "get-word / get-path arguments"
+		o: object [w: 4 s: "ab" v: 8]
+		bin: binary 16
+		binary/write bin [string-bytes :o/w :o/s octal-bytes :o/w :o/v]
+		--assert #{61620000 30313000} = binary/read bin 'bytes
+	--test-- "errors"
+		--assert error? try [binary/write binary 8 [string-bytes 2 "abc"]]
+		--assert error? try [binary/write binary 8 [string-bytes -1 ""]]
+		--assert error? try [binary/write binary 8 [string-bytes 2 1]]
+		--assert error? try [binary/write binary 8 [octal-bytes 1 8]]
+		--assert error? try [binary/write binary 8 [octal-bytes 0 0]]
+		--assert error? try [binary/write binary 8 [octal-bytes 4 -1]]
+		--assert error? try [binary/write binary 8 [octal-bytes 4]]
+		bin: binary 8
+		try [binary/write bin [ui8 1 string-bytes 1 "ab"]]
+		--assert 0 = binary/read bin 'length?
+===end-group===
+
 ~~~end-file~~~
 
