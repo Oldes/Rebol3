@@ -261,6 +261,17 @@ static void Bincode_Check_Bitset(REBVAL *v, REBCNT n) {
 		if (BIN_DATA(ser)[i]) Trap1(RE_OUT_OF_RANGE, v);
 	}
 }
+// Converts a FIXED8 (signed 8.8) or FIXED16 (signed 16.16) write argument
+// to its rounded integer representation (traps when out of range)
+static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
+	REBDEC d = IS_INTEGER(arg) ? (REBDEC)VAL_INT64(arg) : VAL_DECIMAL(arg);
+	REBDEC lo = (cmd == SYM_FIXED8) ? -32768.0 : -2147483648.0;
+	REBDEC hi = (cmd == SYM_FIXED8) ?  32767.0 :  2147483647.0;
+	d *= (cmd == SYM_FIXED8) ? 256.0 : 65536.0;
+	d = (d < 0) ? d - 0.5 : d + 0.5; // round half away from zero (truncated below)
+	if (!(d > lo - 1.0 && d < hi + 1.0)) Trap1(RE_OUT_OF_RANGE, arg); // also NaN
+	return (i64)d;
+}
 
 /***********************************************************************
 **
@@ -721,6 +732,12 @@ static void Bincode_Check_Bitset(REBVAL *v, REBCNT n) {
 						}
 						goto error;
 
+					case SYM_FIXED8:
+					case SYM_FIXED16:
+						if (!(IS_INTEGER(next) || IS_DECIMAL(next))) goto error;
+						Bincode_Fixed_Value(cmd, next); // range check
+						count += (cmd == SYM_FIXED8) ? 2 : 4;
+						continue;
 					case SYM_BITSET8:
 					case SYM_BITSET16:
 					case SYM_BITSET32:
@@ -1204,6 +1221,13 @@ static void Bincode_Check_Bitset(REBVAL *v, REBCNT n) {
 						n = 4;
 						break;
 
+					case SYM_FIXED8:
+					case SYM_FIXED16:
+						// little endian (as read), validated in the size pass
+						si = Bincode_Fixed_Value(cmd, next);
+						n = (cmd == SYM_FIXED8) ? 2 : 4;
+						for (j = 0; j < (REBINT)n; j++) cp[j] = (REBYTE)((u64)si >> (8 * j));
+						break;
 					case SYM_BITSET8:
 					case SYM_BITSET16:
 					case SYM_BITSET32:

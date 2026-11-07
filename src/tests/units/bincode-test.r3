@@ -1332,5 +1332,33 @@ is-protected-error?: func[code][
 		--assert 0 = binary/read bin 'length?
 ===end-group===
 
+
+===start-group=== "bincode - fixed8/fixed16"
+	--test-- "read signed"
+		--assert -128.0 = binary/read #{0080} 'fixed8
+		--assert -1.5   = binary/read #{80FE} 'fixed8
+		--assert 127.99609375 = binary/read #{FF7F} 'fixed8
+		--assert -1.0   = binary/read #{0000FFFF} 'fixed16
+	--test-- "read fixed16 precision"
+		--assert 32767.9999847412109375 = binary/read #{FFFFFF7F} 'fixed16
+	--test-- "write"
+		bin: binary 32
+		binary/write bin [fixed8 1.5 fixed8 -1.5 fixed8 127.99609375 fixed8 -128 fixed16 1.5 fixed16 -1 fixed16 0.1]
+		--assert #{8001 80FE FF7F 0080 00800100 0000FFFF 9A190000} = binary/read bin 'bytes
+	--test-- "roundtrip"
+		bin: binary 16
+		binary/write bin [fixed8 -2.25 fixed16 -12345.5]
+		--assert [-2.25 -12345.5] = binary/read bin [fixed8 fixed16]
+	--test-- "errors"
+		--assert error? try [binary/write binary 8 [fixed8 128]]
+		--assert error? try [binary/write binary 8 [fixed8 -128.002]]
+		--assert error? try [binary/write binary 8 [fixed16 32768]]
+		--assert error? try [binary/write binary 8 [fixed16 "1"]]
+		--assert error? try [binary/write binary 8 [fixed16 1.#NaN]]
+		bin: binary 8
+		try [binary/write bin [ui8 1 fixed8 1000]]
+		--assert 0 = binary/read bin 'length?
+===end-group===
+
 ~~~end-file~~~
 
