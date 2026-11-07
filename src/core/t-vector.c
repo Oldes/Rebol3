@@ -332,6 +332,20 @@ void Set_Vector_Row(REBSER *ser, REBVAL *blk, REBCNT type)
 			Set_Vector_Value(type, ser->data, n++, val);
 		}
 	}
+	else if (IS_VECTOR(blk)) {
+		// Values are converted one by one, exactly like the numbers of
+		// a block, so the source may be of any numeric element type.
+		REBCNT  stype = VAL_VEC_TYPE(blk);
+		REBYTE *src   = VAL_VEC_HEAD(blk);
+		REBCNT  i     = VAL_INDEX(blk);
+		REBVAL  num;
+		if (len > max) len = max;
+		for (; n < len; n++, i++) {
+			get_vect(stype, src, i, &num);
+			VAL_SET(&num, stype >= VTSF08 ? REB_DECIMAL : REB_INTEGER);
+			Set_Vector_Value(type, ser->data, n, &num);
+		}
+	}
 	else {
 		// Binary data is copied verbatim -- the bytes are the vector's
 		// storage in native byte order, which is what TO BINARY! produces,
@@ -1602,7 +1616,7 @@ REBVAL *Make_Vector_Struct_Spec(REBSER *fields, REBVAL *bp, REBVAL *value, REBFL
 **	Make a vector from an extended block spec.
 **
 **     make vector! [uint8! [1 2 3]]
-**     make vector! [uint8! :data]
+**     make vector! [uint8! :data]          ; data: block, binary or vector
 **     make vector! [uint8! :size :data :index]
 **
 **     ; backwards compatibility versions:
@@ -1721,8 +1735,10 @@ size_spec:
 	if (IS_GET_WORD(val))
 		val = Get_Var(val);
 	// Initial data:
-	if (IS_BLOCK(val) || IS_BINARY(val)) {
+	if (IS_BLOCK(val) || IS_BINARY(val) || IS_VECTOR(val)) {
 		REBCNT len = VAL_LEN(val);
+		// a vector of structs holds no numbers
+		if (IS_VECTOR(val) && VAL_VEC_IS_STRUCT(val)) return 0;
 		if (IS_BINARY(val)) {
 			len /= VECT_WIDE(vtype);
 			if (len == 0 && VAL_LEN(bp) > 0)

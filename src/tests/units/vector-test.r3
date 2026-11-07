@@ -68,6 +68,22 @@ Rebol [
 	--assert #(uint8! []) == attempt [to vector! #{}]
 	--assert #(uint8! [1 255]) == attempt [to vector! #{01FF}]
 
+--test-- "Make vector! from another vector"
+	f: make vector! [float32! [0.0 1.5 254.5 255.0]]
+	--assert (make vector! [uint8! :f]) == make vector! [uint8! [0 1 254 255]]
+	--assert (make vector! [float64! :f]) == make vector! [float64! [0.0 1.5 254.5 255.0]]
+	i: make vector! [int16! [-1 300 7]]
+	--assert (make vector! [float32! :i]) == make vector! [float32! [-1.0 300.0 7.0]]
+	;; same conversion as from a block: out of range values wrap
+	--assert (make vector! [int8! :i]) == make vector! [int8! [-1 44 7]]
+	;; from the vector's index, and padded when the size is larger
+	n: next i
+	--assert (make vector! [int32! :n]) == make vector! [int32! [300 7]]
+	--assert (make vector! [int32! 4 :i]) == make vector! [int32! [-1 300 7 0]]
+	pt!: make struct! [x [double!]]
+	pts: make vector! [:pt! 2]
+	--assert error? try [make vector! [float64! :pts]]
+
 --test-- "Random shuffle of vector vs. block"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/910
 	;@@ https://github.com/Oldes/Rebol-issues/issues/947
