@@ -919,6 +919,7 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 			} // end of for loop
 
 			tail_new = count + (pb ? 1 : 0); //bytes needed to write (incl. partially written byte)
+			if (tail > tail_new) tail_new = tail; // AT/SKIP may have moved back from a further position
 			n = SERIES_TAIL(bin); // old tail
 			//printf("index: %i tail: %i count: %i tail_new: %i rest: %i\n", index, tail, count, tail_new, SERIES_REST(bin));
 			if (tail_new >= SERIES_REST(bin)) { // keep space for the terminator
