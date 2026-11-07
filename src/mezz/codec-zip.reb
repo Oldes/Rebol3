@@ -47,8 +47,6 @@ register-codec [
 		]
 		bin: binary zip-data
 
-		data-pos: 0
-
 		if only [ files-to-extract: length? files ]
 
 		;-[ reading central directory end record ]-
@@ -257,11 +255,7 @@ register-codec [
 				8 ;deflate
 			]
 
-			either compressed-data [
-				compressed-size: length? compressed-data
-			][	compressed-data: #{}
-				compressed-size: 0
-			]
+			compressed-size: length? compressed-data
 
 			if any [
 				none? date

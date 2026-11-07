@@ -573,6 +573,16 @@ if find codecs 'zip [
 			p: find/last bin #{504B0506}
 			change skip p 16 #{FFFFFFFF}      ; central directory offset
 			--assert all [error? err: try [decode 'zip bin] err/id = 'no-codec]
+
+		--test-- "zip-encode-empty-and-deflated"
+			bin: encode 'zip reduce [%empty.txt #{} %big.txt append/dup copy "" "abc" 1000]
+			unzip: :system/codecs/zip/decode
+			info: unzip/info bin
+			--assert 0 = info/2/5             ; empty -> stored
+			--assert 8 = info/4/5             ; compressible -> deflate
+			data: decode 'zip bin
+			--assert none? data/2/2
+			--assert 3000 = length? data/4/2
 	===end-group===
 	system/options/log/zip: v
 ]
