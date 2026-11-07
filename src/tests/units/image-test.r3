@@ -40,6 +40,13 @@ Rebol [
 		img: make image! 2x3
 		--assert all [img/width == 2 img/height == 3]
 
+	--test-- "equal? compares image size"
+		;; same 16 white pixels, different shapes
+		--assert not equal? make image! 2x8 make image! 4x4
+		--assert not equal? make image! 16x1 make image! 1x16
+		--assert equal? make image! 4x4 make image! 4x4
+		--assert not same? make image! 4x4 make image! 4x4
+
 ===end-group===
 
 ===start-group=== "construct image"

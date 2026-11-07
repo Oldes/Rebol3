@@ -43,7 +43,7 @@
 
 	if (mode < 0) return -1;
 	if (mode == 3) return VAL_SERIES(a) == VAL_SERIES(b) && VAL_INDEX(a) == VAL_INDEX(b);
-	e = VAL_IMAGE_WIDE(a) == VAL_IMAGE_WIDE(a) && VAL_IMAGE_HIGH(b) == VAL_IMAGE_HIGH(b);
+	e = VAL_IMAGE_WIDE(a) == VAL_IMAGE_WIDE(b) && VAL_IMAGE_HIGH(a) == VAL_IMAGE_HIGH(b);
 	if (e) e = (0 == Cmp_Value(a, b, mode > 1));
 	return e;
 }
