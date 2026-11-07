@@ -249,7 +249,7 @@ static u64 Bincode_Bits_Value(REBCNT cmd, REBINT nbits, REBVAL *arg) {
 //		/read    "Read data from the input buffer"
 //			code [word! block! integer! binary! struct!]   "Input encoding"
 //		/into    "Put READ results in out block, instead of creating a new block"
-//			out  [block!] "Target block for results, when /into is used"
+//			out  [block! struct!] "Target block for results, or a struct to be filled, when /into is used"
 //		/with    "Additional input argument"
 //			num  [integer!] "Bits/bytes number used with WORD! code type to resolve just single value"
 //	]
@@ -1228,6 +1228,21 @@ static u64 Bincode_Bits_Value(REBCNT cmd, REBINT nbits, REBVAL *arg) {
 			Set_Binary(D_RET, Copy_Series_Part(bin, VAL_INDEX(buffer_read), n));
 			VAL_TAIL(D_RET) = n;
 			VAL_INDEX(buffer_read) += n;
+			return R_RET;
+		}
+		if (ref_into && IS_STRUCT(val_into)) {
+			// fill an existing struct in place (no new struct is made)
+			if (!IS_STRUCT(val_read)) Trap_Arg(val_read);
+			if (VAL_STRUCT_PROTECTED(val_into)) Trap0(RE_PROTECTED);
+			if (IS_PROTECT_SERIES(VAL_STRUCT_DATA(val_into))) Trap0(RE_PROTECTED);
+			n = VAL_STRUCT_SIZE(val_into);
+			// the read spec must describe the same struct
+			if (n != VAL_STRUCT_SIZE(val_read) || VAL_STRUCT_HASH(val_into) != VAL_STRUCT_HASH(val_read))
+				Trap_Arg(val_into);
+			ASSERT_READ_SIZE(val_read, cp, ep, n);
+			COPY_MEM(VAL_STRUCT_DATA_BIN(val_into), cp, n);
+			VAL_INDEX(buffer_read) += n;
+			*D_RET = *val_into;
 			return R_RET;
 		}
 		as_block = IS_BLOCK(val_read);

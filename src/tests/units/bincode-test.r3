@@ -1083,4 +1083,39 @@ is-protected-error?: func[code][
 		--assert all [error? e: try [binary/write binary 64 [:r]] e/id = 'protected]
 ===end-group===
 
+
+===start-group=== "bincode - read/into struct"
+	p: make struct! [x [int16!] y [int16!]]
+	--test-- "fill struct in place"
+		bin: binary #{0100FFFF0200FEFF}
+		r: binary/read/into bin :p :p
+		--assert same? r p
+		--assert all [p/x = 1 p/y = -1]
+		binary/read/into bin :p :p
+		--assert all [p/x = 2 p/y = -2]
+		--assert 0 = binary/read bin 'length?
+	--test-- "fill other struct with same spec"
+		q: make struct! [x [int16!] y [int16!]]
+		binary/read/into #{0300FDFF} :p :q
+		--assert all [q/x = 3 q/y = -3]
+	--test-- "fill nested struct view"
+		n: make struct! [id [uint8!] pos [struct! [x [int16!] y [int16!]]]]
+		v: n/pos
+		binary/read/into #{04000500} :v :v
+		--assert all [n/pos/x = 4 n/pos/y = 5]
+	--test-- "into block (unchanged behavior)"
+		b: [] binary/read/into #{0102} [ui8 ui8] :b
+		--assert b = [1 2]
+		b: [] binary/read/into #{0600FAFF} :p :b
+		--assert all [1 = length? b struct? b/1 b/1/x = 6 b/1/y = -6]
+		--assert not same? b/1 p
+	--test-- "errors"
+		other: make struct! [a [int32!]]
+		--assert error? try [binary/read/into #{01000200} :other :p]   ;; different spec
+		--assert error? try [binary/read/into #{0100} :p :p]           ;; short data
+		--assert error? try [binary/read/into #{0100FFFF} [ui8] :p]    ;; code must be a struct
+		r: make struct! [n [uint8!] val [rebval!]]
+		--assert error? try [binary/read/into append/dup #{} #{FF} 64 :r :r]
+===end-group===
+
 ~~~end-file~~~
