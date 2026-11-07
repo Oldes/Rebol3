@@ -1466,5 +1466,25 @@ is-protected-error?: func[code][
 		--assert [10 5] = binary/read b [ub 4 ub 4]
 ===end-group===
 
+
+===start-group=== "bincode - f16 write"
+	--test-- "normal values and rounding"
+		bin: binary 32
+		binary/write bin [f16 1.0 f16 -2 f16 65504 f16 0.1 f16 1.00048828125 f16 1.00146484375]
+		--assert #{003C 00C0 FF7B 662E 003C 023C} = binary/read bin 'bytes   ;; ties round to even
+	--test-- "infinity, overflow and NaN"
+		bin: binary 16
+		binary/write bin [f16 1.#INF f16 -1.#INF f16 65520 f16 1e10 f16 1.#NaN]
+		--assert #{007C 00FC 007C 007C 007E} = binary/read bin 'bytes
+	--test-- "subnormals"
+		bin: binary 16
+		binary/write bin [f16 5.9604644775390625e-8 f16 6.097555160522461e-5 f16 2.0e-8 f16 1e-300]
+		--assert #{0100 FF03 0000 0000} = binary/read bin 'bytes
+	--test-- "roundtrip"
+		bin: binary 16
+		binary/write bin [f16 5.9604644775390625e-8 f16be -0.333251953125 f16 65504]
+		--assert [5.9604644775390625e-8 -0.333251953125 65504.0] = binary/read bin [f16 f16be f16]
+===end-group===
+
 ~~~end-file~~~
 

@@ -117,6 +117,34 @@ float float16to32(float16_s f16) {
 	return f32.v;
 }
 
+// Converts a double to IEEE 754 half precision bits, rounding to nearest even
+// (directly from the double, so there is no double rounding through a float).
+// Overflow gives infinity, small values are stored as subnormals.
+static u16 Double_To_Half(double d) {
+	u64 b, man, h, rem, halfway;
+	u16 sign;
+	int exp, e, shift;
+
+	memcpy(&b, &d, 8);
+	sign = (u16)((b >> 48) & 0x8000);
+	exp  = (int)((b >> 52) & 0x7FF);
+	man  = b & 0xFFFFFFFFFFFFFULL;
+
+	if (exp == 0x7FF) return man ? 0x7E00 : (sign | 0x7C00); // canonical NaN (without sign) or infinity
+	if (exp == 0) return sign;                // zero or double subnormal (too small)
+	e = exp - 1023 + 15;                      // half's biased exponent
+	if (e >= 31) return sign | 0x7C00;        // overflow
+	if (e < -10) return sign;                 // below half of the smallest subnormal
+	man |= 1ULL << 52;                        // implicit bit
+	if (e > 0) { shift = 42; h = ((u64)e << 10) | ((man >> 42) & 0x3FF); } // normal
+	else       { shift = 43 - e; h = man >> shift; }                       // subnormal
+	rem = man & ((1ULL << shift) - 1);
+	halfway = 1ULL << (shift - 1);
+	// a carry from the mantissa correctly moves to the exponent (also to infinity)
+	if (rem > halfway || (rem == halfway && (h & 1))) h++;
+	return sign | (u16)h;
+}
+
 // MS-DOS date and time are little endian 16-bit values:
 //   time: bits 0-4 seconds/2, 5-10 minutes, 11-15 hours
 //   date: bits 0-4 day, 5-8 month, 9-15 years since 1980
@@ -386,7 +414,6 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 	REBYTE *cp, *bp, *ep;
 	REBCNT n, count, index, tail, tail_new;
 	REBDEC dbl;
-	REBD32 d32;
 	REBCNT cmd;
 	REBLEN i, len;
 	REBINT j;
@@ -1147,25 +1174,8 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 					case SYM_F16:
 					case SYM_F16BE:
 					case SYM_F16LE:
-						d32 = (REBDEC)(IS_INTEGER(next) ? VAL_INT64(next) : VAL_DECIMAL(next));
-						if (isnan(d32)) { // 1.#NaN
-							ushort = 0x7e00;
-						} else {
-							// based on: https://stackoverflow.com/a/15118210/494472
-							memcpy(&ulong, &d32, 4); // float bits (no pointer cast aliasing)
-							u32 t1 = (ulong & 0x7fffffff) >> 13;   // Non-sign bits; Align mantissa on MSB
-							u32 t2 = (ulong & 0x80000000) >> 16;   // Sign bit; Shift sign bit into position
-							u32 t3 =  ulong & 0x7f800000;          // Exponent
-
-							t1 -= 0x1c000;                         // Adjust bias
-							t1 = (t3 < 0x38800000) ? 0 : t1;       // Flush-to-zero
-							t1 = (t3 > 0x47000000) ? 0x7bff : t1;  // Clamp-to-max
-							// NOTE: now infinity value is also clamped to max, is it ok?
-
-							t1 |= t2;                              // Re-insert sign bit
-
-							ushort = (u16)t1;
-						}
+						dbl = IS_INTEGER(next) ? (REBDEC)VAL_INT64(next) : VAL_DECIMAL(next);
+						ushort = Double_To_Half(dbl);
 						bp = (REBYTE *)&ushort;
 						if (cmd == SYM_F16BE) {
 							WRITE_BE_2(cp, bp);
