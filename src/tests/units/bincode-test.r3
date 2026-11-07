@@ -1360,5 +1360,27 @@ is-protected-error?: func[code][
 		--assert 0 = binary/read bin 'length?
 ===end-group===
 
+
+===start-group=== "bincode - msdos date/time encoding"
+	--test-- "write"
+		bin: binary 16
+		binary/write bin [msdos-date 7-Nov-2026 msdos-time 13:30:15 msdos-datetime 7-Nov-2026/13:30:15]
+		--assert #{675D C76B C76B675D} = binary/read bin 'bytes
+		bin: binary 16
+		binary/write bin [msdos-datetime 1-Jan-1980/0:00 msdos-datetime 31-Dec-2107/23:59:59]
+		--assert #{00002100 7DBF9FFF} = binary/read bin 'bytes
+	--test-- "read"
+		--assert 7-Nov-2026 = binary/read #{675D} 'msdos-date
+		--assert 13:30:14   = binary/read #{C76B} 'msdos-time       ;; 2 second resolution
+		--assert 7-Nov-2026/13:30:14 = binary/read #{C76B 675D} 'msdos-datetime
+		--assert [31-Dec-2107/23:59:58 1] = binary/read #{7DBF 9FFF 01} [msdos-datetime ui8]
+	--test-- "2-byte forms touch only 2 bytes"
+		bin: binary 8
+		binary/write bin #{FFFFFFFF}
+		binary/write bin [at 1 msdos-date 1-Jan-1980]
+		--assert #{2100 FFFF} = binary/read bin 'bytes
+		--assert error? try [binary/read #{21} 'msdos-date]
+===end-group===
+
 ~~~end-file~~~
 

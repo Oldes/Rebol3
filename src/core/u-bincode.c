@@ -116,37 +116,26 @@ float float16to32(float16_s f16) {
 	return f32.v;
 }
 
-#pragma pack(4) 
-typedef union {
-	u16 num;
-	struct {
-		u32 day   : 5;
-		u32 month : 4;
-		u32 year  : 7;
-	} date;
-} ms_date;
-
-typedef union {
-	u16 num;
-	struct {
-		u32 second : 5;
-		u32 minute : 6;
-		u32 hour   : 5;
-	} time;
-} ms_time;
-
-typedef union {
-	u32 num;
-	struct {
-		u32 second : 5;
-		u32 minute : 6;
-		u32 hour   : 5;
-		u32 day    : 5;
-		u32 month  : 4;
-		u32 year   : 7;
-	} val;
-} ms_datetime;
-#pragma pack() 
+// MS-DOS date and time are little endian 16-bit values:
+//   time: bits 0-4 seconds/2, 5-10 minutes, 11-15 hours
+//   date: bits 0-4 day, 5-8 month, 9-15 years since 1980
+//   datetime: time followed by date (4 bytes)
+// Explicit shifts are used instead of bitfields, whose layout is implementation
+// defined and which would access 4 bytes when only 2 are available.
+static u16 Msdos_Date_Bits(REBVAL *v) {
+	return (u16)((((VAL_YEAR(v) - 1980) & 0x7F) << 9) | ((VAL_MONTH(v) & 0x0F) << 5) | (VAL_DAY(v) & 0x1F));
+}
+static u16 Msdos_Time_Bits(REBVAL *v) {
+	i64 secs, h, m;
+	if (VAL_TIME(v) == NO_TIME) return 0;
+	secs = VAL_TIME(v) / SEC_SEC;
+	h = secs / 3600; secs -= h * 3600;
+	m = secs / 60;   secs -= m * 60;
+	return (u16)(((h & 0x1F) << 11) | ((m & 0x3F) << 5) | ((secs / 2) & 0x1F)); // only 2 sec resolution!
+}
+#define MSDOS_GET_U16(p)    ((u16)((p)[0] | ((p)[1] << 8)))
+#define MSDOS_PUT_U16(p, n) ((p)[0] = (REBYTE)(n), (p)[1] = (REBYTE)((n) >> 8))
+#define MSDOS_TIME_SECS(t)  ((((t) >> 11) & 0x1F) * 3600 + (((t) >> 5) & 0x3F) * 60 + ((t) & 0x1F) * 2)
 
 #define ASSERT_SI_RANGE(v, n) if (Bincode_Int_Arg(v) < (- (i64)(n) - 1) || Bincode_Int_Arg(v) > (i64)(n)) Trap1(RE_OUT_OF_RANGE, v); // -(n+1) .. n
 // integer! or char! argument as a 64-bit value (char! uses only 32 bits of the value data)
@@ -329,9 +318,7 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 	REBYTE buf[8];
 
 
-	ms_datetime* msdt = NULL;
-	ms_date*     msd  = NULL;
-	ms_time*     mst  = NULL;
+	u16 msdos_bits;
 
 	REBVAL *value, *next;
 	REBVAL *data;
@@ -1177,47 +1164,18 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 						break;
 
 					case SYM_MSDOS_DATE:
-						msd = (ms_date*)cp;
-						msd->date.year = VAL_YEAR(next) - 1980;
-						msd->date.month = VAL_MONTH(next);
-						msd->date.day = VAL_DAY(next);
+						MSDOS_PUT_U16(cp, Msdos_Date_Bits(next));
 						n = 2;
 						break;
 
 					case SYM_MSDOS_TIME:
-						if (VAL_TIME(next) == NO_TIME) {
-							cp[0] = 0;
-							cp[1] = 0;
-						} else {
-							mst = (ms_time*)cp;
-							si = VAL_TIME(next) / SEC_SEC;
-							mst->time.hour = (u32)(si / 3600);
-							si -= 3600 * (i64)mst->time.hour;
-							mst->time.minute = (u32)(si / 60);
-							si -= 60 * (i64)mst->time.minute;
-							mst->time.second = (u32)si / 2; // this format has only 2 sec resolution!
-						}
+						MSDOS_PUT_U16(cp, Msdos_Time_Bits(next));
 						n = 2;
 						break;
 
 					case SYM_MSDOS_DATETIME:
-						msdt = (ms_datetime*)cp;
-						msdt->val.year = VAL_YEAR(next) - 1980;
-						msdt->val.month = VAL_MONTH(next);
-						msdt->val.day = VAL_DAY(next);
-						if (VAL_TIME(next) == NO_TIME) {
-							msdt->val.hour = 0;
-							msdt->val.minute = 0;
-							msdt->val.second = 0;
-						}
-						else {
-							si = VAL_TIME(next) / SEC_SEC;
-							msdt->val.hour = (u32)(si / 3600);
-							si -= 3600 * (i64)msdt->val.hour;
-							msdt->val.minute = (u32)(si / 60);
-							si -= 60 * (i64)msdt->val.minute;
-							msdt->val.second = (u32)si / 2; // this format has only 2 sec resolution!
-						}
+						MSDOS_PUT_U16(cp,     Msdos_Time_Bits(next));
+						MSDOS_PUT_U16(cp + 2, Msdos_Date_Bits(next));
 						n = 4;
 						break;
 
@@ -1929,36 +1887,33 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 						case SYM_MSDOS_DATETIME:
 							n = 4;
 							ASSERT_READ_SIZE(value, cp, ep, n);
-							msdt = (ms_datetime*)cp;
+							msdos_bits = MSDOS_GET_U16(cp + 2); // date
 							VAL_SET  (temp, REB_DATE);
-							VAL_YEAR (temp) = msdt->val.year + 1980;
-							VAL_MONTH(temp) = msdt->val.month;
-							VAL_DAY  (temp) = msdt->val.day;
+							VAL_YEAR (temp) = ((msdos_bits >> 9) & 0x7F) + 1980;
+							VAL_MONTH(temp) = (msdos_bits >> 5) & 0x0F;
+							VAL_DAY  (temp) = msdos_bits & 0x1F;
 							VAL_ZONE (temp) = 0;
-							VAL_TIME (temp) = TIME_SEC(msdt->val.second * 2
-													 + msdt->val.minute * 60
-													 + msdt->val.hour * 3600);
+							msdos_bits = MSDOS_GET_U16(cp);     // time
+							VAL_TIME (temp) = TIME_SEC(MSDOS_TIME_SECS(msdos_bits));
 							break;
 						case SYM_MSDOS_DATE:
 							n = 2;
 							ASSERT_READ_SIZE(value, cp, ep, n);
-							msd = (ms_date*)cp;
+							msdos_bits = MSDOS_GET_U16(cp);
 							CLEARS(temp);
 							VAL_SET  (temp, REB_DATE);
-							VAL_YEAR (temp) = msd->date.year + 1980;
-							VAL_MONTH(temp) = msd->date.month;
-							VAL_DAY  (temp) = msd->date.day;
+							VAL_YEAR (temp) = ((msdos_bits >> 9) & 0x7F) + 1980;
+							VAL_MONTH(temp) = (msdos_bits >> 5) & 0x0F;
+							VAL_DAY  (temp) = msdos_bits & 0x1F;
 							VAL_TIME (temp) = NO_TIME;
 							break;
 						case SYM_MSDOS_TIME:
 							n = 2;
 							ASSERT_READ_SIZE(value, cp, ep, n);
-							mst = (ms_time*)cp;
+							msdos_bits = MSDOS_GET_U16(cp);
 							CLEARS(temp);
 							VAL_SET  (temp, REB_TIME);
-							VAL_TIME (temp) = TIME_SEC(mst->time.second * 2 // this format has only 2 sec resolution!
-													 + mst->time.minute * 60
-													 + mst->time.hour * 3600);
+							VAL_TIME (temp) = TIME_SEC(MSDOS_TIME_SECS(msdos_bits));
 							break;
 						case SYM_CROP:
 							n = 0;
