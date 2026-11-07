@@ -1300,5 +1300,37 @@ is-protected-error?: func[code][
 		--assert 0 = binary/read bin 'length?
 ===end-group===
 
+
+===start-group=== "bincode - bitset writes"
+	--test-- "write"
+		bin: binary 16
+		binary/write bin [bitset8 #(bitset! #{A5}) bitset16 #(bitset! #{A5}) bitset32 #(bitset! #{01020304})]
+		--assert #{A5 A500 01020304} = binary/read bin 'bytes
+	--test-- "trailing zero bytes allowed"
+		bin: binary 8
+		binary/write bin [bitset8 #(bitset! #{A50000})]
+		--assert #{A5} = binary/read bin 'bytes
+	--test-- "padding overwrites existing data"
+		bin: binary 8
+		binary/write bin [ui32 -1 at 1 bitset32 #(bitset! #{01})]
+		--assert #{01000000} = binary/read bin 'bytes
+	--test-- "roundtrip"
+		bin: binary 8
+		cs: charset [0 7 8 15]
+		binary/write bin [bitset16 :cs]
+		--assert #{8181} = binary/read bin 'bytes
+		bin: binary 8
+		binary/write bin [bitset16 :cs]
+		--assert cs = binary/read bin 'bitset16
+	--test-- "errors"
+		--assert error? try [binary/write binary 8 [bitset8 #(bitset! #{A501})]]   ;; bit above width
+		cs: complement charset "a"
+		--assert error? try [binary/write binary 8 [bitset32 :cs]]                 ;; negated
+		--assert error? try [binary/write binary 8 [bitset8 1]]
+		bin: binary 8
+		try [binary/write bin [ui8 1 bitset8 #(bitset! #{0001})]]
+		--assert 0 = binary/read bin 'length?
+===end-group===
+
 ~~~end-file~~~
 

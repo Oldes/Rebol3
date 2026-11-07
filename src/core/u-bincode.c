@@ -251,6 +251,17 @@ static void Bincode_Swap_Endian(REBYTE *p, REBCNT len, REBCNT wide) { if (wide >
 #define VECTOR_DATA_AT(v) SERIES_SKIP(VAL_SERIES(v), VAL_INDEX(v))
 #define VECTOR_BYTES(v)   ((REBU64)VAL_LEN(v) * SERIES_WIDE(VAL_SERIES(v)))
 
+#define BITSET_CMD_BYTES(c) ((c) == SYM_BITSET8 ? 1 : (c) == SYM_BITSET16 ? 2 : 4)
+// Validates that a bitset fits into `n` bytes (no bits set above them, not negated)
+static void Bincode_Check_Bitset(REBVAL *v, REBCNT n) {
+	REBSER *ser = VAL_SERIES(v);
+	REBCNT i;
+	if (VAL_BITSET_NOT(v)) Trap1(RE_INVALID_ARG, v);
+	for (i = n; i < SERIES_TAIL(ser); i++) {
+		if (BIN_DATA(ser)[i]) Trap1(RE_OUT_OF_RANGE, v);
+	}
+}
+
 /***********************************************************************
 **
 */	REBNATIVE(binary)
@@ -710,6 +721,13 @@ static void Bincode_Swap_Endian(REBYTE *p, REBCNT len, REBCNT wide) { if (wide >
 						}
 						goto error;
 
+					case SYM_BITSET8:
+					case SYM_BITSET16:
+					case SYM_BITSET32:
+						if (!IS_BITSET(next)) goto error;
+						Bincode_Check_Bitset(next, BITSET_CMD_BYTES(cmd));
+						count += BITSET_CMD_BYTES(cmd);
+						continue;
 					case SYM_UNIXTIME:
 					case SYM_UNIXTIME_LE:
 						if (!IS_DATE(next)) goto error;
@@ -1186,6 +1204,14 @@ static void Bincode_Swap_Endian(REBYTE *p, REBCNT len, REBCNT wide) { if (wide >
 						n = 4;
 						break;
 
+					case SYM_BITSET8:
+					case SYM_BITSET16:
+					case SYM_BITSET32:
+						// raw bitset bytes, zero padded (validated in the size pass)
+						n = BITSET_CMD_BYTES(cmd);
+						memset(cp, 0, n);
+						memcpy(cp, BIN_DATA(VAL_SERIES(next)), MIN(n, SERIES_TAIL(VAL_SERIES(next))));
+						break;
 					case SYM_UNIXTIME:
 					case SYM_UNIXTIME_LE:
 						ulong = (u32)Date_To_Timestamp(next); // range validated in the size pass
