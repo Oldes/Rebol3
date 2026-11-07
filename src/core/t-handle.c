@@ -242,6 +242,21 @@ extern void RXI_To_Value(REBVAL *val, RXIARG arg, REBCNT type); // f-extension.
 		Query_Fields(val, D_ARG(ARG_QUERY_FIELD), Get_System(SYS_STANDARD, STD_HANDLE_INFO), Query_Handle_Field, NULL, D_RET);
 		return R_RET;
 
+	case A_PICK:
+	case A_SELECT:
+		// Field of a context handle by name, like: select ctx 'buffer
+		// (the same as path access, so the registered get_path callback is used)
+		{
+			REBPVS pvs;
+			if (!ANY_WORD(D_ARG(2))) Trap_Arg(D_ARG(2));
+			pvs.value  = val;
+			pvs.select = D_ARG(2);
+			pvs.setval = 0;
+			pvs.store  = D_RET;
+			if (PD_Handle(&pvs) == PE_USE) return R_RET;
+			return R_NONE; // unknown field, like PICK/SELECT on a struct
+		}
+
 	default:
 		Trap_Action(VAL_TYPE(val), action);
 	}

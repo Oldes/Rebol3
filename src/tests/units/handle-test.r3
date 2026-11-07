@@ -165,4 +165,21 @@ if all [
 ] ;<- if all []
 ===end-group===
 
+
+===start-group=== "handle! pick/select"
+	--test-- "select/pick on bincode handle"
+		b: binary/write 16 [ui8 1 ui8 2]
+		--assert #{0102} = select b 'buffer
+		--assert #{0102} = pick b 'buffer
+		--assert 'bincode = select b 'type
+		--assert none? select b 'not-a-field
+		--assert error? try [pick b 1]
+	--test-- "result is the context's buffer (not a copy)"
+		b: binary 16
+		binary/write b #{0102}
+		buf: select b 'buffer
+		binary/write b #{03}
+		--assert #{010203} = head buf
+===end-group===
+
 ~~~end-file~~~
