@@ -845,6 +845,20 @@ Rebol [
 		--assert none? vu64/max
 		--assert none? vf32/max
 		--assert none? vf64/max
+
+	--test-- "clamp vector"
+		v: #(float32! [-1.5 0.5 300.0])
+		--assert same? v clamp v 0 255                         ;; modified in place
+		--assert v == #(float32! [0.0 0.5 255.0])
+		v: #(int16! [-5 10 500])
+		--assert (clamp v 0.5 255.5) == #(int16! [1 10 255])   ;; decimal bounds rounded inwards
+		v: #(uint8! [0 100 200])
+		--assert (clamp v -10 300) == #(uint8! [0 100 200])    ;; bounds wider than the type
+		--assert (clamp v 300 400) == #(uint8! [255 255 255])  ;; bounds above the type
+		v: #(float64! [1.0 2.0 3.0])
+		clamp next v 0 1.5                                     ;; from the index
+		--assert v == #(float64! [1.0 1.5 1.5])
+		--assert error? try [clamp v 0 1.0.0]
 ===end-group===
 
 

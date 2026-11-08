@@ -947,6 +947,84 @@ return_number:
 #undef VEC_OP_LOOP_NO_ZERO
 #endif
 
+
+
+// Converts a number bound into an integer one, rounded inwards.
+static REBI64 Int_Bound(REBVAL *val, REBFLG upper)
+{
+	REBDEC d;
+	if (IS_INTEGER(val)) return VAL_INT64(val);
+	d = VAL_DECIMAL(val);
+	if (d <= MIN_D64) return MIN_I64;
+	if (d >= MAX_D64) return MAX_I64;
+	return (REBI64)(upper ? floor(d) : ceil(d));
+}
+
+#define CLAMP_LOOP(T, lo, hi) { \
+	T *p = (T*)data, l = (lo), h = (hi); \
+	for (; len > 0; len--, p++) { \
+		if (*p < l) *p = l; else if (*p > h) *p = h; \
+	} \
+} break;
+
+// Integer bounds are first limited to the element type's range, so bounds
+// wider than the type change nothing and bounds outside it saturate.
+#define CLAMP_INT(T, tmin, tmax) { \
+	REBI64 lo_ = MAX(MIN(lo, (REBI64)(tmax)), (REBI64)(tmin)); \
+	REBI64 hi_ = MAX(MIN(hi, (REBI64)(tmax)), (REBI64)(tmin)); \
+	CLAMP_LOOP(T, (T)lo_, (T)hi_) \
+}
+/***********************************************************************
+**
+*/	void Clamp_Vector(REBVAL *vec, REBVAL *vmin, REBVAL *vmax)
+/*
+**		Restricts the elements of a vector to a range, in place, from
+**		the vector's index to its tail.
+**
+**		vec:  numeric vector (a vector of structs is refused)
+**		vmin: lower bound, integer! or decimal!
+**		vmax: upper bound, integer! or decimal!
+**
+**		Float vectors use the bounds as they are. For integer vectors a
+**		decimal bound is rounded inwards (min up, max down), and both
+**		bounds are first limited to the element type's range - so bounds
+**		wider than the type change nothing and bounds outside it saturate.
+**
+**		Traps when the vector is protected.
+**
+***********************************************************************/
+{
+	REBCNT  vtype = VAL_VEC_TYPE(vec);
+	REBCNT  len   = VAL_LEN(vec);
+	REBYTE *data  = VAL_VEC_DATA(vec);
+	REBI64  lo, hi;
+
+	if (VAL_VEC_IS_STRUCT(vec)) Trap_Arg(vec);
+	TRAP_PROTECT(VAL_SERIES(vec));
+
+	switch (vtype) {
+	case VTSF32: CLAMP_LOOP(float,  (float)AS_DECIMAL(vmin), (float)AS_DECIMAL(vmax))
+	case VTSF64: CLAMP_LOOP(double, AS_DECIMAL(vmin), AS_DECIMAL(vmax))
+	}
+	if (VECT_DECI(vtype)) return;
+
+	lo = Int_Bound(vmin, FALSE);
+	hi = Int_Bound(vmax, TRUE);
+	switch (vtype) {
+	case VTSI08: CLAMP_INT(i8,  INT8_MIN,  INT8_MAX)
+	case VTSI16: CLAMP_INT(i16, INT16_MIN, INT16_MAX)
+	case VTSI32: CLAMP_INT(i32, INT32_MIN, INT32_MAX)
+	case VTSI64: CLAMP_INT(i64, MIN_I64,   MAX_I64)
+	case VTUI08: CLAMP_INT(u8,  0, UINT8_MAX)
+	case VTUI16: CLAMP_INT(u16, 0, UINT16_MAX)
+	case VTUI32: CLAMP_INT(u32, 0, UINT32_MAX)
+	case VTUI64: CLAMP_INT(u64, 0, MAX_I64)   // bounds are i64 anyway
+	}
+}
+#undef CLAMP_INT
+#undef CLAMP_LOOP
+
+
 // Exact comparison of a 64-bit integer against a REBDEC, with no precision loss.
 // Widening the integer to REBDEC would break above 2^53, so instead we compare
 // against the float's integral part and let the fraction settle ties.

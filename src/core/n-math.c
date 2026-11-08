@@ -1083,7 +1083,7 @@ static REBDEC lerp_decimal(REBDEC s, REBDEC e, REBDEC t) {
 /*
 //	clamp: native [
 //		{Restricts a value to be within the specified minimum-maximum range}
-//		value   [number! tuple! pair! money!] "Value to clamp"
+//		value   [number! tuple! pair! money! vector!] "Value to clamp (a vector is modified)"
 //		minimum [number! tuple! pair! money!] "Lower bound"
 //		maximum [number! tuple! pair! money!] "Upper bound"
 //	]
@@ -1092,6 +1092,12 @@ static REBDEC lerp_decimal(REBDEC s, REBDEC e, REBDEC t) {
 	REBVAL* val  = D_ARG(1);
 	REBVAL* vmin = D_ARG(2);
 	REBVAL* vmax = D_ARG(3);
+	if (IS_VECTOR(val)) {
+		if (!IS_NUMBER(vmin)) Trap_Arg(vmin);
+		if (!IS_NUMBER(vmax)) Trap_Arg(vmax);
+		Clamp_Vector(val, vmin, vmax);
+		return R_ARG1;
+	}
 	if (VAL_TYPE(vmin) != VAL_TYPE(val)) Trap2(RE_TYPE_MISMATCH, val, vmin);
 	if (VAL_TYPE(vmax) != VAL_TYPE(val)) Trap2(RE_TYPE_MISMATCH, val, vmax);
 	switch (VAL_TYPE(val)) {
@@ -1121,6 +1127,7 @@ static REBDEC lerp_decimal(REBDEC s, REBDEC e, REBDEC t) {
 				b[i] = (REBYTE)MAX(lo, MIN(hi, b[i]));
 			}
 			break;
+
 		}
 	}
 	return R_ARG1;
