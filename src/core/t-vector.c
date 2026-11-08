@@ -2860,3 +2860,135 @@ void Mold_Vector_Struct(REBVAL *value, REB_MOLD *mold, REBFLG molded)
 		Append_Byte(mold->series, ')');
 	}
 }
+
+/***********************************************************************
+**
+*/	static void Set_Vector_Decimal(REBCNT type, REBYTE *data, REBCNT n, REBDEC d)
+/*
+**		Stores a decimal as an element: integer types get it rounded to
+**		the nearest and saturated to their range.
+**
+***********************************************************************/
+{
+	switch (type) {
+	case VTSF32: ((float *)data)[n] = (float)d; return;
+	case VTSF64: ((double*)data)[n] = d; return;
+	}
+	d = floor(d + 0.5);
+	switch (type) {
+	case VTSI08: ((i8 *)data)[n] = (i8) Clip_Dec(d, INT8_MIN,  INT8_MAX);   break;
+	case VTSI16: ((i16*)data)[n] = (i16)Clip_Dec(d, INT16_MIN, INT16_MAX);  break;
+	case VTSI32: ((i32*)data)[n] = (i32)Clip_Dec(d, INT32_MIN, INT32_MAX);  break;
+	case VTSI64: ((i64*)data)[n] = d <= MIN_D64 ? MIN_I64 : d >= MAX_D64 ? MAX_I64 : (i64)d; break;
+	case VTUI08: ((u8 *)data)[n] = (u8) Clip_Dec(d, 0, UINT8_MAX);  break;
+	case VTUI16: ((u16*)data)[n] = (u16)Clip_Dec(d, 0, UINT16_MAX); break;
+	case VTUI32: ((u32*)data)[n] = (u32)Clip_Dec(d, 0, UINT32_MAX); break;
+	case VTUI64: ((u64*)data)[n] = d <= 0 ? 0 : d >= 18446744073709551615.0 ? MAX_U64 : (u64)d; break;
+	}
+}
+
+
+/***********************************************************************
+**
+*/	REBNATIVE(interpolate)
+/*
+**		Linear interpolation of values given at ascending positions, like
+**		NumPy's `interp`, for any numeric vectors. Before the first position
+**		and past the last one the end values are used.
+**
+**		The result has the values' element type (the target's with /into);
+**		integer types get the nearest integer, saturated to their range.
+**
+//	interpolate: native [
+//		"Samples values given at ascending positions, linearly between them"
+//		positions [vector!] "Ascending positions of the values"
+//		values    [vector!] "The values at them; with /stride, `width` for each position"
+//		at        [integer! vector!] {How many samples, evenly spaced from the first position to the last - or the positions to sample at}
+//		/stride   "Values for each position (default 1) - 3 for RGB colors"
+//		 width    [integer!]
+//		/into     "Write into an existing vector (from its index) instead of a new one"
+//		 target   [vector!]
+//	]
+***********************************************************************/
+{
+	REBVAL *val_pos = D_ARG(1);
+	REBVAL *val_val = D_ARG(2);
+	REBVAL *val_at  = D_ARG(3);
+	REBOOL  ref_into = D_REF(6);
+	REBVAL *val_target = D_ARG(7);
+
+	REBCNT ptype = VAL_VEC_TYPE(val_pos);
+	REBCNT vtype = VAL_VEC_TYPE(val_val);
+	REBCNT np    = VAL_LEN(val_pos);
+	REBCNT width = 1;
+	REBCNT count, otype, i, k, c, lo, hi, mid;
+	REBYTE *pdata, *vdata, *adata = NULL, *odata;
+	REBDEC first, last, x, x0, x1, t, v0, v1;
+
+	if (VAL_VEC_IS_STRUCT(val_pos)) Trap_Arg(val_pos);
+	if (VAL_VEC_IS_STRUCT(val_val)) Trap_Arg(val_val);
+	if (D_REF(4)) {
+		if (VAL_INT64(D_ARG(5)) < 1) Trap_Range(D_ARG(5));
+		width = VAL_INT32(D_ARG(5));
+	}
+	if (np == 0 || VAL_LEN(val_val) != np * width) Trap_Arg(val_val);
+
+	if (IS_INTEGER(val_at)) {
+		if (VAL_INT64(val_at) < 0) Trap_Range(val_at);
+		count = VAL_INT32(val_at);
+	} else {
+		if (VAL_VEC_IS_STRUCT(val_at)) Trap_Arg(val_at);
+		count = VAL_LEN(val_at);
+	}
+
+	if (ref_into) {
+		if (VAL_VEC_IS_STRUCT(val_target)) Trap_Arg(val_target);
+		TRAP_PROTECT(VAL_SERIES(val_target));
+		if (VAL_LEN(val_target) < count * width) Trap_Range(val_target);
+		otype = VAL_VEC_TYPE(val_target);
+		*D_RET = *val_target;
+	} else {
+		otype = vtype;
+		if (!Make_Vector(D_RET, otype, count * width, 1)) Trap0(RE_NO_MEMORY);
+	}
+
+	// Data pointers are taken only now, after the allocation.
+	pdata = VAL_VEC_DATA(val_pos);
+	vdata = VAL_VEC_DATA(val_val);
+	odata = VAL_VEC_DATA(D_RET);
+	if (IS_VECTOR(val_at)) adata = VAL_VEC_DATA(val_at);
+
+	first = last = get_vect_decimal(ptype, pdata, 0);
+	for (i = 1; i < np; i++) {
+		x = get_vect_decimal(ptype, pdata, i);
+		if (x < last) Trap_Arg(val_pos);  // not ascending
+		last = x;
+	}
+
+	for (k = 0; k < count; k++) {
+		if (adata)
+			x = get_vect_decimal(VAL_VEC_TYPE(val_at), adata, k);
+		else
+			x = (count > 1) ? first + (last - first) * k / (count - 1) : first;
+
+		// The segment [lo, lo + 1] holding x - or an end.
+		if (x <= first) { lo = 0; t = 0; }
+		else if (x >= last) { lo = np - 1; t = 0; }
+		else {
+			lo = 0; hi = np - 1;
+			while (hi - lo > 1) {
+				mid = (lo + hi) / 2;
+				if (get_vect_decimal(ptype, pdata, mid) <= x) lo = mid; else hi = mid;
+			}
+			x0 = get_vect_decimal(ptype, pdata, lo);
+			x1 = get_vect_decimal(ptype, pdata, lo + 1);
+			t  = (x1 > x0) ? (x - x0) / (x1 - x0) : 0;
+		}
+		for (c = 0; c < width; c++) {
+			v0 = get_vect_decimal(vtype, vdata, lo * width + c);
+			v1 = (t > 0) ? get_vect_decimal(vtype, vdata, (lo + 1) * width + c) : v0;
+			Set_Vector_Decimal(otype, odata, k * width + c, v0 + t * (v1 - v0));
+		}
+	}
+	return R_RET;
+}

@@ -2861,6 +2861,36 @@ Rebol [
 ===end-group===
 
 
+if any-function? :interpolate [
+===start-group=== "INTERPOLATE"
+	--test-- "interpolate"
+		p: #(float32! [0.0 1.0])
+		--assert (interpolate p #(float64! [0.0 10.0]) 5) == #(float64! [0.0 2.5 5.0 7.5 10.0])
+		;; the values' element type; integers are rounded to the nearest
+		--assert (interpolate p #(uint8! [0 255]) 3) == #(uint8! [0 128 255])
+		;; uneven positions, two values for each
+		--assert (interpolate/stride #(int32! [0 1 3]) #(int32! [0 100  10 110  30 130]) 4 2)
+			== #(int32! [0 100  10 110  20 120  30 130])
+		;; sampled at given positions; the end values outside them
+		--assert (interpolate p #(float64! [1.0 3.0]) #(float32! [-1.0 0.5 2.0])) == #(float64! [1.0 2.0 3.0])
+		;; a single position
+		--assert (interpolate #(float32! [5.0]) #(float32! [7.0]) 2) == #(float32! [7.0 7.0])
+		--assert empty? interpolate p #(float32! [0.0 1.0]) 0
+
+	--test-- "interpolate/into"
+		out: make vector! [uint8! 4]
+		--assert 2 = index? interpolate/into p #(float64! [0.0 300.0]) 2 next out
+		--assert out == #(uint8! [0 0 255 0])       ;; saturated to the target's type
+
+	--test-- "interpolate refuses invalid input"
+		--assert error? try [interpolate #(int8! [1 0]) #(int8! [0 1]) 2]          ;; not ascending
+		--assert error? try [interpolate p #(int8! [0 1 2]) 2]                     ;; values do not match
+		--assert error? try [interpolate/stride p #(int8! [0 1]) 2 2]
+		--assert error? try [interpolate/stride p #(int8! [0 1]) 2 0]
+		--assert error? try [interpolate p #(int8! [0 1]) -1]
+		--assert error? try [interpolate/into p #(int8! [0 1]) 3 make vector! [int8! 2]]  ;; no room
+===end-group===
+]
 
 mx: try [import 'matrix]   ;; module exports nothing - reach the words through it
 if module? mx [
