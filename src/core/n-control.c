@@ -485,6 +485,10 @@ static void Protect_Value(REBVAL *value, REBCNT flags);
 	REBVAL callback = *D_ARG(ARG_CATCH_CALLBACK);
 	REBVAL *last_result = Get_System(SYS_STATE, STATE_LAST_RESULT);
 	REBOOL quit;
+	// Stack may be moved by the evaluation, so keep copies of what is needed later:
+	REBFLG all   =  D_REF(ARG_CATCH_ALL);
+	REBFLG named =  D_REF(ARG_CATCH_NAME);
+	REBVAL word  = *D_ARG(ARG_CATCH_WORD);
 
 	if (D_REF(ARG_CATCH_QUIT)) {
 		quit = Try_Block_Halt(VAL_SERIES(D_ARG(ARG_CATCH_BLOCK)), VAL_INDEX(D_ARG(ARG_CATCH_BLOCK)));
@@ -505,7 +509,7 @@ static void Protect_Value(REBVAL *value, REBCNT flags);
 
 			goto callback;
 		}
-		if (!D_REF(ARG_CATCH_NAME)) return R_TOS1;
+		if (!named) return R_TOS1;
 	} else {
 		// Evaluate the block:
 		ret = DO_BLK(D_ARG(ARG_CATCH_BLOCK));
@@ -516,11 +520,11 @@ static void Protect_Value(REBVAL *value, REBCNT flags);
 		// Get optional thrown name
 		sym = VAL_ERR_SYM(ret);
 
-		if (D_REF(ARG_CATCH_ALL)) goto caught;
+		if (all) goto caught;
 
 		// If a named catch, then check it:
-		if (D_REF(ARG_CATCH_NAME)) {
-			val = D_ARG(ARG_CATCH_WORD); // catch/name value
+		if (named) {
+			val = &word; // catch/name value
 
 			// If name is the same word:
 			if (IS_WORD(val) && sym == VAL_WORD_CANON(val)) goto caught;
