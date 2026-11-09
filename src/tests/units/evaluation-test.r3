@@ -517,7 +517,36 @@ Rebol [
 	--assert [3 13 23 33] = map-each obj reduce [*obp *ob1 *ob2 *ob3] [
 		select compose/deep obj/tmp 'three
 	]
-	
+
+	--test-- "compose large spliced block"
+	;@@ https://github.com/Oldes/Rebol-issues/issues/1906
+	;; a paren result spliced past the initial data stack size
+	big: make block! 40000
+	repeat i 40000 [append big i]
+	--assert big = compose [(big)]
+	--assert all [
+		block? c: compose [x (big) y (big) z]
+		80003 = length? c
+		'x = first c
+		40000 = pick c 40001
+		'y = pick c 40002
+		'z = last c
+	]
+	--assert all [
+		block? c: compose/deep [a [(big)] b]
+		3 = length? c
+		big = second c
+	]
+	--assert all [
+		block? c: compose/into [(big)] o: copy [0]
+		40001 = length? head c
+		big = copy/part head c 40000
+		[0] = c
+	]
+	recycle
+	--assert big = compose [(copy big)]
+	recycle
+	unset [big c o]
 
 ===end-group===
 

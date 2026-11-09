@@ -1377,9 +1377,20 @@ eval_func2:
 **
 ***********************************************************************/
 {
-	REBVAL *value = VAL_BLK_DATA(block);
+	REBVAL *value;
 	REBINT start = DSP + 1;
-	
+	REBVAL blk_val, into_val;
+
+	// BLOCK and INTO may point into the data stack (native args), which
+	// moves when the stack expands; keep local copies.
+	blk_val = *block;
+	block = &blk_val;
+	if (into) {
+		into_val = *into;
+		into = &into_val;
+	}
+	value = VAL_BLK_DATA(block);
+
 	if (start + VAL_LEN(block) + 100 > SERIES_REST(DS_Series)) {
 		Expand_Stack(VAL_LEN(block));
 	}
@@ -1401,11 +1412,16 @@ eval_func2:
 
 			// If result is a block, and not /only or a map value, insert its contents:
 			if (IS_BLOCK(DS_TOP) && !only && !IS_MAP(block)) {
-				// Append series to the stack:
-				SERIES_TAIL(DS_Series) = DSP; // overwrites TOP value
-				Append_Series(DS_Series, (REBYTE *)VAL_BLK_DATA(DS_TOP), VAL_BLK_LEN(DS_TOP));
-				DSP = SERIES_TAIL(DS_Series) - 1;
-				// Note: stack may have moved
+				// Splice block contents onto the stack (overwrites TOP value).
+				// Expand_Stack is used so DS_Base follows a moved stack.
+				REBCNT len = VAL_BLK_LEN(DS_TOP);
+				REBCNT need = len + VAL_LEN(block) + 100;
+				if ((REBCNT)DSP + need > SERIES_REST(DS_Series)) {
+					Expand_Stack(need);
+					if ((REBCNT)DSP + need > SERIES_REST(DS_Series)) Trap_Stack();
+				}
+				memcpy(DS_TOP, VAL_BLK_DATA(DS_TOP), len * sizeof(REBVAL));
+				DSP += (REBINT)len - 1;
 			}
 			else if (IS_UNSET(DS_TOP)) DS_DROP; // remove unset values
 		}
