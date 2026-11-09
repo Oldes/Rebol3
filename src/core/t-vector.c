@@ -319,7 +319,15 @@ static void Set_Vector_Value(REBCNT type, REBYTE *data, REBCNT n, REBVAL *val) {
 }
 
 
-void Set_Vector_Row(REBSER *ser, REBVAL *blk, REBCNT type)
+/***********************************************************************
+**
+*/	void Set_Vector_Row(REBSER *ser, REBVAL *blk, REBCNT type)
+/*
+**		Fills the vector series from a block, a vector (values converted
+**		to the given type) or binary data (copied verbatim).
+**		Used also by bincode's [vector <type> <vector>] write.
+**
+***********************************************************************/
 {
 	REBVAL *val;
 	REBLEN n = 0;

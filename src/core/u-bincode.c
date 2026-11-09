@@ -24,9 +24,10 @@
 **  Summary: binary data encoder/decoder
 **  Section: utility
 **  Author:  Oldes
-**  Version: 1.0.0
+**  Version: 1.0.1
 **  History: 15-10-2018 Initial release with limited set of functionality
 **           07-11-2026 Context is a `bincode` handle; read/write symmetry; many fixes
+**           09-11-2026 Write `vector <type> <vector>` converts values to the given type
 **
 ***********************************************************************/
 /*
@@ -260,6 +261,11 @@ static REBOOL Bincode_Swap_Needed(REBCNT cmd) {
 }
 // vector element widths are 1, 2, 4 or 8 (struct elements are never swapped)
 static void Bincode_Swap_Endian(REBYTE *p, REBCNT len, REBCNT wide) { if (wide > 1) Swap_Endian(p, len, wide); }
+// Vector type (VTSI08..VTSF64) of a numeric vector type word or NOT_FOUND
+static REBCNT Bincode_Vector_Type(REBVAL *word) {
+	REBCNT sym = Normalize_Vector_Type_Symbol(VAL_WORD_CANON(word));
+	return (sym >= SYM_INT8X && sym <= SYM_FLOAT64X) ? sym - SYM_INT8X : NOT_FOUND; // same mapping as in t-vector.c
+}
 #define VECTOR_DATA_AT(v) SERIES_SKIP(VAL_SERIES(v), VAL_INDEX(v))
 #define VECTOR_BYTES(v)   ((REBU64)VAL_LEN(v) * SERIES_WIDE(VAL_SERIES(v)))
 
@@ -921,6 +927,21 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 					case SYM_VECTOR:
 					case SYM_VECTOR_BE:
 					case SYM_VECTOR_LE:
+						if (IS_WORD(next)) {
+							// [vector <type> <vector>] writes the values converted to the given type
+							j = (REBINT)Bincode_Vector_Type(next);
+							if (j == (REBINT)NOT_FOUND) Trap1(RE_INVALID_SPEC, next);
+							next = ++value;
+							if (IS_GET_WORD(next)) next = Get_Var(next);
+							else if (IS_GET_PATH(next)) {
+								Do_Path(&next, NULL);
+								next = DS_POP; // volatile stack reference
+							}
+							if (!IS_VECTOR(next) || VAL_VEC_IS_STRUCT(next)) goto error;
+							if ((REBU64)VAL_LEN(next) * VECT_WIDE(j) > 0x7FFFFFFF) Trap1(RE_SIZE_LIMIT, next);
+							count += VAL_LEN(next) * VECT_WIDE(j);
+							continue;
+						}
 						if (!IS_VECTOR(next)) goto error;
 						// byte order of struct elements is not defined
 						if (cmd != SYM_VECTOR && VAL_VEC_IS_STRUCT(next)) Trap1(RE_INVALID_SPEC, next);
@@ -1412,6 +1433,26 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 					case SYM_VECTOR:
 					case SYM_VECTOR_BE:
 					case SYM_VECTOR_LE:
+						if (IS_WORD(next)) {
+							// values converted to the given type (validated in the size pass)
+							REBVAL conv;
+							j = (REBINT)Bincode_Vector_Type(next);
+							next = ++value;
+							if (IS_GET_WORD(next)) next = Get_Var(next);
+							else if (IS_GET_PATH(next)) {
+								Do_Path(&next, NULL);
+								next = DS_POP; // volatile stack reference
+							}
+							n = VAL_LEN(next) * VECT_WIDE(j);
+							if (n) {
+								// the same conversion as: make vector! [<type> <vector>]
+								if (!Make_Vector(&conv, j, VAL_LEN(next), 1)) Trap0(RE_NO_MEMORY);
+								Set_Vector_Row(VAL_SERIES(&conv), next, j);
+								memcpy(cp, SERIES_DATA(VAL_SERIES(&conv)), n);
+								if (Bincode_Swap_Needed(cmd)) Bincode_Swap_Endian(cp, n, VECT_WIDE(j));
+							}
+							break;
+						}
 						n = (REBCNT)VECTOR_BYTES(next);
 						memcpy(cp, VECTOR_DATA_AT(next), n);
 						if (Bincode_Swap_Needed(cmd)) Bincode_Swap_Endian(cp, n, SERIES_WIDE(VAL_SERIES(next)));
