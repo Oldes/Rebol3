@@ -700,20 +700,23 @@ callback:	// ...and the last result.
 ***********************************************************************/
 {
 	REBVAL *value = D_ARG(1);
-	REBINT ret = R_RET;
+	REBINT ret    = R_RET;
+	REBFLG next   = D_REF(4); // read before the stack may move
 
 	switch (VAL_TYPE(value)) {
 
 	case REB_BLOCK:
 	case REB_PAREN:
-		if (D_REF(4)) { // next
-			VAL_INDEX(value) = Do_Next(VAL_SERIES(value), VAL_INDEX(value), 0);
-			if (VAL_INDEX(value) == END_FLAG) {
-				VAL_INDEX(value) = VAL_TAIL(value);
-				Set_Var(D_ARG(5), value);
+		if (next) {
+			REBVAL blk = *value; // local copy; the stack slot stays as the GC root
+			REBCNT idx = Do_Next(VAL_SERIES(&blk), VAL_INDEX(&blk), 0);
+			if (idx == END_FLAG) {
+				VAL_INDEX(&blk) = VAL_TAIL(&blk);
+				Set_Var(DS_ARG(5), &blk);
 				return R_UNSET;
 			}
-			Set_Var(D_ARG(5), value); // "continuation" of block
+			VAL_INDEX(&blk) = idx;
+			Set_Var(DS_ARG(5), &blk); // "continuation" of block
 			return R_TOS;
 		}
 		else DO_BLK(value);
@@ -734,7 +737,7 @@ callback:	// ...and the last result.
 		Do_Path(&value, 0);
 		value = DS_POP; // volatile stack reference
 		if (ANY_FUNC(value)) VAL_SET_OPT(value, OPTS_REVAL);
-		*D_RET = *value;
+		*DS_RETURN = *value;
 		break;
 
 	case REB_WORD:
@@ -778,7 +781,7 @@ callback:	// ...and the last result.
 		ret = R_ARG1;
 	}
 
-	if (D_REF(4)) Set_Var(D_ARG(5), NONE_VALUE); // fallback /next behavior
+	if (next) Set_Var(DS_ARG(5), NONE_VALUE); // fallback /next behavior
 
 	return ret;
 }

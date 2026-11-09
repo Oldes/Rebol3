@@ -762,6 +762,16 @@ Rebol [
 ;			recycle
 ;			5
 ;		]
+;	--test-- "do with data stack expansion"
+;		blk: [(
+;			reduce append/dup make block! 0 1 100 + stack/limit 0
+;			loop 200 [make binary! 300000 make string! 100000]
+;			recycle
+;			1
+;		) 2 3]
+;		--assert 1 = do/next blk 'pos
+;		--assert pos = [2 3]
+;
 ===end-group===
 
 
