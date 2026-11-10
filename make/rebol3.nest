@@ -261,7 +261,7 @@ core-files: [
 	%core/t-vector.c
 	%core/t-word.c
 ;	%core/u-bmp.c             ;optional, use: include-native-bmp-codec
-;	%core/u-bincode.c         ;optional, but required in many core functions
+	%core/u-bincode.c
 	%core/u-compress.c
 ;	%core/u-dialect.c         ;optional, use: include-dialecting (delect)
 ;	%core/u-gif.c             ;optional, use: include-native-gif-codec
@@ -557,7 +557,6 @@ include-net-interfaces: [
 ]
 
 ;- native utilities:                                                            
-include-bincode:    [core-files: %core/u-bincode.c]
 include-dialecting: [core-files: %core/u-dialect.c config: INCLUDE_DELECT]
 include-iconv: [
 	core-files: %core/u-iconv.c
@@ -932,7 +931,6 @@ include-prot-mysql:          [mezz-prot-files: %mezz/prot-mysql.reb         ]
 include-prot-daytime:        [mezz-prot-files: %mezz/prot-daytime.reb       ]
 include-prot-https:          [mezz-prot-files: %mezz/prot-http.reb :include-prot-tls]
 include-prot-tls: [
-	:include-bincode
 	:include-cryptography
 	mezz-lib-files:  %mezz/codec-utc-time.reb
 	mezz-lib-files:  %mezz/codec-der.reb
@@ -968,7 +966,6 @@ include-rebol-core: [
 ;	:include-mezz-ansi
 	:include-clipboard
 	:include-cryptography
-	:include-bincode
 	:include-iconv
 	:include-xxhash
 	:include-mail

@@ -67,8 +67,6 @@
 	close bin
 */
 
-#ifndef IGNORE_BINCODE
-
 #include "sys-core.h"
 #include "reb-ext.h" // RXT_* types used by the handle path callbacks
 #include <stdio.h>
@@ -2346,4 +2344,3 @@ error_next_value:
 	if (IS_END(next)) value--;
 	Trap1(RE_INVALID_SPEC, value);
 }
-#endif //IGNORE_BINCODE
