@@ -9,6 +9,13 @@ Rebol [
 	Notes:   {Taken from Red-language and ported for use in Rebol3 by Oldes}
 ]
 
+;- Helper for stack expansion tests
+expand-stack: does [
+	reduce append/dup make block! 0 1 100 + stack/limit 0
+	loop 200 [make binary! 300000 make string! 100000]
+	recycle
+]
+
 ~~~start-file~~~ "evaluation"
 
 ===start-group=== "do"
@@ -744,100 +751,41 @@ Rebol [
 		--assert 'stack = stack/word 0
 	;@@ Stack expansion tests:
 	--test-- "try with data stack expansion"
-		--assert 1 = try [
-			reduce append/dup make block! 0 1 100 + stack/limit 0
-			loop 200 [make binary! 300000 make string! 100000]
-			recycle
-			1
-		]
+		--assert 1 = try [expand-stack 1]
 		--assert all [recycle/stack 8064 > stack/limit 0]
 	--test-- "attempt with data stack expansion"
-		--assert none? attempt [
-			reduce append/dup make block! 0 1 100 + stack/limit 0
-			loop 200 [make binary! 300000 make string! 100000]
-			recycle
-			1 / 0
-		]
+		--assert none? attempt [expand-stack 1 / 0]
 		--assert all [recycle/stack 8064 > stack/limit 0]
 	--test-- "catch with data stack expansion"
-		--assert 1 = catch [
-			reduce append/dup make block! 0 1 100 + stack/limit 0
-			loop 200 [make binary! 300000 make string! 100000]
-			recycle
-			throw 1
-		]
+		--assert 1 = catch [expand-stack throw 1]
 		--assert all [recycle/stack 8064 > stack/limit 0]
-		--assert 2 = catch/name [
-			reduce append/dup make block! 0 1 100 + stack/limit 0
-			loop 200 [make binary! 300000 make string! 100000]
-			recycle
-			throw/name 2 'foo
-		] 'foo
+		--assert 2 = catch/name [expand-stack throw/name 2 'foo] 'foo
 		--assert all [recycle/stack 8064 > stack/limit 0]
-		--assert 3 = catch/name [
-			reduce append/dup make block! 0 1 100 + stack/limit 0
-			loop 200 [make binary! 300000 make string! 100000]
-			recycle
-			throw/name 3 'bar
-		] [foo bar]
+		--assert 3 = catch/name [expand-stack throw/name 3 'bar] [foo bar]
 		--assert all [recycle/stack 8064 > stack/limit 0]
-		--assert 4 = catch/all [
-			reduce append/dup make block! 0 1 100 + stack/limit 0
-			loop 200 [make binary! 300000 make string! 100000]
-			recycle
-			throw 4
-		]
+		--assert 4 = catch/all [expand-stack throw 4]
 		--assert all [recycle/stack 8064 > stack/limit 0]
-		--assert 5 = catch/quit [
-			reduce append/dup make block! 0 1 100 + stack/limit 0
-			loop 200 [make binary! 300000 make string! 100000]
-			recycle
-			5
-		]
+		--assert 5 = catch/quit [expand-stack 5]
 		--assert all [recycle/stack 8064 > stack/limit 0]
 	--test-- "do with data stack expansion"
-		blk: [(
-			reduce append/dup make block! 0 1 100 + stack/limit 0
-			loop 200 [make binary! 300000 make string! 100000]
-			recycle
-			1
-		) 2 3]
+		blk: [(expand-stack	1) 2 3]
 		--assert 1 = do/next blk 'pos
 		--assert pos = [2 3]
 		--assert all [recycle/stack 8064 > stack/limit 0]
 
 		obj: object [a: 1]
-		--assert 1 = do first [obj/(
-			reduce append/dup make block! 0 1 100 + stack/limit 0
-			loop 200 [make binary! 300000 make string! 100000]
-			recycle
-			'a
-		)]
+		--assert 1 = do first [obj/(expand-stack 'a)]
 		--assert all [recycle/stack 8064 > stack/limit 0]
 	--test-- "nested path with paren that expands stack"
 		obj: object [sub: object [a: 1]]
-		--assert 1 = do first [obj/sub/(
-			reduce append/dup make block! 0 1 100 + stack/limit 0
-			'a
-		)]
+		--assert 1 = do first [obj/sub/(expand-stack 'a)]
 		--assert all [recycle/stack 8064 > stack/limit 0]
-		--assert 1 = do first [obj/(
-			reduce append/dup make block! 0 1 100 + stack/limit 0
-			'sub
-		)/(
-			reduce append/dup make block! 0 1 100 + stack/limit 0
-			'a
-		)]
+		--assert 1 = do first [obj/(expand-stack 'sub)/(expand-stack 'a)]
 		--assert all [recycle/stack 8064 > stack/limit 0]
 
 	--test-- "set-path with paren that expands stack"
 		obj: object [a: 1]
-		--assert 2 = first reduce [obj/(
-			reduce append/dup make block! 0 1 100 + stack/limit 0
-			loop 200 [make binary! 300000 make string! 100000]
-			recycle
-			'a
-		): 2]
+		--assert 2 = first reduce [obj/(expand-stack 'a): 2]
 		--assert 2 = obj/a
 		--assert all [recycle/stack 8064 > stack/limit 0]
 ===end-group===
