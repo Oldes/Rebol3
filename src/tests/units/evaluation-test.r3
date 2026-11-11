@@ -805,14 +805,41 @@ Rebol [
 		--assert 1 = do/next blk 'pos
 		--assert pos = [2 3]
 		--assert all [recycle/stack 8064 > stack/limit 0]
-;-To fix:
-;		obj: object [a: 1]
-;		--assert 1 = do first [obj/(
-;			reduce append/dup make block! 0 1 100 + stack/limit 0
-;			loop 200 [make binary! 300000 make string! 100000]
-;			recycle
-;			'a
-;		)]
+
+		obj: object [a: 1]
+		--assert 1 = do first [obj/(
+			reduce append/dup make block! 0 1 100 + stack/limit 0
+			loop 200 [make binary! 300000 make string! 100000]
+			recycle
+			'a
+		)]
+		--assert all [recycle/stack 8064 > stack/limit 0]
+	--test-- "nested path with paren that expands stack"
+		obj: object [sub: object [a: 1]]
+		--assert 1 = do first [obj/sub/(
+			reduce append/dup make block! 0 1 100 + stack/limit 0
+			'a
+		)]
+		--assert all [recycle/stack 8064 > stack/limit 0]
+		--assert 1 = do first [obj/(
+			reduce append/dup make block! 0 1 100 + stack/limit 0
+			'sub
+		)/(
+			reduce append/dup make block! 0 1 100 + stack/limit 0
+			'a
+		)]
+		--assert all [recycle/stack 8064 > stack/limit 0]
+
+	--test-- "set-path with paren that expands stack"
+		obj: object [a: 1]
+		--assert 2 = first reduce [obj/(
+			reduce append/dup make block! 0 1 100 + stack/limit 0
+			loop 200 [make binary! 300000 make string! 100000]
+			recycle
+			'a
+		): 2]
+		--assert 2 = obj/a
+		--assert all [recycle/stack 8064 > stack/limit 0]
 ===end-group===
 
 

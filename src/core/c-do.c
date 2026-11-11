@@ -437,8 +437,20 @@ void Trace_Arg(REBINT num, REBVAL *arg, REBVAL *path)
 	}
 	// object/(expr) case:
 	else if (IS_PAREN(path)) {
-		// ?? GC protect stuff !!!!!! stack could expand!
-		pvs->select = Do_Blk(VAL_SERIES(path), 0);
+		// The evaluation may expand (move) the data stack, so rebase
+		// the pvs pointers which may point into it:
+		REBINT o_store  = DS_OFFSET(pvs->store);
+		REBINT o_value  = DS_OFFSET(pvs->value);
+		REBINT o_setval = DS_OFFSET(pvs->setval);
+		REBINT o_orig   = DS_OFFSET(pvs->orig);
+		
+		pvs->select = Do_Blk(VAL_SERIES(path), 0);     // may move DS_Base
+
+		DS_REBASE(pvs->store,  o_store);
+		DS_REBASE(pvs->value,  o_value);
+		DS_REBASE(pvs->setval, o_setval);
+		DS_REBASE(pvs->orig,   o_orig);
+
 	}
 	else // object/word and object/value case:
 		pvs->select = path;
