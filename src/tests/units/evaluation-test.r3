@@ -807,6 +807,10 @@ expand-once: does [if armed [armed: false expand-stack]]
 		--assert not in o 'c
 		--assert all [recycle/stack 8064 > stack/limit 0]
 
+	--test-- "data stack shrink keeps the top of stack"
+		recycle/stack f: func [/local o] [recycle]
+		--assert function? :f
+
 	--test-- "function local string survives recycle"
 		f: func [/local out] [
 			out: copy ""
@@ -840,6 +844,87 @@ expand-once: does [if armed [armed: false expand-stack]]
 		g: func [x] [recycle x + 1]
 		--assert 3 = g 2
 		--assert 5 = g g 3
+		recycle/stack
+
+	--test-- "forall with local string and recycle only"
+		f: func [str /local out] [
+			out: copy ""
+			forall str [append out first str recycle]
+			out
+		]
+		--assert "abc" = f "abc"
+		recycle/stack
+
+	--test-- "forall with local block and expansion"
+		armed: true
+		f: func [blk /local out] [
+			out: copy []
+			forall blk [append out first blk expand-once]
+			out
+		]
+		--assert [1 2 3] = f [1 2 3]
+		recycle/stack
+
+	--test-- "forall string, global, with expansion"
+		armed: true
+		str: "abc"
+		out: copy ""
+		forall str [append out first str expand-once]
+		--assert "abc" = out
+		--assert 1 = index? str
+		recycle/stack
+
+	--test-- "forall on string argument with stack expansion"
+		armed: true
+		f: func [str /local out] [
+			out: copy ""
+			forall str [append out first str expand-once]
+			reduce [out index? str]
+		]
+		--assert ["abc" 1] = f "abc"
+		recycle/stack
+
+	--test-- "forall on function argument with stack expansion"
+		armed: true
+		f: func [blk /local sum] [
+			sum: 0
+			forall blk [sum: sum + first blk expand-once]
+			reduce [sum index? blk]
+		]
+		--assert [6 1] = f [1 2 3]
+		--assert all [recycle/stack 8064 > stack/limit 0]
+
+	--test-- "forall on function local with stack expansion"
+		armed: true
+		f: func [/local blk sum] [
+			blk: [1 2 3]
+			sum: 0
+			forall blk [sum: sum + first blk expand-once 0]
+			reduce [sum index? blk]
+		]
+		--assert [6 1] = f
+		recycle/stack
+
+	--test-- "forskip on function argument with stack expansion"
+		armed: true
+		f: func [blk /local sum] [
+			sum: 0
+			forskip blk 2 [sum: sum + first blk expand-once 0]
+			reduce [sum index? blk]
+		]
+		--assert [4 1] = f [1 2 3 4]
+		recycle/stack
+
+	--test-- "forall throw after stack expansion"
+		armed: true
+		f: func [blk] [catch [forall blk [expand-once throw 5]]]
+		--assert 5 = f [1 2 3]
+		recycle/stack
+
+	--test-- "forall break after stack expansion"
+		armed: true
+		f: func [blk] [forall blk [expand-once break] index? blk]
+		--assert 1 = f [1 2 3]
 		recycle/stack
 
 ===end-group===
