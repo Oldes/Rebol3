@@ -86,6 +86,7 @@
 #define DS_IN_STACK(p) \
     ((REBUPT)(p) >= (REBUPT)DS_Base && \
      (REBUPT)(p) <  (REBUPT)DS_Base + SERIES_REST(DS_Series) * sizeof(REBVAL))
+#define DS_OFFSET(p)   (DS_IN_STACK(p) ? (REBINT)((p) - DS_Base) : -1)
 #define DS_REBASE(p,o) do { if ((o) >= 0) (p) = DS_Base + (o); } while (0)
 
 // Reference from ds that points to current return value:

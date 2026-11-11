@@ -365,12 +365,15 @@ static REBSER *Trim_Object(REBSER *obj)
 **
 ***********************************************************************/
 {
-	REBVAL *value = D_ARG(1);
+	REBVAL *value;
 	REBVAL *arg = D_ARG(2);
 	REBINT n;
 	REBVAL *val;
 	REBSER *obj = NULL, *src_obj;
 	REBCNT type = 0;
+
+	REBVAL value_copy = *D_ARG(1); // keep local copy (stack may be moved)
+	value = &value_copy;
 
 	switch (action) {
 

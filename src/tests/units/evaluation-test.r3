@@ -788,6 +788,21 @@ expand-stack: does [
 		--assert 2 = first reduce [obj/(expand-stack 'a): 2]
 		--assert 2 = obj/a
 		--assert all [recycle/stack 8064 > stack/limit 0]
+
+	--test-- "make object! with stack expansion in spec"
+		o: make object! [a: 1 b: (expand-stack 2) c: a + b]
+		--assert 3 = o/c
+		p: make o [d: (expand-stack 4) e: c + d]
+		--assert 7 = p/e
+		--assert 2 = catch/all [make object! [a: 1 expand-stack throw 2]]
+	--test-- "make parent object with stack expansion in spec"
+		o: make object! [a: 1 b: 2]
+		p: make o [c: (expand-stack 3) d: a + b + c]
+		--assert 3 = p/c
+		--assert 6 = p/d
+		--assert 1 = p/a   ; inherited fields survive
+		--assert 1 = o/a   ; the parent is unchanged
+		--assert not in o 'c
 ===end-group===
 
 
