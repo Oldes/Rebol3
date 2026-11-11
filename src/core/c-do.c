@@ -116,19 +116,43 @@ static REBVAL *Func_Word(REBINT dsf)
 **
 */	void Shrink_Stack()
 /*
+**		Shrink the data stack's buffer when it is mostly unused.
+**
+**		Note: the stack series does not use its tail. The live extent
+**		is tracked by DSP, so only DSP values need to be preserved.
+**
 ***********************************************************************/
 {
+	REBSER* ns;
+	REBSER swap;
+
+	// Only shrink if the stack is nearly empty and the buffer is big
+	// (at least double STACK_MIN, so it won't thrash). DSP < STACK_MIN
+	// also guarantees the live values fit in the smaller buffer:
 	if (DSP >= STACK_MIN || SERIES_REST(DS_Series) < 2 * STACK_MIN) return;
-	REBSER * ns, swap;
+
+	// Make the small replacement and copy the live values (up to DSP).
+	// Make_Series zeroes the rest; tail and terminator are not used here:
 	ns = Make_Block(STACK_MIN);
-	COPY_MEM(ns->data, BLK_HEAD(DS_Series), STACK_MIN * sizeof(REBVAL));
-	ns->tail = DS_Series->tail;
+	COPY_MEM(ns->data, BLK_HEAD(DS_Series), DSP * sizeof(REBVAL));
+
+	// Swap the headers so DS_Series (the pointer everyone holds) keeps
+	// its identity but now owns the small buffer; ns gets the old one:
 	swap = *DS_Series;
 	*DS_Series = *ns;
 	*ns = swap;
+
+	// Frees the old big buffer and the spare header node. It also clears
+	// ns from GC_Infants and Prior_Expand:
 	Free_Series(ns);
+
+	// Relabel and re-set the root value (same series pointer as before):
 	Set_Root_Series(TASK_STACK, DS_Series, cb_cast("data stack")); // uses special GC
+
+	// The data pointer moved, so refresh the cached base.
+	// Callers must not hold raw REBVAL* into the old stack:
 	DS_Base = BLK_HEAD(DS_Series);
+
 #ifdef SHOW_EXPAND_STACK
 	Debug_Fmt(BOOT_STR(RS_STACK, 0), DSP, SERIES_REST(DS_Series));
 #endif

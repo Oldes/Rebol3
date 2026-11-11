@@ -87,7 +87,7 @@ trace:
 	"**: error : %r %r" ; 10
 
 stack:
-	"STACK Expanded - DSP: %d MAX: %d"
+	"STACK Resized - DSP: %d MAX: %d"
 	"^/STACK[%d] %s[%d] %s"
 
 dump:
