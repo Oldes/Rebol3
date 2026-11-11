@@ -110,6 +110,10 @@
 	if (D_REF(1))
 		GC_Active = FALSE;
 
+	if (D_REF(7)) { // stack
+		SET_SIGNAL(SIG_SHRINK_STACK);
+	}
+
 	DS_Ret_Int(released_bytes);
 	return R_RET;
 }

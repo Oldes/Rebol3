@@ -701,6 +701,11 @@ static void Mark_Value(REBVAL *val, REBCNT depth);
 	//printf("PG_Mem_Usage- %llu\n", PG_Mem_Usage);
 	//printf("ser_used: %llu - %llu\n", ser_used, PG_Reb_Stats->Series_Memory);
 #endif
+
+//TODO: Enable when stack handling will be stable!
+//	if ((SERIES_REST(DS_Series) > (8 * STACK_MIN)) && (DSP < STACK_MIN))
+//		SET_SIGNAL(SIG_SHRINK_STACK);
+
 	return (mem_used - PG_Mem_Usage);
 }
 

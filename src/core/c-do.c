@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -105,6 +105,29 @@ static REBVAL *Func_Word(REBINT dsf)
 		amount = STACK_LIMIT - SERIES_REST(DS_Series) - 1;
 	}
 	Extend_Series(DS_Series, amount);
+	DS_Base = BLK_HEAD(DS_Series);
+#ifdef SHOW_EXPAND_STACK
+	Debug_Fmt(BOOT_STR(RS_STACK, 0), DSP, SERIES_REST(DS_Series));
+#endif
+}
+
+
+/***********************************************************************
+**
+*/	void Shrink_Stack()
+/*
+***********************************************************************/
+{
+	if (DSP >= STACK_MIN || SERIES_REST(DS_Series) < 2 * STACK_MIN) return;
+	REBSER * ns, swap;
+	ns = Make_Block(STACK_MIN);
+	COPY_MEM(ns->data, BLK_HEAD(DS_Series), STACK_MIN * sizeof(REBVAL));
+	ns->tail = DS_Series->tail;
+	swap = *DS_Series;
+	*DS_Series = *ns;
+	*ns = swap;
+	Free_Series(ns);
+	Set_Root_Series(TASK_STACK, DS_Series, cb_cast("data stack")); // uses special GC
 	DS_Base = BLK_HEAD(DS_Series);
 #ifdef SHOW_EXPAND_STACK
 	Debug_Fmt(BOOT_STR(RS_STACK, 0), DSP, SERIES_REST(DS_Series));
@@ -862,6 +885,12 @@ more_get_path:
 	if (GET_FLAG(sigs, SIG_RECYCLE)) {
 		CLR_SIGNAL(SIG_RECYCLE);
 		Recycle(FALSE, FALSE);
+	}
+
+	// Check for datastack shrinking request:
+	if (GET_FLAG(sigs, SIG_SHRINK_STACK)) {
+		CLR_SIGNAL(SIG_SHRINK_STACK);
+		Shrink_Stack();
 	}
 
 #ifdef NOT_USED_INVESTIGATE

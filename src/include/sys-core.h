@@ -280,6 +280,7 @@ enum rebol_signals {
 	SIG_RECYCLE,
 	SIG_ESCAPE,
 	SIG_EVENT_PORT,
+	SIG_SHRINK_STACK,
 };
 
 // Security flags:

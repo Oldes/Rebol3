@@ -251,6 +251,7 @@ recycle: native [
 	size [integer!]
 	/torture {Constant recycle (for internal debugging)}
 	/pools {Release empty memory pool segments}
+	/stack {Signal datastack shrinking request}
 ]
 
 release: native [

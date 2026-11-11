@@ -469,7 +469,7 @@ Rebol [
 
 	--test-- "compose map"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2685
-	m1: #[a: (zero) b: [(red)] c: (now) d: #[k: (white)]] 
+	m1: #[a: (zero) b: [(lf)] c: (now) d: #[k: (space)]] 
 	--assert all [
 		map? m2: compose m1
 		paren? m1/a
@@ -482,18 +482,18 @@ Rebol [
 		map? m2: compose/deep m1
 		paren? m1/a
 		m2/a == 0
-		m2/b/1 == red
+		m2/b/1 == lf
 		date? m2/c
-		m2/d/k == white
+		m2/d/k == space
 	]
 	remove/key m1 'c
 	--assert all [
 		map? m2: compose/deep m1
 		paren? m1/a
 		m2/a == 0
-		m2/b/1 == red
+		m2/b/1 == lf
 		none? m2/c
-		m2/d/k == white
+		m2/d/k == space
 	]
 
 	a: 1 f1: func[b][compose #[num: (a + b)]]
@@ -713,65 +713,77 @@ Rebol [
 		--assert block? b: stack 0
 		--assert 'stack = first b
 		--assert 'stack = stack/word 0
-
-;@@ Following stack expansion tests are commented out, because every test expands the stack
-;@@ and if all are enabled, interpreter would throw a stack overflow error.
-;@@ So these tests were verified by manually enabling these.
-;	--test-- "try with data stack expansion"
-;		--assert 1 = try [
+	;@@ Stack expansion tests:
+	--test-- "try with data stack expansion"
+		--assert 1 = try [
+			reduce append/dup make block! 0 1 100 + stack/limit 0
+			loop 200 [make binary! 300000 make string! 100000]
+			recycle
+			1
+		]
+		--assert all [recycle/stack 8064 > stack/limit 0]
+	--test-- "attempt with data stack expansion"
+		--assert none? attempt [
+			reduce append/dup make block! 0 1 100 + stack/limit 0
+			loop 200 [make binary! 300000 make string! 100000]
+			recycle
+			1 / 0
+		]
+		--assert all [recycle/stack 8064 > stack/limit 0]
+	--test-- "catch with data stack expansion"
+		--assert 1 = catch [
+			reduce append/dup make block! 0 1 100 + stack/limit 0
+			loop 200 [make binary! 300000 make string! 100000]
+			recycle
+			throw 1
+		]
+		--assert all [recycle/stack 8064 > stack/limit 0]
+		--assert 2 = catch/name [
+			reduce append/dup make block! 0 1 100 + stack/limit 0
+			loop 200 [make binary! 300000 make string! 100000]
+			recycle
+			throw/name 2 'foo
+		] 'foo
+		--assert all [recycle/stack 8064 > stack/limit 0]
+		--assert 3 = catch/name [
+			reduce append/dup make block! 0 1 100 + stack/limit 0
+			loop 200 [make binary! 300000 make string! 100000]
+			recycle
+			throw/name 3 'bar
+		] [foo bar]
+		--assert all [recycle/stack 8064 > stack/limit 0]
+		--assert 4 = catch/all [
+			reduce append/dup make block! 0 1 100 + stack/limit 0
+			loop 200 [make binary! 300000 make string! 100000]
+			recycle
+			throw 4
+		]
+		--assert all [recycle/stack 8064 > stack/limit 0]
+		--assert 5 = catch/quit [
+			reduce append/dup make block! 0 1 100 + stack/limit 0
+			loop 200 [make binary! 300000 make string! 100000]
+			recycle
+			5
+		]
+		--assert all [recycle/stack 8064 > stack/limit 0]
+	--test-- "do with data stack expansion"
+		blk: [(
+			reduce append/dup make block! 0 1 100 + stack/limit 0
+			loop 200 [make binary! 300000 make string! 100000]
+			recycle
+			1
+		) 2 3]
+		--assert 1 = do/next blk 'pos
+		--assert pos = [2 3]
+		--assert all [recycle/stack 8064 > stack/limit 0]
+;-To fix:
+;		obj: object [a: 1]
+;		--assert 1 = do first [obj/(
 ;			reduce append/dup make block! 0 1 100 + stack/limit 0
 ;			loop 200 [make binary! 300000 make string! 100000]
 ;			recycle
-;			1
-;		]
-;	--test-- "attempt with data stack expansion"
-;		--assert none? attempt [
-;			reduce append/dup make block! 0 1 100 + stack/limit 0
-;			loop 200 [make binary! 300000 make string! 100000]
-;			recycle
-;			1 / 0
-;		]
-;	--test-- "catch with data stack expansion"
-;		--assert 1 = catch [
-;			reduce append/dup make block! 0 1 100 + stack/limit 0
-;			loop 200 [make binary! 300000 make string! 100000]
-;			recycle
-;			throw 1
-;		]
-;		--assert 2 = catch/name [
-;			reduce append/dup make block! 0 1 100 + stack/limit 0
-;			loop 200 [make binary! 300000 make string! 100000]
-;			recycle
-;			throw/name 2 'foo
-;		] 'foo
-;		--assert 3 = catch/name [
-;			reduce append/dup make block! 0 1 100 + stack/limit 0
-;			loop 200 [make binary! 300000 make string! 100000]
-;			recycle
-;			throw/name 3 'bar
-;		] [foo bar]
-;		--assert 4 = catch/all [
-;			reduce append/dup make block! 0 1 100 + stack/limit 0
-;			loop 200 [make binary! 300000 make string! 100000]
-;			recycle
-;			throw 4
-;		]
-;		--assert 5 = catch/quit [
-;			reduce append/dup make block! 0 1 100 + stack/limit 0
-;			loop 200 [make binary! 300000 make string! 100000]
-;			recycle
-;			5
-;		]
-;	--test-- "do with data stack expansion"
-;		blk: [(
-;			reduce append/dup make block! 0 1 100 + stack/limit 0
-;			loop 200 [make binary! 300000 make string! 100000]
-;			recycle
-;			1
-;		) 2 3]
-;		--assert 1 = do/next blk 'pos
-;		--assert pos = [2 3]
-;
+;			'a
+;		)]
 ===end-group===
 
 
