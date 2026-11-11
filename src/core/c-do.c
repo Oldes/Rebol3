@@ -119,7 +119,7 @@ static REBVAL *Func_Word(REBINT dsf)
 **		Shrink the data stack's buffer when it is mostly unused.
 **
 **		Note: the stack series does not use its tail. The live extent
-**		is tracked by DSP, so only DSP values need to be preserved.
+**		is DSP+1 values (indexes 0..DSP), so only those are preserved.
 **
 ***********************************************************************/
 {
@@ -129,12 +129,14 @@ static REBVAL *Func_Word(REBINT dsf)
 	// Only shrink if the stack is nearly empty and the buffer is big
 	// (at least double STACK_MIN, so it won't thrash). DSP < STACK_MIN
 	// also guarantees the live values fit in the smaller buffer:
-	if (DSP >= STACK_MIN || SERIES_REST(DS_Series) < 2 * STACK_MIN) return;
+	if (DSP > STACK_MIN || SERIES_REST(DS_Series) < 2 * STACK_MIN) return;
 
 	// Make the small replacement and copy the live values (up to DSP).
 	// Make_Series zeroes the rest; tail and terminator are not used here:
 	ns = Make_Block(STACK_MIN);
-	COPY_MEM(ns->data, BLK_HEAD(DS_Series), DSP * sizeof(REBVAL));
+	// The live values are indexes 0..DSP (DSP+1 values, including the TOS).
+	// DSP < STACK_MIN is checked above, so they fit in the smaller buffer:
+	COPY_MEM(ns->data, BLK_HEAD(DS_Series), (DSP + 1) * sizeof(REBVAL));
 
 	// Swap the headers so DS_Series (the pointer everyone holds) keeps
 	// its identity but now owns the small buffer; ns gets the old one:

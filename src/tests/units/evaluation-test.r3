@@ -9,12 +9,14 @@ Rebol [
 	Notes:   {Taken from Red-language and ported for use in Rebol3 by Oldes}
 ]
 
-;- Helper for stack expansion tests
+;- Helpers for stack expansion tests
 expand-stack: does [
 	reduce append/dup make block! 0 1 100 + stack/limit 0
 	loop 200 [make binary! 300000 make string! 100000]
 	recycle
 ]
+armed: true
+expand-once: does [if armed [armed: false expand-stack]]
 
 ~~~start-file~~~ "evaluation"
 
@@ -803,6 +805,43 @@ expand-stack: does [
 		--assert 1 = p/a   ; inherited fields survive
 		--assert 1 = o/a   ; the parent is unchanged
 		--assert not in o 'c
+		--assert all [recycle/stack 8064 > stack/limit 0]
+
+	--test-- "function local string survives recycle"
+		f: func [/local out] [
+			out: copy ""
+			recycle
+			append out "x"
+			out
+		]
+		--assert "x" = f
+		recycle/stack
+
+	--test-- "function local string survives expand-stack"
+		f: func [/local out] [
+			out: copy ""
+			expand-stack
+			append out "x"
+			out
+		]
+		--assert "x" = f
+		recycle/stack
+
+	--test-- "native result survives recycle in argument evaluation"
+		expand-stack
+		recycle/stack
+		--assert 3 = (add 1 do [recycle 2])
+		--assert 6 = (add (do [recycle 1]) (do [recycle 5]))
+		recycle/stack
+
+	--test-- "function result survives recycle after stack shrink"
+		expand-stack
+		recycle/stack
+		g: func [x] [recycle x + 1]
+		--assert 3 = g 2
+		--assert 5 = g g 3
+		recycle/stack
+
 ===end-group===
 
 
