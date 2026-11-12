@@ -1282,6 +1282,12 @@ if not error? try [str: to string! #{A032}][
 	trace off
 	--assert r1 = true
 	--assert r2 = true
+
+--test-- "parse ?? (debug print)"
+	;; covers Print_Parse_Index; prints one line per ?? to the console
+	--assert parse "ab" [?? "a" ?? "b"]
+	--assert parse [a 1] [?? 'a ?? integer!]
+	--assert parse "" [??]
 ===end-group===
 
 ~~~end-file~~~
