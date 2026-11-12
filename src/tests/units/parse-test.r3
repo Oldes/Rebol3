@@ -178,6 +178,24 @@ Rebol [
 	n: 0 --assert all [parse "abc" [thru [#"x" (n: 1) | #"c" (n: 2)]]  n = 2]
 	n: 0 --assert all [parse "abc" [thru ["bc" (n: n + 1)] end]  n = 1]
 	n: 0 --assert all [parse [1 a] [thru [word! (n: n + 1)] end]  n = 1]
+
+--test-- "TO/THRU lit-word on block input"
+	--assert     parse [x a b] [to 'a 'a 'b]
+	--assert     parse [x a b] [thru 'a 'b]
+	--assert     parse [x a] [thru 'a end]
+	--assert     parse [a] [to 'a 'a]                   ;; already at the target
+	--assert all [parse [x a b] [to 'a p: to end]  p = [a b]]
+	--assert not parse [x b] [to 'a to end]
+	--assert not parse [x b] [thru 'a to end]
+	;; case sensitivity
+	--assert     parse [x A b] [thru 'a 'b]
+	--assert     parse/case [x A b] [thru 'A 'b]
+	--assert not parse/case [x A b] [thru 'a to end]
+	;; lit-word referenced by a word or path
+	w: quote 'a
+	--assert     parse [x a b] [thru w 'b]
+	o: context [w: quote 'a]
+	--assert     parse [x a b] [thru o/w 'b]
 ===end-group===
 
 
