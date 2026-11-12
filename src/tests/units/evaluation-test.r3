@@ -1023,6 +1023,47 @@ expand-once: does [if armed [armed: false expand-stack]]
 		blk: [3 1 8 4]
 		sort/skip/compare/all blk 2 func [a b] [expand-once a/1 - b/1]
 		--assert blk = [8 4 3 1]
+		
+
+	--test-- "loops with stack expansion in body"
+		recycle/stack
+		armed: true
+		--assert [1 2 3] = map-each x [1 2 3] [expand-once x]
+		recycle/stack
+		armed: true
+		blk: [1 2 3]
+		remove-each x blk [expand-once x false]
+		--assert blk = [1 2 3]
+		recycle/stack
+		armed: true
+		--assert 3 = loop 3 [expand-once 3]
+		recycle/stack
+		armed: true i: 0
+		--assert 2 = while [i < 2] [expand-once i: i + 1]
+		recycle/stack
+		armed: true i: 0
+		--assert all [until [i: i + 1 expand-once i == 5] i == 5]
+
+	--test-- "control with stack expansion"
+		recycle/stack
+		--assert 1 = case [(expand-stack true) [1]]
+		recycle/stack
+		--assert 2 = switch (expand-stack 1) [1 [2]]
+		recycle/stack
+		--assert 3 = all [expand-stack 1 3]
+		recycle/stack
+		--assert 1 = any [(expand-stack 1) 3]
+		recycle/stack
+
+	--test-- "apply with stack expansion in args"
+		armed: true
+		--assert 4 = apply :add [(expand-once 1) 3]
+		recycle/stack
+		armed: true
+		--assert 4 = apply :add [1 (expand-once 3)]
+		armed: true
+		recycle/stack
+		--assert 3 = apply :do [:add 1 (expand-once 2)]
 		recycle/stack
 ===end-group===
 

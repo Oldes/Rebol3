@@ -1552,6 +1552,7 @@ reapply:  // Go back here to start over with a new func
 		// Check for DO any-function
 		if (index < BLK_LEN(block)) {
 			index = Do_Next(block, index, 0);
+			func = DSF_FUNC(dsf); // stack could be expanded by the evaluation
 			val = DS_TOP;
 			if (IS_DO(func) && ANY_FUNC(val)) {
 				func = val;    // apply this func directly (volatile reference!)
