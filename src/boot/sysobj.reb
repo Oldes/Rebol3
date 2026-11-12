@@ -634,6 +634,7 @@ standard: object [
 		sum:
 		mean:         ; average
 		median:
+		mode:
 		variance:
 		sample-variance:
 		population-deviation:

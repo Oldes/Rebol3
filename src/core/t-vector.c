@@ -299,6 +299,75 @@ static REBDEC Query_Vector_Median(REBVAL *vec) {
 }
 
 
+// Length of the run of equal elements starting at index i (in sorted data).
+static REBLEN Vector_Run_Length(CompareFunc cmp, REBYTE *data, REBCNT wide, REBLEN i, REBLEN len)
+{
+	REBLEN j = i + 1;
+	while (j < len && cmp(data + i * wide, data + j * wide) == 0) j++;
+	return j - i;
+}
+
+/***********************************************************************
+**
+*/	static void Query_Vector_Mode(REBVAL *vec, REBVAL *ret)
+/*
+**		Sets ret to [modes frequency] (modes in ascending order),
+**		or NONE when no value repeats.
+**
+***********************************************************************/
+{
+	REBCNT  type = VAL_VEC_TYPE(vec);
+	REBCNT  wide = VAL_VEC_WIDE(vec);
+	REBLEN  len  = VAL_LEN(vec);
+	REBCNT  reb_type = (type >= VTSF08) ? REB_DECIMAL : REB_INTEGER;
+	CompareFunc cmp = compares[type];
+	REBSER *sorted, *outer, *inner;
+	REBYTE *data;
+	REBVAL *val;
+	REBLEN  i, run, freq = 0, nmodes = 0;
+
+	SET_NONE(ret);
+	if (len < 2 || !cmp) return;
+
+	sorted = Copy_Binary_Part(VAL_SERIES(vec), VAL_INDEX(vec), len);
+	SAVE_SERIES(sorted);
+	data = SERIES_DATA(sorted);
+	unstable_sort(data, len, wide, cmp);
+
+	for (i = 0; i < len; i += run) {
+		run = Vector_Run_Length(cmp, data, wide, i, len);
+		if (run > freq) { freq = run; nmodes = 1; }
+		else if (run == freq) nmodes++;
+	}
+
+	if (freq > 1) {
+		outer = Make_Block(2);
+		Set_Block(ret, outer);          // ret must be GC-reachable (see below)
+		inner = Make_Block(nmodes);     // pre-sized, no expansion below
+
+		val = BLK_HEAD(inner);
+		for (i = 0; i < len; i += run) {
+			run = Vector_Run_Length(cmp, data, wide, i, len);
+			if (run == freq) {
+				VAL_SET(val, reb_type);
+				get_vect(type, data, i, val);
+				val++;
+			}
+		}
+		SET_END(val);
+		inner->tail = nmodes;
+
+		val = BLK_HEAD(outer);
+		Set_Block(val, inner);
+		SET_INTEGER(val + 1, freq);
+		SET_END(val + 2);
+		outer->tail = 2;
+	}
+	UNSAVE_SERIES(sorted);
+	Free_Series(sorted);
+}
+
+
 FORCE_INLINE
 static void Set_Vector_Value(REBCNT type, REBYTE *data, REBCNT n, REBVAL *val) {
 	REBVAL num = *val; // because may be modified!
@@ -509,6 +578,9 @@ void Find_Maximum_Of_Vector(REBVAL *vect, REBVAL *ret) {
 		if (VAL_LEN(vec) == 0) RETURN_NONE();
 		if (vqv) RETURN_NUMBER(vqv->maximum);
 		Find_Maximum_Of_Vector(vec, ret);
+		break;
+	case SYM_MODE:
+		Query_Vector_Mode(vec, ret);
 		break;
 	default: {
 		REBVQV out; // must outlive the `if` below - vqv may point to it

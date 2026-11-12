@@ -276,7 +276,7 @@ Rebol [
 		--assert o/minimum = 0
 		--assert o/maximum = 0
 	--test-- "QUERY on vector"
-		--assert [element-type signed type size length shape shaped minimum maximum range sum mean median variance sample-variance population-deviation sample-deviation] = query v none
+		--assert [element-type signed type size length shape shaped minimum maximum range sum mean median mode variance sample-variance population-deviation sample-deviation] = query v none
 		--assert [16 integer!] = query v [:size :type]
 		--assert block? b: query v [signed length]
 		--assert all [not b/signed b/length = 2]
@@ -867,10 +867,10 @@ Rebol [
 	--test-- "Query modes"
 		all-modes: query #(u8![]) none
 		--assert all-modes
-		== [element-type signed type size length shape shaped minimum maximum range sum mean median variance sample-variance population-deviation sample-deviation]
+		== [element-type signed type size length shape shaped minimum maximum range sum mean median mode variance sample-variance population-deviation sample-deviation]
 		all-get-modes: collect [foreach m all-modes [keep to get-word! m]]
 		--assert all-get-modes
-		== [:element-type :signed :type :size :length :shape :shaped :minimum :maximum :range :sum :mean :median :variance :sample-variance :population-deviation :sample-deviation]
+		== [:element-type :signed :type :size :length :shape :shaped :minimum :maximum :range :sum :mean :median :mode :variance :sample-variance :population-deviation :sample-deviation]
 	
 	--test-- "int8! vector statictics"
 	v: #(int8! [-2 -1 1 2 4])
@@ -888,6 +888,7 @@ Rebol [
 	    sum: 4
 	    mean: 0.8
 	    median: 1.0
+	    mode: _
 	    variance: 4.56
 	    sample-variance: 5.7
 	    population-deviation: 2.13541565040626
@@ -895,7 +896,7 @@ Rebol [
 	]
 
 	--assert (query v all-get-modes) 
-	== [int8! #(true) integer! 8 5 5x1 #(false) -2 4 6 4 0.8 1.0 4.56 5.7 2.13541565040626 2.38746727726266]
+	== [int8! #(true) integer! 8 5 5x1 #(false) -2 4 6 4 0.8 1.0 _ 4.56 5.7 2.13541565040626 2.38746727726266]
 
 	--test-- "uint64! vector statictics"
 	v: #(uint64! [4 9 11 12 17])
@@ -913,6 +914,7 @@ Rebol [
 	    sum: 53
 	    mean: 10.6
 	    median: 11.0
+	    mode: _
 	    variance: 17.84
 	    sample-variance: 22.3
 	    population-deviation: 4.22374241638857
@@ -920,7 +922,7 @@ Rebol [
 	]
 
 	--assert (query v all-get-modes) 
-	== [uint64! #(false) integer! 64 5 5x1 #(false) 4 17 13 53 10.6 11.0 17.84 22.3 4.22374241638857 4.72228758124704]
+	== [uint64! #(false) integer! 64 5 5x1 #(false) 4 17 13 53 10.6 11.0 _ 17.84 22.3 4.22374241638857 4.72228758124704]
 
 	--test-- "float64! vector statictics"
 	v: #(float64! [1.62 1.72 1.64 1.7 1.78 1.64 1.65 1.64 1.66 1.74])
@@ -938,6 +940,7 @@ Rebol [
 	    sum: 16.79
 	    mean: 1.679
 	    median: 1.655
+	    mode: [[1.64] 3]
 	    variance: 0.002529
 	    sample-variance: 0.00281
 	    population-deviation: 0.0502891638427207
@@ -945,10 +948,10 @@ Rebol [
 	]
 
 	--assert (query v all-get-modes)
-	== [float64! #(true) decimal! 64 10 10x1 #(false) 1.62 1.78 0.16 16.79 1.679 1.655 0.002529 0.00281 0.0502891638427207 0.0530094331227943]
+	== [float64! #(true) decimal! 64 10 10x1 #(false) 1.62 1.78 0.16 16.79 1.679 1.655 [[1.64] 3] 0.002529 0.00281 0.0502891638427207 0.0530094331227943]
 
 	--test-- "QUERY on empty vector"
-	--assert (query #(u8! []) all-get-modes) == [uint8! #(false) integer! 8 0 0x1 #(false) _ _ _ _ _ _ _ _ _ _]
+	--assert (query #(u8! []) all-get-modes) == [uint8! #(false) integer! 8 0 0x1 #(false) _ _ _ _ _ _ _ _ _ _ _]
 
 	--test-- "QUERY on single value vector"
 	--assert (query #(u8! [1])  all-modes) == [
@@ -965,13 +968,14 @@ Rebol [
 	    sum: 1
 	    mean: 1.0
 	    median: 1.0
+	    mode: _
 	    variance: 0.0
 	    sample-variance: _
 	    population-deviation: 0.0
 	    sample-deviation: _
 	]
 	--assert (query #(u8! [1]) all-get-modes)
-	== [uint8! #(false) integer! 8 1 1x1 #(false) 1 1 0 1 1.0 1.0 0.0 _ 0.0 _]
+	== [uint8! #(false) integer! 8 1 1x1 #(false) 1 1 0 1 1.0 1.0 _ 0.0 _ 0.0 _]
 
 	--test-- "median covers the same range as the other statistics"
 		v: skip #(i8! [100 1 2 3]) 1     ;; visible = [1 2 3]
@@ -996,6 +1000,7 @@ Rebol [
 		    sum: 6
 		    mean: 2.0
 		    median: 2.0
+		    mode: _
 		    variance: 0.666666666666667
 		    sample-variance: 1.0
 		    population-deviation: 0.816496580927726
@@ -1016,6 +1021,7 @@ Rebol [
 		    sum: _
 		    mean: _
 		    median: _
+		    mode: _
 		    variance: _
 		    sample-variance: _
 		    population-deviation: _
@@ -1026,6 +1032,17 @@ Rebol [
 		v: make vector! [uint64! [-1]]          ;; 18446744073709551615
 		--assert 1.8446744073709552e19 = query v 'mean
 		--assert 1.8446744073709552e19 = query v 'median
+
+	--test-- "vector mode"
+		v: #(uint8! [3 1 3 1 2])
+		--assert [[1 3] 2] = v/mode
+		--assert [[1.5] 3] = query #(float64! [1.5 2.0 1.5 1.5]) 'mode
+		--assert none? query #(int16! [1 2 3]) 'mode
+		--assert none? query #(int16! []) 'mode
+		v: #(int32! [5 5 1 2 2 3])
+		--assert [[2] 2] = query skip v 2 'mode
+		--assert v = #(int32! [5 5 1 2 2 3])
+		--assert [mode: [[2 5] 2] median: 2.5] = query v [mode median]
 
 ===end-group===
 
