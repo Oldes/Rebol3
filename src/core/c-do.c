@@ -1750,9 +1750,12 @@ reapply:  // Go back here to start over with a new func
 
 	for (; NOT_END(value); value++) {
 		if (IS_SET_WORD(value)) {
-			// Next line not needed, because SET words are ALWAYS in frame.
-			//if (VAL_WORD_INDEX(value) > 0 && VAL_WORD_FRAME(value) == frame)
-				DS_PUSH(value);
+			// Cascaded set-words are pushed one by one, so make sure there is room:
+			if ((DSP + 100) > (REBINT)SERIES_REST(DS_Series)) {
+				Expand_Stack(STACK_MIN);
+				temp = DS_VALUE(ssp); // the stack may have moved
+			}
+			DS_PUSH(value);
 		} else {
 			// Get value:
 			if (IS_WORD(value)) {
@@ -1820,9 +1823,12 @@ reapply:  // Go back here to start over with a new func
 
 	for (; NOT_END(value); value++) {
 		if (IS_SET_WORD(value)) {
-			// Next line not needed, because SET words are ALWAYS in frame.
-			//if (VAL_WORD_INDEX(value) > 0 && VAL_WORD_FRAME(value) == frame)
-				DS_PUSH(value);
+			// Cascaded set-words are pushed one by one, so make sure there is room:
+			if ((DSP + 100) > (REBINT)SERIES_REST(DS_Series)) {
+				Expand_Stack(STACK_MIN);
+				temp = DS_VALUE(ssp); // the stack may have moved
+			}
+			DS_PUSH(value);
 		} else {
 			// Get value:
 			*temp = *value;

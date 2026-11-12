@@ -1093,6 +1093,20 @@ expand-once: does [if armed [armed: false expand-stack]]
 		append blk 1
 		o: construct blk
 		--assert o/a = 1
+		recycle/stack
+
+	--test-- "construct: cascaded set-words at every stack depth"
+		sweep-construct: func [n blk] [
+			either n > 0 [sweep-construct n - 1 blk][construct blk]
+		]
+		recycle/stack
+		blk: append/dup make block! 0 [a:] 300
+		append blk 1
+		repeat depth 1000 [
+			o: sweep-construct depth blk
+			--assert o/a = 1
+		]
+		recycle/stack
 
 	--test-- "make object with paren expanding stack"
 		o: make object! [a: (expand-stack 1) b: 2]
