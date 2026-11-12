@@ -1313,6 +1313,19 @@ if not error? try [str: to string! #{A032}][
 	;; none rule matches without advancing
 	--assert parse "a" [none "a"]
 	--assert parse "" [none]
+
+--test-- "string collect keep on UTF-8 string"
+	--assert [#"a"]      = parse "šab" [collect [skip keep skip skip]]   ;; ASCII char (count = 1)
+	--assert [#"š" #"a"] = parse "ša"  [collect [keep skip keep skip]]   ;; multi-byte char
+	--assert ["ša" #"b"] = parse "šab" [collect [keep 2 skip keep skip]] ;; more codepoints
+	--assert ["€š"]      = parse "€š"  [collect [keep 2 skip]]
+	--assert [%ša]       = parse %šab  [collect [keep 2 skip skip]]      ;; keeps the input type
+
+--test-- "string collect keep pick on UTF-8 string"
+	--assert [#"š" #"a" #"b"] = parse "šab" [collect [keep pick 3 skip]]
+	--assert [#"a" #"€" #"š"] = parse "a€š" [collect [keep pick to end]]
+	--assert [#"š"]           = parse "aš"  [collect [skip keep pick skip]]
+	--assert all [a: [] parse "šab" [collect into a [keep pick 3 skip]]  a = [#"š" #"a" #"b"]]
 ===end-group===
 
 ~~~end-file~~~
