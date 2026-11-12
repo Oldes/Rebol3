@@ -167,7 +167,8 @@ static int Check_Char_Range(REBVAL *val, REBCNT limit)
 
 	if (!D_REF(2)) {
 		REBSER *block = VAL_SERIES(value);
-		REBCNT index = VAL_INDEX(value);
+		REBCNT start  = VAL_INDEX(value); // value may be stale after evaluation
+		REBCNT index  = start;
 		REBCNT i;
 
 		ds = 0;
@@ -175,7 +176,7 @@ static int Check_Char_Range(REBVAL *val, REBCNT limit)
 			index = Do_Next(block, i = index, 0); // stack volatile
 			ds = DS_POP; // volatile stack reference
 			if (IS_FALSE(ds)) {
-				Set_Block(ds, Copy_Block(VAL_SERIES(value), VAL_INDEX(value))); // #2231
+				Set_Block(ds, Copy_Block(block, start)); // #2231
 				Trap1(RE_ASSERT_FAILED, ds);
 			}
 			if (THROWN(ds)) return R_TOS1;

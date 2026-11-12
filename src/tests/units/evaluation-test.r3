@@ -760,6 +760,12 @@ expand-once: does [if armed [armed: false expand-stack]]
 	--test-- "attempt with data stack expansion"
 		--assert none? attempt [expand-stack 1 / 0]
 		--assert all [recycle/stack 8064 > stack/limit 0]
+	--test-- "assert failure after stack expansion"
+		--assert error? try [assert [1 = 1 (expand-stack 1) = 2]]
+		--assert all [recycle/stack 8064 > stack/limit 0]
+	--test-- "assert success after stack expansion"
+		--assert assert [1 = 1 (expand-stack true)]
+		--assert all [recycle/stack 8064 > stack/limit 0]
 	--test-- "catch with data stack expansion"
 		--assert 1 = catch [expand-stack throw 1]
 		--assert all [recycle/stack 8064 > stack/limit 0]
