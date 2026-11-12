@@ -1169,27 +1169,17 @@ find_none:
 		break;
 
 	case A_INDEXQ:
-		if (D_REF(2)) {
-			VAL_SET(D_RET, REB_PAIR);
-			// 1-based result! -> https://github.com/Oldes/Rebol-issues/issues/2409
-			VAL_PAIR_X(D_RET) = (REBD32)(index % VAL_IMAGE_WIDE(value)) + 1;
-			VAL_PAIR_Y(D_RET) = (REBD32)(index / VAL_IMAGE_WIDE(value)) + 1;
-			return R_RET;
-		} else {
-			DS_RET_INT(index + 1);
-			return R_RET;
-		}
 	case A_INDEXZQ:
 		if (D_REF(2)) {
+			REBCNT wide = VAL_IMAGE_WIDE(value);
+			REBD32 base = (action == A_INDEXQ) ? 1.0f : 0.0f; // 1-based for index?, see issue 2409
 			VAL_SET(D_RET, REB_PAIR);
-			VAL_PAIR_X(D_RET) = (REBD32)(index % VAL_IMAGE_WIDE(value));
-			VAL_PAIR_Y(D_RET) = (REBD32)(index / VAL_IMAGE_WIDE(value));
+			VAL_PAIR_X(D_RET) = (REBD32)(wide ? (REBCNT)index % wide : 0) + base;
+			VAL_PAIR_Y(D_RET) = (REBD32)(wide ? (REBCNT)index / wide : 0) + base;
 			return R_RET;
 		}
-		else {
-			DS_RET_INT(index);
-			return R_RET;
-		}
+		DS_RET_INT(action == A_INDEXQ ? index + 1 : index);
+		return R_RET;
 	case A_LENGTHQ:
 		DS_RET_INT(tail > index ? tail - index : 0);
 		return R_RET;

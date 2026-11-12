@@ -186,6 +186,17 @@ Rebol [
 		;@@ https://github.com/Oldes/Rebol-issues/issues/1037
 		--assert 2x1 = index?/xy load mold/all next make image! 3x2
 
+	--test-- "index?/xy on an image with zero width"
+		img: make image! 0x3
+		--assert 1x1 = index?/xy img
+		--assert 0x0 = indexz?/xy img
+		--assert 1 = index? img
+		--assert 0 = indexz? img
+		img: make image! 3x2
+		--assert 1x1 = index?/xy img
+		--assert 2x2 = index?/xy skip img 4
+		--assert 1x1 = indexz?/xy skip img 4
+
 ===end-group===
 
 ===start-group=== "FOREACH"
