@@ -930,20 +930,43 @@ expand-once: does [if armed [armed: false expand-stack]]
 	--test-- "parse with paren expanding stack"
 		armed: true
 		--assert parse [1 2 3] [some [integer! (expand-once 0)]]
+		recycle/stack
 
 	--test-- "parse collect with paren expanding stack"
 		armed: true
 		--assert [1 2 3] = parse [1 2 3] [collect some [keep integer! (expand-once 0)]]
+		recycle/stack
 
 	--test-- "parse collect into with paren expanding stack"
 		armed: true
 		out: copy []
 		--assert parse [1 2 3] [collect into out some [keep integer! (expand-once 0)]]
 		--assert out = [1 2 3]
+		recycle/stack
 
 	--test-- "parse collect with keep paren expanding stack"
 		armed: true
 		--assert [1 2] = parse [1 2] [collect some [keep integer! keep (expand-once 0)] ]
+		recycle/stack
+
+	--test-- "reduce/into with stack expansion"
+		armed: true
+		out: make block! 0
+		reduce/into [1 (expand-once 2) 3] out
+		--assert [1 2 3] = out
+		recycle/stack
+
+	--test-- "compose/into with stack expansion"
+		armed: true
+		out: make block! 0
+		compose/into [1 (expand-once 2) 3] out
+		--assert [1 2 3] = out
+		recycle/stack
+
+	--test-- "compose map with stack expansion"
+		armed: true
+		--assert map? compose #[a: 1 b: (expand-once 2)]
+		recycle/stack
 ===end-group===
 
 

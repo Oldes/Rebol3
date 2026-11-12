@@ -640,8 +640,15 @@ callback:	// ...and the last result.
 **
 ***********************************************************************/
 {
-	REBVAL *value = D_ARG(1);
-	REBVAL *into = D_REF(4) ? D_ARG(5) : 0;
+	REBVAL  blk = *D_ARG(1);   // local copies, the stack may move while evaluating
+	REBVAL  into_val;
+	REBVAL *value = &blk;
+	REBVAL *into = 0;
+
+	if (D_REF(4)) {
+		into_val = *D_ARG(5);
+		into = &into_val;
+	}
 
 	if (IS_BLOCK(value) || IS_MAP(value)) {
 		Compose_Block(value, D_REF(2), D_REF(3), into);
@@ -874,9 +881,14 @@ callback:	// ...and the last result.
 ***********************************************************************/
 {
 	REBVAL *val = D_ARG(1);
-	REBVAL *into = D_REF(5) ? D_ARG(6) : 0;
+	REBVAL  into_val;   // local copy; the stack may move while evaluating
+	REBVAL *into = 0;
 	REBCNT type = VAL_TYPE(val);
 
+	if (D_REF(5)) {
+		into_val = *D_ARG(6);
+		into = &into_val;
+	}
 	if (type == REB_BLOCK || type == REB_PAREN) {
 		REBSER *ser = VAL_SERIES(val);
 		REBCNT index = VAL_INDEX(val);
