@@ -1081,6 +1081,10 @@ expand-once: does [if armed [armed: false expand-stack]]
 		unset in obj 'a
 		--assert error? try [get 'obj/(expand-stack 'a)]
 		--assert unset? get/any 'obj/(expand-stack 'a)
+
+	--test-- "in block with path expanding stack"
+		o2: object [o: object [a: 1]]
+		--assert 1 = get in [o2/(expand-stack 'o)] 'a
 ===end-group===
 
 

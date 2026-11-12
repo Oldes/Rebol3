@@ -555,18 +555,20 @@ static REBYTE arg_to_byte(REBVAL* val) {
 
 	if (IS_BLOCK(val) || IS_PAREN(val)) {
 		if (IS_WORD(word)) {
+			REBVAL  w = *word;               // local copy, the stack may move while evaluating
+			REBSER *blk = VAL_SERIES(val);
 			REBVAL *v;
 			REBCNT i;
-			for (i = VAL_INDEX(val); i < VAL_TAIL(val); i++) {
-				v = VAL_BLK_SKIP(val, i);
+			for (i = VAL_INDEX(val); i < SERIES_TAIL(blk); i++) {
+				v = BLK_SKIP(blk, i);
 				v = Get_Simple_Value(v);
 				if (IS_OBJECT(v)) {
 					frame = VAL_OBJ_FRAME(v);
-					index = Find_Word_Index(frame, VAL_WORD_SYM(word), FALSE);
+					index = Find_Word_Index(frame, VAL_WORD_SYM(&w), FALSE);
 					if (index > 0) {
-						VAL_WORD_INDEX(word) = (REBCNT)index;
-						VAL_WORD_FRAME(word) = frame;
-						*D_RET = *word;
+						VAL_WORD_INDEX(&w) = (REBCNT)index;
+						VAL_WORD_FRAME(&w) = frame;
+						*DS_RETURN = w;
 						return R_RET;
 					}
 				}
