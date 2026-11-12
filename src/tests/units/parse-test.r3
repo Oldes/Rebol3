@@ -82,6 +82,96 @@ Rebol [
 	--assert all [parse "xyz" [copy f thru end]  f = "xyz"]
 	--assert error? try [parse "xyz" [copy f thru to end]]
 	--assert error? try [parse "xyz" [copy f thru thru end]]
+
+--test-- "TO/THRU block with END"
+	--assert parse "abc" [to [end]]
+	--assert parse "abc" [thru [end]]
+	--assert parse "abc" [to ["x" | end]]
+	--assert parse "abc" [thru ["x" | end]]
+	--assert parse "axc" [to ["x" | end] "xc"]
+	--assert parse [1 2] [to [end]]
+	--assert parse [1 2] [thru [word! | end]]
+	n: 0 --assert all [parse "abc" [to [end (n: n + 1)]]  n = 1]
+
+--test-- "TO/THRU block with QUOTE"
+	--assert parse "abc" [thru [quote "b"] "c"]
+	--assert parse "abc" [thru [quote ("b")] "c"]
+	--assert parse [x a b] [thru [quote a] 'b]
+	--assert parse [x a b] [to [quote a] 'a 'b]
+	--assert parse [1 2 3] [thru [quote (1 + 1)] integer! end]
+	--assert all [error? e: try [parse "abc" [thru [quote]]]  e/id = 'parse-rule]
+
+--test-- "TO/THRU block with other command"
+	--assert all [error? e: try [parse "abc" [thru [skip]]]  e/id = 'parse-rule]
+	--assert all [error? e: try [parse [1] [to [skip]]]  e/id = 'parse-rule]
+
+--test-- "TO/THRU block with path"
+	o: context [c: #"c" w: word!]
+	--assert parse "abc" [thru [o/c] end]
+	--assert parse "abc" [to [o/c] "c"]
+	--assert parse [1 a] [thru [o/w] end]
+
+--test-- "TO/THRU block on block input"
+	--assert     parse [1 a "b"] [thru [word!] "b"]
+	--assert     parse [1 a "b"] [to [word!] word! "b"]
+	--assert     parse [1 "a" %b] [thru [any-string!] %b]
+	--assert     parse [x a b] [thru ['a] 'b]
+	--assert     parse [1 2 3] [thru [2] integer! end]
+	--assert     parse [1 2 3] [thru [word! | 2] integer! end]
+	--assert not parse [1 2] [to [word!] to end]
+	--assert all [error? e: try [parse [[1]] [to [[1]]]]  e/id = 'parse-rule]
+	--assert all [error? e: try [parse [1] [to [(1)]]]  e/id = 'parse-rule]
+
+--test-- "TO/THRU block on binary input"
+	--assert     parse #{010203} [thru [#"^B"] #{03}]
+	--assert     parse #{010203} [to [#"^B"] #{0203}]
+	--assert     parse #{010203} [thru [#{02}] #{03}]
+	--assert     parse #{010203} [to [#{0203}] #{0203}]
+	--assert     parse #{010203} [thru [#{0203}] end]
+	--assert     parse #{01020203} [thru [#{0203}] end]
+	--assert     parse #{010203} [thru [2] #{03}]
+	--assert     parse #{010203} [to [2] #{0203}]
+	--assert     parse #{010203} [thru [#{09} | 3] end]
+	--assert not parse #{010203} [thru [4] to end]
+	--assert all [error? e: try [parse #{01} [thru [#"š"]]]  e/id = 'parse-rule]
+	--assert all [error? e: try [parse #{01} [thru [256]]]  e/id = 'parse-rule]
+	--assert all [error? e: try [parse #{01} [thru [1.5]]]  e/id = 'parse-rule]
+
+--test-- "TO/THRU block with char! on string input"
+	--assert     parse "abc" [thru [#"b"] "c"]
+	--assert     parse "abc" [to [#"b"] "bc"]
+	--assert     parse "aBc" [thru [#"b"] "c"]
+	--assert     parse/case "aBc" [thru [#"B"] "c"]
+	--assert not parse/case "aBc" [thru [#"b"] to end]
+
+--test-- "TO/THRU block with any-string! on string input"
+	--assert     parse "abc" [thru ["b"] "c"]
+	--assert     parse "abc" [thru ["bc"] end]
+	--assert     parse "abc" [to ["bc"] "bc"]
+	--assert     parse "abxbc" [thru ["bc"] end]
+	--assert     parse "abc" [thru [%bc] end]
+	--assert     parse "aBC" [thru ["bc"] end]
+	--assert not parse/case "aBC" [thru ["bc"] to end]
+	--assert     parse/case "aBC" [thru ["BC"] end]
+
+--test-- "TO/THRU block with integer! on string input"
+	--assert     parse "abc" [thru [98] "c"]
+	--assert     parse "abc" [to [98] "bc"]
+	--assert not parse "aBc" [thru [98] to end]   ;; no case folding for integers
+
+--test-- "TO/THRU block with invalid target on string input"
+	--assert all [error? e: try [parse "abc" [thru [1.5]]]  e/id = 'parse-rule]
+	--assert all [error? e: try [parse "abc" [thru [[#"a"]]]]  e/id = 'parse-rule]
+
+--test-- "TO/THRU block alternatives must be separated by |"
+	--assert all [error? e: try [parse "abc" [thru [#"b" #"c"]]]  e/id = 'parse-rule]
+	--assert all [error? e: try [parse "abc" [thru [#"x" (n: 1) #"c"]]]  e/id = 'parse-rule]
+
+--test-- "TO/THRU block with action paren"
+	n: 0 --assert all [parse "abc" [thru [#"b" (n: n + 1) | #"c" (n: n + 10)] "c"]  n = 1]
+	n: 0 --assert all [parse "abc" [thru [#"x" (n: 1) | #"c" (n: 2)]]  n = 2]
+	n: 0 --assert all [parse "abc" [thru ["bc" (n: n + 1)] end]  n = 1]
+	n: 0 --assert all [parse [1 a] [thru [word! (n: n + 1)] end]  n = 1]
 ===end-group===
 
 
