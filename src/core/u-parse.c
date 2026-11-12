@@ -199,8 +199,7 @@ static REBVAL *Collect_Value(REB_PARSE_COLLECT *c)
 		// CureCode #1263 change
 		//		if (parse->type != VAL_TYPE(item) || VAL_SERIES(item) != parse->series) 
 		if (!ANY_SERIES(item)) Trap1(RE_PARSE_SERIES, path);
-		*index = Set_Parse_Series(parse, item);
-		return 0;
+		return item; // caller resets the input
 	}
 
 	return item;
@@ -1188,9 +1187,11 @@ reset_input:
 			}
 		}
 		else if (ANY_PATH(item)) {
+			REBVAL *path = item;
 			item = Do_Parse_Path(item, parse, &index); // index can be modified
 			if (index > series->tail) index = series->tail;
-			if (item == 0) continue; // for SET and GET cases
+			if (item == 0) continue; // for SET case
+			if (IS_GET_PATH(path) && item != path) goto reset_input;
 		}
 
 		if (IS_PAREN(item)) {

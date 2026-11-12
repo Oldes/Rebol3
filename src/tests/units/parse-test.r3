@@ -899,6 +899,58 @@ Rebol [
 ===end-group===
 
 
+===start-group=== "Paths in rules"
+--test-- "set-path in rule"
+	o: context [p: none]
+	--assert all [
+		parse s: "abc" [skip o/p: to end]
+		o/p = "bc"
+		same? head o/p s
+	]
+	--assert all [
+		parse b: [1 2 3] [skip o/p: to end]
+		o/p = [2 3]
+		same? head o/p b
+	]
+	blk: [#(none)]
+	--assert all [
+		parse s: "abc" [2 skip blk/1: to end]
+		blk/1 = "c"
+		same? head blk/1 s
+	]
+
+--test-- "get-path in rule"
+	o: context [p: none q: "xyz" n: 1]
+	;; reset the position in the same series
+	--assert parse "abc" [skip o/p: "b" :o/p "bc"]
+	--assert parse [1 2 3] [skip o/p: integer! :o/p integer! integer!]
+	;; switch to another series (CureCode #1263)
+	--assert parse "abc" [:o/q "xyz"]
+	--assert parse [1] [:o/q "xyz"]
+	;; not a series
+	--assert all [error? e: try [parse "abc" [:o/n]]  e/id = 'parse-series]
+
+	;; switch to another series of a different type/length
+	--assert parse [1] [:o/q "xyz"]
+	--assert parse "ab" [:o/q "xyz"]
+	;; get-path in the middle of a rule (same as get-word, #2269/#2364)
+	o/p: "abcd"
+	--assert all [
+		error? e: try [parse "abcd" [x: "ab" copy y :o/p thru "abcd"]]
+		e/id = 'parse-rule
+	]
+	;; change with position (same as get-word, #2711)
+	--assert all [
+		parse b: [1 2 3 4 5] [skip (o/p: back tail b) change :o/p ('x) skip]
+		b = [1 x 5]
+	]
+	--assert all [
+		parse b: "12345" [skip (o/p: back tail b) change :o/p ('x) skip]
+		b = "1x5"
+	]
+===end-group===
+
+
 ===start-group=== "Other parse issues"
 
 --test-- "parse with none or unset"
