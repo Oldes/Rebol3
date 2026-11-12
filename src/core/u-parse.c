@@ -705,8 +705,18 @@ bad_target:
 	// COLLECT ends
 	// get the previous target block from the stack and use it
 	//printf("collect ends %u dsp: %i blk: %x\n", collect->depth, DSP, collect->block);
+	REBVAL *tmp;
+	REBVAL *var;
+	REBCNT index;
+
 	collect->mode = VAL_INT32(DS_POP);
-	VAL_INDEX(Collect_Value(collect)) = VAL_INT32(DS_POP);
+	index = VAL_INT32(DS_POP);
+	tmp = DS_POP;
+	var = (REBVAL *)(REBUPT)VAL_INT64(tmp); // the variable's word, or NULL
+	VAL_INDEX(Collect_Value(collect)) = index;
+	// A nested collect may have replaced the current value with a copy,
+	// so restore the position of the variable itself too:
+	if (var) VAL_INDEX(Get_Var(var)) = index;
 	Set_Collect_Value(collect, DS_POP);
 	collect->block = VAL_SERIES(collect->value);
 	collect->depth--;
@@ -1016,6 +1026,7 @@ bad_target:
 							Set_Collect_Value(collect, val);
 							collect->mode = SYM_SET;
 							DS_PUSH(val);
+							DS_PUSH_INTEGER((REBI64)(REBUPT)rules); // the variable's word (restored in Parse_Collect_End)
 							DS_PUSH_INTEGER(0); // index (will be restored)
 							DS_PUSH_INTEGER(SYM_SET); // store mode
 							rules++;
@@ -1042,6 +1053,7 @@ bad_target:
 							collect->block = VAL_SERIES(val);
 							collect->mode = wrd;
 							DS_PUSH(val);
+							DS_PUSH_INTEGER((REBI64)(REBUPT)rules); // the variable's word
 							DS_PUSH_INTEGER(VAL_INDEX(val)); // store current index (will be restored)
 							DS_PUSH_INTEGER(wrd); // store mode (into or after)
 
@@ -1072,6 +1084,7 @@ bad_target:
 								Set_Series(REB_BLOCK, val, collect->block);
 							}
 							collect->mode = BLOCK_COLLECT;
+							DS_PUSH_INTEGER(0); // no variable
 							DS_PUSH_INTEGER(0); // index (will be restored)
 							DS_PUSH_INTEGER(BLOCK_COLLECT); // no special mode (block collect)
 						}

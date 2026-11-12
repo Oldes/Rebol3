@@ -454,6 +454,18 @@ Rebol [
 	out: copy []
 	--assert parse [1 2] [collect into out some [keep integer! keep (0)]]
 	--assert [1 0 2 0] = out
+
+--test-- "collect set leaves the variable at its head after a failed nested collect"
+	res: none
+	--assert all [
+		#(true) = parse [1 2] [collect set res [keep integer! collect [fail] | keep integer! keep integer!]]
+		1 = index? res
+	]
+	res: none
+	--assert all [
+		#(true) = parse [1 2] [collect set res [keep integer! keep (0) collect [fail] | keep integer! keep (0) keep integer!]]
+		1 = index? res
+	]
 ===end-group===
 
 
