@@ -121,6 +121,12 @@ Rebol [
 	--assert not parse [1 2] [to [word!] to end]
 	--assert all [error? e: try [parse [[1]] [to [[1]]]]  e/id = 'parse-rule]
 	--assert all [error? e: try [parse [1] [to [(1)]]]  e/id = 'parse-rule]
+	--assert     parse [x p/a b] [to ['p/a] 'p/a 'b]
+	--assert     parse [x p/a b] [thru ['p/a] 'b]
+	--assert     parse [x p/a b] [thru [word! | 'p/a] 'p/a 'b]   ;; 'x matched first
+	--assert     parse [x p/b p/a] [thru ['p/a] end]
+	--assert not parse/case [x p/a] [thru ['p/A] to end]
+	--assert     parse [x p/a b] [thru [quote p/a] 'b]
 
 --test-- "TO/THRU block on binary input"
 	--assert     parse #{010203} [thru [#"^B"] #{03}]

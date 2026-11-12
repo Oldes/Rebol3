@@ -402,7 +402,7 @@ no_result:
 
 			// Try to match it:
 			if (type >= REB_BLOCK) {
-				if (ANY_BLOCK(item)) goto bad_target;
+				if (IS_BLOCK(item) || IS_PAREN(item)) goto bad_target;
 				i = Parse_Next_Block(parse, index, item, 0);
 				if (i != NOT_FOUND) {
 					if (!is_thru) i--;
