@@ -290,9 +290,6 @@ static REBVAL *Collect_Value(REB_PARSE_COLLECT *c)
 		index = Find_Str_Tag(series, 0, index, SERIES_TAIL(series), 1, VAL_SERIES(item), VAL_INDEX(item), VAL_LEN(item), flags);
 		break;
 
-	case REB_NONE:
-		break;
-
 	default:
 		Trap1(RE_PARSE_RULE, item);
 	}

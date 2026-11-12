@@ -1303,6 +1303,16 @@ if not error? try [str: to string! #{A032}][
 	--assert     parse "š" [#"Š"]
 	--assert     parse/case "Š" [#"Š"]
 	--assert not parse/case "Š" [#"š"]
+
+--test-- "invalid rule on string input"
+	--assert all [error? e: try [parse "a" [1.5]]      e/id = 'parse-rule  e/arg1 = 1.5]
+	--assert all [error? e: try [parse "a" [string!]]  e/id = 'parse-rule]
+	--assert all [error? e: try [parse "a" [any-string!]]  e/id = 'parse-rule]
+	--assert all [error? e: try [parse "a" ['a]]       e/id = 'parse-rule]
+	--assert all [error? e: try [parse "a" [#(true)]]  e/id = 'parse-rule]
+	;; none rule matches without advancing
+	--assert parse "a" [none "a"]
+	--assert parse "" [none]
 ===end-group===
 
 ~~~end-file~~~
