@@ -1081,10 +1081,23 @@ expand-once: does [if armed [armed: false expand-stack]]
 		unset in obj 'a
 		--assert error? try [get 'obj/(expand-stack 'a)]
 		--assert unset? get/any 'obj/(expand-stack 'a)
+		recycle/stack
 
 	--test-- "in block with path expanding stack"
 		o2: object [o: object [a: 1]]
 		--assert 1 = get in [o2/(expand-stack 'o)] 'a
+		recycle/stack
+
+	--test-- "construct with many cascaded set-words"
+		blk: append/dup make block! 0 [a:] 15000
+		append blk 1
+		o: construct blk
+		--assert o/a = 1
+
+	--test-- "make object with paren expanding stack"
+		o: make object! [a: (expand-stack 1) b: 2]
+		--assert o/b = 2
+		recycle/stack
 ===end-group===
 
 
