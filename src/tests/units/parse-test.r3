@@ -1040,6 +1040,35 @@ if not error? try [str: to string! #{A032}][
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1880
 	--assert not parse "ab" ["" to end] ;-- not like in Red!
 
+--test-- "integer! repeat with paren"
+	;; paren after a counter is matched by Parse_Next_Block/Parse_Next_String
+	n: 0 --assert all [parse [] [3 (n: n + 1)]  n = 3]
+	n: 0 --assert all [parse [x] [2 4 (n: n + 1) 'x]  n = 4]
+	n: 0 --assert all [parse "a" [3 (n: n + 1) "a"]  n = 3]
+	n: 0 --assert all [parse "a" [2 4 (n: n + 1) "a"]  n = 4]
+	p: quote (n: n + 1)
+	n: 0 --assert all [parse [x] [2 p 'x]  n = 2]
+	n: 0 --assert all [parse "x" [2 p "x"]  n = 2]
+
+--test-- "integer! repeat with paren modifying input"
+	;; index is clipped to the new tail after the paren is evaluated
+	--assert all [parse b: [1 2 3] [2 skip 1 (clear b)]  b = []]
+	--assert all [parse s: "abc"   [2 skip 1 (clear s)]  s = ""]
+
+--test-- "sub-rule block after counter or in word"
+	r: [integer!]
+	--assert     parse [1 1] [2 [integer!]]
+	--assert     parse [1 1] [2 r]
+	--assert     parse [1 1] [1 3 r]
+	--assert not parse [1 1] [3 r]
+	r: ["a"]
+	--assert     parse "aa" [2 ["a"]]
+	--assert     parse "aa" [2 r]
+	--assert     parse "aa" [1 3 r]
+	--assert not parse "aa" [3 r]
+	;; nested sub-rule inside a block after a counter
+	--assert     parse [1 a 2 b] [2 [integer! [word!]]]
+	--assert     parse "1a2b" [2 [[#"1" | #"2"] ["a" | "b"]]]
 ===end-group===
 
 ~~~end-file~~~

@@ -288,11 +288,6 @@ static REBVAL *Collect_Value(REB_PARSE_COLLECT *c)
 	case REB_NONE:
 		break;
 
-	// Parse a sub-rule block:
-	case REB_BLOCK:
-		index = Parse_Rules_Loop(parse, index, VAL_BLK_DATA(item), depth);
-		break;
-
 	// Do an expression:
 	case REB_PAREN:
 		item = Do_Block_Value_Throw(item); // might GC
@@ -351,11 +346,6 @@ static REBVAL *Collect_Value(REB_PARSE_COLLECT *c)
 		index++;
 		if (IS_PATH(blk) && !Cmp_Block(blk, item, HAS_CASE(parse))) break;
 		goto no_result;
-
-	// Parse a sub-rule block:
-	case REB_BLOCK:
-		index = Parse_Rules_Loop(parse, index, VAL_BLK_DATA(item), depth);
-		break;
 
 	// Do an expression:
 	case REB_PAREN:
