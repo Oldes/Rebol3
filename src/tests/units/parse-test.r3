@@ -448,6 +448,12 @@ Rebol [
 	--assert all [o: [] parse "a11b22" [some [collect into  o [keep skip keep 2 skip]]] o == [#"b" "22" #"a" "11"] ]
 	--assert all [o: [] parse "a11b22" [some [collect after o [keep skip keep 2 skip]]] o == [#"a" "11" #"b" "22"] ]
 
+--test-- "parse collect keep paren keeps the order"
+	--assert [1 0 2 0] = parse [1 2] [collect some [keep integer! keep (0)]]
+	--assert [0 1] = parse [1] [collect [keep (0) keep integer!]]
+	out: copy []
+	--assert parse [1 2] [collect into out some [keep integer! keep (0)]]
+	--assert [1 0 2 0] = out
 ===end-group===
 
 

@@ -835,8 +835,9 @@ bad_target:
 {
 	REBVAL *value;
 	REBSER *block;
-	REBVAL *item;
+	REBVAL item;
 	REBINT index;
+	REBCNT tail;
 
 	if (parse->collect->depth == 0)
 		Trap0(RE_PARSE_NO_COLLECT);
@@ -844,14 +845,19 @@ bad_target:
 	block = parse->collect->block;
 	ASSERT2(block, RP_MISC); // should never happen
 
-	item = Do_Block_Value_Throw(expr); // might GC
+	item = *Do_Block_Value_Throw(expr); // might GC; local copy, the result is volatile
 	value = Collect_Value(parse->collect);
 	if (ANY_BLOCK(value)) {
-		Append_Val(block, item);
+		index = VAL_INDEX(value);
+		tail  = SERIES_TAIL(block);
+		Append_Val(block, &item);
+		// Appended at the collect position, so the next KEEP must follow it
+		// (after a nested collect the position is before the tail, as before):
+		if (index == (REBINT)tail) VAL_INDEX(value) = index + 1;
 	}
 	else {
 		index = VAL_INDEX(value);
-		index = Modify_String(A_INSERT, VAL_SERIES(value), index, item, 0, 1, 1);
+		index = Modify_String(A_INSERT, VAL_SERIES(value), index, &item, 0, 1, 1);
 		VAL_INDEX(value) = index;
 	}
 }
@@ -1720,6 +1726,7 @@ bad_end:
 		n = Parse_Series(val, VAL_BLK_DATA(arg), (opts & PF_CASE) ? AM_FIND_CASE : 0, 0, &collect);
 		if (collect.mode == BLOCK_COLLECT) {
 			*DS_RETURN = *Collect_Value(&collect);
+			VAL_INDEX(DS_RETURN) = 0; // `collect keep (...)` never reaches Parse_Collect_End
 		}
 		else {
 			SET_LOGIC(DS_RETURN, n >= SERIES_TAIL(series) && n != NOT_FOUND);
