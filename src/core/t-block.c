@@ -749,6 +749,7 @@ done:
 	}
 
 	REBU64 flags = 0;
+	REBFLG free_args = FALSE; // decided before sorting, compv may be stale afterwards
 	if (ccase) SET_FLAG(flags, SORT_FLAG_CASE);
 	if (rev)   SET_FLAG(flags, SORT_FLAG_REVERSE);
 	
@@ -757,6 +758,7 @@ done:
 			Trap0(RE_BAD_REFINES);
 		DS_PUSH_INTEGER(skip);
 		if (IS_FUNCTION(compv)) {
+			free_args = TRUE;
 			// Create temporary blocks to hold comparator function arguments
 			Set_Block(&v1, Make_Block(skip));
 			Set_Block(&v2, Make_Block(skip));
@@ -812,7 +814,7 @@ done:
 		stable_sort((void*)VAL_BLK_DATA(block), len, size, cmp);
 	}
 
-	if (all && IS_FUNCTION(compv)) {
+	if (free_args) {
 		// Release temporary blocks
 		ASSERT1(IS_BLOCK(&v1) && IS_BLOCK(&v2), RP_MISC);
 		Free_Series(VAL_SERIES(&v1));
@@ -1228,6 +1230,7 @@ zero_blk:
 			D_REF(11)	// unstable
 		);
 		DROP_SERIES_HASH(ser); // again, in case a comparator used the series
+		value = DS_ARG(1);     // the comparator may have moved the data stack
 		break;
 
 	case A_RANDOM:

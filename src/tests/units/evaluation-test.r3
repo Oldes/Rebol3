@@ -1009,6 +1009,21 @@ expand-once: does [if armed [armed: false expand-stack]]
 	--test-- "keep with stack expansion"
 		armed: true
 		--assert [1 2 3] = collect [foreach n [1 2 3] [keep (expand-once n)]]
+		recycle/stack
+
+	--test-- "sort/compare with stack expansion in comparator"
+		armed: true
+		blk: [3 1 2]
+		sort/compare blk func [a b] [expand-once b - a]
+		--assert [1 2 3] = blk
+		recycle/stack
+
+	--test-- "sort/compare/all with stack expansion in comparator"
+		armed: true
+		blk: [3 1 8 4]
+		sort/skip/compare/all blk 2 func [a b] [expand-once a/1 - b/1]
+		--assert blk = [8 4 3 1]
+		recycle/stack
 ===end-group===
 
 
