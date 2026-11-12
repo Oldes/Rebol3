@@ -307,29 +307,46 @@ static REBLEN Vector_Run_Length(CompareFunc cmp, REBYTE *data, REBCNT wide, REBL
 	return j - i;
 }
 
+// Raw (bytewise) comparison of struct elements; width from DS_TOP.
+static int Compare_Vector_Raw(const void *a, const void *b)
+{
+	return memcmp(a, b, VAL_UNT32(DS_TOP));
+}
+
 /***********************************************************************
 **
 */	static void Query_Vector_Mode(REBVAL *vec, REBVAL *ret)
 /*
-**		Sets ret to [modes frequency] (modes in ascending order),
-**		or NONE when no value repeats.
+**		Sets ret to [modes frequency], or NONE when no value repeats.
+**		Numbers are in ascending order; structs are compared as raw data
+**		(like CT_Vector and FIND), so their order is the byte order.
 **
 ***********************************************************************/
 {
 	REBCNT  type = VAL_VEC_TYPE(vec);
 	REBCNT  wide = VAL_VEC_WIDE(vec);
 	REBLEN  len  = VAL_LEN(vec);
+	REBOOL  is_struct = VECT_IS_STRUCT(type);
+	REBSER *fields = is_struct ? VAL_VEC_STRUCT(vec) : NULL;
 	REBCNT  reb_type = (type >= VTSF08) ? REB_DECIMAL : REB_INTEGER;
-	CompareFunc cmp = compares[type];
+	REBINT  stack = DSP;
 	REBSER *sorted, *outer, *inner;
 	REBYTE *data;
-	REBVAL *val;
+	REBVAL *val, view;
+	CompareFunc cmp;
 	REBLEN  i, run, freq = 0, nmodes = 0;
 
 	SET_NONE(ret);
-	if (len < 2 || !cmp) return;
+	if (len < 2) return;
+	if (is_struct) {
+		DS_PUSH_INTEGER(wide);
+		cmp = Compare_Vector_Raw;
+	}
+	else if (!(cmp = compares[type])) return;
 
 	sorted = Copy_Binary_Part(VAL_SERIES(vec), VAL_INDEX(vec), len);
+	BARE_SERIES(sorted);              // raw data, the GC must not scan it
+	if (fields) sorted->series = fields;
 	SAVE_SERIES(sorted);
 	data = SERIES_DATA(sorted);
 	unstable_sort(data, len, wide, cmp);
@@ -341,30 +358,38 @@ static REBLEN Vector_Run_Length(CompareFunc cmp, REBYTE *data, REBCNT wide, REBL
 	}
 
 	if (freq > 1) {
+		// Link everything into ret first: struct copies allocate below.
 		outer = Make_Block(2);
-		Set_Block(ret, outer);          // ret must be GC-reachable (see below)
-		inner = Make_Block(nmodes);     // pre-sized, no expansion below
-
-		val = BLK_HEAD(inner);
-		for (i = 0; i < len; i += run) {
-			run = Vector_Run_Length(cmp, data, wide, i, len);
-			if (run == freq) {
-				VAL_SET(val, reb_type);
-				get_vect(type, data, i, val);
-				val++;
-			}
-		}
-		SET_END(val);
-		inner->tail = nmodes;
-
+		Set_Block(ret, outer);
 		val = BLK_HEAD(outer);
-		Set_Block(val, inner);
 		SET_INTEGER(val + 1, freq);
+		SET_NONE(val);
 		SET_END(val + 2);
 		outer->tail = 2;
+		inner = Make_Block(nmodes);
+		Set_Block(val, inner);
+
+		for (i = 0; i < len; i += run) {
+			run = Vector_Run_Length(cmp, data, wide, i, len);
+			if (run != freq) continue;
+			val = Append_Value(inner);   // pre-sized, no expansion
+			if (is_struct) {
+				// A view into the sorted copy, copied out before it is freed.
+				SET_TYPE(&view, REB_STRUCT);
+				VAL_STRUCT_SPEC(&view)   = FIELDS_SPEC(fields);
+				VAL_STRUCT_DATA(&view)   = sorted;
+				VAL_STRUCT_OFFSET(&view) = i * wide;
+				Copy_Struct_Value(&view, val);
+			}
+			else {
+				VAL_SET(val, reb_type);
+				get_vect(type, data, i, val);
+			}
+		}
 	}
 	UNSAVE_SERIES(sorted);
 	Free_Series(sorted);
+	DSP = stack;
 }
 
 
@@ -531,6 +556,7 @@ void Find_Maximum_Of_Vector(REBVAL *vect, REBVAL *ret) {
 		case SYM_LENGTH:
 		case SYM_SHAPE:
 		case SYM_SHAPED:
+		case SYM_MODE:
 			break; // resolved below - these do not depend on the element type
 		case SYM_SIZE:
 			SET_INTEGER(ret, VAL_VEC_WIDE(vec) * 8); // element size in bits
@@ -2222,6 +2248,7 @@ static void reverse_vector(REBVAL *value, REBCNT len)
 		case A_TAKE:
 		case A_FIND:
 		case A_SELECT:
+		case A_QUERY:
 			break;
 		default:
 			Trap_Action(VAL_TYPE(value), action);

@@ -1044,6 +1044,17 @@ Rebol [
 		--assert v = #(int32! [5 5 1 2 2 3])
 		--assert [mode: [[2 5] 2] median: 2.5] = query v [mode median]
 
+	--test-- "vector mode of structs"
+		v: make vector! [#(struct! [x [int32!]]) [1 2 2 3]]
+		r: v/mode
+		--assert 2 = r/2
+		--assert 1 = length? r/1
+		--assert 2 = r/1/1/x
+		r/1/1/x: 99              ;; the mode is a copy, not a view
+		--assert 2 = v/2/x
+		v: make vector! [#(struct! [x [int32!]]) [1 2 3]]
+		--assert none? v/mode
+		--assert none? query v 'mode
 ===end-group===
 
 
