@@ -40,6 +40,8 @@ enum Parse_Flags {
 #define BLOCK_COLLECT 1
 typedef struct reb_parse_collect {
 	REBVAL *value;
+	REBVAL *ds_base; // DS_Base when value was set (the stack may be reallocated later)
+	REBCNT  ds_rest; // size of the data stack at that time
 	REBSER *block;
 	REBCNT  mode;  // BLOCK_COLLECT, SYM_SET, SYM_INTO and SYM_AFTER
 	REBINT  depth; // needed to detect error in: parse [1] [collect integer! keep (1)]
@@ -94,6 +96,25 @@ void Print_Parse_Index(REBCNT type, REBVAL *rules, REBSER *series, REBCNT index)
 	Debug_Fmt_Limited(76, cb_cast("%r: %r"), rules, &val);
 }
 
+
+static void Set_Collect_Value(REB_PARSE_COLLECT *c, REBVAL *val)
+{
+	c->value   = val;
+	c->ds_base = DS_Base;
+	c->ds_rest = SERIES_REST(DS_Series);
+}
+
+static REBVAL *Collect_Value(REB_PARSE_COLLECT *c)
+{
+	if (c->ds_base != DS_Base) {
+		// only the addresses are compared, the old memory is never read
+		if (c->ds_base && c->value >= c->ds_base && c->value < c->ds_base + c->ds_rest)
+			c->value = DS_Base + (c->value - c->ds_base);
+		c->ds_base = DS_Base;
+		c->ds_rest = SERIES_REST(DS_Series);
+	}
+	return c->value;
+}
 
 /***********************************************************************
 **
@@ -685,8 +706,8 @@ bad_target:
 	// get the previous target block from the stack and use it
 	//printf("collect ends %u dsp: %i blk: %x\n", collect->depth, DSP, collect->block);
 	collect->mode = VAL_INT32(DS_POP);
-	VAL_INDEX(collect->value) = VAL_INT32(DS_POP);
-	collect->value = DS_POP;
+	VAL_INDEX(Collect_Value(collect)) = VAL_INT32(DS_POP);
+	Set_Collect_Value(collect, DS_POP);
 	collect->block = VAL_SERIES(collect->value);
 	collect->depth--;
 }
@@ -698,6 +719,7 @@ bad_target:
 ***********************************************************************/
 {
 	REBVAL *val;
+	REBVAL *cval = Collect_Value(parse->collect);
 	REBINT i, e;
 	REBCNT c;
 	REBSER *block = parse->collect->block; // Parse_Collect_Block(parse);
@@ -710,7 +732,7 @@ bad_target:
 
 	ASSERT2(block, RP_MISC); // should never happen
 
-	index = VAL_INDEX(parse->collect->value);
+	index = VAL_INDEX(cval);
 	
 	if (IS_BLOCK_INPUT(parse)) {
 		if (count == 1) {
@@ -728,14 +750,14 @@ bad_target:
 			VAL_SET(val, parse->type);
 			count = 1;
 		}
-		VAL_INDEX(parse->collect->value) = index + count;
+		VAL_INDEX(cval) = index + count;
 		return;
 	}
 	
-	if (ANY_BINSTR(parse->collect->value)) {
+	if (ANY_BINSTR(cval)) {
 		// e.g.: str: "" parse "ábc" [collect into str some [keep skip]] str
 		Insert_String(block, index, series, begin, count, FALSE);
-		VAL_INDEX(parse->collect->value) += count;
+		VAL_INDEX(cval) = index + count;
 		return;
 	}
 
@@ -767,7 +789,7 @@ bad_target:
 				VAL_INDEX(val) = 0;
 				VAL_SET(val, parse->type);
 			}
-			VAL_INDEX(parse->collect->value)++;
+			VAL_INDEX(cval)++;
 		}
 	}
 	else { // Binary or ASCII string
@@ -800,7 +822,7 @@ bad_target:
 				VAL_INDEX(val) = 0;
 				VAL_SET(val, parse->type);
 			}
-			VAL_INDEX(parse->collect->value)++;
+			VAL_INDEX(cval)++;
 		}
 	}
 }
@@ -823,7 +845,7 @@ bad_target:
 	ASSERT2(block, RP_MISC); // should never happen
 
 	item = Do_Block_Value_Throw(expr); // might GC
-	value = parse->collect->value;
+	value = Collect_Value(parse->collect);
 	if (ANY_BLOCK(value)) {
 		Append_Val(block, item);
 	}
@@ -985,7 +1007,7 @@ bad_target:
 							Set_Var_Series(rules, REB_BLOCK, collect->block, 0);
 						
 							val = Get_Var(rules);
-							collect->value = val;
+							Set_Collect_Value(collect, val);
 							collect->mode = SYM_SET;
 							DS_PUSH(val);
 							DS_PUSH_INTEGER(0); // index (will be restored)
@@ -1010,7 +1032,7 @@ bad_target:
 								Trap0(RE_PARSE_INTO_TYPE);
 							}
 
-							collect->value = val;
+							Set_Collect_Value(collect, val);
 							collect->block = VAL_SERIES(val);
 							collect->mode = wrd;
 							DS_PUSH(val);
@@ -1026,7 +1048,7 @@ bad_target:
 							// NON-WORD COLLECT
 							// reserve a new value on stack
 							DS_PUSH_NONE;
-							collect->value = DS_TOP;
+							Set_Collect_Value(collect, DS_TOP);
 							if (collect->block == NULL) { //don't use collect->result! (first collect may fail)
 								// --- FIRST collect -------------------------
 								// allocate the resulting block on the stack, so it is GC safe
@@ -1647,6 +1669,7 @@ bad_end:
 {
 	REBVAL *val = D_ARG(1);
 	REBVAL *arg = D_ARG(2);
+	REBSER *series = VAL_SERIES(val); // stack may move during the parse, so don't use val later
 	REBCNT opts = 0;
 
 	if (D_REF(3)) opts |= PF_CASE;
@@ -1662,11 +1685,11 @@ bad_end:
 	if (IS_NONE(arg) || IS_STRING(arg) || IS_CHAR(arg)) {
 		REBSER *ser;
 		if (!ANY_BINSTR(val)) Trap_Types(RE_EXPECT_VAL, REB_STRING, VAL_TYPE(val));
-		ser = Parse_String(VAL_SERIES(val), VAL_INDEX(val), arg, opts);
+		ser = Parse_String(series , VAL_INDEX(val), arg, opts);
 		Set_Block(DS_RETURN, ser);
 	}
 	else if (IS_SAME_WORD(arg, SYM_TEXT)) {
-		Set_Block(DS_RETURN, Parse_Lines(VAL_SERIES(val)));
+		Set_Block(DS_RETURN, Parse_Lines(series));
 	}
 	else {
 #endif
@@ -1696,10 +1719,10 @@ bad_end:
 
 		n = Parse_Series(val, VAL_BLK_DATA(arg), (opts & PF_CASE) ? AM_FIND_CASE : 0, 0, &collect);
 		if (collect.mode == BLOCK_COLLECT) {
-			*D_RET = *collect.value;
+			*DS_RETURN = *Collect_Value(&collect);
 		}
 		else {
-			SET_LOGIC(DS_RETURN, n >= VAL_TAIL(val) && n != NOT_FOUND);
+			SET_LOGIC(DS_RETURN, n >= SERIES_TAIL(series) && n != NOT_FOUND);
 		}
 		POP_STATE(state, Saved_State);
 #ifdef INCLUDE_PARSE_SERIES_SPLITTING

@@ -927,6 +927,23 @@ expand-once: does [if armed [armed: false expand-stack]]
 		--assert 1 = f [1 2 3]
 		recycle/stack
 
+	--test-- "parse with paren expanding stack"
+		armed: true
+		--assert parse [1 2 3] [some [integer! (expand-once 0)]]
+
+	--test-- "parse collect with paren expanding stack"
+		armed: true
+		--assert [1 2 3] = parse [1 2 3] [collect some [keep integer! (expand-once 0)]]
+
+	--test-- "parse collect into with paren expanding stack"
+		armed: true
+		out: copy []
+		--assert parse [1 2 3] [collect into out some [keep integer! (expand-once 0)]]
+		--assert out = [1 2 3]
+
+	--test-- "parse collect with keep paren expanding stack"
+		armed: true
+		--assert [1 2] = parse [1 2] [collect some [keep integer! keep (expand-once 0)] ]
 ===end-group===
 
 
