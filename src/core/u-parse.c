@@ -1177,7 +1177,13 @@ reset_input:
 					if (flags != 0) Trap1(RE_PARSE_RULE, rules-1);
 					// #2269 - reset the position if we are not in the middle of any rule
 					begin = index;
-					
+
+					// A get-word always counts as progress, so that rules modifying the input
+					// and then jumping back (#2452) can continue, e.g.:
+					//     any [s: 1 skip e: (e: remove/part s e) :e | skip]
+					// The consequence is, that a repeated rule containing only a get-word
+					// (e.g. `some [:p]`) never ends; avoiding it is the user's responsibility,
+					// the same as with WHILE.
 					SET_FLAG(parse->flags, PF_ADVANCE);
 					continue;
 				}
@@ -1310,11 +1316,8 @@ reset_input:
 			}
 			else if (IS_BLOCK(item)) {
 				item = VAL_BLK_DATA(item);
-				//if (IS_END(rules) && item == rule_head) {
-				//	rules = item;
-				//	goto top;
-				//}
 				i = Parse_Rules_Loop(parse, index, item, depth+1);
+				series = parse->series; // input may have been switched in the sub-rule
 				if (parse->result) {
 					index = (parse->result > 0) ? i : NOT_FOUND;
 					parse->result = 0;

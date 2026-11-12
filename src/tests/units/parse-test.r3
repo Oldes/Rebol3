@@ -1262,6 +1262,17 @@ if not error? try [str: to string! #{A032}][
 	;; into
 	--assert     parse ["abcdef"] [into [:b "xyz"]]
 	--assert not parse ["ab"] [into [:b "xy"]]
+
+--test-- "input switched inside a sub-rule"
+	b: "xyz"
+	--assert parse [1] [[:b] "xyz"]
+	--assert parse "abcdef" [["abc" :b] "xyz"]
+
+--test-- "backtracking after input switch stays in the new series"
+	;; documented limitation: failure recovers the index, not the series
+	b: "xyz"
+	--assert parse "abc" [:b "nope" | "xyz"]
+	--assert not parse "abc" [:b "nope" | "abc"]
 ===end-group===
 
 ~~~end-file~~~
