@@ -426,11 +426,44 @@ Rebol [
 	--assert ["ab"] = parse "ab" [collect [keep 2 skip]]
 	--assert [#"a" #"b"] = parse "ab" [collect [keep pick 2 skip]]
 	--assert [#"a" #"b"] = parse @ab  [collect [keep pick 2 skip]]
+	--assert all [
+		a: next [x y]
+		parse "ab" [collect into a [keep pick 2 skip]]
+		[x #"a" #"b" y] == head a
+	]
 
 --test-- "binary collect keep pick"
 	--assert [#{0102}] = parse #{0102} [collect [keep 2 skip]]
 	--assert [1 2] = parse #{0102} [collect [keep pick 2 skip]]
+	--assert all [
+		a: next [x y]
+		parse #{0102} [collect into a [keep pick 2 skip]]
+		[x 1 2 y] == head a
+	]
+--test-- "string collect keep on UTF-8 string"
+	--assert [#"a"]      = parse "šab" [collect [skip keep skip skip]]   ;; ASCII char (count = 1)
+	--assert [#"š" #"a"] = parse "ša"  [collect [keep skip keep skip]]   ;; multi-byte char
+	--assert ["ša" #"b"] = parse "šab" [collect [keep 2 skip keep skip]] ;; more codepoints
+	--assert ["€š"]      = parse "€š"  [collect [keep 2 skip]]
+	--assert [%ša]       = parse %šab  [collect [keep 2 skip skip]]      ;; keeps the input type
 
+--test-- "string collect keep pick on UTF-8 string"
+	--assert [#"š" #"a" #"b"] = parse "šab" [collect [keep pick 3 skip]]
+	--assert [#"a" #"€" #"š"] = parse "a€š" [collect [keep pick to end]]
+	--assert [#"š"]           = parse "aš"  [collect [skip keep pick skip]]
+	--assert all [a: [] parse "šab" [collect into a [keep pick 3 skip]]  a = [#"š" #"a" #"b"]]
+	;; insert at the collect position, not at the tail
+	--assert all [
+		a: next [x y]
+		parse "šb" [collect into a [keep pick 2 skip]]
+		a == [#"š" #"b" y]
+		[x #"š" #"b" y] == head a
+	]
+	--assert all [
+		a: next [x y]
+		parse "šb" [collect into a [keep pick 2 skip keep ('z)]]
+		[x #"š" #"b" z y] == head a
+	]
 --test-- "string collect set"
 	a: none --assert all [#(true)  = parse ""   [collect set a []] a = []]
 	a: none --assert all [#(true)  = parse "1"  [collect set a [keep skip]] a = [#"1"]]
@@ -580,6 +613,36 @@ Rebol [
 		#(true) = parse [1 2] [collect set res [keep integer! keep (0) collect [fail] | keep integer! keep (0) keep integer!]]
 		1 = index? res
 	]
+--test-- "collect keeps the order after a nested collect"
+	--assert [[] #"a" #"b"] = parse "ab"  [collect [collect [] keep skip keep skip]]
+	--assert [[] 1 2]       = parse [1 2] [collect [collect [] keep integer! keep integer!]]
+	--assert [[] #"a" #"b"] = parse "ab"  [collect [collect [] keep pick 2 skip]]
+	--assert [1 [2] 3]      = parse [1 2 3] [collect [keep integer! collect [keep integer!] keep integer!]]
+	--assert [[] 2 #"a"]    = parse "a"   [collect [collect [] keep (1 + 1) keep skip]]
+
+--test-- "keeps after a nested collect set/into go to the parent"
+	a: none
+	--assert all [[2] = parse [1 2] [collect [collect set a keep integer! keep integer!]]  a = [1]]
+	b: copy []
+	--assert all [[2] = parse [1 2] [collect [collect into b keep integer! keep integer!]]  b = [1]]
+
+--test-- "collect into at non-tail position with keep expression"
+	--assert all [
+		a: next [x y]
+		parse "šb" [collect into a [keep pick 2 skip keep ('z)]]
+		[x #"š" #"b" z y] == head a
+	]
+	--assert all [
+		a: next [x y]
+		parse [1] [collect into a [keep (0) keep integer!]]
+		[x 0 1 y] == head a
+	]
+
+--test-- "collect errors"
+	;; nested block collect into a string target
+	--assert all [s: "" error? e: try [parse "a" [collect into s [collect [keep skip]]]]  e/id = 'parse-into-type]
+	;; only one collect per rule
+	--assert all [error? e: try [parse [1] [collect collect [keep skip]]]  e/id = 'parse-rule]
 ===end-group===
 
 
@@ -1313,19 +1376,6 @@ if not error? try [str: to string! #{A032}][
 	;; none rule matches without advancing
 	--assert parse "a" [none "a"]
 	--assert parse "" [none]
-
---test-- "string collect keep on UTF-8 string"
-	--assert [#"a"]      = parse "šab" [collect [skip keep skip skip]]   ;; ASCII char (count = 1)
-	--assert [#"š" #"a"] = parse "ša"  [collect [keep skip keep skip]]   ;; multi-byte char
-	--assert ["ša" #"b"] = parse "šab" [collect [keep 2 skip keep skip]] ;; more codepoints
-	--assert ["€š"]      = parse "€š"  [collect [keep 2 skip]]
-	--assert [%ša]       = parse %šab  [collect [keep 2 skip skip]]      ;; keeps the input type
-
---test-- "string collect keep pick on UTF-8 string"
-	--assert [#"š" #"a" #"b"] = parse "šab" [collect [keep pick 3 skip]]
-	--assert [#"a" #"€" #"š"] = parse "a€š" [collect [keep pick to end]]
-	--assert [#"š"]           = parse "aš"  [collect [skip keep pick skip]]
-	--assert all [a: [] parse "šab" [collect into a [keep pick 3 skip]]  a = [#"š" #"a" #"b"]]
 ===end-group===
 
 ~~~end-file~~~

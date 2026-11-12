@@ -47,6 +47,13 @@ typedef struct reb_parse_collect {
 	REBINT  depth; // needed to detect error in: parse [1] [collect integer! keep (1)]
 } REB_PARSE_COLLECT;
 
+typedef struct reb_parse_collect_save {
+	REB_PARSE_COLLECT parent; // the enclosing collect's state, restored at the end
+	REBVAL *var;   // word of COLLECT SET/INTO/AFTER, or NULL
+	REBCNT  index; // index of the variable's series, restored at the end
+	REBINT  dsp;   // DSP restored at the end (drops a nested collect's slot), or -1
+} REB_PARSE_COLLECT_SAVE;
+
 typedef struct reb_parse {
 	REBSER *series;
 	REBCNT type;
@@ -673,28 +680,22 @@ bad_target:
 
 /***********************************************************************
 **
-*/	static void Parse_Collect_End(REB_PARSE_COLLECT *collect)
+*/	static void Parse_Collect_End(REB_PARSE_COLLECT *collect, REB_PARSE_COLLECT_SAVE *save)
 /*
 ***********************************************************************/
 {
-	// COLLECT ends
-	// get the previous target block from the stack and use it
-	//printf("collect ends %u dsp: %i blk: %x\n", collect->depth, DSP, collect->block);
-	REBVAL *tmp;
-	REBVAL *var;
-	REBCNT index;
+	// Restore the position of the variable's series (SET, INTO and AFTER):
+	if (save->var) VAL_INDEX(Get_Var(save->var)) = save->index;
 
-	collect->mode = VAL_INT32(DS_POP);
-	index = VAL_INT32(DS_POP);
-	tmp = DS_POP;
-	var = (REBVAL *)(REBUPT)VAL_INT64(tmp); // the variable's word, or NULL
-	VAL_INDEX(Collect_Value(collect)) = index;
-	// A nested collect may have replaced the current value with a copy,
-	// so restore the position of the variable itself too:
-	if (var) VAL_INDEX(Get_Var(var)) = index;
-	Set_Collect_Value(collect, DS_POP);
-	collect->block = VAL_SERIES(collect->value);
-	collect->depth--;
+	if (save->parent.block == NULL) {
+		// Top-level collect: its state stays current, so the native can return
+		// the result and a following COLLECT continues inside it (Red compatible).
+		collect->depth = save->parent.depth;
+		return;
+	}
+	// Drop the nested collect's slot (and any temporaries left above it):
+	if (save->dsp >= 0) DSP = save->dsp;
+	*collect = save->parent;
 }
 
 /***********************************************************************
@@ -706,7 +707,7 @@ bad_target:
 	REBVAL *val;
 	REBVAL *cval = Collect_Value(parse->collect);
 	REBINT i, e;
-	REBCNT c;
+	REBCNT c, n;
 	REBSER *block = parse->collect->block; // Parse_Collect_Block(parse);
 	REBCNT index;
 
@@ -750,13 +751,18 @@ bad_target:
 
 	if (IS_UTF8_SERIES(series)) {
 		if (pick) {
-			// e.g.: blk: [] parse "ábc" [collect into blk some [keep pick skip]] blk
+			// e.g.: blk: [] parse "šbc" [collect into blk some [keep pick skip]] blk
 			e = begin + count;
-			for (i = begin; i < e; i += UTF8_Codepoint_Size(c)) {
-				val = Append_Value(block);
+			// count codepoints first, so the target is expanded only once
+			for (n = 0, i = begin; i < e; n++)
+				i += UTF8_Codepoint_Size(UTF8_Get_Codepoint(BIN_SKIP(series, i)));
+			Expand_Series(block, index, n);
+			val = BLK_SKIP(block, index);
+			for (i = begin; i < e; i += UTF8_Codepoint_Size(c), val++) {
 				c = UTF8_Get_Codepoint(BIN_SKIP(series, i));
 				SET_CHAR(val, c);
 			}
+			VAL_INDEX(cval) = index + n;
 		}
 		else {
 			// e.g.: blk: [] parse "ábc" [collect into blk some [keep skip]] blk
@@ -779,19 +785,16 @@ bad_target:
 	}
 	else { // Binary or ASCII string
 		if (pick) {
+			Expand_Series(block, index, count);
+			val = BLK_SKIP(block, index);
 			e = begin + count;
 			if (parse->type == REB_BINARY) {
-				for (i = begin; i < e; i++) {
-					val = Append_Value(block);
-					SET_INTEGER(val, BIN_HEAD(series)[i]);
-				}
+				for (i = begin; i < e; i++, val++) SET_INTEGER(val, BIN_HEAD(series)[i]);
 			}
 			else {
-				for (i = begin; i < e; i++) {
-					val = Append_Value(block);
-					SET_CHAR(val, BIN_HEAD(series)[i]);
-				}
+				for (i = begin; i < e; i++, val++) SET_CHAR(val, BIN_HEAD(series)[i]);
 			}
+			VAL_INDEX(cval) = index + count;
 		}
 		else {
 			// e.g.: blk: [] parse "abc" [collect into blk some [keep skip]] blk
@@ -822,7 +825,6 @@ bad_target:
 	REBSER *block;
 	REBVAL item;
 	REBINT index;
-	REBCNT tail;
 
 	if (parse->collect->depth == 0)
 		Trap0(RE_PARSE_NO_COLLECT);
@@ -832,16 +834,13 @@ bad_target:
 
 	item = *Do_Block_Value_Throw(expr); // might GC; local copy, the result is volatile
 	value = Collect_Value(parse->collect);
+	index = VAL_INDEX(value);
 	if (ANY_BLOCK(value)) {
-		index = VAL_INDEX(value);
-		tail  = SERIES_TAIL(block);
-		Append_Val(block, &item);
-		// Appended at the collect position, so the next KEEP must follow it
-		// (after a nested collect the position is before the tail, as before):
-		if (index == (REBINT)tail) VAL_INDEX(value) = index + 1;
+		Expand_Series(block, index, 1);
+		*BLK_SKIP(block, index) = item;
+		VAL_INDEX(value) = index + 1;
 	}
 	else {
-		index = VAL_INDEX(value);
 		index = Modify_String(A_INSERT, VAL_SERIES(value), index, &item, 0, 1, 1);
 		VAL_INDEX(value) = index;
 	}
@@ -870,6 +869,7 @@ bad_target:
 	REBFLG flags;
 	REBCNT cmd, wrd;
 	REB_PARSE_COLLECT *collect = parse->collect;
+	REB_PARSE_COLLECT_SAVE coll_save; // state of a pending COLLECT in the current rule
 	//REBVAL *rule_head = rules;
 
 	CHECK_STACK(&flags);
@@ -984,37 +984,33 @@ bad_target:
 					case SYM_COLLECT:
 						if (IS_END(rules))
 							Trap1(RE_PARSE_END, rules - 1);
-						//printf("COLLECT start %i\n", collect->depth);
+						// only one COLLECT per rule (its state is held in coll_save)
+						if (GET_FLAG(flags, PF_COLLECT)) Trap1(RE_PARSE_RULE, rules - 1);
 						SET_FLAG(flags, PF_COLLECT);
+						Collect_Value(collect); // rebase the parent's value, if the stack moved
+						coll_save.parent = *collect;
+						coll_save.var = NULL;
+						coll_save.index = 0;
+						coll_save.dsp = -1;
 						wrd = IS_WORD(rules) ? VAL_SYM_CANON(rules) : 0;
 						if (wrd == SYM_SET) {
 							// COLLECT INTO A NEW VAR
 							rules++;
-							
 							if (!(IS_WORD(rules) || IS_SET_WORD(rules)))
 								Trap1(RE_PARSE_VARIABLE, rules);
-
 							collect->block = Make_Block(2);
 							Set_Var_Series(rules, REB_BLOCK, collect->block, 0);
-						
-							val = Get_Var(rules);
-							Set_Collect_Value(collect, val);
+							Set_Collect_Value(collect, Get_Var(rules));
 							collect->mode = SYM_SET;
-							DS_PUSH(val);
-							DS_PUSH_INTEGER((REBI64)(REBUPT)rules); // the variable's word (restored in Parse_Collect_End)
-							DS_PUSH_INTEGER(0); // index (will be restored)
-							DS_PUSH_INTEGER(SYM_SET); // store mode
+							coll_save.var = rules;
 							rules++;
 						}
 						else if (wrd == SYM_INTO || wrd == SYM_AFTER) {
 							// COLLECT INTO EXISTING VAR
 							rules++;
-
 							if (!(IS_WORD(rules) || IS_GET_WORD(rules)))
 								Trap1(RE_PARSE_VARIABLE, rules);
-
 							val = Get_Var(rules);
-							
 							if (!(
 								ANY_BLOCK(val) ||
 								(ANY_STR(val) && ANY_STR_TYPE(parse->type)) ||
@@ -1023,48 +1019,41 @@ bad_target:
 							) {
 								Trap0(RE_PARSE_INTO_TYPE);
 							}
-
 							Set_Collect_Value(collect, val);
 							collect->block = VAL_SERIES(val);
 							collect->mode = wrd;
-							DS_PUSH(val);
-							DS_PUSH_INTEGER((REBI64)(REBUPT)rules); // the variable's word
-							DS_PUSH_INTEGER(VAL_INDEX(val)); // store current index (will be restored)
-							DS_PUSH_INTEGER(wrd); // store mode (into or after)
-
+							coll_save.var = rules;
+							coll_save.index = VAL_INDEX(val);
 							if (wrd == SYM_AFTER)
 								VAL_INDEX(val) = VAL_TAIL(val);
-
 							rules++;
 						}
 						else {
-							// NON-WORD COLLECT
-							// reserve a new value on stack
-							DS_PUSH_NONE;
-							Set_Collect_Value(collect, DS_TOP);
-							if (collect->block == NULL) { //don't use collect->result! (first collect may fail)
-								// --- FIRST collect -------------------------
-								// allocate the resulting block on the stack, so it is GC safe
+							// BLOCK COLLECT: the block's value (and position) lives in a stack slot
+							if (collect->block == NULL) {
+								// --- FIRST collect: the slot holds the result
+								// (GC safe; it stays on the stack until the native returns)
+								DS_PUSH_NONE;
 								Set_Series(REB_BLOCK, DS_TOP, Make_Block(2));
-								//collect->result = DS_TOP;
-								collect->block = VAL_SERIES(DS_TOP);
 							}
 							else {
-								// --- SUBSEQUENT collect ---------------------
-								// store current block on stack
-								Set_Series(REB_BLOCK, DS_TOP, collect->block);
-								// make a new block on its tail for the new collections
-								val = Append_Value(collect->block);
-								collect->block = Make_Block(2);
-								Set_Series(REB_BLOCK, val, collect->block);
+								// --- NESTED collect: insert a new block at the parent's position
+								val = Collect_Value(collect);
+								if (!ANY_BLOCK(val)) Trap0(RE_PARSE_INTO_TYPE);
+								i = VAL_INDEX(val);
+								ser = Make_Block(2);
+								Expand_Series(collect->block, i, 1);
+								Set_Series(REB_BLOCK, BLK_SKIP(collect->block, i), ser);
+								VAL_INDEX(val) = i + 1;
+								coll_save.dsp = DSP; // the slot is dropped at the end
+								DS_PUSH_NONE;
+								Set_Series(REB_BLOCK, DS_TOP, ser);
 							}
+							Set_Collect_Value(collect, DS_TOP);
+							collect->block = VAL_SERIES(DS_TOP);
 							collect->mode = BLOCK_COLLECT;
-							DS_PUSH_INTEGER(0); // no variable
-							DS_PUSH_INTEGER(0); // index (will be restored)
-							DS_PUSH_INTEGER(BLOCK_COLLECT); // no special mode (block collect)
 						}
 						collect->depth++;
-						//printf("collect started %u dsp: %i blk: %x\n", collect->depth, DSP, collect->block);
 						continue;
 
 					case SYM_KEEP:
@@ -1394,7 +1383,7 @@ post:
 					if (!IS_END(rules)) rules++;
 				}
 				if (GET_FLAG(flags, PF_COLLECT)) {
-					Parse_Collect_End(collect);
+					Parse_Collect_End(collect, &coll_save);
 				}
 			}
 			else {  // Success actions:
@@ -1450,7 +1439,7 @@ post:
 					}
 				}
 				if (GET_FLAG(flags, PF_COLLECT)) {
-					Parse_Collect_End(collect);
+					Parse_Collect_End(collect, &coll_save);
 				}
 				if (GET_FLAG(flags, PF_RETURN)) {
 					ser = (IS_BLOCK_INPUT(parse))
@@ -1702,7 +1691,6 @@ bad_end:
 	}
 	else {
 #endif
-		REBCNT n;
 		REBOL_STATE state;
 		REB_PARSE_COLLECT collect;
 		// Let user RETURN and THROW out of the PARSE. All other errors should relay.
