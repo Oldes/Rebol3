@@ -288,14 +288,6 @@ static REBVAL *Collect_Value(REB_PARSE_COLLECT *c)
 	case REB_NONE:
 		break;
 
-	// Do an expression:
-	case REB_PAREN:
-		item = Do_Block_Value_Throw(item); // might GC
-        UNUSED(item);
-		// old: if (IS_ERROR(item)) Throw_Error(VAL_ERR_OBJECT(item));
-        index = MIN(index, series->tail); // may affect tail
-		break;
-
 	default:
 		Trap1(RE_PARSE_RULE, item);
 	}
@@ -346,14 +338,6 @@ static REBVAL *Collect_Value(REB_PARSE_COLLECT *c)
 		index++;
 		if (IS_PATH(blk) && !Cmp_Block(blk, item, HAS_CASE(parse))) break;
 		goto no_result;
-
-	// Do an expression:
-	case REB_PAREN:
-		item = Do_Block_Value_Throw(item); // might GC
-        UNUSED(item);
-        // old: if (IS_ERROR(item)) Throw_Error(VAL_ERR_OBJECT(item));
-        index = MIN(index, series->tail); // may affect tail
-		break;
 
 	// Match with some other value:
 	default:
@@ -1225,6 +1209,16 @@ reset_input:
 				maxcount = Int32s(item, 0);
 				item = Get_Parse_Value(rules++);
 				if (IS_END(item)) Trap1(RE_PARSE_END, rules-2);
+			}
+			// A paren is not a matching rule (Red compatible):
+			// evaluated once (unless max count is 0), fails unless min count is 0
+			if (IS_PAREN(item)) {
+				if (maxcount > 0) {
+					Do_Block_Value_Throw(item); // might GC
+					if (index > series->tail) index = series->tail; // may affect tail
+				}
+				if (mincount > 0) index = NOT_FOUND;
+				goto post;
 			}
 		}
 		// else fall through on other values and words

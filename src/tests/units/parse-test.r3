@@ -1041,19 +1041,33 @@ if not error? try [str: to string! #{A032}][
 	--assert not parse "ab" ["" to end] ;-- not like in Red!
 
 --test-- "integer! repeat with paren"
-	;; paren after a counter is matched by Parse_Next_Block/Parse_Next_String
-	n: 0 --assert all [parse [] [3 (n: n + 1)]  n = 3]
-	n: 0 --assert all [parse [x] [2 4 (n: n + 1) 'x]  n = 4]
-	n: 0 --assert all [parse "a" [3 (n: n + 1) "a"]  n = 3]
-	n: 0 --assert all [parse "a" [2 4 (n: n + 1) "a"]  n = 4]
+	;; paren is not a matching rule; it is evaluated once and the rule fails (as in Red)
+	n: 0 --assert all [not parse []  [3 (n: n + 1)]  n = 1]
+	n: 0 --assert all [not parse ""  [3 (n: n + 1)]  n = 1]
+	n: 0 --assert all [not parse [x] [2 4 (n: n + 1) 'x]  n = 1]
+	n: 0 --assert all [not parse "x" [2 4 (n: n + 1) "x"]  n = 1]
 	p: quote (n: n + 1)
-	n: 0 --assert all [parse [x] [2 p 'x]  n = 2]
-	n: 0 --assert all [parse "x" [2 p "x"]  n = 2]
+	n: 0 --assert all [not parse [x] [2 p 'x]  n = 1]
+	n: 0 --assert all [not parse "x" [2 p "x"]  n = 1]
+	;; failure continues with the next alternative
+	n: 0 --assert all [parse [x] [2 (n: n + 1) | 'x]  n = 1]
+	n: 0 --assert all [parse "x" [2 (n: n + 1) | "x"]  n = 1]
+
+	;; zero count: paren is not evaluated and the rule succeeds
+	n: 0 --assert all [parse []  [0 (n: n + 1)]  n = 0]
+	n: 0 --assert all [parse ""  [0 (n: n + 1)]  n = 0]
+	n: 0 --assert all [parse [x] [0 (n: n + 1) 'x]  n = 0]
+	;; zero min count: paren is evaluated once and the rule succeeds
+	n: 0 --assert all [parse [x] [0 2 (n: n + 1) 'x]  n = 1]
+	n: 0 --assert all [parse "x" [0 2 (n: n + 1) "x"]  n = 1]
 
 --test-- "integer! repeat with paren modifying input"
-	;; index is clipped to the new tail after the paren is evaluated
-	--assert all [parse b: [1 2 3] [2 skip 1 (clear b)]  b = []]
-	--assert all [parse s: "abc"   [2 skip 1 (clear s)]  s = ""]
+	;; paren modifying the input after a counter
+	--assert all [not parse b: [1 2 3] [2 skip 1 (clear b)]  b = []]
+	--assert all [not parse s: "abc"   [2 skip 1 (clear s)]  s = ""]
+	;; index is clipped to the new tail (without it, stale data past the tail would be matched)
+	--assert all [parse b: [1 2 3] [2 skip 0 1 (clear b) opt integer!]  b = []]
+	--assert all [parse s: "abc"   [2 skip 0 1 (clear s) opt #"c"]  s = ""]
 
 --test-- "sub-rule block after counter or in word"
 	r: [integer!]
