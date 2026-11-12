@@ -27,7 +27,6 @@ expand-once: does [if armed [armed: false expand-stack]]
 
 ===start-group=== "STACK expansion"
 	--test-- "recycle/stack shrinks the expanded stack"
-		expand-stack
 		--assert all [recycle/stack 8064 > stack/limit 0]
 
 	;@@ Stack expansion tests:
