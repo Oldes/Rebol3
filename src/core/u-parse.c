@@ -841,7 +841,9 @@ bad_target:
 		VAL_INDEX(value) = index + 1;
 	}
 	else {
-		index = Modify_String(A_INSERT, VAL_SERIES(value), index, &item, 0, 1, 1);
+		// AN_SERIES: the target is binary, so insert bytes, not formed text
+		index = Modify_String(A_INSERT, VAL_SERIES(value), index, &item,
+				IS_BINARY(value) ? (1<<AN_SERIES) : 0, 1, 1);
 		VAL_INDEX(value) = index;
 	}
 }

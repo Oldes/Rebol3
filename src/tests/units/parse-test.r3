@@ -538,6 +538,30 @@ Rebol [
 	--assert all [error? e: try [a: "1" parse #{01} [collect into a keep skip]] e/id = 'parse-into-type]
 	--assert all [error? e: try [a: "1" parse []    [collect into a keep skip]] e/id = 'parse-into-type]
 
+--test-- "collect into string with keep expression"
+	--assert all [s: copy "" parse "a" [collect into s [keep ("xy") skip]]  s == "xy"]
+	--assert all [s: copy "" parse "a" [collect into s [keep (#"z") skip]]  s == "z"]
+	--assert all [s: copy "" parse "a" [collect into s [keep (1) skip]]  s == "1"]
+	;; order with matched keeps and position
+	--assert all [
+		s: next copy "ab"
+		parse "x" [collect into s [keep ("X") keep skip]]
+		s == "Xxb"
+		"aXxb" == head s
+	]
+	--assert all [
+		s: copy "ab"
+		parse "x" [collect after s [keep skip keep ("cd")]]
+		s == "abxcd"
+	]
+	;; binary target
+	--assert all [b: copy #{} parse #{01} [collect into b [keep (#{0203}) keep skip]]  b == #{020301}]
+	--assert all [b: copy #{} parse #{01} [collect into b [keep (#{0203}) skip]]  b == #{0203}]
+	--assert all [
+		b: next copy #{0A0B}
+		parse #{01} [collect into b [keep (#{02}) keep skip]]
+		#{0A02010B} == head b
+	]
 
 --test-- "string collect complex"
 	; Taken from: https://www.red-lang.org/2013/11/041-introducing-parse.html
