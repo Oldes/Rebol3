@@ -478,6 +478,22 @@ FFFFFFDC1616212121212121
 		--assert 4 = length? img
 		--assert 255.0.0.255 = pick img 1
 		--assert 255.255.255.255 = pick img 2
+
+	--test-- "image with index past its tail"
+		img: make image! 2x2
+		p: tail img
+		clear img
+		--assert 0 = length? p
+		--assert none? find p 255.255.255.255
+		--assert none? find p 255
+		change p 1.2.3
+		change/dup p 1.2.3 5
+		--assert 0 = length? img
+		img: make image! 2x2
+		p: skip img 3
+		clear img
+		change/dup p #{FF0000FF} 3
+		--assert 0 = length? img
 ===end-group===
 
 ===start-group=== "image pixel assignment validity"

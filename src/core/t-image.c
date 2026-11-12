@@ -1135,7 +1135,7 @@ find_none:
 	// Clip index if past tail:
 	if (action != A_MAKE && action != A_TO) {
 		tail = (REBINT)SERIES_TAIL(series);
-		if (index > tail) index = tail;
+		if (index > tail) VAL_INDEX(value) = (REBCNT)(index = tail);
 	}
 
 	// Check must be in this order (to avoid checking a non-series value);
