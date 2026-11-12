@@ -1012,6 +1012,11 @@ Rebol [
 		--assert "ok" = catch [foo/(throw "ok" 'bar)/xx]
 		--assert "ok" = catch [foo/(throw "ok" 'bar)/xx: 3]
 
+	--test-- "catch/name is case insensitive"
+		--assert 1 = catch/name [throw/name 1 'Foo] 'foo
+		--assert 2 = catch/name [throw/name 2 'foo] 'Foo
+		--assert 3 = catch/name [throw/name 3 'Bar] [foo bar]
+		--assert 4 = catch/name [throw/name 4 'bar] [foo Bar]
 ===end-group===
 
 

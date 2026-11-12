@@ -527,12 +527,12 @@ static void Protect_Value(REBVAL *value, REBCNT flags);
 			val = &word; // catch/name value
 
 			// If name is the same word:
-			if (IS_WORD(val) && sym == VAL_WORD_CANON(val)) goto caught;
+			if (IS_WORD(val) && sym && SYMBOL_TO_CANON(sym) == VAL_WORD_CANON(val)) goto caught;
 
 			// If it is a block of words:
 			else if (IS_BLOCK(val)) {
 				for (val = VAL_BLK_DATA(val); NOT_END(val); val++) {
-					if (IS_WORD(val) && sym == VAL_WORD_CANON(val)) goto caught;
+					if (IS_WORD(val) && sym && SYMBOL_TO_CANON(sym) == VAL_WORD_CANON(val)) goto caught;
 				}
 			}
 			//else if (IS_LOGIC(val) && VAL_LOGIC(val)) goto caught; // used CATCH/name [] true
