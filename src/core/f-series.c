@@ -250,7 +250,9 @@ is_true:
 
 	if (In_Cmp_Loop(loop, sval, tval)) return 0;
 
-	REBLEN len = VAL_TAIL(sval) >= VAL_INDEX(sval) ? VAL_TAIL(sval) - VAL_INDEX(sval) : 0;
+	REBLEN slen = VAL_TAIL(sval) >= VAL_INDEX(sval) ? VAL_TAIL(sval) - VAL_INDEX(sval) : 0;
+	REBLEN tlen = VAL_TAIL(tval) >= VAL_INDEX(tval) ? VAL_TAIL(tval) - VAL_INDEX(tval) : 0;
+	REBLEN len  = MIN(slen, tlen);
 
 	// make sure that none of block is past tail
 	// https://github.com/Oldes/Rebol-issues/issues/2439
@@ -270,7 +272,8 @@ is_true:
 			return diff;
 		s++, t++;
 	}
-	return 0;// VAL_TYPE(s) - VAL_TYPE(t);
+	// equal up to the shorter block, so the longer one is greater:
+	return (slen > tlen) ? 1 : (slen < tlen) ? -1 : 0;
 }
 
 
