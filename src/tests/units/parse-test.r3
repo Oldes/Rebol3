@@ -1288,6 +1288,21 @@ if not error? try [str: to string! #{A032}][
 	--assert parse "ab" [?? "a" ?? "b"]
 	--assert parse [a 1] [?? 'a ?? integer!]
 	--assert parse "" [??]
+
+--test-- "char! rule on UTF-8 string"
+	;; 2-byte, 3-byte and ASCII chars in a UTF-8 series
+	--assert     parse "š"   [#"š"]
+	--assert     parse "aša" [#"a" #"š" #"a"]
+	--assert     parse "€x"  [#"€" #"x"]
+	--assert     parse "ššš" [3 #"š"]
+	--assert not parse "š"   [#"s"]
+	--assert not parse "s"   [#"š"]
+	--assert all [parse "aša" [#"a" copy x #"š" #"a"]  x = "š"]  ;; advances by the codepoint size
+	;; case sensitivity
+	--assert     parse "Š" [#"š"]
+	--assert     parse "š" [#"Š"]
+	--assert     parse/case "Š" [#"Š"]
+	--assert not parse/case "Š" [#"š"]
 ===end-group===
 
 ~~~end-file~~~
