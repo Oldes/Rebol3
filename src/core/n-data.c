@@ -512,6 +512,8 @@ static REBYTE arg_to_byte(REBVAL* val) {
 {
 	REBVAL *word = D_ARG(1);
 	REBVAL *val;
+	REBFLG  any  = D_REF(2); // read before a path evaluation can move the stack
+	REBVAL  path_val;        // local copy, the stack may move while evaluating
 
 	if (ANY_WORD(word)) {
 		val = Get_Var(word);
@@ -519,12 +521,14 @@ static REBYTE arg_to_byte(REBVAL* val) {
 			Init_Obj_Value(D_RET, VAL_WORD_FRAME(word));
 			return R_RET;
 		}
-		if (!D_REF(2) && !IS_SET(val)) Trap1(RE_NO_VALUE, word);
+		if (!any && !IS_SET(val)) Trap1(RE_NO_VALUE, word);
 	}
 	else if (ANY_PATH(word)) {
+		path_val = *word;
+		word = &path_val;
 		val = Do_Path(&word, 0);
 		if (!val) val = DS_POP; // resides on stack
-		if (!D_REF(2) && !IS_SET(val)) Trap1(RE_NO_VALUE, word); //!!!! word is modified
+		if (!any && !IS_SET(val)) Trap1(RE_NO_VALUE, word); //!!!! word is modified
 	}
 	else if (IS_OBJECT(word)) {
 		Assert_Public_Object(word);
@@ -533,7 +537,7 @@ static REBYTE arg_to_byte(REBVAL* val) {
 	}
 	else val = word; // all other values
 
-	*D_RET = *val;
+	*DS_RETURN = *val;
 	return R_RET;
 }
 

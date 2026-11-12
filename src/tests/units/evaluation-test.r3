@@ -1071,6 +1071,16 @@ expand-once: does [if armed [armed: false expand-stack]]
 		recycle/stack
 		--assert 3 = apply :do [:add 1 (expand-once 2)]
 		recycle/stack
+
+	--test-- "get path with paren expanding stack"
+		obj: object [a: 1]
+		--assert 1 = get 'obj/(expand-stack 'a)
+
+	--test-- "get path with paren expanding stack, unset value"
+		obj: object [a: 1]
+		unset in obj 'a
+		--assert error? try [get 'obj/(expand-stack 'a)]
+		--assert unset? get/any 'obj/(expand-stack 'a)
 ===end-group===
 
 
