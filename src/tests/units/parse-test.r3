@@ -1273,6 +1273,15 @@ if not error? try [str: to string! #{A032}][
 	b: "xyz"
 	--assert parse "abc" [:b "nope" | "xyz"]
 	--assert not parse "abc" [:b "nope" | "abc"]
+
+--test-- "parse with trace"
+	;; covers the Trace_Level branches; keep the input tiny, trace output goes to the console
+	trace on
+	r1: try [parse "ab" [#"a" "b"]]
+	r2: try [parse [a 1] ['a integer!]]
+	trace off
+	--assert r1 = true
+	--assert r2 = true
 ===end-group===
 
 ~~~end-file~~~
