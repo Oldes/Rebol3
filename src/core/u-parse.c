@@ -209,7 +209,7 @@ static REBVAL *Collect_Value(REB_PARSE_COLLECT *c)
 
 /***********************************************************************
 **
-*/	static REBCNT Parse_Next_String(REBPARSE *parse, REBCNT index, REBVAL *item, REBCNT depth)
+*/	static REBCNT Parse_Next_String(REBPARSE *parse, REBCNT index, REBVAL *item)
 /*
 **		Match the next item in the string ruleset.
 **
@@ -298,7 +298,7 @@ static REBVAL *Collect_Value(REB_PARSE_COLLECT *c)
 
 /***********************************************************************
 **
-*/	static REBCNT Parse_Next_Block(REBPARSE *parse, REBCNT index, REBVAL *item, REBCNT depth)
+*/	static REBCNT Parse_Next_Block(REBPARSE *parse, REBCNT index, REBVAL *item)
 /*
 **		Used for parsing blocks to match the next item in the ruleset.
 **		If it matches, return the index just past it. Otherwise, return zero.
@@ -403,7 +403,7 @@ no_result:
 			// Try to match it:
 			if (type >= REB_BLOCK) {
 				if (IS_BLOCK(item) || IS_PAREN(item)) goto bad_target;
-				i = Parse_Next_Block(parse, index, item, 0);
+				i = Parse_Next_Block(parse, index, item);
 				if (i != NOT_FOUND) {
 					if (!is_thru) i--;
 					index = i;
@@ -664,7 +664,7 @@ bad_target:
 	newparse.flags = parse->flags;
 	newparse.result = 0;
 
-	n = (Parse_Next_Block(&newparse, 0, item, 0) != NOT_FOUND) ? index : NOT_FOUND;
+	n = (Parse_Next_Block(&newparse, 0, item) != NOT_FOUND) ? index : NOT_FOUND;
 	UNSAVE_SERIES(newparse.series);
 	return n;
 }
@@ -1318,9 +1318,9 @@ reset_input:
 			// Parse according to datatype:
 			else {
 				if (IS_BLOCK_INPUT(parse))
-					i = Parse_Next_Block(parse, index, item, depth+1);
+					i = Parse_Next_Block(parse, index, item);
 				else
-					i = Parse_Next_String(parse, index, item, depth+1);
+					i = Parse_Next_String(parse, index, item);
 			}
 
 			// Necessary for special cases like: some [to end]
