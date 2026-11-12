@@ -1249,6 +1249,19 @@ if not error? try [str: to string! #{A032}][
 	;; nested sub-rule inside a block after a counter
 	--assert     parse [1 a 2 b] [2 [integer! [word!]]]
 	--assert     parse "1a2b" [2 [[#"1" | #"2"] ["a" | "b"]]]
+
+--test-- "success is checked against the current input"
+	;@@ https://github.com/Oldes/Rebol3/issues/1447
+	b: "xyz"
+	o: context [q: "xyz"]
+	--assert     parse "abcdef" [:b "xyz"]
+	--assert     parse "abcdef" [:o/q "xyz"]
+	--assert     parse [1 2 3 4] [:b "xyz"]
+	--assert not parse "ab" [:b "xy"]          ;; was true: index 2 >= tail of "ab"
+	--assert not parse "ab" [:o/q "xy"]
+	;; into
+	--assert     parse ["abcdef"] [into [:b "xyz"]]
+	--assert not parse ["ab"] [into [:b "xy"]]
 ===end-group===
 
 ~~~end-file~~~

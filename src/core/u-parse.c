@@ -118,11 +118,16 @@ static REBVAL *Collect_Value(REB_PARSE_COLLECT *c)
 
 /***********************************************************************
 **
-*/	static REBCNT Parse_Series(REBVAL *val, REBVAL *rules, REBCNT flags, REBCNT depth, REB_PARSE_COLLECT *collect)
+*/	static REBFLG Parse_Series(REBVAL *val, REBVAL *rules, REBCNT flags, REBCNT depth, REB_PARSE_COLLECT *collect)
 /*
+**		Returns TRUE if the rules matched and the end of the input was reached.
+**		The input series may have been switched by a get-word or get-path,
+**		so the tail of the series being parsed at the end is used.
+**
 ***********************************************************************/
 {
 	REBPARSE parse;
+	REBCNT n;
 
 	parse.series = VAL_SERIES(val);
 	parse.type = VAL_TYPE(val);
@@ -131,7 +136,8 @@ static REBVAL *Collect_Value(REB_PARSE_COLLECT *c)
 	//parse.retval = NULL;
 	parse.collect = collect;
 
-	return Parse_Rules_Loop(&parse, VAL_INDEX(val), rules, depth);
+	n = Parse_Rules_Loop(&parse, VAL_INDEX(val), rules, depth);
+	return n != NOT_FOUND && n >= SERIES_TAIL(parse.series);
 }
 
 
@@ -637,8 +643,7 @@ bad_target:
 			item = Get_Parse_Value(item); // sub-rules
 			if (!IS_BLOCK(item)) Trap1(RE_PARSE_RULE, item-2);
 			if (!ANY_BINSTR(&value) && !ANY_BLOCK(&value)) return NOT_FOUND;
-			return (Parse_Series(&value, VAL_BLK_DATA(item), parse->flags, 0) == VAL_TAIL(&value))
-				? index : NOT_FOUND;
+			return Parse_Series(&value, VAL_BLK_DATA(item), parse->flags, 0, parse->collect) ? index : NOT_FOUND;
 		}
 		else if (n > 0)
 			Trap1(RE_PARSE_RULE, item);
@@ -1289,7 +1294,7 @@ reset_input:
 					val = BLK_SKIP(series, index);
 					i = (
 						(ANY_BINSTR(val) || ANY_BLOCK(val))
-						&& (Parse_Series(val, VAL_BLK_DATA(item), parse->flags, depth+1, collect) == VAL_TAIL(val))
+						&& Parse_Series(val, VAL_BLK_DATA(item), parse->flags, depth+1, collect)
 					) ? index+1 : NOT_FOUND;
 					break;
 #ifdef USE_DO_PARSE_RULE
@@ -1673,8 +1678,8 @@ bad_end:
 {
 	REBVAL *val = D_ARG(1);
 	REBVAL *arg = D_ARG(2);
-	REBSER *series = VAL_SERIES(val); // stack may move during the parse, so don't use val later
 	REBCNT opts = 0;
+	REBFLG ok;
 
 	if (D_REF(3)) opts |= PF_CASE;
 	if (IS_BINARY(val)) opts |= PF_CASE;
@@ -1721,13 +1726,13 @@ bad_end:
 		SET_STATE(state, Saved_State);
 		CLEARS(&collect);
 
-		n = Parse_Series(val, VAL_BLK_DATA(arg), (opts & PF_CASE) ? AM_FIND_CASE : 0, 0, &collect);
+		ok = Parse_Series(val, VAL_BLK_DATA(arg), (opts & PF_CASE) ? AM_FIND_CASE : 0, 0, &collect);
 		if (collect.mode == BLOCK_COLLECT) {
 			*DS_RETURN = *Collect_Value(&collect);
 			VAL_INDEX(DS_RETURN) = 0; // `collect keep (...)` never reaches Parse_Collect_End
 		}
 		else {
-			SET_LOGIC(DS_RETURN, n >= SERIES_TAIL(series) && n != NOT_FOUND);
+			SET_LOGIC(DS_RETURN, ok);
 		}
 		POP_STATE(state, Saved_State);
 #ifdef INCLUDE_PARSE_SERIES_SPLITTING
