@@ -460,6 +460,24 @@ FFFFFFDC1616212121212121
 000000DC1616DC1616FFFFFF
 FFFFFFDC1616212121212121
 42A64242A64242A64242A642}
+
+	--test-- "image change/dup does not write past the image"
+		img: make image! 2x2
+		--assert tail? change/dup img #{FF0000FF} 100
+		--assert 4 = length? img
+		--assert 255.0.0.255 = pick img 4
+		img: make image! 2x2
+		--assert tail? change/dup img [1.2.3.4] 100
+		--assert 4 = length? img
+		img: make image! 2x2
+		--assert tail? change/dup img 10.20.30 100
+
+	--test-- "image change/part with /part larger than the binary"
+		img: make image! 4x1
+		change/part img #{FF0000FF} 100
+		--assert 4 = length? img
+		--assert 255.0.0.255 = pick img 1
+		--assert 255.255.255.255 = pick img 2
 ===end-group===
 
 ===start-group=== "image pixel assignment validity"

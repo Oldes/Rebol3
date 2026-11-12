@@ -375,7 +375,6 @@ FORCE_INLINE
 	}
 }
 
-
 /***********************************************************************
 **
 */	void Channel_To_Bin(REBYTE* bin, REBYTE* rgba, REBINT len, REBCNT type)
@@ -465,6 +464,19 @@ FORCE_INLINE
 		rgba[C_B] = bin[2];
 		rgba[C_A] = 255 - bin[3];
 	}
+}
+
+typedef void (*REB_PIXEL_COPY)(REBYTE *rgba, REBCNT len, REBVAL *src, REBOOL only);
+FORCE_INLINE
+static void Copy_Binary_Pixels(REBYTE *rgba, REBCNT len, REBVAL *src, REBOOL only)
+{
+	Bin_To_RGBA(rgba, len, VAL_BIN_DATA(src), len, only);
+}
+FORCE_INLINE
+static void Copy_Tuple_Pixels(REBYTE *rgba, REBCNT len, REBVAL *src, REBOOL only)
+{
+	UNUSED(only); // Tuples_To_RGBA always writes the alpha, as before
+	Tuples_To_RGBA(rgba, len, VAL_BLK_DATA(src), len);
 }
 
 
@@ -789,6 +801,7 @@ INLINE REBCNT ARGB_To_BGR(REBCNT i)
 			} else
 				Trap_Arg(len);
 			part = MAX(part, 0);
+			part = MIN(part, (REBINT)(VAL_LEN(arg) / 4)); // do not read past the binary
 		} else if (IS_IMAGE(arg)) {
 			if (IS_INTEGER(len)) {
 				part = VAL_INT32(len);
@@ -866,18 +879,20 @@ INLINE REBCNT ARGB_To_BGR(REBCNT i)
 		}
 	} else if (IS_IMAGE(arg)) {
 		Copy_Rect_Data(value, x, y, partx, party, arg, 0, 0); // dst dx dy w h src sx sy
-	} else if (IS_BINARY(arg)) {
-		if (index + part > tail) part = tail - index; // clip it
+	} else if (IS_BINARY(arg) || IS_BLOCK(arg)) {
+		REB_PIXEL_COPY copy = IS_BINARY(arg) ? Copy_Binary_Pixels : Copy_Tuple_Pixels;
+		REBCNT room  = (index < tail) ? tail - index : 0;
+		REBCNT n     = MIN((REBCNT)part, room);
+		REBU64 total = MIN((REBU64)dup * n, (REBU64)room);
+		REBCNT full  = n ? (REBCNT)(total / n) : 0;
+		REBCNT rest  = n ? (REBCNT)(total % n) : 0;
+
 		ip += index * 4;
-		for (; dup > 0; dup--, ip += part * 4)
-			Bin_To_RGBA(ip, part, VAL_BIN_DATA(arg), part, only);
-	} else if (IS_BLOCK(arg)) {
-		if (index + part > tail) part = tail - index; // clip it
-		ip += index * 4;
-		for (; dup > 0; dup--, ip += part * 4)
-			Tuples_To_RGBA(ip, part, VAL_BLK_DATA(arg), part);
+		for (; full > 0; full--, ip += n * 4) copy(ip, n, arg, only);
+		if (rest) copy(ip, rest, arg, only);
 	} else Trap_Type(arg);
 
+	if (VAL_INDEX(value) > VAL_TAIL(value)) VAL_INDEX(value) = VAL_TAIL(value); // change/dup past the tail
 	Reset_Height(value);
 
 	if (action == A_APPEND) VAL_INDEX(value) = 0;
