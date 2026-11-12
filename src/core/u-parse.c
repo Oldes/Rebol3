@@ -1520,145 +1520,6 @@ bad_end:
 	return 0;
 }
 
-#ifdef INCLUDE_PARSE_SERIES_SPLITTING
-/***********************************************************************
-**
-*/	REBSER *Parse_String(REBSER *series, REBCNT index, REBVAL *rules, REBCNT flags)
-/************************************************************************/
-{
-	REBCNT tail = series->tail;
-	REBSER *blk;
-	REBSER *set;
-	REBCNT begin;
-	REBCNT end;
-	REBOOL skip_spaces = !(flags & PF_ALL);
-	REBUNI uc;
-
-	blk = BUF_EMIT;	// shared series
-	RESET_SERIES(blk);
-
-	// String of delimiters or single character:
-	if (IS_STRING(rules) || IS_CHAR(rules)) {
-		begin = Find_Max_Bit(rules);
-		if (begin <= ' ') begin = ' ' + 1;
-		set = Make_Bitset(begin);
-		Set_Bits(set, rules, TRUE);
-	}
-	// None, so use defaults ",;":
-	else {
-		set = Make_Bitset(1+MAX(',',';'));
-		Set_Bit(set, ',', TRUE);
-		Set_Bit(set, ';', TRUE);
-	}
-	SAVE_SERIES(set);
-
-	// If required, make space delimiters too:
-	if (skip_spaces) {
-		for (uc = 1; uc <= ' '; uc++) Set_Bit(set, uc, TRUE);
-	}
-
-	while (index < tail) {
-
-		if (--Eval_Count <= 0 || Eval_Signals) Do_Signals();
-
-		// Skip whitespace if not /all refinement: 
-		if (skip_spaces) {
-			uc = 0;
-			for (; index < tail; index++) {
-				uc = GET_ANY_CHAR(series, index);
-				if (!IS_WHITE(uc)) break;
-			}
-		}
-		else
-			uc = GET_ANY_CHAR(series, index); // prefetch
-
-		if (index < tail) {
-
-			// Handle quoted strings (in a simple way):
-			if (uc == '"') {
-				begin = ++index; // eat quote
-				for (; index < tail; index++) {
-					uc = GET_ANY_CHAR(series, index);
-					if (uc == '"') break;
-				}
-				end = index;
-				if (index < tail) index++;
-			}
-			// All other tokens:
-			else {
-				begin = index;
-				for (; index < tail; index++) {
-					if (Check_Bit(set, GET_ANY_CHAR(series, index), !(flags & PF_CASE))) break;
-				}
-				end = index;
-			}
-
-			// Skip trailing spaces:
-			if (skip_spaces)
-				for (; index < tail; index++) {
-					uc = GET_ANY_CHAR(series, index);
-					if (!IS_WHITE(uc)) break;
-				}
-
-			// Check for and remove separator:
-			if (Check_Bit(set, GET_ANY_CHAR(series, index), !(flags & PF_CASE))) index++;
-
-			// Append new string:
-			Set_String(Append_Value(blk), Copy_String(series, begin, end - begin)); 
-		}
-	}
-	UNSAVE_SERIES(set);
-
-	return Copy_Block(blk, 0);
-}
-#endif
-
-/***********************************************************************
-**
-*/	REBSER *Parse_Lines(REBSER *src)
-/*
-**		Convert a string buffer to a block of strings.
-**		Note that the string must already be converted
-**		to REBOL LF format (no CRs).
-**
-***********************************************************************/
-{
-	REBSER	*blk;
-	REBUNI c;
-	REBCNT i;
-	REBCNT s;
-	REBVAL *val;
-	REBOOL uni = !BYTE_SIZE(src);
-	REBYTE *bp = BIN_HEAD(src);
-	REBUNI *up = UNI_HEAD(src);
-
-	blk = BUF_EMIT;
-	RESET_SERIES(blk);
-
-	// Scan string, looking for LF and CR terminators:
-	for (i = s = 0; i < SERIES_TAIL(src); i++) {
-		c = uni ? up[i] : bp[i];
-		if (c == LF || c == CR) {
-			val = Append_Value(blk);
-			Set_String(val, Copy_String(src, s, i - s));
-			VAL_SET_LINE(val);
-			// Skip CRLF if found:
-			if (c == CR && LF == uni ? up[i] : bp[i]) i++; 
-			s = i;
-		}
-	}
-
-	// Partial line (no linefeed):
-	if (s + 1 != i) {
-		val = Append_Value(blk);
-		Set_String(val, Copy_String(src, s, i - s));
-		VAL_SET_LINE(val);
-	}
-
-	return Copy_Block(blk, 0);
-}
-
-
 /***********************************************************************
 **
 */	REBNATIVE(parse)
@@ -1678,54 +1539,39 @@ bad_end:
 //	if (D_REF(4)) opts |= PF_CASE;
 //	if (IS_BINARY(val)) opts |= PF_ALL | PF_CASE;
 
-#ifdef INCLUDE_PARSE_SERIES_SPLITTING
-	// Is it a simple string?
-	if (IS_NONE(arg) || IS_STRING(arg) || IS_CHAR(arg)) {
-		REBSER *ser;
-		if (!ANY_BINSTR(val)) Trap_Types(RE_EXPECT_VAL, REB_STRING, VAL_TYPE(val));
-		ser = Parse_String(series , VAL_INDEX(val), arg, opts);
-		Set_Block(DS_RETURN, ser);
+
+	REBOL_STATE state;
+	REB_PARSE_COLLECT collect;
+	// Let user RETURN and THROW out of the PARSE. All other errors should relay.
+	PUSH_STATE(state, Saved_State);
+	if (SET_JUMP(state)) {
+		POP_STATE(state, Saved_State);
+		Catch_Error(arg = DS_RETURN); // Stores error value here
+		if (VAL_ERR_NUM(arg) == RE_BREAK) {
+			if (!VAL_ERR_VALUE(arg)) return R_NONE;
+			*DS_RETURN = *VAL_ERR_VALUE(arg);
+			return R_RET;
+		}
+		if (VAL_ERR_NUM(arg) == RE_RETURN && VAL_ERR_SYM(arg) == SYM_RETURN) {
+			*DS_RETURN = *VAL_ERR_VALUE(arg);
+			return R_RET;
+		}
+		// How to handle RETURN, BREAK, etc. ???? does not work !!!!
+		if (THROWN(DS_RETURN)) return R_RET; //Throw_Break(DS_RETURN);
+		Throw_Error(VAL_ERR_OBJECT(DS_RETURN));
 	}
-	else if (IS_SAME_WORD(arg, SYM_TEXT)) {
-		Set_Block(DS_RETURN, Parse_Lines(series));
+	SET_STATE(state, Saved_State);
+	CLEARS(&collect);
+
+	ok = Parse_Series(val, VAL_BLK_DATA(arg), (opts & PF_CASE) ? AM_FIND_CASE : 0, 0, &collect);
+	if (collect.mode == BLOCK_COLLECT) {
+		*DS_RETURN = *Collect_Value(&collect);
+		VAL_INDEX(DS_RETURN) = 0; // `collect keep (...)` never reaches Parse_Collect_End
 	}
 	else {
-#endif
-		REBOL_STATE state;
-		REB_PARSE_COLLECT collect;
-		// Let user RETURN and THROW out of the PARSE. All other errors should relay.
-		PUSH_STATE(state, Saved_State);
-		if (SET_JUMP(state)) {
-			POP_STATE(state, Saved_State);
-			Catch_Error(arg = DS_RETURN); // Stores error value here
-			if (VAL_ERR_NUM(arg) == RE_BREAK) {
-				if (!VAL_ERR_VALUE(arg)) return R_NONE;
-				*DS_RETURN = *VAL_ERR_VALUE(arg);
-				return R_RET;
-			}
-			if (VAL_ERR_NUM(arg) == RE_RETURN && VAL_ERR_SYM(arg) == SYM_RETURN) {
-				*DS_RETURN = *VAL_ERR_VALUE(arg);
-				return R_RET;
-			}
-			// How to handle RETURN, BREAK, etc. ???? does not work !!!!
-			if (THROWN(DS_RETURN)) return R_RET; //Throw_Break(DS_RETURN);
-			Throw_Error(VAL_ERR_OBJECT(DS_RETURN));
-		}
-		SET_STATE(state, Saved_State);
-		CLEARS(&collect);
-
-		ok = Parse_Series(val, VAL_BLK_DATA(arg), (opts & PF_CASE) ? AM_FIND_CASE : 0, 0, &collect);
-		if (collect.mode == BLOCK_COLLECT) {
-			*DS_RETURN = *Collect_Value(&collect);
-			VAL_INDEX(DS_RETURN) = 0; // `collect keep (...)` never reaches Parse_Collect_End
-		}
-		else {
-			SET_LOGIC(DS_RETURN, ok);
-		}
-		POP_STATE(state, Saved_State);
-#ifdef INCLUDE_PARSE_SERIES_SPLITTING
+		SET_LOGIC(DS_RETURN, ok);
 	}
-#endif
+	POP_STATE(state, Saved_State);
 
 	return R_RET;
 }
