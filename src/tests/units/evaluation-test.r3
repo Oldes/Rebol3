@@ -18,6 +18,8 @@ expand-stack: does [
 armed: true
 expand-once: does [if armed [armed: false expand-stack]]
 
+
+
 ~~~start-file~~~ "evaluation"
 
 ===start-group=== "do"
@@ -967,6 +969,46 @@ expand-once: does [if armed [armed: false expand-stack]]
 		armed: true
 		--assert map? compose #[a: 1 b: (expand-once 2)]
 		recycle/stack
+
+	--test-- "set-path value expanding stack"
+		armed: true
+		obj: object [a: 1]
+		obj/a: (expand-once 2)
+		--assert obj/a = 2
+		recycle/stack
+
+	--test-- "set-path on block with value expanding stack"
+		armed: true
+		blk: [1 2 3]
+		blk/2: (expand-once 9)
+		--assert blk = [1 9 3]
+		recycle/stack
+
+	--test-- "set-path with paren selector expanding stack"
+		armed: true
+		obj: object [a: 1]
+		obj/(expand-once 'a): 5
+		--assert obj/a = 5
+		recycle/stack
+
+	--test-- "operator with arg expanding stack"
+		armed: true
+		--assert 3 = (1 + (expand-once 2))
+		recycle/stack
+
+	--test-- "function args expanding stack"
+		armed: true
+		--assert 3 = add 1 (expand-once 2)
+		recycle/stack
+
+	--test-- "path function with refinement and arg expanding stack"
+		armed: true
+		--assert [[1]] = append/only copy [] (expand-once [1])
+		recycle/stack
+
+	--test-- "keep with stack expansion"
+		armed: true
+		--assert [1 2 3] = collect [foreach n [1 2 3] [keep (expand-once n)]]
 ===end-group===
 
 
