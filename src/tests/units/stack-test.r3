@@ -384,6 +384,25 @@ expand-once: does [if armed [armed: false expand-stack]]
 			--assert o/a = 1
 		]
 		recycle/stack
+
+	;-- image  
+	--test-- "image path with paren expanding stack"
+		img: make image! 2x2
+		recycle/stack --assert 255.255.255.255 = img/(expand-stack 1)
+		img/(expand-stack 2): 1.2.3
+		recycle/stack --assert 1.2.3.255 = img/2
+		img/(expand-stack 3): 4.5.6.7
+		--assert 4.5.6.7 = img/3
+		recycle/stack --assert 2x2 = img/(expand-stack 'size)
+		img/(expand-stack 'size): 4x1
+		--assert 4x1 = img/size
+		recycle/stack
+
+	--test-- "image pixel channel set after stack expansion"
+		img: make image! 2x2
+		img/1/2: (expand-stack 100)
+		--assert 100 = img/1/2
+		recycle/stack
 ===end-group===
 
 ~~~end-file~~~
