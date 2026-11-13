@@ -752,6 +752,41 @@ Rebol [
 
 ===end-group===
 
+===start-group=== "VECTOR op vector (remaining element types)"
+
+	--test-- "VECTOR + vector (i32 i64 u8 u64 f32)"
+		--assert (#(i32! [1 -2]) + #(i32! [3 4])) == #(i32! [4 2])
+		--assert (#(i64! [1 -2]) + #(i64! [3 4])) == #(i64! [4 2])
+		--assert (#(u8!  [1 200]) + #(u8! [3 100])) == #(u8! [4 44])                    ;; wraps
+		--assert (#(u64! [1 0#FFFFFFFFFFFFFFFF]) + #(u64! [3 2])) == #(u64! [4 1])      ;; wraps
+		--assert (#(f32! [1.5 2]) + #(f32! [0.25 4])) == #(f32! [1.75 6])
+
+	--test-- "VECTOR - vector (i32 i64 u8 u16 u64 f32)"
+		--assert (#(i32! [4 6]) - #(i32! [3 10])) == #(i32! [1 -4])
+		--assert (#(i64! [4 6]) - #(i64! [3 10])) == #(i64! [1 -4])
+		--assert (#(u8!  [4 1]) - #(u8!  [3 2])) == #(u8!  [1 255])                     ;; wraps
+		--assert (#(u16! [4 1]) - #(u16! [3 2])) == #(u16! [1 65535])                   ;; wraps
+		--assert (#(u64! [4 0]) - #(u64! [3 1])) == #(u64! [1 0#FFFFFFFFFFFFFFFF])      ;; wraps
+		--assert (#(f32! [1.75 6]) - #(f32! [0.25 4])) == #(f32! [1.5 2])
+
+	--test-- "VECTOR * vector (i32 i64 u8 u64 f32)"
+		--assert (#(i32! [3 -4]) * #(i32! [5 6])) == #(i32! [15 -24])
+		--assert (#(i64! [3 -4]) * #(i64! [5 6])) == #(i64! [15 -24])
+		--assert (#(u8!  [16 3]) * #(u8!  [20 4])) == #(u8! [64 12])                    ;; 320 wraps to 64
+		--assert (#(u64! [3 0#8000000000000000]) * #(u64! [5 2])) == #(u64! [15 0])     ;; wraps
+		--assert (#(f32! [1.5 -2]) * #(f32! [0.5 4])) == #(f32! [0.75 -8])
+
+	--test-- "VECTOR / vector (i32 i64 u8 u16 u64 f32)"
+		--assert (#(i32! [10 -7]) / #(i32! [2 2])) == #(i32! [5 -3])                     ;; truncates toward zero
+		--assert (#(i64! [10 -7]) / #(i64! [2 2])) == #(i64! [5 -3])
+		--assert (#(u8!  [200 7]) / #(u8!  [10 2])) == #(u8! [20 3])
+		--assert (#(u16! [60000 7]) / #(u16! [3 2])) == #(u16! [20000 3])
+		;; must be an unsigned division (signed would give -1)
+		--assert (#(u64! [0#FFFFFFFFFFFFFFFE 10]) / #(u64! [2 3])) == #(u64! [0#7FFFFFFFFFFFFFFF 3])
+		--assert (#(f32! [1 3]) / #(f32! [4 2])) == #(f32! [0.25 1.5])
+
+===end-group===
+
 
 ===start-group=== "VECTOR ´minimum/maximum"
 	vi08: #(i8!  [1 -2 0])
