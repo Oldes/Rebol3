@@ -49,6 +49,8 @@
 extern int OS_Get_Current_Dir(REBYTE **lp);
 extern REBOOL OS_Get_Boot_Path(REBYTE **path);
 extern REBLEN OS_Wide_To_Multibyte(const REBU16 *wide, REBYTE **utf8, REBLEN len);
+extern void *OS_Make(size_t size);
+extern void OS_Free(void *mem);
 
 // REBOL Option --Words:
 
@@ -146,60 +148,58 @@ const struct arg_chr arg_chars2[] = {
 
 /***********************************************************************
 **
-*/	static int Get_Ext_Arg(int flag, REBARGS *rargs, REBCHR *arg)
+*/	static REBYTE *Copy_Arg(const REBCHR *arg)
 /*
-**		Get extended argument field. Always UTF-8 encoded!
+**		Returns an allocated copy of a (not wide) argument, so the
+**		result can be released like values from OS_Wide_To_Multibyte.
 **
 ***********************************************************************/
 {
+	size_t size = strlen((const char *)arg) + 1;
+	REBYTE *copy = OS_Make(size);
+	if (copy) memcpy(copy, arg, size);
+	return copy;
+}
+
+
+/***********************************************************************
+**
+*/	static int Get_Ext_Arg(int flag, REBARGS *rargs, REBCHR *arg)
+/*
+**		Get extended argument field. Always UTF-8 encoded!
+**		Returns the flag (without RO_EXT) when the value was used,
+**		or zero when the value is missing (caller reports usage).
+**
+***********************************************************************/
+{
+	// No more args, or the next one is another --option.
+	// (Test arg[0] first so an empty string is not read past its end.)
 	if (arg == NULL) return 0;
-	if (arg[1] == (REBCHR)'-') return flag;
+	if (arg[0] == (REBCHR)'-' && arg[1] == (REBCHR)'-') return 0;
 
 	flag &= ~RO_EXT;
 
-	REBYTE *value = NULL;
-
-#ifdef OS_WIDE_CHAR
-	OS_Wide_To_Multibyte(arg, &value, (REBLEN)-1);
-#else
-	value = arg;
-#endif
+	REBYTE **field;
 
 	switch (flag) {
-
-	case RO_VERSION:
-		rargs->version = value;
-		break;
-
-	case RO_SCRIPT:
-		rargs->script = value;
-		break;
-
-	case RO_ARGS:
-		rargs->args = value;
-		break;
-
-	case RO_DO:
-		rargs->do_arg = value;
-		break;
-
-	case RO_DEBUG:
-		rargs->debug = value;
-		break;
-
-	case RO_SECURE:
-		rargs->secure = value;
-		break;
-
-	case RO_IMPORT:
-		rargs->import = value;
-		break;
-
-	case RO_BOOT:
-		rargs->boot = value;
-		break;
+	case RO_VERSION: field = &rargs->version; break;
+	case RO_SCRIPT:  field = &rargs->script;  break;
+	case RO_ARGS:    field = &rargs->args;    break;
+	case RO_DO:      field = &rargs->do_arg;  break;
+	case RO_DEBUG:   field = &rargs->debug;   break;
+	case RO_SECURE:  field = &rargs->secure;  break;
+	case RO_IMPORT:  field = &rargs->import;  break;
+	case RO_BOOT:    field = &rargs->boot;    break;
+	default: return flag; // value is consumed, but not stored
 	}
 
+#ifdef OS_WIDE_CHAR
+	// The converted value is allocated, so release a value of a repeated option.
+	if (*field) OS_Free(*field);
+	OS_Wide_To_Multibyte(arg, field, (REBLEN)-1);
+#else
+	*field = arg;
+#endif
 	return flag;
 }
 
@@ -221,12 +221,12 @@ const struct arg_chr arg_chars2[] = {
 	CLEARS(rargs);
 	rargs->argc = argc;
 	rargs->argv = argv;
-	if (0 == OS_Get_Boot_Path(&rargs->exe_path)) {
+	if (0 == OS_Get_Boot_Path(&rargs->exe_path) && argc > 0) {
 		// First arg is path to executable (on most systems):
 #ifdef OS_WIDE_CHAR
-		OS_Wide_To_Multibyte(*argv, &rargs->exe_path, -1);
+		OS_Wide_To_Multibyte(*argv, &rargs->exe_path, (REBLEN)-1);
 #else
-		rargs->exe_path = *argv;
+		rargs->exe_path = Copy_Arg(*argv); // owned, it is released in Init_Main_Args
 #endif
 	}
 	OS_Get_Current_Dir(&rargs->current_dir);
@@ -243,9 +243,9 @@ const struct arg_chr arg_chars2[] = {
 		// First arg is path to executable (on most systems):
 		if (argc > 0) {
 #ifdef OS_WIDE_CHAR
-			OS_Wide_To_Multibyte(*argv, &rargs->exe_path, -1);
+			OS_Wide_To_Multibyte(*argv, &rargs->exe_path, (REBLEN)-1);
 #else
-			rargs->exe_path = *argv;
+			rargs->exe_path = Copy_Arg(*argv); // owned, it is released in Init_Main_Args
 #endif
 		}
 	}
@@ -265,9 +265,11 @@ const struct arg_chr arg_chars2[] = {
 				// --option words
 				flag = find_option_word(arg+2);
 				if (flag & RO_EXT) {
+					int ext = flag;
 					flag = Get_Ext_Arg(flag, rargs, (i+1 >= argc) ? 0 : argv[i+1]);
-					if ((flag & RO_EXT) == 0) i++; // used it
-					else flag &= ~RO_EXT;
+					if (flag) i++; // used it
+					// `--version` without a value just prints the version (like `-v`)
+					else if (ext == (RO_VERSION | RO_EXT)) flag = RO_VERS;
 				}
 				if (!flag) flag = RO_HELP;
 				rargs->options |= flag;
@@ -278,8 +280,7 @@ const struct arg_chr arg_chars2[] = {
 					flag = find_option_char(*arg, arg_chars);
 					if (flag & RO_EXT) {
 						flag = Get_Ext_Arg(flag, rargs, (i+1 >= argc) ? 0 : argv[i+1]);
-						if ((flag & RO_EXT) == 0) i++; // used it
-						else flag &= ~RO_EXT;
+						if (flag) i++; // used it
 					}
 					if (!flag) flag = RO_HELP;
 					rargs->options |= flag;
@@ -292,8 +293,7 @@ const struct arg_chr arg_chars2[] = {
 				flag = find_option_char(*arg, arg_chars2);
 				if (flag & RO_EXT) {
 					flag = Get_Ext_Arg(flag, rargs, (i+1 >= argc) ? 0 : argv[i+1]);
-					if ((flag & RO_EXT) == 0) i++; // used it
-					else flag &= ~RO_EXT;
+					if (flag) i++; // used it
 				}
 				if (!flag) flag = RO_HELP;
 				rargs->options |= flag;
@@ -308,7 +308,7 @@ const struct arg_chr arg_chars2[] = {
 			}
 			else {
 #ifdef OS_WIDE_CHAR
-				OS_Wide_To_Multibyte(arg, &rargs->script, -1);
+				OS_Wide_To_Multibyte(arg, &rargs->script, (REBLEN)-1);
 #else
 				rargs->script = arg;
 #endif
@@ -325,6 +325,3 @@ const struct arg_chr arg_chars2[] = {
 	}
 #endif
 }
-
-
-

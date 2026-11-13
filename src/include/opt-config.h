@@ -68,8 +68,6 @@
 
 // other options ******************************************************/
 
-//#define HAS_WIDGET_GOB  // used in t-gob.c
-
 //#define EXCLUDE_CHACHA20POLY1305    // don't include chacha20 and poly1305 cipher/authentication code
 
 //#define USE_EMPTY_HASH_AS_NONE      // a single # means NONE, else error; Used in l-scan.c file

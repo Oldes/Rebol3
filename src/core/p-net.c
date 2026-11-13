@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,6 +34,23 @@
 #include "reb-evtypes.h"
 
 #define NET_BUF_SIZE 32*1024
+
+// The port state holds two requests (see PORT_STATE_REQS in c-port.c).
+// The first one is used for everything but WRITE, which uses the second
+// one, so a READ and a WRITE may be pending at the same time.
+#define NET_WRITE_REQ(sock) ((sock) + 1)
+
+/***********************************************************************
+**
+*/	static REBHOB *Net_State_Hob(REBSER *port)
+/*
+**		Returns the state handle context of an open net port.
+**		Its series keeps the data of the pending WRITE (GC safe).
+**
+***********************************************************************/
+{
+	return VAL_HANDLE_CTX(OFV(port, STD_PORT_STATE));
+}
 
 enum Transport_Types {
 	TRANSPORT_TCP,
@@ -67,65 +84,12 @@ enum Transport_Types {
 	return TRUE;
 }
 
-/***********************************************************************
-**
-*/	static void Ret_Query_Net(REBSER *port, REBREQ *sock, REBVAL *ret, REBVAL *info)
-/*
-***********************************************************************/
+
+static REBOOL Query_Net_Field(REBVAL *port, REBVAL *word, REBVAL *ret, void *ctx)
 {
-	REBSER *obj;
-	REBVAL *val;
-	
-	if (IS_WORD(info)) {
-		if (!Set_Net_Mode_Value(sock, VAL_WORD_CANON(info), ret))
-			Trap1(RE_INVALID_ARG, info);
-	}
-	else if (IS_BLOCK(info)) {
-		// example:
-		//	query port [:remote-ip :remote-port] ;== [127.0.0.1 1234]
-		// or:
-		//	 query port [remote-ip remote-port] ;== [remote-ip: 127.0.0.1 remote-port: 1234]
-		// or combined:
-		//	 query file [remote-ip: :remote-port] ;== [remote-ip: 127.0.0.1 1234]
-		// When not supported word is used, if will throw an error
-
-		REBSER *values = Make_Block(2 * BLK_LEN(VAL_SERIES(info)));
-		REBVAL *word = VAL_BLK_DATA(info);
-		for (; NOT_END(word); word++) {
-			if (ANY_WORD(word)) {
-				if (!IS_GET_WORD(word)) {
-					// keep the word as a key (converted to the set-word) in the result
-					val = Append_Value(values);
-					*val = *word;
-					VAL_TYPE(val) = REB_SET_WORD;
-					VAL_SET_LINE(val);
-				}
-				val = Append_Value(values);
-				if (!Set_Net_Mode_Value(sock, VAL_WORD_CANON(word), val))
-					Trap1(RE_INVALID_ARG, word);
-			}
-			else  Trap1(RE_INVALID_ARG, word);
-		}
-		Set_Series(REB_BLOCK, ret, values);
-	}
-	else {
-		//@@ oldes: is returning object really still needed?
-		info = In_Object(port, STD_PORT_SCHEME, STD_SCHEME_INFO, 0);
-
-		if (!info || !IS_OBJECT(info)) {
-			Trap_Port(RE_INVALID_SPEC, port, -10);
-			DEAD_END;
-		}
-
-		obj = CLONE_OBJECT(VAL_OBJ_FRAME(info));
-
-		SET_OBJECT(ret, obj);
-		Set_Tuple(OFV(obj, STD_NET_INFO_LOCAL_IP), (REBYTE *)&sock->net.local_ip, 4);
-		Set_Tuple(OFV(obj, STD_NET_INFO_REMOTE_IP), (REBYTE *)&sock->net.remote_ip, 4);
-		SET_INTEGER(OFV(obj, STD_NET_INFO_LOCAL_PORT), sock->net.local_port);
-		SET_INTEGER(OFV(obj, STD_NET_INFO_REMOTE_PORT), sock->net.remote_port);
-	}
+	return Set_Net_Mode_Value((REBREQ *)ctx, VAL_WORD_CANON(word), ret);
 }
+
 
 /***********************************************************************
 **
@@ -174,12 +138,29 @@ enum Transport_Types {
 
 /***********************************************************************
 **
+*/	static void Close_Failed_Open(REBSER *port, REBREQ *sock)
+/*
+**		Close the socket of a port whose OPEN failed and throw
+**		the NO-CONNECT error (with the error code of the failure).
+**
+***********************************************************************/
+{
+	REBINT error = sock->error; // cleared by the close
+	OS_Do_Device(sock, RDC_CLOSE);
+	SET_CLOSED(sock);
+	Trap_Port(RE_NO_CONNECT, port, error);
+}
+
+/***********************************************************************
+**
 */	static int Transport_Actor(REBVAL *ds, REBVAL *port_value, REBCNT action, enum Transport_Types proto)
 /*
 ***********************************************************************/
 {
 	REBSER *port;
 	REBREQ *sock;	// IO request
+	REBREQ *wreq;	// IO request used for WRITE
+	REBHOB *hob;	// state handle context (keeps the WRITE data)
 	REBVAL *spec;	// port spec
 	REBVAL *arg;	// action argument value
 	REBVAL *val;	// e.g. port number value
@@ -187,6 +168,7 @@ enum Transport_Types {
 	REBCNT refs;	// refinement argument flags
 	REBCNT len;		// generic length
 	REBSER *ser;	// simplifier
+	REBOOL opening = FALSE; // the socket was just created by this OPEN
 
 	port = Validate_Port_With_Request(port_value, RDI_NET, &sock);
 
@@ -210,22 +192,32 @@ enum Transport_Types {
 
 		switch (action) {	// Ordered by frequency
 
-		case A_OPEN:
+		case A_OPEN: {
+			REBVAL *lip;
 
 			arg = Obj_Value(spec, STD_PORT_SPEC_NET_HOST);
 			val = Obj_Value(spec, STD_PORT_SPEC_NET_PORT);
+			lip = Obj_Value(spec, STD_PORT_SPEC_NET_LOCAL_IP);
+
+			// Validate the spec before a socket is created (so an error
+			// does not leave it open):
+			if (!IS_STRING(arg) && !IS_TUPLE(arg) && !IS_NONE(arg))
+				Trap_Port(RE_INVALID_SPEC, port, -10);
+			if (lip && !IS_NONE(lip) && !(IS_TUPLE(lip) && VAL_TUPLE_LEN(lip) == 4))
+				Trap_Port(RE_INVALID_SPEC, port, -10);
 
 			Check_Security(SYM_NET, POL_EXEC, Obj_Value(spec, STD_PORT_SPEC_NET_REF));
 
 			if (OS_Do_Device(sock, RDC_OPEN)) Trap_Port(RE_CANNOT_OPEN, port, -12);
 			SET_OPEN(sock);
+			opening = TRUE; // the socket is closed if the OPEN fails below
 
 			// Lookup host name (an extra TCP device step):
 			if (IS_STRING(arg)) {
 				sock->data = VAL_BIN(arg);
 				sock->net.remote_port = IS_INTEGER(val) ? VAL_INT32(val) : 80;
 				result = OS_Do_Device(sock, RDC_LOOKUP);  // sets remote_ip field
-				if (result < 0) Trap_Port(RE_NO_CONNECT, port, sock->error);
+				if (result < 0) Close_Failed_Open(port, sock); // throws
 				return R_RET;
 			}
 
@@ -241,9 +233,15 @@ enum Transport_Types {
 				SET_FLAG(sock->modes, RST_LISTEN);
 				sock->data = 0; // where ACCEPT requests are queued
 				sock->net.local_port = IS_INTEGER(val) ? VAL_INT32(val) : 8000;
+				// Optional local address to listen on (default: all interfaces).
+				// Always set, as a reopened port keeps the address of its last use.
+				sock->net.local_ip = 0; // INADDR_ANY
+				if (lip && IS_TUPLE(lip)) // validated above
+					memcpy(&sock->net.local_ip, VAL_TUPLE(lip), 4);
 				break;
 			}
-			else Trap_Port(RE_INVALID_SPEC, port, -10);
+			break; // not reached (validated above)
+		}
 
 		case A_CLOSE:
 			return R_RET;
@@ -267,25 +265,38 @@ enum Transport_Types {
 		// This is normally called by the WAKE-UP function.
 		arg = OFV(port, STD_PORT_DATA);
 		if (sock->command == RDC_READ) {
+			// UPDATE is called for every event of the port, so the received
+			// length must be consumed, else it would be appended again.
 			if (ANY_BINSTR(arg)) VAL_TAIL(arg) += sock->actual;
+			sock->actual = 0;
 		}
-		else if (sock->command == RDC_WRITE) {
-			SET_NONE(arg);  // Write is done.
-		}
+		// Release the data of a finished (or failed) WRITE:
+		if (!GET_FLAG(NET_WRITE_REQ(sock)->flags, RRF_PENDING))
+			Net_State_Hob(port)->series = NULL;
 		return R_NONE;
 
 	case A_READ:
 		// Read data into a buffer, expanding the buffer if needed.
 		// If no length is given, program must stop it at some point.
 		//refs = Find_Refines(ds, ALL_READ_REFS);
-		if (!GET_FLAG(sock->modes, RST_UDP)
-				&& !GET_FLAG(sock->state, RSM_CONNECT))
+		// While an async host lookup is pending (Windows), the request holds
+		// the DNS handle instead of the socket and must not be reused.
+		if (sock->net.host_info
+				|| (!GET_FLAG(sock->modes, RST_UDP)
+				&& !GET_FLAG(sock->state, RSM_CONNECT)))
 			Trap_Port(RE_NOT_CONNECTED, port, -15);
 
 		// Setup the read buffer (allocate a buffer if needed):
 		arg = OFV(port, STD_PORT_DATA);
 		if (!IS_STRING(arg) && !IS_BINARY(arg)) {
 			Set_Binary(arg, Make_Binary(NET_BUF_SIZE));
+		}
+		else if (sock->command == RDC_READ && sock->actual > 0) {
+			// The previous READ is done, but its event was not processed yet.
+			// Apply its data now, else the new READ would overwrite it.
+			// (The later UPDATE is fine with it, as the length is consumed.)
+			VAL_TAIL(arg) += sock->actual;
+			sock->actual = 0;
 		}
 		ser = VAL_SERIES(arg);
 		sock->length = SERIES_AVAIL(ser); // space available
@@ -297,11 +308,15 @@ enum Transport_Types {
 
 		//Print("(max read length %d)", sock->length);
 		result = OS_Do_Device(sock, RDC_READ); // recv can happen immediately
-		if (GET_FLAG(sock->modes, RST_UDP && result == 0))
-			VAL_TAIL(arg) += sock->actual;
 		if (result < 0)
 			Trap_Port(RE_READ_ERROR, port, sock->error);
-		
+		if (result == DR_DONE && GET_FLAG(sock->modes, RST_UDP)) {
+			// Make the received datagram visible right away. The device has
+			// already queued the READ event, so mark the data as consumed,
+			// else the UPDATE action would append the same length again.
+			VAL_TAIL(arg) += sock->actual;
+			sock->actual = 0;
+		}
 		break;
 
 	case A_WRITE:
@@ -309,8 +324,11 @@ enum Transport_Types {
 		// The lower level write code continues until done.
 
 		refs = Find_Refines(ds, ALL_WRITE_REFS);
-		if (!GET_FLAG(sock->modes, RST_UDP)
-				&& !GET_FLAG(sock->state, RSM_CONNECT))
+		// While an async host lookup is pending (Windows), the request holds
+		// the DNS handle instead of the socket (see Lookup_Socket).
+		if (sock->net.host_info
+				|| (!GET_FLAG(sock->modes, RST_UDP)
+				&& !GET_FLAG(sock->state, RSM_CONNECT)))
 			Trap_Port(RE_NOT_CONNECTED, port, -15);
 
 		// Determine length. Clip /PART to size of string if needed.
@@ -321,37 +339,64 @@ enum Transport_Types {
 			if (n <= len) len = n;
 		}
 
-		// Setup the write:
-		*OFV(port, STD_PORT_DATA) = *spec;	// keep it GC safe
-		sock->length = len;
-		sock->data = VAL_BIN_DATA(spec);
-		sock->actual = 0;
+		// WRITE has its own request, so it does not disturb a pending READ.
+		wreq = NET_WRITE_REQ(sock);
+		hob = Net_State_Hob(port);
+
+		// TCP: append to the data of a still pending WRITE (keeps the order).
+		// (UDP: a pending datagram is replaced, as it was before.)
+		if (GET_FLAG(wreq->flags, RRF_PENDING) && hob->series
+				&& !GET_FLAG(sock->modes, RST_UDP)) {
+			Append_Bytes_Len(hob->series, VAL_BIN_DATA(spec), len);
+			wreq->data = BIN_HEAD(hob->series) + wreq->actual; // may be reallocated
+			wreq->length += len;
+			break;
+		}
+
+		// Compatibility: a WRITE used to drop the read buffer (it was used
+		// for the written data). Keep it only when a READ is in progress
+		// or when its received data were not yet processed by UPDATE.
+		if (!(GET_FLAG(sock->flags, RRF_PENDING) && sock->command == RDC_READ)
+				&& sock->actual == 0)
+			SET_NONE(OFV(port, STD_PORT_DATA));
+
+		// Setup the write (with a copy of the data, so it is GC safe
+		// and it cannot be modified while it is being sent):
+		hob->series = Copy_Bytes(VAL_BIN_DATA(spec), len);
+		wreq->socket = sock->socket;
+		wreq->modes  = sock->modes;
+		wreq->state  = sock->state;  // RSM_CONNECT
+		wreq->net    = sock->net;    // remote address used by UDP
+		wreq->length = len;
+		wreq->data   = BIN_HEAD(hob->series);
+		wreq->actual = 0;
 
 		//Print("(write length %d)", len);
-		result = OS_Do_Device(sock, RDC_WRITE); // send can happen immediately
-		if (result < 0) Trap_Port(RE_WRITE_ERROR, port, sock->error);
-		if (result == DR_DONE) SET_NONE(OFV(port, STD_PORT_DATA));
+		result = OS_Do_Device(wreq, RDC_WRITE); // send can happen immediately
+		if (result <= 0) hob->series = NULL; // done or failed
+		if (result < 0) Trap_Port(RE_WRITE_ERROR, port, wreq->error);
 		break;
 
 	case A_PICK:
 		// FIRST server-port returns new port connection.
 		len = Get_Num_Arg(arg); // Position
-		if (len == 1 && GET_FLAG(sock->modes, RST_LISTEN) && sock->data)
+		// Only a TCP listen port has an accept queue in sock->data.
+		// A UDP listen port uses sock->data for its read buffer!
+		if (len == 1 && GET_FLAG(sock->modes, RST_LISTEN)
+				&& !GET_FLAG(sock->modes, RST_UDP) && sock->data)
 			Accept_New_Port(ds, port, sock); // sets D_RET
 		else
 			Trap_Range(arg);
 		break;
 
-	case A_QUERY:
+	case A_QUERY: {
 		// Get specific information - the scheme's info object.
 		// Special notation allows just getting part of the info.
-		if (IS_NONE(D_ARG(ARG_QUERY_FIELD))) {
-			Ret_Net_Modes(port, D_RET);
-			return R_RET;
-		}
-		Ret_Query_Net(port, sock, D_RET, D_ARG(ARG_QUERY_FIELD));
+		REBVAL *info = In_Object(port, STD_PORT_SCHEME, STD_SCHEME_INFO, 0);
+		if (!info || !IS_OBJECT(info)) Trap_Port(RE_INVALID_SPEC, port, -10);
+		Query_Fields(D_ARG(1), D_ARG(ARG_QUERY_FIELD), info, Query_Net_Field, sock, D_RET);
 		break;
-
+	}
 	case A_OPENQ:
 		// Connect for clients, bind for servers:
 		if (sock->state & ((1<<RSM_CONNECT) | (1<<RSM_BIND))) return R_TRUE;
@@ -359,6 +404,9 @@ enum Transport_Types {
 
 	case A_CLOSE:
 		if (IS_OPEN(sock)) {
+			// A pending WRITE must not be polled with the closed socket:
+			OS_Abort_Device(NET_WRITE_REQ(sock));
+			Net_State_Hob(port)->series = NULL;
             if (OS_Do_Device(sock, RDC_CLOSE) < 0) {
                 Trap_Port(RE_CANNOT_CLOSE, port, sock->error);
             }
@@ -376,7 +424,12 @@ enum Transport_Types {
 
 	case A_OPEN:
 		result = OS_Do_Device(sock, RDC_CONNECT);
-		if (result < 0) Trap_Port(RE_NO_CONNECT, port, sock->error);
+		if (result < 0) {
+			// A failed first OPEN does not return the port, so nothing
+			// could close its socket later.
+			if (opening) Close_Failed_Open(port, sock); // throws
+			Trap_Port(RE_NO_CONNECT, port, sock->error);
+		}
 		break;
 		//Trap_Port(RE_ALREADY_OPEN, port);
 

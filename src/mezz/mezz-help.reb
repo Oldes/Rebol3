@@ -151,7 +151,6 @@ import (module [
 			typeset?      :val [ ajoin [#"[" val #"]"] ]
 			port?         :val [ reduce [val/spec/title val/spec/ref] ]
 			image?        :val [ mold/part/all/flat val max-desc-width]
-			gob?          :val [ return reform ["offset:" val/offset "size:" val/size] ]
 			vector?       :val [ reform ["length:" length? val mold/part/flat val max-desc-width] ]
 			any [logic? :val none? :val unset? :val] [ form val ]
 			true [:val]
@@ -270,7 +269,9 @@ import (module [
 		][
 			browse join https://rebol.tech/docs/functions.html# word
 		]
-		cols: query system/ports/output 'window-cols
+		;; The reported width may be zero in non-interactive consoles (e.g. CI),
+		;; so enforce a sane minimum terminal width.
+		cols: max 76 query system/ports/output 'window-cols
 		max-desc-width: cols - 35
 		buffer: any [string  clear ""]
 		catch [

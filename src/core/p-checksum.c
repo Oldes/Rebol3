@@ -142,20 +142,21 @@
 			return;
 #endif
 #ifdef INCLUDE_XXHASH
+		// Use the *_CtxSize functions; XXH3 states need extra space for 64-byte alignment.
 		case SYM_XXH3:
-			*ctx = sizeof(XXH3_CTX);
+			*ctx = XXH3_CtxSize();
 			*blk = 8;
 			break;
 		case SYM_XXH32:
-			*ctx = sizeof(XXH32_CTX);
+			*ctx = XXH32_CtxSize();
 			*blk = 4;
 			break;
 		case SYM_XXH64:
-			*ctx = sizeof(XXH64_CTX);
+			*ctx = XXH64_CtxSize();
 			*blk = 8;
 			break;
 		case SYM_XXH128:
-			*ctx = sizeof(XXH128_CTX);
+			*ctx = XXH128_CtxSize();
 			*blk = 16;
 			break;
 #endif
@@ -411,6 +412,26 @@
 			}
 		}
 
+#ifdef INCLUDE_XXHASH
+		// xxHash digests do not modify the state, so they are computed directly
+		// from the context. A copy would also break the 64-byte alignment
+		// of the XXH3 state (the aligned offset depends on the buffer address).
+		switch (VAL_WORD_CANON(method)) {
+		case SYM_XXH3:
+			XXH3_Finish((XXH3_CTX*)VAL_BIN(ctx), VAL_BIN_DATA(data));
+			goto finished;
+		case SYM_XXH32:
+			XXH32_Finish((XXH32_CTX*)VAL_BIN(ctx), VAL_BIN_DATA(data));
+			goto finished;
+		case SYM_XXH64:
+			XXH64_Finish((XXH64_CTX*)VAL_BIN(ctx), VAL_BIN_DATA(data));
+			goto finished;
+		case SYM_XXH128:
+			XXH128_Finish((XXH128_CTX*)VAL_BIN(ctx), VAL_BIN_DATA(data));
+			goto finished;
+		}
+#endif
+
 		//using copy so READ will not destroy intermediate context state by calling *_Finish
 		memcpy(DS_TOP, VAL_BIN(ctx), ctx_size);
 
@@ -474,21 +495,10 @@
 			SHA512_Finish((SHA512_CTX*)DS_TOP, VAL_BIN_DATA(data));
 			break;
 #endif
-#ifdef INCLUDE_XXHASH
-		case SYM_XXH3:
-			XXH3_Finish((XXH3_CTX*)DS_TOP, VAL_BIN_DATA(data));
-			break;
-		case SYM_XXH32:
-			XXH32_Finish((XXH32_CTX*)DS_TOP, VAL_BIN_DATA(data));
-			break;
-		case SYM_XXH64:
-			XXH64_Finish((XXH64_CTX*)DS_TOP, VAL_BIN_DATA(data));
-			break;
-		case SYM_XXH128:
-			XXH128_Finish((XXH128_CTX*)DS_TOP, VAL_BIN_DATA(data));
-			break;
-#endif
 		}
+#ifdef INCLUDE_XXHASH
+	finished:
+#endif
 		if(action == A_READ) *D_RET = *data;
 		break;
 

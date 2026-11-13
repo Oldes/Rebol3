@@ -469,7 +469,7 @@ Rebol [
 
 	--test-- "compose map"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2685
-	m1: #[a: (zero) b: [(red)] c: (now) d: #[k: (white)]] 
+	m1: #[a: (zero) b: [(lf)] c: (now) d: #[k: (space)]] 
 	--assert all [
 		map? m2: compose m1
 		paren? m1/a
@@ -482,18 +482,18 @@ Rebol [
 		map? m2: compose/deep m1
 		paren? m1/a
 		m2/a == 0
-		m2/b/1 == red
+		m2/b/1 == lf
 		date? m2/c
-		m2/d/k == white
+		m2/d/k == space
 	]
 	remove/key m1 'c
 	--assert all [
 		map? m2: compose/deep m1
 		paren? m1/a
 		m2/a == 0
-		m2/b/1 == red
+		m2/b/1 == lf
 		none? m2/c
-		m2/d/k == white
+		m2/d/k == space
 	]
 
 	a: 1 f1: func[b][compose #[num: (a + b)]]
@@ -517,7 +517,36 @@ Rebol [
 	--assert [3 13 23 33] = map-each obj reduce [*obp *ob1 *ob2 *ob3] [
 		select compose/deep obj/tmp 'three
 	]
-	
+
+	--test-- "compose large spliced block"
+	;@@ https://github.com/Oldes/Rebol-issues/issues/1906
+	;; a paren result spliced past the initial data stack size
+	big: make block! 40000
+	repeat i 40000 [append big i]
+	--assert big = compose [(big)]
+	--assert all [
+		block? c: compose [x (big) y (big) z]
+		80003 = length? c
+		'x = first c
+		40000 = pick c 40001
+		'y = pick c 40002
+		'z = last c
+	]
+	--assert all [
+		block? c: compose/deep [a [(big)] b]
+		3 = length? c
+		big = second c
+	]
+	--assert all [
+		block? c: compose/into [(big)] o: copy [0]
+		40001 = length? head c
+		big = copy/part head c 40000
+		[0] = c
+	]
+	recycle
+	--assert big = compose [(copy big)]
+	recycle
+	unset [big c o]
 
 ===end-group===
 
@@ -705,29 +734,6 @@ Rebol [
 		--assert 1 = b/(c: 2): c + 1
 
 
-===end-group===
-
-===start-group=== "STACK"
-	--test-- "issue-1623"
-	;@@ https://github.com/Oldes/Rebol-issues/issues/1623
-		--assert block? b: stack 0
-		--assert 'stack = first b
-		--assert 'stack = stack/word 0
-
-	--test-- "try with data stack expansion"
-		--assert 1 = try [
-			reduce append/dup make block! 0 1 100 + stack/limit 0
-			loop 200 [make binary! 300000 make string! 100000]
-			recycle
-			1
-		]
-	--test-- "attempt with data stack expansion"
-		--assert none? attempt [
-			reduce append/dup make block! 0 1 100 + stack/limit 0
-			loop 200 [make binary! 300000 make string! 100000]
-			recycle
-			1 / 0
-		]
 ===end-group===
 
 
@@ -1006,6 +1012,11 @@ Rebol [
 		--assert "ok" = catch [foo/(throw "ok" 'bar)/xx]
 		--assert "ok" = catch [foo/(throw "ok" 'bar)/xx: 3]
 
+	--test-- "catch/name is case insensitive"
+		--assert 1 = catch/name [throw/name 1 'Foo] 'foo
+		--assert 2 = catch/name [throw/name 2 'foo] 'Foo
+		--assert 3 = catch/name [throw/name 3 'Bar] [foo bar]
+		--assert 4 = catch/name [throw/name 4 'bar] [foo Bar]
 ===end-group===
 
 

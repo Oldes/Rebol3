@@ -150,7 +150,7 @@
 
 	case A_LENGTHQ:
 		if (IS_UTF8_STRING(value)) {
-			SET_INTEGER(DS_RETURN, tail > index ? Length_As_UTF8_Code_Points(VAL_BIN_DATA(value)) : 0);
+			SET_INTEGER(DS_RETURN, tail > index ? UTF8_Length(VAL_BIN_DATA(value), tail - index) : 0);
 		}
 		else {
 			SET_INTEGER(DS_RETURN, tail > index ? tail - index : 0);
@@ -160,6 +160,7 @@
 	case A_REMOVE:
 		// /PART length
 		TRAP_PROTECT(VAL_SERIES(value));
+		TRAP_FIXED_SIZE(VAL_SERIES(value));
 		if (DS_REF(ARG_REMOVE_KEY)) {
 			if (ANY_BLOCK(value)) {
 				len = 2;
@@ -210,20 +211,48 @@ is_true:
 
 /***********************************************************************
 **
-*/	REBINT Cmp_Block(REBVAL *sval, REBVAL *tval, REBFLG is_case)
+*/	REBFLG In_Cmp_Loop(REB_CMP_LOOP *loop, REBVAL *a, REBVAL *b)
+/*
+**		Returns TRUE if the pair of series values is already being
+**		compared (circular reference).
+**
+***********************************************************************/
+{
+	REBSER *sa = VAL_SERIES(a), *sb = VAL_SERIES(b);
+	REBCNT ia = VAL_INDEX(a), ib = VAL_INDEX(b);
+	for (; loop; loop = loop->prev) {
+		if ((loop->a == sa && loop->b == sb && loop->ai == ia && loop->bi == ib)
+		 || (loop->a == sb && loop->b == sa && loop->ai == ib && loop->bi == ia))
+			return TRUE;
+	}
+	return FALSE;
+}
+
+
+/***********************************************************************
+**
+*/	REBINT Cmp_Block_Loop(REBVAL *sval, REBVAL *tval, REBFLG is_case, REB_CMP_LOOP *loop)
 /*
 **		Compare two blocks and return the difference of the first
 **		non-matching value.
+**		A pair of blocks already being compared is considered equal.
 **
 ***********************************************************************/
 {
 	REBVAL	*s;
 	REBVAL	*t;
 	REBINT	diff;
+	REB_CMP_LOOP node;
 
 	if ((VAL_SERIES(sval)==VAL_SERIES(tval))&&
 	 (VAL_INDEX(sval)==VAL_INDEX(tval)))
 		 return 0;
+
+	if (In_Cmp_Loop(loop, sval, tval)) return 0;
+
+	REBLEN slen = VAL_TAIL(sval) >= VAL_INDEX(sval) ? VAL_TAIL(sval) - VAL_INDEX(sval) : 0;
+	REBLEN tlen = VAL_TAIL(tval) >= VAL_INDEX(tval) ? VAL_TAIL(tval) - VAL_INDEX(tval) : 0;
+	REBLEN len  = MIN(slen, tlen);
 
 	// make sure that none of block is past tail
 	// https://github.com/Oldes/Rebol-issues/issues/2439
@@ -232,12 +261,29 @@ is_true:
 
 	CHECK_STACK(&s);
 
-	while (!IS_END(s)) {
-		if ((diff = Cmp_Value(s, t, is_case)) != 0)
+	node.a  = VAL_SERIES(sval);
+	node.b  = VAL_SERIES(tval);
+	node.ai = VAL_INDEX(sval);
+	node.bi = VAL_INDEX(tval);
+	node.prev = loop;
+
+	while (len--> 0) {
+		if ((diff = Cmp_Value_Loop(s, t, is_case, &node)) != 0)
 			return diff;
 		s++, t++;
 	}
-	return VAL_TYPE(s) - VAL_TYPE(t);
+	// equal up to the shorter block, so the longer one is greater:
+	return (slen > tlen) ? 1 : (slen < tlen) ? -1 : 0;
+}
+
+
+/***********************************************************************
+**
+*/	REBINT Cmp_Block(REBVAL *sval, REBVAL *tval, REBFLG is_case)
+/*
+***********************************************************************/
+{
+	return Cmp_Block_Loop(sval, tval, is_case, NULL);
 }
 
 
@@ -248,6 +294,19 @@ is_true:
 **		Compare two values and return the difference.
 **
 **		is_case TRUE for case sensitive compare
+**
+***********************************************************************/
+{
+	return Cmp_Value_Loop(s, t, is_case, NULL);
+}
+
+
+/***********************************************************************
+**
+*/	REBINT Cmp_Value_Loop(REBVAL *s, REBVAL *t, REBFLG is_case, REB_CMP_LOOP *loop)
+/*
+**		Same as Cmp_Value, with a chain of series being compared
+**		(circularity detection).
 **
 ***********************************************************************/
 {
@@ -312,9 +371,6 @@ chkMoney:
 	case REB_EVENT:
 		return Cmp_Event(s, t);
 
-	case REB_GOB:
-		return Cmp_Gob(s, t);
-
 	case REB_TUPLE:
 		return Cmp_Tuple(s, t);
 
@@ -326,12 +382,13 @@ chkMoney:
 
 	case REB_BLOCK:
 	case REB_PAREN:
+	case REB_HASH:
 	case REB_MAP:
 	case REB_PATH:
 	case REB_SET_PATH:
 	case REB_GET_PATH:
 	case REB_LIT_PATH:
-		return Cmp_Block(s, t, is_case);
+		return Cmp_Block_Loop(s, t, is_case, loop);
 
 	case REB_STRING:
 	case REB_FILE:
@@ -347,10 +404,25 @@ chkMoney:
 		return Compare_Binary_Vals(s, t);
 
 	case REB_VECTOR:
+		// Element type is the primary key under /case, matching the
+		// ANY_NUMBER handling above (integer! before decimal!). VECT_TYPE's
+		// enum order is signed ints, unsigned ints, then floats.
+		if (is_case) {
+			REBFLG vt2 = VAL_VEC_TYPE(t);
+			REBFLG vt1 = VAL_VEC_TYPE(s);
+			if (vt1 != vt2) return vt1 - vt2;
+		}
 		return Compare_Vector(s, t);
 
 	case REB_DATATYPE:
 		return VAL_DATATYPE(s) - VAL_DATATYPE(t);
+
+	case REB_TYPESET: {
+		// 64-bit sets, so compare them (subtraction could not fit REBINT)
+		REBU64 ts1 = VAL_TYPESET(s);
+		REBU64 ts2 = VAL_TYPESET(t);
+		return (ts1 == ts2) ? 0 : (ts1 < ts2) ? -1 : 1;
+	}
 
 	case REB_WORD:
 	case REB_SET_WORD:
@@ -361,13 +433,14 @@ chkMoney:
 		return Compare_Word(s,t,is_case);
 
 	case REB_ERROR:
-		return VAL_ERR_NUM(s) - VAL_ERR_NUM(s);
+		return VAL_ERR_NUM(s) - VAL_ERR_NUM(t);
 
 	case REB_OBJECT:
 	case REB_MODULE:
+	case REB_TASK:
 	case REB_PORT:
 		//return VAL_OBJ_FRAME(s) - VAL_OBJ_FRAME(t); // strict variant
-		return !CT_Object(s, t, 1); // equality used
+		return !Equal_Object_Loop(s, t, FALSE, loop); // equality used
 
 	case REB_NATIVE:
 		return THE_SIGN(&VAL_FUNC_CODE(s) - &VAL_FUNC_CODE(t));
@@ -375,6 +448,7 @@ chkMoney:
 	case REB_ACTION:
 	case REB_COMMAND:
 	case REB_OP:
+	case REB_CLOSURE:
 	case REB_FUNCTION:
 		return THE_SIGN(VAL_FUNC_BODY(s) - VAL_FUNC_BODY(t));
 
@@ -446,6 +520,53 @@ chkMoney:
 	return R_RET;
 }
 
+
+/***********************************************************************
+**
+*/	REBFLG Swap_Endian(REBYTE *data, REBCNT len, REBCNT width)
+/*
+**		Reverses the byte order of each `width` sized value (2, 4 or 8)
+**		in `len` bytes of data. Trailing bytes which don't form a whole
+**		value are left untouched. The data don't have to be aligned.
+**		Returns FALSE for an unsupported width.
+**
+***********************************************************************/
+{
+	REBCNT i;
+	switch (width) {
+		case 2:
+			for (i = 0; i + 2 <= len; i += 2) {
+				u16 n;
+				memcpy(&n, data + i, 2);
+				n = (u16)((n << 8) | (n >> 8));
+				memcpy(data + i, &n, 2);
+			}
+			break;
+		case 4:
+			for (i = 0; i + 4 <= len; i += 4) {
+				u32 n;
+				memcpy(&n, data + i, 4);
+				n = ((n & 0x000000FFu) << 24) | ((n & 0x0000FF00u) <<  8)
+				  | ((n & 0x00FF0000u) >>  8) | ((n & 0xFF000000u) >> 24);
+				memcpy(data + i, &n, 4);
+			}
+			break;
+		case 8:
+			for (i = 0; i + 8 <= len; i += 8) {
+				u64 n;
+				memcpy(&n, data + i, 8);
+				n = ((n <<  8) & 0xFF00FF00FF00FF00ULL) | ((n >>  8) & 0x00FF00FF00FF00FFULL);
+				n = ((n << 16) & 0xFFFF0000FFFF0000ULL) | ((n >> 16) & 0x0000FFFF0000FFFFULL);
+				n = (n << 32) | (n >> 32);
+				memcpy(data + i, &n, 8);
+			}
+			break;
+		default:
+			return FALSE;
+	}
+	return TRUE;
+}
+
 /***********************************************************************
 **
 */	REBNATIVE(swap_endian)
@@ -459,57 +580,11 @@ chkMoney:
 ]
 ***********************************************************************/
 {
-	REBCNT i;
-	REBCNT width = 2;
 	REBVAL *val = D_ARG(1);
-	REBYTE *bin = VAL_BIN_DATA(D_ARG(1));
-	if (D_REF(2)) width = VAL_INT32(D_ARG(3));
-
+	REBCNT width = D_REF(2) ? VAL_INT32(D_ARG(3)) : 2;
 	REBCNT len = D_REF(4) ? Partial(val, 0, D_ARG(5), 0) : VAL_LEN(val);
-	if (len <= 0) return R_ARG1;
 
-	switch(width) {
-		case 2: {
-			u16 *bp = (u16 *)bin;
-			u16  num;
-			len >>= 1;
-			for (i = 0; i < len; i++) {
-				num = bp[i];
-				bp[i] = (((num & 0x00FF) << 8) |
-				         ((num & 0xFF00) >> 8));
-			}
-			break;
-		}
-		case 4: {
-			u32 *bp = (u32 *)bin;
-			u32  num;
-			len >>= 2;
-			for (i = 0; i < len; i++) {
-				num = bp[i];
-				bp[i] = (((num & 0x000000FF) << 24) |
-				         ((num & 0x0000FF00) <<  8) |
-				         ((num & 0x00FF0000) >>  8) |
-				         ((num & 0xFF000000) >> 24));
-			}
-			break;
-		}
-		case 8: {
-			u64 *bp = (u64 *)bin;
-			u64  num;
-			len >>= 3;
-			for (i = 0; i < len; i++) {
-				num = bp[i];
-				num =  ((num <<  8) & 0xFF00FF00FF00FF00ULL) |
-				       ((num >>  8) & 0x00FF00FF00FF00FFULL);
-				num =  ((num << 16) & 0xFFFF0000FFFF0000ULL) |
-				       ((num >> 16) & 0x0000FFFF0000FFFFULL);
-    			bp[i] = (num << 32) | (num >> 32);
-			}
-			break;
-		}
-		default:
-			Trap1(RE_INVALID_ARG, D_ARG(3));
-	}
-
+	if (len == 0) return R_ARG1;
+	if (!Swap_Endian(VAL_BIN_DATA(val), len, width)) Trap1(RE_INVALID_ARG, D_ARG(3));
 	return R_ARG1;
 }

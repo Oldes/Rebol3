@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,6 +30,8 @@
 ***********************************************************************/
 
 #include "sys-core.h"
+
+static void Protect_Value(REBVAL *value, REBCNT flags);
 
 
 /***********************************************************************
@@ -72,6 +74,63 @@
 
 /***********************************************************************
 **
+*/	static void Protect_Struct_Fields(REBSTU *stu, REBSER *fields, REBCNT offset, REBCNT flags)
+/*
+**		Protects the Rebol values stored in a struct's data, including the
+**		values held in nested structs. `fields` is the field record series
+**		of the (nested) struct and `offset` is its position in the data.
+**
+***********************************************************************/
+{
+	REBSTF *field = (REBSTF *)BLK_HEAD(fields) + 1; // the info is at the head
+	REBCNT count = SERIES_TAIL(fields) - 1;
+	REBCNT i, n;
+	REBVAL *val;
+
+	for (i = 0; i < count; i++, field++) {
+		if (!field->done) continue;
+		switch (field->type) {
+		case STRUCT_TYPE_REBVAL:
+			for (n = 0; n < field->dimension; n++) {
+				val = (REBVAL *)BIN_SKIP(STRUCT_DATA(stu), offset + field->offset + n * field->size);
+				if (IS_END(val)) continue;
+				Protect_Value(val, flags);
+				// Protect_Value marks the series it walks, so it must be
+				// unmarked here - the caller unmarks just the struct itself.
+				Unmark(val);
+			}
+			break;
+		case STRUCT_TYPE_STRUCT:
+			// A nested struct may hold Rebol values too!
+			if (!FIELD_SPEC_HAS_VALUES(field)) break;
+			for (n = 0; n < field->dimension; n++) {
+				Protect_Struct_Fields(stu, field->spec->series, offset + field->offset + n * field->size, flags);
+			}
+			break;
+		}
+	}
+}
+
+/***********************************************************************
+**
+*/	static void Protect_Data(REBSER *series, REBCNT flags)
+/*
+**		Sets or removes the protection of a series holding the data.
+**
+***********************************************************************/
+{
+	if (GET_FLAG(flags, PROT_SET)) {
+		PROTECT_SERIES(series);
+		if (GET_FLAG(flags, PROT_LOCK)) LOCK_SERIES(series);
+	}
+	else
+		//unprotect series only when not locked (using protect/permanently)
+		if (!IS_LOCK_SERIES(series))
+			UNPROTECT_SERIES(series);
+}
+
+/***********************************************************************
+**
 */	static void Protect_Value(REBVAL *value, REBCNT flags)
 /*
 **		Anything that calls this must call Unmark() when done.
@@ -82,8 +141,23 @@
 		Protect_Series(value, flags);
 	else if (IS_OBJECT(value) || IS_MODULE(value))
 		Protect_Object(value, flags);
+	else if (IS_STRUCT(value)) {
+		// A struct is not a series value, but its data are in one. Note that
+		// the data may be shared - with a nested struct or with a vector of
+		// structs - so the protection applies to all views of them!
+		REBSTU *stu = &VAL_STRUCT(value);
+		REBSER *root;
+		Protect_Data(STRUCT_DATA(stu), flags);
+		// The Rebol values held in the struct are stored in their own series,
+		// so they are protected only with the /DEEP refinement. Like the GC,
+		// walk them from the root of the data - this struct may be just a
+		// view into a nested part of it!
+		if (!GET_FLAG(flags, PROT_DEEP)) return;
+		root = STRUCT_DATA_ROOT(stu);
+		if (root && FIELDS_NEED_MARK(root))
+			Protect_Struct_Fields(stu, root, 0, flags);
+	}
 }
-
 
 /***********************************************************************
 **
@@ -97,14 +171,7 @@
 
 	if (IS_MARK_SERIES(series)) return; // avoid loop
 
-	if (GET_FLAG(flags, PROT_SET)) {
-		PROTECT_SERIES(series);
-		if (GET_FLAG(flags, PROT_LOCK)) LOCK_SERIES(series);
-	} 
-	else
-		//unprotect series only when not locked (using protect/permanently)
-		if (!IS_LOCK_SERIES(series))
-			UNPROTECT_SERIES(series);
+	Protect_Data(series, flags);
 
 	if (!ANY_BLOCK(val) || !GET_FLAG(flags, PROT_DEEP)) return;
 
@@ -268,6 +335,9 @@
 	else if (ANY_SERIES(value) || IS_MAP(value)) {
 		if(IS_PROTECT_SERIES(VAL_SERIES(value))) return R_TRUE;
 	}
+	else if (IS_STRUCT(value)) {
+		if(IS_PROTECT_SERIES(VAL_STRUCT_DATA(value))) return R_TRUE;
+	}
 	else if (IS_OBJECT(value) || IS_MODULE(value)) {
 		if(IS_PROTECT_SERIES(VAL_OBJ_FRAME(value))) return R_TRUE;
 	}
@@ -415,6 +485,10 @@
 	REBVAL callback = *D_ARG(ARG_CATCH_CALLBACK);
 	REBVAL *last_result = Get_System(SYS_STATE, STATE_LAST_RESULT);
 	REBOOL quit;
+	// Stack may be moved by the evaluation, so keep copies of what is needed later:
+	REBFLG all   =  D_REF(ARG_CATCH_ALL);
+	REBFLG named =  D_REF(ARG_CATCH_NAME);
+	REBVAL word  = *D_ARG(ARG_CATCH_WORD);
 
 	if (D_REF(ARG_CATCH_QUIT)) {
 		quit = Try_Block_Halt(VAL_SERIES(D_ARG(ARG_CATCH_BLOCK)), VAL_INDEX(D_ARG(ARG_CATCH_BLOCK)));
@@ -435,7 +509,7 @@
 
 			goto callback;
 		}
-		if (!D_REF(ARG_CATCH_NAME)) return R_TOS1;
+		if (!named) return R_TOS1;
 	} else {
 		// Evaluate the block:
 		ret = DO_BLK(D_ARG(ARG_CATCH_BLOCK));
@@ -446,19 +520,19 @@
 		// Get optional thrown name
 		sym = VAL_ERR_SYM(ret);
 
-		if (D_REF(ARG_CATCH_ALL)) goto caught;
+		if (all) goto caught;
 
 		// If a named catch, then check it:
-		if (D_REF(ARG_CATCH_NAME)) {
-			val = D_ARG(ARG_CATCH_WORD); // catch/name value
+		if (named) {
+			val = &word; // catch/name value
 
 			// If name is the same word:
-			if (IS_WORD(val) && sym == VAL_WORD_CANON(val)) goto caught;
+			if (IS_WORD(val) && sym && SYMBOL_TO_CANON(sym) == VAL_WORD_CANON(val)) goto caught;
 
 			// If it is a block of words:
 			else if (IS_BLOCK(val)) {
 				for (val = VAL_BLK_DATA(val); NOT_END(val); val++) {
-					if (IS_WORD(val) && sym == VAL_WORD_CANON(val)) goto caught;
+					if (IS_WORD(val) && sym && SYMBOL_TO_CANON(sym) == VAL_WORD_CANON(val)) goto caught;
 				}
 			}
 			//else if (IS_LOGIC(val) && VAL_LOGIC(val)) goto caught; // used CATCH/name [] true
@@ -566,8 +640,15 @@ callback:	// ...and the last result.
 **
 ***********************************************************************/
 {
-	REBVAL *value = D_ARG(1);
-	REBVAL *into = D_REF(4) ? D_ARG(5) : 0;
+	REBVAL  blk = *D_ARG(1);   // local copies, the stack may move while evaluating
+	REBVAL  into_val;
+	REBVAL *value = &blk;
+	REBVAL *into = 0;
+
+	if (D_REF(4)) {
+		into_val = *D_ARG(5);
+		into = &into_val;
+	}
 
 	if (IS_BLOCK(value) || IS_MAP(value)) {
 		Compose_Block(value, D_REF(2), D_REF(3), into);
@@ -626,20 +707,23 @@ callback:	// ...and the last result.
 ***********************************************************************/
 {
 	REBVAL *value = D_ARG(1);
-	REBINT ret = R_RET;
+	REBINT ret    = R_RET;
+	REBFLG next   = D_REF(4); // read before the stack may move
 
 	switch (VAL_TYPE(value)) {
 
 	case REB_BLOCK:
 	case REB_PAREN:
-		if (D_REF(4)) { // next
-			VAL_INDEX(value) = Do_Next(VAL_SERIES(value), VAL_INDEX(value), 0);
-			if (VAL_INDEX(value) == END_FLAG) {
-				VAL_INDEX(value) = VAL_TAIL(value);
-				Set_Var(D_ARG(5), value);
+		if (next) {
+			REBVAL blk = *value; // local copy; the stack slot stays as the GC root
+			REBCNT idx = Do_Next(VAL_SERIES(&blk), VAL_INDEX(&blk), 0);
+			if (idx == END_FLAG) {
+				VAL_INDEX(&blk) = VAL_TAIL(&blk);
+				Set_Var(DS_ARG(5), &blk);
 				return R_UNSET;
 			}
-			Set_Var(D_ARG(5), value); // "continuation" of block
+			VAL_INDEX(&blk) = idx;
+			Set_Var(DS_ARG(5), &blk); // "continuation" of block
 			return R_TOS;
 		}
 		else DO_BLK(value);
@@ -660,7 +744,7 @@ callback:	// ...and the last result.
 		Do_Path(&value, 0);
 		value = DS_POP; // volatile stack reference
 		if (ANY_FUNC(value)) VAL_SET_OPT(value, OPTS_REVAL);
-		*D_RET = *value;
+		*DS_RETURN = *value;
 		break;
 
 	case REB_WORD:
@@ -704,7 +788,7 @@ callback:	// ...and the last result.
 		ret = R_ARG1;
 	}
 
-	if (D_REF(4)) Set_Var(D_ARG(5), NONE_VALUE); // fallback /next behavior
+	if (next) Set_Var(DS_ARG(5), NONE_VALUE); // fallback /next behavior
 
 	return ret;
 }
@@ -797,9 +881,14 @@ callback:	// ...and the last result.
 ***********************************************************************/
 {
 	REBVAL *val = D_ARG(1);
-	REBVAL *into = D_REF(5) ? D_ARG(6) : 0;
+	REBVAL  into_val;   // local copy; the stack may move while evaluating
+	REBVAL *into = 0;
 	REBCNT type = VAL_TYPE(val);
 
+	if (D_REF(5)) {
+		into_val = *D_ARG(6);
+		into = &into_val;
+	}
 	if (type == REB_BLOCK || type == REB_PAREN) {
 		REBSER *ser = VAL_SERIES(val);
 		REBCNT index = VAL_INDEX(val);

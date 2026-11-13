@@ -43,6 +43,7 @@
 ***********************************************************************/
 
 #include "sys-core.h"
+#include "sys-hash.h"
 #include <stdio.h>
 
 #define WORD_TABLE_SIZE 1024  // initial size in words
@@ -144,7 +145,7 @@
 	REBCNT key;
 	REBCNT hash=0;
 	REBCNT size;
-	REBCNT n, i;
+	REBCNT n, i, step;
 
 	// Allocate a new hash table:
 	Expand_Hash(PG_Word_Table.hashes);
@@ -156,8 +157,7 @@
 	size = PG_Word_Table.hashes->tail;
 	for (n = 1; n < PG_Word_Table.series->tail; n++, word++) {
 		key = CRC_Word(VAL_SYM_NAME(word), UNKNOWN);
-		for (i = 0; i < size; i++) {
-			hash = Hash_Probe(key, i, size);
+		for (PROBE_START(hash, step, key, size), i = 0; i < size; i++, PROBE_NEXT(hash, step, size)) {
 			if (!hashes[hash]) break;
 		}
 		hashes[hash] = n;
@@ -196,7 +196,7 @@
 	REBCNT  hash = 0;
 	REBLEN	size;
 	REBINT	n;
-	REBCNT	h=0, i;
+	REBCNT	h=0, i, step;
 	REBCNT	*hashes;
 	REBVAL  *words;
 	REBVAL  *w;
@@ -228,8 +228,7 @@
 	// Hash the word, including a skip factor for lookup:
 	key  = CRC_Word(str, len);
 	// Search hash table for word match:
-	for (i = 0; i < size; i++) {
-		hash = Hash_Probe(key, i, size);
+	for (PROBE_START(hash, step, key, size), i = 0; i < size; i++, PROBE_NEXT(hash, step, size)) {
 		h = hashes[hash];
 		if (!h) break;
 		while ((n = Compare_UTF8(VAL_SYM_NAME(words + h), str, len)) >= 0) {

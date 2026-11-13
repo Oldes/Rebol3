@@ -54,9 +54,9 @@
 #define HAS_BOOL // don't redefine BOOL in objective-c code
 #endif
 
-#if defined (__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
+#if (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L) \
+ || (defined(_MSC_VER) && _MSC_VER >= 1600)
 /* C-code types: use C99 */
-
 #include <stdint.h>
 
 typedef int8_t			i8;
@@ -121,9 +121,9 @@ typedef unsigned long long u64;
 #define I64_C(c) c ## LL
 #define U64_C(c) c ## ULL
 #endif
-#ifdef __LLP64__
-typedef long long		REBIPT;		// integral counterpart of void*
-typedef unsigned long long	REBUPT;		// unsigned counterpart of void*
+#if defined(__LLP64__) || defined(_WIN64)
+typedef long long		    REBIPT; // integral counterpart of void*
+typedef unsigned long long	REBUPT; // unsigned counterpart of void*
 #else
 typedef long			REBIPT;		// integral counterpart of void*
 typedef unsigned long	REBUPT;		// unsigned counterpart of void*
@@ -136,6 +136,10 @@ typedef unsigned long	REBUPT;		// unsigned counterpart of void*
 
 #endif
 /* C-code types */
+
+// REBUPT/REBIPT carry pointers through the extension API (RL_Series...)
+typedef char REBUPT_holds_a_pointer[(sizeof(REBUPT) == sizeof(void*)) ? 1 : -1];
+typedef char REBIPT_holds_a_pointer[(sizeof(REBIPT) == sizeof(void*)) ? 1 : -1];
 
 #define MAX_U32 U32_C(0xffffffff)
 #define MAX_U64 U64_C(0xffffffffffffffff)
@@ -411,7 +415,7 @@ typedef void(*CFUNC)(void *);
 
 #ifdef ENDIAN_BIG
 
-#define TO_RGBA_COLOR(r,g,b,a) (REBCNT)((r)<<24 | (g)<<16 | (b)<<8 |  (a))
+#define TO_RGBA_COLOR(r,g,b,a) ((REBCNT)(r)<<24 | (REBCNT)(g)<<16 | (REBCNT)(b)<<8 | (REBCNT)(a))
 
 //ARGB pixelformat used on big endian systems
 #define C_A 0
@@ -419,11 +423,11 @@ typedef void(*CFUNC)(void *);
 #define C_G 2
 #define C_B 3
 
-#define TO_PIXEL_COLOR(r,g,b,a) (REBCNT)((a)<<24 | (r)<<16 | (g)<<8 |  (b))
+#define TO_PIXEL_COLOR(r,g,b,a) ((REBCNT)(a)<<24 | (REBCNT)(r)<<16 | (REBCNT)(g)<<8 | (REBCNT)(b))
 
 #else
 
-#define TO_RGBA_COLOR(r,g,b,a) (REBCNT)((a)<<24 | (b)<<16 | (g)<<8 |  (r))
+#define TO_RGBA_COLOR(r,g,b,a) ((REBCNT)(a)<<24 | (REBCNT)(b)<<16 | (REBCNT)(g)<<8 | (REBCNT)(r))
 
 //we use RGBA pixelformat on Android
 #ifdef TO_ANDROID_ARM
@@ -431,14 +435,14 @@ typedef void(*CFUNC)(void *);
 #define C_G 1
 #define C_B 2
 #define C_A 3
-#define TO_PIXEL_COLOR(r,g,b,a) (REBCNT)((a)<<24 | (b)<<16 | (g)<<8 |  (r))
+#define TO_PIXEL_COLOR(r,g,b,a) ((REBCNT)(a)<<24 | (REBCNT)(b)<<16 | (REBCNT)(g)<<8 | (REBCNT)(r))
 #else
 //BGRA pixelformat is used on Windows
 #define C_B 0
 #define C_G 1
 #define C_R 2
 #define C_A 3
-#define TO_PIXEL_COLOR(r,g,b,a) (REBCNT)((a)<<24 | (r)<<16 | (g)<<8 |  (b))
+#define TO_PIXEL_COLOR(r,g,b,a) ((REBCNT)(a)<<24 | (REBCNT)(r)<<16 | (REBCNT)(g)<<8 | (REBCNT)(b))
 #endif
 
 #endif

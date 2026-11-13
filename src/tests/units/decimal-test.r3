@@ -160,23 +160,23 @@ Rebol [
 
 ===start-group=== "cube-root number"
 	--test-- "cube-root positive integers"
-		--assert  0.0 == cube-root 0
-		--assert  1.0 == cube-root 1
-		--assert  2.0 == cube-root 8
-		--assert  3.0 == cube-root 27
-		--assert 10.0 == cube-root 1000
+		--assert  0.0 = cube-root 0
+		--assert  1.0 = cube-root 1
+		--assert  2.0 = cube-root 8
+		--assert  3.0 = cube-root 27
+		--assert 10.0 = cube-root 1000
 
 	--test-- "cube-root negative integers"
-		--assert  -1.0 == cube-root -1
-		--assert  -2.0 == cube-root -8
-		--assert  -3.0 == cube-root -27
-		--assert -10.0 == cube-root -1000
+		--assert  -1.0 = cube-root -1
+		--assert  -2.0 = cube-root -8
+		--assert  -3.0 = cube-root -27
+		--assert -10.0 = cube-root -1000
 
 	--test-- "cube-root decimals"
-		--assert  0.5 == cube-root 0.125
-		--assert  1.5 == cube-root 3.375
-		--assert -0.5 == cube-root -0.125
-		--assert -1.5 == cube-root -3.375
+		--assert  0.5 = cube-root 0.125
+		--assert  1.5 = cube-root 3.375
+		--assert -0.5 = cube-root -0.125
+		--assert -1.5 = cube-root -3.375
 
 	--test-- "cube-root with not compatible types"
 		--assert all [error? e: try [cube-root "27"] e/id = 'expect-arg]
@@ -391,6 +391,12 @@ Rebol [
 		--assert not equiv? 1.#NaN 1.0
 		--assert not strict-equal? 1.#NaN 1.0
 
+	--test-- "almost_equal with distant values (UBSan overflow)"
+		--assert not equal?  1.#INF -1.0
+		--assert not equal? -1.#INF  1.0
+		--assert not equal?  1.#INF -1.#INF
+		--assert equal? [-1.#INF -1.0 0.0 1.0 1.#INF] sort [1.#INF -1.0 1.0 -1.#INF 0.0]
+		--assert equal? 0.0 -0.0
 ===end-group===
 
 ===start-group=== "trigonometric function"

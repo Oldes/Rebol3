@@ -29,6 +29,7 @@
 ***********************************************************************/
 
 #include "sys-core.h"
+#include "sys-hash.h"
 
 /***********************************************************************
 **
@@ -250,12 +251,155 @@ static void No_Nones_Or_Logic(REBVAL *arg) {
 	}
 	else {
 		for (n = 0; n < series->tail; n += skip, val += skip) {
-			if (VAL_TYPE(val) == VAL_TYPE(key) && 0 == Cmp_Value(key, val, cased)) {
+			if (VAL_TYPE(val) == VAL_TYPE(key) && 0 == Cmp_Key_Value(key, val, cased)) {
 				return n;
 			}
 		}
 	}
 	return NOT_FOUND;
+}
+
+
+/***********************************************************************
+**
+*/	static REBFLG Same_Hash_Key(REBVAL *a, REBVAL *b)
+/*
+**		Strict equality (same type, case sensitive), used to keep only
+**		the first occurrence of each value in the hash table of a block.
+**
+***********************************************************************/
+{
+	if (VAL_TYPE(a) != VAL_TYPE(b)) return FALSE;
+	if (ANY_WORD(a)) return VAL_WORD_SYM(a) == VAL_WORD_SYM(b);
+	return 0 == Cmp_Key_Value(a, b, TRUE);
+}
+
+
+/***********************************************************************
+**
+*/	static REBFLG Match_Hash_Key(REBVAL *key, REBVAL *val, REBFLG cased)
+/*
+**		Equality used to find a value in a hash! series. Like for map keys,
+**		values must be of the same type (and decimals are compared exactly),
+**		except words, which match like in FIND (by canon, or with /case,
+**		same spelling and type).
+**
+***********************************************************************/
+{
+	if (ANY_WORD(key)) {
+		if (!ANY_WORD(val)) return FALSE;
+		if (cased) return VAL_WORD_SYM(key) == VAL_WORD_SYM(val) && VAL_TYPE(key) == VAL_TYPE(val);
+		return VAL_WORD_CANON(key) == VAL_WORD_CANON(val);
+	}
+	if (VAL_TYPE(key) != VAL_TYPE(val)) return FALSE;
+	return 0 == Cmp_Key_Value(key, val, cased);
+}
+
+
+/***********************************************************************
+**
+*/	static void Add_Hash_Values(REBSER *ser, REBSER *hser)
+/*
+**		Add values from HASH_COUNT up to the tail of the block to its
+**		hash table. Only the first occurrence of each value is stored.
+**
+***********************************************************************/
+{
+	REBCNT *hashes = (REBCNT *)hser->data;
+	REBCNT len = SERIES_TAIL(hser);
+	REBCNT tail = SERIES_TAIL(ser);
+	REBCNT n, i, e, hashed, step, slot = 0;
+	REBVAL *val;
+
+	for (n = HASH_COUNT(hser); n < tail; n++) {
+		val = BLK_SKIP(ser, n);
+		hashed = Hash_Value(val);
+		for (PROBE_START(slot, step, hashed, len), i = 0; i < len; i++, PROBE_NEXT(slot, step, len)) {
+			e = hashes[slot];
+			if (!e) {
+				hashes[slot] = n + 1; // indexes are 1-based (0 is an empty slot)
+				break;
+			}
+			if (Same_Hash_Key(BLK_SKIP(ser, e - 1), val)) break; // not the first occurrence
+		}
+	}
+	HASH_COUNT(hser) = tail;
+}
+
+
+/***********************************************************************
+**
+*/	static REBSER *Get_Block_Hash(REBSER *ser)
+/*
+**		Return the hash table of the block series, updated up to its tail.
+**		Returns NULL for small blocks (searched linearly) or for series
+**		which use the series link for something else.
+**
+***********************************************************************/
+{
+	REBSER *hser;
+	REBCNT tail = SERIES_TAIL(ser);
+
+	if (IS_HASH_SERIES(ser)) {
+		hser = ser->series;
+		if (HASH_COUNT(hser) == tail) return hser;
+		// Hash appended values, if the load stays below 25% (else rebuild it)
+		if (HASH_COUNT(hser) < tail && tail <= SERIES_TAIL(hser) / 4) {
+			Add_Hash_Values(ser, hser);
+			return hser;
+		}
+		DROP_SERIES_HASH(ser);
+	}
+
+	if (tail <= MIN_DICT * 2 || IS_SLICE_SERIES(ser) || IS_BARE_SERIES(ser)) return NULL;
+
+	hser = Make_Hash_Array(tail * 4); // prime > 8 * tail (load starts at 12.5%)
+	LABEL_SERIES(hser, "block hash");
+	SET_HASH_SERIES(ser, hser);
+	Add_Hash_Values(ser, hser);
+	return hser;
+}
+
+
+/***********************************************************************
+**
+*/	REBCNT Find_Hash_Block(REBSER *ser, REBCNT index, REBVAL *key, REBFLG cased)
+/*
+**		Find a value in a hash! series starting at the index.
+**		Uses the hash table (and same equality for small series too).
+**
+**		RETURNS: the index of the value or NOT_FOUND.
+**
+***********************************************************************/
+{
+	REBSER *hser = Get_Block_Hash(ser);
+	REBCNT end = SERIES_TAIL(ser);
+	REBCNT best = NOT_FOUND;
+	REBFLG before = FALSE;
+	REBCNT *hashes, len, i, e, hashed, step, slot = 0;
+
+	if (hser) {
+		hashes = (REBCNT *)hser->data;
+		len = SERIES_TAIL(hser);
+		hashed = Hash_Value(key);
+		for (PROBE_START(slot, step, hashed, len), i = 0; i < len; i++, PROBE_NEXT(slot, step, len)) {
+			e = hashes[slot];
+			if (!e) break;
+			e--;
+			if (Match_Hash_Key(key, BLK_SKIP(ser, e), cased)) {
+				if (e < index) before = TRUE;
+				else if (e < best) best = e;
+			}
+		}
+		// Only first occurrences are in the table, so if a matching one
+		// is before the index, a later occurrence must be searched linearly.
+		if (!before) return best;
+		if (best != NOT_FOUND) end = best;
+	}
+	for (i = index; i < end; i++) {
+		if (Match_Hash_Key(key, BLK_SKIP(ser, i), cased)) return i;
+	}
+	return best;
 }
 
 
@@ -292,6 +436,8 @@ static void No_Nones_Or_Logic(REBVAL *arg) {
 
 	// Length of target (may modify index): (arg can be anything)
 	rlen = (REBINT)Partial1((action == A_CHANGE) ? block : arg, DS_ARG(AN_LENGTH));
+
+	if (action == A_CHANGE) DROP_SERIES_HASH(series);
 
 	if (action == A_APPEND || index > tail) index = tail;
 
@@ -603,6 +749,7 @@ done:
 	}
 
 	REBU64 flags = 0;
+	REBFLG free_args = FALSE; // decided before sorting, compv may be stale afterwards
 	if (ccase) SET_FLAG(flags, SORT_FLAG_CASE);
 	if (rev)   SET_FLAG(flags, SORT_FLAG_REVERSE);
 	
@@ -611,6 +758,7 @@ done:
 			Trap0(RE_BAD_REFINES);
 		DS_PUSH_INTEGER(skip);
 		if (IS_FUNCTION(compv)) {
+			free_args = TRUE;
 			// Create temporary blocks to hold comparator function arguments
 			Set_Block(&v1, Make_Block(skip));
 			Set_Block(&v2, Make_Block(skip));
@@ -666,7 +814,7 @@ done:
 		stable_sort((void*)VAL_BLK_DATA(block), len, size, cmp);
 	}
 
-	if (all && IS_FUNCTION(compv)) {
+	if (free_args) {
 		// Release temporary blocks
 		ASSERT1(IS_BLOCK(&v1) && IS_BLOCK(&v2), RP_MISC);
 		Free_Series(VAL_SERIES(&v1));
@@ -722,6 +870,10 @@ done:
 		if (i < 0) i++;
 		n = i + VAL_INDEX(pvs->value) - 1;
 	}
+	else if (IS_HASH(pvs->value)) {
+		n = Find_Hash_Block(VAL_SERIES(pvs->value), VAL_INDEX(pvs->value), pvs->select, FALSE);
+		if (n != NOT_FOUND) n++;
+	}
 	else if (IS_WORD(pvs->select)) {
 		n = Find_Word(VAL_SERIES(pvs->value), VAL_INDEX(pvs->value), VAL_WORD_CANON(pvs->select));
 		if (n != NOT_FOUND) n++;
@@ -740,7 +892,11 @@ done:
 			: PE_NONE;
 	}
 
-	if (pvs->setval) TRAP_PROTECT(VAL_SERIES(pvs->value));
+	if (pvs->setval) {
+		TRAP_PROTECT(VAL_SERIES(pvs->value));
+		// The value (or a value inside it, if not at the end of the path) is modified
+		DROP_SERIES_HASH(VAL_SERIES(pvs->value));
+	}
 	pvs->value = VAL_BLK_SKIP(pvs->value, n);
 	// if valset - check PROTECT on block
 	//if (NOT_END(pvs->path+1)) Next_Path(pvs); return PE_OK;
@@ -839,6 +995,7 @@ repick:
 			*D_RET = *value;
 		} else {
 			if (!value) Trap_Range(arg);
+			DROP_SERIES_HASH(ser);
 			arg = D_ARG(3);
 			*value = *arg;
 			*D_RET = *arg;
@@ -865,6 +1022,7 @@ pick_it:
 */
 
 	case A_TAKE:
+		if (IS_FIXED_SIZE_VALUE(value)) Trap0(RE_FIXED_SIZED_SERIES);
 		if (D_REF(ARG_TAKE_ALL)) {
 			if (tail <= index) goto zero_blk;
 			len = tail - index;
@@ -916,6 +1074,7 @@ zero_blk:
 		ret = Find_Block(ser, index, tail, arg, len, args, ret);
 		if(ret != NOT_FOUND) {
 			ret++;
+			DROP_SERIES_HASH(ser);
 			if (ret >= tail) {
 				// when key is last value in the block
 				Expand_Series(ser, tail, 1);
@@ -934,13 +1093,22 @@ zero_blk:
 	case A_FIND:
 	case A_SELECT:
 		args = Find_Refines(ds, ALL_FIND_REFS);
-//		if (ANY_BLOCK(arg) || args) {
+		if (
+			IS_HASH(value)
+			&& !(args & ~(AM_FIND_CASE | AM_FIND_ONLY | AM_FIND_TAIL))
+			&& ((args & AM_FIND_ONLY) || !(ANY_BLOCK(arg) || IS_DATATYPE(arg) || IS_TYPESET(arg)))
+		) {
+			// Single value in a hash! series (map-like equality)
+			len = 1;
+			ret = Find_Hash_Block(ser, index, arg, (args & AM_FIND_CASE) != 0);
+		}
+		else {
 			len = ANY_BLOCK(arg) ? VAL_BLK_LEN(arg) : 1;
 			if (args & AM_FIND_PART) tail = index + Partial1(value, D_ARG(ARG_FIND_RANGE));
 			ret = 1;
 			if (args & AM_FIND_SKIP) ret = Int32s(D_ARG(ARG_FIND_SIZE), 1);
 			ret = Find_Block(ser, index, tail, arg, len, args, ret);
-//		}
+		}
 /*		else {
 			len = 1;
 			ret = Find_Block_Simple(ser, index, arg);
@@ -963,6 +1131,7 @@ zero_blk:
 	case A_APPEND:
 	case A_INSERT:
 	case A_CHANGE:
+		// Length modification is protected later, change is allowed when length is not modified.
 		// Length of target (may modify index): (arg can be anything)
 		len = Partial1((action == A_CHANGE) ? value : arg, DS_ARG(AN_LENGTH));
 		index = VAL_INDEX(value);
@@ -974,7 +1143,9 @@ zero_blk:
 		break;
 
 	case A_CLEAR:
+		if (IS_FIXED_SIZE_VALUE(value)) Trap0(RE_FIXED_SIZED_SERIES);
 		if (index < tail) {
+			DROP_SERIES_HASH(ser);
 			if (index == 0) Reset_Series(ser);
 			else {
 				SET_END(BLK_SKIP(ser, index));
@@ -1013,6 +1184,7 @@ zero_blk:
 	//-- Special actions:
 
 	case A_TRIM:
+		if (IS_FIXED_SIZE_VALUE(value)) Trap0(RE_FIXED_SIZED_SERIES);
 		args = Find_Refines(ds, ALL_TRIM_REFS);
 		Trim_Block(ser, index, args);
 		break;
@@ -1022,6 +1194,8 @@ zero_blk:
 			Trap_Arg(arg);
 		if (IS_PROTECT_SERIES(VAL_SERIES(arg))) Trap0(RE_PROTECTED);
 		if (index < tail && VAL_INDEX(arg) < VAL_TAIL(arg)) {
+			DROP_SERIES_HASH(ser);
+			DROP_SERIES_HASH(VAL_SERIES(arg));
 			val = *VAL_BLK_DATA(value);
 			*VAL_BLK_DATA(value) = *VAL_BLK_DATA(arg);
 			*VAL_BLK_DATA(arg) = val;
@@ -1032,6 +1206,7 @@ zero_blk:
 	case A_REVERSE:
 		len = Partial1(value, D_ARG(3));
 		if (len == 0) break;
+		DROP_SERIES_HASH(ser);
 		value = VAL_BLK_DATA(value);
 		arg = value + len - 1;
 		for (len /= 2; len > 0; len--) {
@@ -1043,6 +1218,7 @@ zero_blk:
 		break;
 
 	case A_SORT:
+		DROP_SERIES_HASH(ser);
 		Sort_Block(
 			value,
 			D_REF(2),	// case sensitive
@@ -1053,6 +1229,8 @@ zero_blk:
 			D_REF(10),	// reverse
 			D_REF(11)	// unstable
 		);
+		DROP_SERIES_HASH(ser); // again, in case a comparator used the series
+		value = DS_ARG(1);     // the comparator may have moved the data stack
 		break;
 
 	case A_RANDOM:
@@ -1067,6 +1245,7 @@ zero_blk:
 			action = A_PICK;
 			goto repick;
 		}
+		DROP_SERIES_HASH(ser);
 		Shuffle_Block(value, D_REF(3));
 		break;
 

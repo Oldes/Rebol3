@@ -200,26 +200,11 @@ FORCE_INLINE
 {
 	REBCNT pos = 0;
 	const REBYTE *end = str + index;
-	while (*str && str < end) {
+	// Not stopping on null, because strings may contain #"^@" chars!
+	while (str < end) {
 		pos += (*str++ & 0xC0) != 0x80;
 	}
 	return pos;
-}
-
-FORCE_INLINE
-/***********************************************************************
-**
-*/	REBCNT UTF8_Skip_Forward(const REBYTE *str, REBLEN chars)
-/*
-**		Return number of bytes needed for given number of chars forward.
-**
-***********************************************************************/
-{
-	REBLEN index = 0;
-	while (chars-- > 0 && str[index]) {
-		index += UTF8_Next_Char_Size(str, index);
-	}
-	return index;
 }
 
 FORCE_INLINE
@@ -233,9 +218,12 @@ FORCE_INLINE
 {
 	REBYTE *head = BIN_HEAD(ser);
 	if (chars > 0) {
-		while (chars-- > 0 && head[index]) {
+		// Bounded by the tail, not by a null byte (strings may contain #"^@" chars)
+		REBCNT tail = SERIES_TAIL(ser);
+		while (chars-- > 0 && index < tail) {
 			index += UTF8_Next_Char_Size(head, index);
 		}
+		if (index > tail) index = tail; // truncated sequence at the tail
 	}
 	else {
 		while (index > 0 && chars < 0) {
@@ -959,7 +947,10 @@ u16_error:
 **
 */	REBCNT Length_As_UTF8_Code_Points(REBYTE *src)
 /*
-**		Returns number of code points encoded in UTF-8.
+**		Returns number of code points encoded in null terminated UTF-8.
+**
+**		Use only for C strings! Series must use UTF8_Length with
+**		its byte length, else bytes past the tail are counted too.
 **
 ***********************************************************************/
 {
@@ -967,6 +958,24 @@ u16_error:
 	while (*src) {
         size += (*src++ & 0xC0) != 0x80;
     }
+	return size;
+}
+
+
+/***********************************************************************
+**
+*/	REBCNT UTF8_Length(const REBYTE *src, REBLEN len)
+/*
+**		Returns number of code points in the given number of UTF-8
+**		encoded bytes. Null bytes are counted as chars.
+**
+***********************************************************************/
+{
+	REBCNT size = 0;
+	const REBYTE *end = src + len;
+	while (src < end) {
+		size += (*src++ & 0xC0) != 0x80;
+	}
 	return size;
 }
 

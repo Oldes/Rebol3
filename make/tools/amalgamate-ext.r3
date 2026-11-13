@@ -97,11 +97,13 @@ context [
 		%reb-args.h
 		%reb-ext.h
 		%reb-ext-handler.h
+		%reb-codec.h
 		%reb-device.h
 		%reb-file.h
 		%reb-filereq.h
 		%reb-event.h
 		%reb-evtypes.h
 		%reb-lib.h
+		%reb-ext-common.h
 	]
 ]

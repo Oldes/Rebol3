@@ -89,6 +89,12 @@
 
 #define CHECK_BIND_TABLE
 
+// Word lists longer than this get a hash index for word lookup.
+// The index is kept in the word list's `series` field (like map's hashes)
+// and the hash series' `size` field holds the number of words indexed.
+#define WORDS_HASH_MIN 64
+#define HASHED_WORDS(hser) ((hser)->size)
+
 /***********************************************************************
 **
 */	void Check_Bind_Table(void)
@@ -153,8 +159,16 @@
 
 	// Expand or copy WORDS block:
 	if (copy) {
+		REBSER *hser = words->series; // word index (see Find_Word_Index)
 		FRM_WORD_SERIES(frame) = Copy_Expand_Block(words, delta);
 		BARE_SERIES(FRM_WORD_SERIES(frame));
+		if (hser) {
+			// The copy has the same words at the same positions, so the index
+			// stays valid. It must be copied, as the lists may differ from now on.
+			words = FRM_WORD_SERIES(frame);
+			words->series = Copy_Series(hser);
+			HASHED_WORDS(words->series) = HASHED_WORDS(hser);
+		}
 	} else {
 		Extend_Series(words, delta);
 		BLK_TERM(words);
@@ -1087,26 +1101,97 @@
 
 /***********************************************************************
 **
+*/  static REBSER *Hash_Word_List(REBSER *wser)
+/*
+**      Return the hash index of a frame word list (canon symbol -> word
+**      index), creating or updating it as needed. Word lists only grow
+**      at the tail, so only the words added since the last call are
+**      hashed. The index is rebuilt when it would get too dense, or
+**      when the list got shorter (should not happen).
+**
+***********************************************************************/
+{
+	REBSER *hser = wser->series;
+	REBCNT len = SERIES_TAIL(wser);
+	REBCNT *hashes;
+	REBCNT size, n, i, h = 0, canon;
+
+	if (!hser || HASHED_WORDS(hser) > len || len > hser->tail / 2) {
+		hser = Make_Hash_Array(len); // size is a prime >= 2 * len
+		HASHED_WORDS(hser) = 1;      // slot 0 (SELF) is not indexed
+		wser->series = hser;
+	}
+	hashes = (REBCNT *)hser->data;
+	size = hser->tail;
+	for (n = HASHED_WORDS(hser); n < len; n++) {
+		canon = VAL_BIND_CANON(BLK_SKIP(wser, n));
+		for (i = 0; i < size; i++) {
+			h = Hash_Probe(canon, i, size);
+			if (!hashes[h]) break;
+		}
+		hashes[h] = n;
+	}
+	HASHED_WORDS(hser) = len;
+	return hser;
+}
+
+
+/***********************************************************************
+**
 */  REBCNT Find_Word_Index(REBSER *frame, REBCNT sym, REBFLG always)
 /*
 **      Search a frame looking for the given word symbol.
 **      Return the frame index for a word. Locate it by matching
 **      the canon word identifiers. Return 0 if not found.
 **
+**      Long word lists use a hash index (see Hash_Word_List).
+**
+**      For short lists, the first pass compares only symbols (no word
+**      table access), which finds words looked up with the same
+**      spelling as they were defined. The second pass compares canon
+**      symbols.
+**
 ***********************************************************************/
 {
-	REBCNT len = SERIES_TAIL(FRM_WORD_SERIES(frame));
-	REBVAL *word = FRM_WORDS(frame) + 1;
+	REBSER *wser = FRM_WORD_SERIES(frame);
+	REBCNT len = SERIES_TAIL(wser);
+	REBVAL *words;
+	REBVAL *word;
 	REBCNT n;
 	REBCNT s;
 
-	s = SYMBOL_TO_CANON(sym); // always compare to CANON sym
+	if (len > WORDS_HASH_MIN) {
+		REBSER *hser = Hash_Word_List(wser);
+		REBCNT *hashes = (REBCNT *)hser->data;
+		REBCNT size = hser->tail;
+		REBCNT i;
 
-	for (n = 1; n < len; n++, word++)
-		if (sym == VAL_BIND_SYM(word) || s == VAL_BIND_CANON(word))
-			return (!always && VAL_GET_OPT(word, OPTS_HIDE)) ? 0 : n;
+		words = BLK_HEAD(wser);
+		s = SYMBOL_TO_CANON(sym);
+		for (i = 0; i < size; i++) {
+			n = hashes[Hash_Probe(s, i, size)];
+			if (!n) return 0;
+			word = words + n;
+			if (sym == VAL_BIND_SYM(word) || s == VAL_BIND_CANON(word)) goto found;
+		}
+		return 0;
+	}
+
+	words = BLK_HEAD(wser);
+
+	// Fast pass: exact symbol match
+	for (n = 1, word = words + 1; n < len; n++, word++)
+		if (sym == VAL_BIND_SYM(word)) goto found;
+
+	// Slow pass: canonical (case insensitive) match
+	s = SYMBOL_TO_CANON(sym);
+	for (n = 1, word = words + 1; n < len; n++, word++)
+		if (s == VAL_BIND_CANON(word)) goto found;
 
 	return 0;
+
+found:
+	return (!always && VAL_GET_OPT(word, OPTS_HIDE)) ? 0 : n;
 }
 
 
@@ -1298,6 +1383,79 @@
 		item = DS_TOP;
 	}
 	return item;
+}
+
+
+/***********************************************************************
+**
+*/	void Query_Fields(REBVAL *value, REBVAL *field, REBVAL *spec, REB_QUERY_FN query_field, void *ctx, REBVAL *ret)
+/*
+**		Shared QUERY/REFLECT for datatypes with an info object
+**		in system/standard (`info` is its STD_*_INFO index).
+**
+**		field:
+**			word!   - one field (or `words`, `spec`)
+**			block!  - [year :month] -> [year: 2026 10]
+**			          (get-words return only the value; the block itself is not modified)
+**			none!   - names of all fields
+**			other   - (object!) object with all fields filled
+**
+***********************************************************************/
+{
+	REBVAL *word, *out;
+	REBVAL tmp;
+	REBSER *ser;
+	REBCNT n;
+
+	if (!IS_OBJECT(spec)) Trap_Arg(spec);
+
+	if (IS_WORD(field)) {
+		switch (VAL_WORD_CANON(field)) {
+		case SYM_WORDS:
+			Set_Block(ret, Get_Object_Words(spec));
+			return;
+		case SYM_SPEC:
+			*ret = *value;
+			return;
+		}
+		if (!query_field(value, field, ret, ctx))
+			Trap_Reflect(VAL_TYPE(value), field);
+	}
+	else if (IS_BLOCK(field)) {
+		ser = Make_Block(2 * VAL_BLK_LEN(field));
+		SAVE_SERIES(ser); // fields may allocate (e.g. vector median)
+		for (word = VAL_BLK_DATA(field); NOT_END(word); word++) {
+			if (!ANY_WORD(word)) Trap1(RE_INVALID_ARG, word);
+			if (!IS_GET_WORD(word)) {
+				out = Append_Value(ser);
+				*out = *word;
+				VAL_TYPE(out) = REB_SET_WORD;
+				VAL_SET_LINE(out);
+			}
+			tmp = *word;
+			VAL_TYPE(&tmp) = REB_WORD;
+			out = Append_Value(ser);
+			if (!query_field(value, &tmp, out, ctx))
+				Trap1(RE_INVALID_ARG, word);
+		}
+		UNSAVE_SERIES(ser);
+		Set_Series(REB_BLOCK, ret, ser);
+	}
+	else if (IS_NONE(field)) {
+		Set_Block(ret, Get_Object_Words(spec));
+	}
+	else {
+		ser = CLONE_OBJECT(VAL_OBJ_FRAME(spec));
+		SAVE_SERIES(ser);
+		word = BLK_HEAD(VAL_OBJ_WORDS(spec));
+		for (n = 0; NOT_END(word); word++, n++) {
+			tmp = *word;
+			VAL_TYPE(&tmp) = REB_WORD;
+			query_field(value, &tmp, OFV(ser, n), ctx);
+		}
+		UNSAVE_SERIES(ser);
+		SET_OBJECT(ret, ser);
+	}
 }
 
 

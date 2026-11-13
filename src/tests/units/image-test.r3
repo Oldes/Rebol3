@@ -17,9 +17,6 @@ Rebol [
 	--test-- "make image using pair and RGBA tuple"
 		--assert image? img: make image! [2x2 255.0.0.10]
 		--assert 255.0.0.10 = img/1
-	--test-- "make image from gob"
-	;@@ https://github.com/Oldes/Rebol-issues/issues/12
-		--assert-er try [image? to image! make gob! []]
 	--test-- "maximum limit"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/1660
 		--assert all [
@@ -42,6 +39,13 @@ Rebol [
 	--test-- "image /width /height"
 		img: make image! 2x3
 		--assert all [img/width == 2 img/height == 3]
+
+	--test-- "equal? compares image size"
+		;; same 16 white pixels, different shapes
+		--assert not equal? make image! 2x8 make image! 4x4
+		--assert not equal? make image! 16x1 make image! 1x16
+		--assert equal? make image! 4x4 make image! 4x4
+		--assert not same? make image! 4x4 make image! 4x4
 
 ===end-group===
 
@@ -83,6 +87,51 @@ Rebol [
 		--assert datatype? try [load {#(image!)}]
 
 ===end-group===
+
+
+===start-group=== "query image"
+	--test-- "query image basic"
+		img: make image! 3x2
+		--assert 3x2 = query img 'size
+		--assert 3   = query img 'width
+		--assert 2   = query img 'height
+		--assert 6   = query img 'length
+		--assert 1x1 = query img 'position
+		--assert 3x2 = size? img
+	--test-- "query image at position"
+		img: at make image! 3x2 5
+		--assert 2   = query img 'length
+		--assert 2x2 = query img 'position
+		--assert 3x2 = query img 'size
+	--test-- "query image block"
+		img: make image! 3x2
+		--assert [size: 3x2 width: 3] = query img [size width]
+		--assert [3x2 3] = query img [:size :width]
+		--assert error? try [query img [foo]]
+	--test-- "query image object"
+		o: query make image! [2x1 255.0.0] object!
+		--assert object? o
+		--assert o/size = 2x1
+		--assert o/color = 255.0.0.255
+		--assert o/opaque
+	--test-- "query image opaque"
+		img: make image! 2x2
+		--assert query img 'opaque
+		img/1: 0.0.0.0
+		--assert not query img 'opaque
+	--test-- "query image words"
+		--assert [size width height length position opaque color] = words-of img
+		--assert error? try [query img 'foo]
+	--test-- "query empty image"
+		img: make image! 0x0
+		--assert 0x0 = size? img
+		--assert 0x0 = query img 'size
+		--assert 0   = query img 'length
+		--assert 1x1 = query img 'position
+		--assert 0.0.0.0 = query img 'color
+		--assert query img 'opaque   ; no pixels = nothing transparent
+===end-group===
+
 
 ===start-group=== "INDEX? / INDEXZ? / AT / ATZ"
 	img: make image! 2x2
@@ -136,6 +185,17 @@ Rebol [
 	--test-- "mold/all image with modified index"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/1037
 		--assert 2x1 = index?/xy load mold/all next make image! 3x2
+
+	--test-- "index?/xy on an image with zero width"
+		img: make image! 0x3
+		--assert 1x1 = index?/xy img
+		--assert 0x0 = indexz?/xy img
+		--assert 1 = index? img
+		--assert 0 = indexz? img
+		img: make image! 3x2
+		--assert 1x1 = index?/xy img
+		--assert 2x2 = index?/xy skip img 4
+		--assert 1x1 = indexz?/xy skip img 4
 
 ===end-group===
 
@@ -272,10 +332,87 @@ Rebol [
 				vector? img/:format: make vector! compose [uint8! (bin)]
 				img/:format = bin
 			]
-
-
 	]
+
+	--test-- "image setters do not write past the image"
+		img: make image! 1x1
+		big: append/dup make binary! 4'000'000 #{7F} 4'000'000
+		img/gray: big                       ;; 4M values for 1 pixel
+		--assert img/gray == #{7F}
+		img/rgba: big                       ;; 1M pixels for 1
+		--assert img/rgba == #{7F7F7F7F}
+
+	--test-- "integer gray keeps the alpha"
+		img: make image! [2x1 0.0.0 100]    ;; black, alpha 100
+		img/gray: 50
+		--assert img/rgb   == #{323232323232}
+		--assert img/alpha == #{6464}
+		img/gray: 0
+		--assert img/alpha == #{6464}       ;; was set to 0 before
 ===end-group===
+
+
+===start-group=== "IMAGE pixels from a VECTOR"
+	rgba: make struct! [r [uint8!] g [uint8!] b [uint8!] a [uint8!]]
+
+--test-- "set the image pixels from a vector of pixels"
+	img: make image! 2x1
+	v: to vector! img
+	v/1: 0
+	img/rgba: v
+	--assert 0.0.0.0 = img/1
+	--assert 255.255.255.255 = img/2
+
+--test-- "an image converted to a vector and back is not changed"
+	img: make image! 2x2
+	img/1: 1.2.3.4
+	img/4: 5.6.7.8
+	v: to vector! img
+	out: make image! 2x2
+	out/rgba: v
+	--assert 1.2.3.4 = out/1
+	--assert 5.6.7.8 = out/4
+
+--test-- "set the image pixels from a vector of structs"
+	img: make image! 2x1
+	v: as rgba to vector! img
+	v/1/r: 1
+	v/1/g: 2
+	v/1/b: 3
+	v/1/a: 4
+	img/rgba: v
+	--assert 1.2.3.4 = img/1
+
+--test-- "set a single channel from a vector"
+	img: make image! 2x1
+	img/alpha: make vector! [uint8! 2]
+	--assert 0 = img/1/4
+	--assert 0 = img/2/4
+	a: make vector! [uint8! [1 2]]
+	img/alpha: a
+	--assert 1 = img/1/4
+	--assert 2 = img/2/4
+
+--test-- "a vector shorter than the image sets only its part"
+	img: make image! 3x1
+	v: make vector! [uint32! 1]
+	img/rgba: v
+	--assert 0.0.0.0 = img/1
+	--assert 255.255.255.255 = img/3
+
+--test-- "the position of the vector is respected"
+	img: make image! 1x1
+	v: make vector! [uint8! [0 0 0 0 1 2 3 4]]
+	img/rgba: skip v 4
+	--assert 1.2.3.4 = img/1
+
+--test-- "only a binary or a vector may be used"
+	img: make image! 1x1
+	--assert error? try [img/rgba: "data"]
+	--assert error? try [img/rgba: [1 2 3 4]]
+
+===end-group===
+
 
 
 ===start-group=== "image/color"
@@ -334,6 +471,40 @@ FFFFFFDC1616212121212121
 000000DC1616DC1616FFFFFF
 FFFFFFDC1616212121212121
 42A64242A64242A64242A642}
+
+	--test-- "image change/dup does not write past the image"
+		img: make image! 2x2
+		--assert tail? change/dup img #{FF0000FF} 100
+		--assert 4 = length? img
+		--assert 255.0.0.255 = pick img 4
+		img: make image! 2x2
+		--assert tail? change/dup img [1.2.3.4] 100
+		--assert 4 = length? img
+		img: make image! 2x2
+		--assert tail? change/dup img 10.20.30 100
+
+	--test-- "image change/part with /part larger than the binary"
+		img: make image! 4x1
+		change/part img #{FF0000FF} 100
+		--assert 4 = length? img
+		--assert 255.0.0.255 = pick img 1
+		--assert 255.255.255.255 = pick img 2
+
+	--test-- "image with index past its tail"
+		img: make image! 2x2
+		p: tail img
+		clear img
+		--assert 0 = length? p
+		--assert none? find p 255.255.255.255
+		--assert none? find p 255
+		change p 1.2.3
+		change/dup p 1.2.3 5
+		--assert 0 = length? img
+		img: make image! 2x2
+		p: skip img 3
+		clear img
+		change/dup p #{FF0000FF} 3
+		--assert 0 = length? img
 ===end-group===
 
 ===start-group=== "image pixel assignment validity"
@@ -353,9 +524,9 @@ FFFFFFDC1616212121212121
 		--assert 255.255.255.255 = img/1
 ===end-group===
 
+if any-function? :rgb-to-hsv [ 
 ===start-group=== "RGB - HSV conversions"
 ;@@ https://github.com/Oldes/Rebol-issues/issues/2342
-
 --test-- "RGB-TO-HSV"
 	--assert 36.235.134     = rgb-to-hsv 134.116.10
 	--assert 36.235.134.100 = rgb-to-hsv 134.116.10.100
@@ -366,9 +537,10 @@ FFFFFFDC1616212121212121
 	--assert 5.9.10.100 = hsv-to-rgb 134.116.10.100
 	--assert 63.123.134 = hsv-to-rgb 134.134.134
 	--assert 0.1.2      = hsv-to-rgb 134.134.2
-
 ===end-group===
+]
 
+if any-function? :color-distance [
 ===start-group=== "RGB color distance"
 --test-- "color-distance"
 	--assert 764.83 = round/to color-distance 0.0.0 255.255.255 0.01
@@ -377,7 +549,9 @@ FFFFFFDC1616212121212121
 	--assert 41.3   = round/to color-distance 175.200.100 200.200.100 0.01
 	--assert 0.0    = round/to color-distance 200.200.100 200.200.100 0.01
 ===end-group===
+]
 
+if any-function? :image-diff [
 ===start-group=== "Image difference"
 --test-- "image-diff (same sizes)"
 	i1: load %units/files/flower.png
@@ -407,7 +581,9 @@ FFFFFFDC1616212121212121
 	--assert error? try [image-diff/part i1 i2 3x0 1x2] ;; offset out of range
 	--assert error? try [image-diff/part i1 i2 0x2 1x2] 
 ===end-group===
+]
 
+if any-function? :tint [
 ===start-group=== "Tint color"
 --test-- "Tint tuple"
 	c: 100.200.255
@@ -422,9 +598,10 @@ FFFFFFDC1616212121212121
 	i: make image! [2x1 100.200.255]
 	--assert 114.164.192.255 = first  tint i 128.128.128 50% ;@@ image is being modified!
 	--assert 121.146.160.255 = second tint i 128.128.128 50%
-
 ===end-group===
+]
 
+if any-function? :luminosity [
 ===start-group=== "Luminosity / Grayscale"
 ;; Use to convert images (or single colors) to grayscale
 --test-- "Luminosity tuple (BT.709)"
@@ -487,8 +664,9 @@ FFFFFFDC1616212121212121
 		#{959595FF95959580} == to binary! img
 	]
 ===end-group===
+]
 
-
+if any-function? :premultiply [
 ===start-group=== "PREMULTIPLY"
 
 --test-- "premultiply image 1 (no alpha)"
@@ -505,8 +683,9 @@ FFFFFFDC1616212121212121
 	--assert i/rgb = #{000000643280C864FF}
 
 ===end-group===
+]
 
-
+if any-function? :blur [
 ===start-group=== "BLUR"
 if value? 'blur [
 --test--  "blur"
@@ -532,7 +711,48 @@ if value? 'blur [
 	t: i: none
 ]
 ===end-group===
+]
 
+if any-function? :remap [
+===start-group=== "REMAP"
+	--test-- "remap with a vector palette"
+		--assert (remap #{0201} make vector! [uint8! [7 8 9]]) == make vector! [uint8! [9 8]]
+		pal: make vector! [uint8! [10 11 20 21 30 31]]
+		--assert (remap/stride make vector! [uint16! [2 0]] pal 2) == make vector! [uint8! [30 31 10 11]]
+		--assert (remap make vector! [int32! [1]] make vector! [float32! [0.5 1.5]]) == make vector! [float32! [1.5]]
+		;; from the index of the indices
+		--assert (remap next #{0001} make vector! [uint8! [7 8]]) == make vector! [uint8! [8]]
+
+	--test-- "remap/into a vector"
+		out: make vector! [uint8! 5]
+		--assert 2 = index? remap/into #{0100} make vector! [uint8! [7 8]] next out
+		--assert out == make vector! [uint8! [0 8 7 0 0]]
+
+	--test-- "remap refuses invalid input"
+		--assert error? try [remap #{03} make vector! [uint8! [1 2 3]]]                 ;; index too large
+		--assert error? try [remap make vector! [int8! [-1]] make vector! [uint8! [1 2]]] ;; negative index
+		--assert error? try [remap make vector! [float32! [0.0]] make vector! [uint8! [1]]] ;; float indices
+		--assert error? try [remap/stride #{00} make vector! [uint8! [1 2 3]] 2]         ;; partial entry
+		--assert error? try [remap/stride #{00} make vector! [uint8! [1 2]] 0]
+		--assert error? try [remap/into #{0000} make vector! [uint8! [1]] make vector! [uint8! 1]]   ;; no room
+		--assert error? try [remap/into #{00} make vector! [uint8! [1]] make vector! [uint16! 1]]    ;; other type
+
+	--test-- "remap with an image palette"
+		pal: make image! [2x1 #{FF000000FF00}]
+		img: remap #{000101} pal
+		--assert img/size == 3x1
+		--assert img/rgb == #{FF000000FF0000FF00}
+		;; a shaped vector of indices gives the image its shape
+		img: remap make vector! [uint8! 2x2 [0 1 1 0]] pal
+		--assert img/size == 2x2
+		--assert img/rgb == #{FF000000FF0000FF00FF0000}
+		;; into an existing image
+		img: make image! 2x2
+		--assert same? img remap/into #{01000100} pal img
+		--assert img/rgb == #{00FF00FF000000FF00FF0000}
+		--assert error? try [remap/into #{0000000000} pal img]   ;; does not fit
+===end-group===
+]
 
 ===start-group=== "Save/load image"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2534

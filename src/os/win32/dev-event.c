@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -46,10 +46,10 @@ void Done_Device(REBUPT handle, int error);
 
 // Move or remove globals? !?
 HWND Event_Handle = 0;			// Used for async DNS
-static int Timer_Id = 0;		// The timer we are using
+static HANDLE Wait_Timer = 0;	// Waitable timer used by WAIT (see Query_Events)
 
-#ifdef REB_VIEW
-extern HWND      Focused_Window;
+#ifndef CREATE_WAITABLE_TIMER_HIGH_RESOLUTION
+#define CREATE_WAITABLE_TIMER_HIGH_RESOLUTION 0x00000002 // Windows 10 1803+
 #endif
 
 /***********************************************************************
@@ -109,6 +109,17 @@ extern HWND      Focused_Window;
 
 	if (!Event_Handle) return DR_ERROR;
 
+	// Timer used to sleep in WAIT. The high resolution one is precise to
+	// ~1ms without changing the system wide timer resolution. On older
+	// systems fall back to a normal one (system timer tick ~15.6ms).
+	Wait_Timer = CreateWaitableTimerExW(NULL, NULL,
+		CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
+	if (!Wait_Timer)
+		Wait_Timer = CreateWaitableTimerExW(NULL, NULL, 0, TIMER_ALL_ACCESS);
+
+	// Poll this device on each wait, even without any pending request,
+	// so messages (like WM_DNS for async DNS) are processed promptly.
+	SET_FLAG(dev->flags, RDO_AUTO_POLL);
 	SET_FLAG(dev->flags, RDF_INIT);
 	return DR_DONE;
 }
@@ -136,8 +147,6 @@ extern HWND      Focused_Window;
 	while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
 	{
 		flag = DR_PEND;
-		if (msg.message == WM_TIMER)
-			break;
 		if (msg.message == WM_DNS)
 			Done_Device(msg.wParam, msg.lParam>>16); // error code
 		else {
@@ -159,32 +168,31 @@ extern HWND      Focused_Window;
 **		Wait for an event or a timeout sepecified by req->length.
 **		This is used by WAIT as the main timing method.
 **
+**		Sleeps until the timeout or until any message arrives
+**		(GUI, WM_DNS...), which are then processed.
+**
 ***********************************************************************/
 {
-	MSG msg;
+	LARGE_INTEGER due;
+	DWORD result;
 
-	// Set timer (we assume this is very fast):
-	Timer_Id = SetTimer(0, Timer_Id, req->length, 0);
-
-	// Wait for message or the timer:
-	if (GetMessage(&msg, NULL, 0, 0)) {
-		//printf("Msg: %d\n", msg.message);
-		if (msg.message == WM_DNS)
-			Done_Device(msg.wParam, msg.lParam>>16); // error code
-		else {
-			#ifdef REB_VIEW
-			if(Focused_Window && !IsDialogMessage(Focused_Window, &msg)) {
-				TranslateMessage(&msg);
-				DispatchMessage(&msg);
-			}
-			#endif
-		}
+	if (Wait_Timer) {
+		// Relative time in 100ns units:
+		due.QuadPart = -(LONGLONG)req->length * 10000;
+		SetWaitableTimer(Wait_Timer, &due, 0, NULL, NULL, FALSE);
+		result = MsgWaitForMultipleObjectsEx(1, &Wait_Timer, INFINITE,
+			QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+		if (result != WAIT_OBJECT_0)
+			CancelWaitableTimer(Wait_Timer); // woken by a message
+	}
+	else {
+		MsgWaitForMultipleObjectsEx(0, NULL, req->length,
+			QS_ALLINPUT, MWMO_INPUTAVAILABLE);
 	}
 
-	// Quickly check for other events:
+	// Process messages which woke us (or came meanwhile):
 	Poll_Events(0);
 
-	//if (Timer_Id) KillTimer(0, Timer_Id);
 	return DR_DONE;
 }
 

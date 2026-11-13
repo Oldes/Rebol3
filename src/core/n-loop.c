@@ -244,6 +244,8 @@ enum loop_each_mode {
 	REBINT idx;
 	REBINT inc = 1;
 	REBCNT type;
+	REBINT o_var;
+	REBVAL *res;
 
 	var = Get_Var(D_ARG(1));
 	if (IS_NONE(var)) return R_NONE;
@@ -276,14 +278,16 @@ enum loop_each_mode {
 				VAL_INDEX(var) = idx;
 			}
 			//----------------------------------------------------
-			ds = Do_Blk(body, bodi); // (may move stack)
-			if (THROWN(ds)) {	// Break, throw, continue, error.
-				if (Check_Error(ds) >= 0) {
+			o_var = DS_OFFSET(var);
+			res = Do_Blk(body, bodi); // may move the data stack
+			DS_REBASE(var, o_var);
+			if (THROWN(res)) {	// Break, throw, continue, error.
+				if (Check_Error(res) >= 0) {
 					*DS_RETURN = *DS_NEXT; // use thrown result as a return
-					return R_RET; // does not resets series position
+					return R_RET; // does not reset series position
 				}
 			}
-			*DS_RETURN = *ds;
+			*DS_RETURN = *res;
 			// Evaluation may swap the var series...
 			if (VAL_TYPE(var) != type) Trap_Arg(var);
 			//----------------------------------------------------
@@ -306,14 +310,16 @@ cont_utf8:
 				VAL_INDEX(var) = idx;
 			}
 			//----------------------------------------------------
-			ds = Do_Blk(body, bodi); // (may move stack)
-			if (THROWN(ds)) {	// Break, throw, continue, error.
-				if (Check_Error(ds) >= 0) {
+			o_var = DS_OFFSET(var);
+			res = Do_Blk(body, bodi); // may move the data stack
+			DS_REBASE(var, o_var);
+			if (THROWN(res)) {	// Break, throw, continue, error.
+				if (Check_Error(res) >= 0) {
 					*DS_RETURN = *DS_NEXT; // use thrown result as a return
-					return R_RET; // does not resets series position
+					return R_RET; // does not reset series position
 				}
 			}
-			*DS_RETURN = *ds;
+			*DS_RETURN = *res;
 			// Evaluation may swap the var series...
 			if (VAL_TYPE(var) != type) Trap_Arg(var);
 			//----------------------------------------------------
@@ -460,7 +466,7 @@ cont_utf8:
 					}
 
 					else if (IS_VECTOR(value)) {
-						Get_Vector_Value(vars, series, index);
+						Get_Vector_Value(vars, value, index);
 					}
 
 					else if (IS_MAP(value)) {

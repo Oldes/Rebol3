@@ -43,7 +43,7 @@
 
 	if (mode < 0) return -1;
 	if (mode == 3) return VAL_SERIES(a) == VAL_SERIES(b) && VAL_INDEX(a) == VAL_INDEX(b);
-	e = VAL_IMAGE_WIDE(a) == VAL_IMAGE_WIDE(a) && VAL_IMAGE_HIGH(b) == VAL_IMAGE_HIGH(b);
+	e = VAL_IMAGE_WIDE(a) == VAL_IMAGE_WIDE(b) && VAL_IMAGE_HIGH(a) == VAL_IMAGE_HIGH(b);
 	if (e) e = (0 == Cmp_Value(a, b, mode > 1));
 	return e;
 }
@@ -375,7 +375,6 @@ FORCE_INLINE
 	}
 }
 
-
 /***********************************************************************
 **
 */	void Channel_To_Bin(REBYTE* bin, REBYTE* rgba, REBINT len, REBCNT type)
@@ -465,6 +464,19 @@ FORCE_INLINE
 		rgba[C_B] = bin[2];
 		rgba[C_A] = 255 - bin[3];
 	}
+}
+
+typedef void (*REB_PIXEL_COPY)(REBYTE *rgba, REBCNT len, REBVAL *src, REBOOL only);
+FORCE_INLINE
+static void Copy_Binary_Pixels(REBYTE *rgba, REBCNT len, REBVAL *src, REBOOL only)
+{
+	Bin_To_RGBA(rgba, len, VAL_BIN_DATA(src), len, only);
+}
+FORCE_INLINE
+static void Copy_Tuple_Pixels(REBYTE *rgba, REBCNT len, REBVAL *src, REBOOL only)
+{
+	UNUSED(only); // Tuples_To_RGBA always writes the alpha, as before
+	Tuples_To_RGBA(rgba, len, VAL_BLK_DATA(src), len);
 }
 
 
@@ -789,6 +801,7 @@ INLINE REBCNT ARGB_To_BGR(REBCNT i)
 			} else
 				Trap_Arg(len);
 			part = MAX(part, 0);
+			part = MIN(part, (REBINT)(VAL_LEN(arg) / 4)); // do not read past the binary
 		} else if (IS_IMAGE(arg)) {
 			if (IS_INTEGER(len)) {
 				part = VAL_INT32(len);
@@ -866,18 +879,20 @@ INLINE REBCNT ARGB_To_BGR(REBCNT i)
 		}
 	} else if (IS_IMAGE(arg)) {
 		Copy_Rect_Data(value, x, y, partx, party, arg, 0, 0); // dst dx dy w h src sx sy
-	} else if (IS_BINARY(arg)) {
-		if (index + part > tail) part = tail - index; // clip it
+	} else if (IS_BINARY(arg) || IS_BLOCK(arg)) {
+		REB_PIXEL_COPY copy = IS_BINARY(arg) ? Copy_Binary_Pixels : Copy_Tuple_Pixels;
+		REBCNT room  = (index < tail) ? tail - index : 0;
+		REBCNT n     = MIN((REBCNT)part, room);
+		REBU64 total = MIN((REBU64)dup * n, (REBU64)room);
+		REBCNT full  = n ? (REBCNT)(total / n) : 0;
+		REBCNT rest  = n ? (REBCNT)(total % n) : 0;
+
 		ip += index * 4;
-		for (; dup > 0; dup--, ip += part * 4)
-			Bin_To_RGBA(ip, part, VAL_BIN_DATA(arg), part, only);
-	} else if (IS_BLOCK(arg)) {
-		if (index + part > tail) part = tail - index; // clip it
-		ip += index * 4;
-		for (; dup > 0; dup--, ip += part * 4)
-			Tuples_To_RGBA(ip, part, VAL_BLK_DATA(arg), part);
+		for (; full > 0; full--, ip += n * 4) copy(ip, n, arg, only);
+		if (rest) copy(ip, rest, arg, only);
 	} else Trap_Type(arg);
 
+	if (VAL_INDEX(value) > VAL_TAIL(value)) VAL_INDEX(value) = VAL_TAIL(value); // change/dup past the tail
 	Reset_Height(value);
 
 	if (action == A_APPEND) VAL_INDEX(value) = 0;
@@ -1059,6 +1074,52 @@ find_none:
 
 /***********************************************************************
 **
+*/	static REBOOL Query_Image_Field(REBVAL *data, REBVAL *field, REBVAL *ret, void *ctx)
+/*
+**		Set a value with image info according to the specified field.
+**		Accepts any word type (does not modify the field).
+**
+***********************************************************************/
+{
+	REBCNT w     = VAL_IMAGE_WIDE(data);
+	REBCNT tail  = VAL_TAIL(data);
+	REBCNT index = MIN(VAL_INDEX(data), tail);
+
+	switch (VAL_WORD_CANON(field)) {
+	case SYM_SIZE:
+		VAL_SET(ret, REB_PAIR);
+		VAL_PAIR_X(ret) = (REBD32)w;
+		VAL_PAIR_Y(ret) = (REBD32)VAL_IMAGE_HIGH(data);
+		break;
+	case SYM_WIDTH:
+		SET_INTEGER(ret, w);
+		break;
+	case SYM_HEIGHT:
+		SET_INTEGER(ret, VAL_IMAGE_HIGH(data));
+		break;
+	case SYM_LENGTH:
+		SET_INTEGER(ret, tail - index);
+		break;
+	case SYM_POSITION:
+		VAL_SET(ret, REB_PAIR);
+		VAL_PAIR_X(ret) = (REBD32)(w ? (index % w) + 1 : 1);
+		VAL_PAIR_Y(ret) = (REBD32)(w ? (index / w) + 1 : 1);
+		break;
+	case SYM_OPAQUE:
+		SET_LOGIC(ret, !Image_Has_Alpha(data, FALSE));
+		break;
+	case SYM_COLOR:
+		Average_Image_Color(VAL_IMAGE_DATA(data), ret, tail - index);
+		break;
+	default:
+		return FALSE;
+	}
+	return TRUE;
+}
+
+
+/***********************************************************************
+**
 */	REBTYPE(Image)
 /*
 ***********************************************************************/
@@ -1074,7 +1135,7 @@ find_none:
 	// Clip index if past tail:
 	if (action != A_MAKE && action != A_TO) {
 		tail = (REBINT)SERIES_TAIL(series);
-		if (index > tail) index = tail;
+		if (index > tail) VAL_INDEX(value) = (REBCNT)(index = tail);
 	}
 
 	// Check must be in this order (to avoid checking a non-series value);
@@ -1108,27 +1169,17 @@ find_none:
 		break;
 
 	case A_INDEXQ:
-		if (D_REF(2)) {
-			VAL_SET(D_RET, REB_PAIR);
-			// 1-based result! -> https://github.com/Oldes/Rebol-issues/issues/2409
-			VAL_PAIR_X(D_RET) = (REBD32)(index % VAL_IMAGE_WIDE(value)) + 1;
-			VAL_PAIR_Y(D_RET) = (REBD32)(index / VAL_IMAGE_WIDE(value)) + 1;
-			return R_RET;
-		} else {
-			DS_RET_INT(index + 1);
-			return R_RET;
-		}
 	case A_INDEXZQ:
 		if (D_REF(2)) {
+			REBCNT wide = VAL_IMAGE_WIDE(value);
+			REBD32 base = (action == A_INDEXQ) ? 1.0f : 0.0f; // 1-based for index?, see issue 2409
 			VAL_SET(D_RET, REB_PAIR);
-			VAL_PAIR_X(D_RET) = (REBD32)(index % VAL_IMAGE_WIDE(value));
-			VAL_PAIR_Y(D_RET) = (REBD32)(index / VAL_IMAGE_WIDE(value));
+			VAL_PAIR_X(D_RET) = (REBD32)(wide ? (REBCNT)index % wide : 0) + base;
+			VAL_PAIR_Y(D_RET) = (REBD32)(wide ? (REBCNT)index / wide : 0) + base;
 			return R_RET;
 		}
-		else {
-			DS_RET_INT(index);
-			return R_RET;
-		}
+		DS_RET_INT(action == A_INDEXQ ? index + 1 : index);
+		return R_RET;
 	case A_LENGTHQ:
 		DS_RET_INT(tail > index ? tail - index : 0);
 		return R_RET;
@@ -1172,7 +1223,7 @@ find_none:
 		}
 
 		if (action == A_POKE) {
-			REBINT *dp = QUAD_SKIP(series, index));
+			REBINT *dp = QUAD_SKIP(series, index);
 			REBINT n;
 
 			arg = D_ARG(3);
@@ -1191,7 +1242,7 @@ find_none:
 			else
 				Trap_Arg(arg);
 
-			*dp = (*dp & 0xffffff) | (n << 24);
+			*dp = (*dp & 0xffffff) | ((REBCNT)n << 24);
 			DS_RET_VALUE(arg);
 			return R_RET; //was value;
 
@@ -1239,19 +1290,6 @@ find_none:
 
 	case A_TO:
 		if (IS_IMAGE(arg)) goto makeCopy;
-		else if (IS_GOB(arg)) {
-			//originally it was returning image without content when conversion failed!
-			//value = Make_Image(ROUND_TO_INT(GOB_W(VAL_GOB(arg))), ROUND_TO_INT(GOB_H(VAL_GOB(arg))));
-#ifndef REB_VIEW
-			//TODO: remove this once OS_Gob_To_Image will be for all systems
-			Trap0(RE_FEATURE_NA);
-#else
-			series = OS_Gob_To_Image(VAL_GOB(arg));
-#endif
-			if (!series) Trap_Make(REB_IMAGE, arg);
-			SET_IMAGE(value, series);
-			break;
-		}
 		else if (IS_BINARY(arg)) {
 			diff = VAL_LEN(arg) / 4;
 			if (diff == 0) Trap_Make(REB_IMAGE, arg);
@@ -1357,6 +1395,14 @@ makeCopy2:
 		return R_RET;
 		break;
 
+	case A_REFLECT:
+		Query_Fields(value, D_ARG(2), Get_System(SYS_STANDARD, STD_IMAGE_INFO), Query_Image_Field, NULL, D_RET);
+		return R_RET;
+
+	case A_QUERY:
+		Query_Fields(value, D_ARG(ARG_QUERY_FIELD), Get_System(SYS_STANDARD, STD_IMAGE_INFO), Query_Image_Field, NULL, D_RET);
+		return R_RET;
+		
 	default:
 		Trap_Action(VAL_TYPE(value), action);
 	}
@@ -1371,6 +1417,25 @@ is_true:
 	return R_TRUE;
 }
 
+
+// Raw data of a binary or of any vector, used as a source of the image's
+// pixels or channels. A vector's index and length are counted in elements,
+// so they must be scaled by the element size.
+static
+REBFLG Get_Image_Source(REBVAL *val, REBYTE **data, REBCNT *len)
+{
+	if (IS_BINARY(val)) {
+		*data = VAL_BIN_DATA(val);
+		*len  = VAL_LEN(val);
+		return TRUE;
+	}
+	if (IS_VECTOR(val)) {
+		*data = VAL_VEC_DATA(val);
+		*len  = VAL_LEN(val) * VAL_VEC_WIDE(val);
+		return TRUE;
+	}
+	return FALSE;
+}
 
 /***********************************************************************
 **
@@ -1389,6 +1454,15 @@ is_true:
 	REBSER *series = VAL_SERIES(data);
 	REBCNT *dp;
 	REBCNT sym;
+	REBYTE *bin;  // raw data of a binary or vector argument
+	REBCNT blen;  // and their length in bytes
+	// Read now, while `data` is still an image: when the previous step of
+	// the path returned its result in pvs->store (a handle accessor does),
+	// `data` IS pvs->store - the very cell a getter below writes its answer
+	// into. Writing a pair there overwrites the series pointer, and any
+	// VAL_IMAGE_* read of `data` after that follows a float as a pointer.
+	REBCNT wide = VAL_IMAGE_WIDE(data);
+	REBCNT high = VAL_IMAGE_HIGH(data);
 
 	if(pvs->path && !IS_END(pvs->path+1)) val = NULL;
 
@@ -1408,14 +1482,16 @@ is_true:
 
 			case SYM_SIZE:
 				VAL_SET(val, REB_PAIR);
-				VAL_PAIR_X(val) = (REBD32)VAL_IMAGE_WIDE(data);
-				VAL_PAIR_Y(val) = (REBD32)VAL_IMAGE_HIGH(data);
+				VAL_PAIR_X(val) = (REBD32)wide;
+				VAL_PAIR_Y(val) = (REBD32)high;
 				break;
 			case SYM_WIDTH:
 				SET_INTEGER(val, VAL_IMAGE_WIDE(data));
+				SET_INTEGER(val, wide);
 				break;
 			case SYM_HEIGHT:
 				SET_INTEGER(val, VAL_IMAGE_HIGH(data));
+				SET_INTEGER(val, high);
 				break;
 
 			case SYM_RGB:
@@ -1489,8 +1565,8 @@ is_true:
 					n = VAL_INT32(val);
 					if (n < 0 || n > 255) return PE_BAD_RANGE;
 					Fill_Line((REBCNT *)src, TO_PIXEL_COLOR(n,n,n,0xff), len, 1);
-				} else if ((IS_VECTOR(val) && VAL_VEC_WIDTH(val) == 1) || IS_BINARY(val)) {
-					Bin_To_RGB(src, len, VAL_BIN_DATA(val), VAL_LEN(val) / 3);
+				} else if (Get_Image_Source(val, &bin, &blen)) {
+					Bin_To_RGB(src, len, bin, blen / 3);
 				}
 				else return PE_BAD_SET;
 				break;
@@ -1512,8 +1588,8 @@ is_true:
 					n = VAL_INT32(val);
 					if (n < 0 || n > 255) return PE_BAD_RANGE;
 					Fill_Line((REBCNT *)src, TO_PIXEL_COLOR(n,n,n,n), len, FALSE);
-				} else if ((IS_VECTOR(val) && VAL_VEC_WIDTH(val) == 1) || IS_BINARY(val)) {
-					Bin_To_Color(src, VAL_BIN_DATA(val), VAL_LEN(val) / 4, sym);
+				} else if (Get_Image_Source(val, &bin, &blen)) {
+					Bin_To_Color(src, bin, MIN(blen / 4, (REBCNT)len), sym);
 				} else return PE_BAD_SET;
 				break;
 
@@ -1526,8 +1602,8 @@ is_true:
 					n = VAL_INT32(val);
 					if (n < 0 || n > 255) return PE_BAD_RANGE;
 					Fill_Channel_Line(src, (REBYTE)n, len, sym);
-				} else if ((IS_VECTOR(val) && VAL_VEC_WIDTH(val) == 1) || IS_BINARY(val)) {
-					Bin_To_Channel(src, len, VAL_BIN_DATA(val), VAL_LEN(val), sym);
+				} else if (Get_Image_Source(val, &bin, &blen)) {
+					Bin_To_Channel(src, len, bin, blen, sym);
 				} else return PE_BAD_SET;
 				break;
 
@@ -1536,10 +1612,10 @@ is_true:
 				if (IS_INTEGER(val)) {
 					n = VAL_INT32(val);
 					if (n < 0 || n > 255) return PE_BAD_RANGE;
-					Fill_Line((REBCNT*)src, TO_PIXEL_COLOR(n, n, n, n), len, FALSE);
+					Fill_Line((REBCNT*)src, TO_PIXEL_COLOR(n, n, n, 0xff), len, TRUE); // only RGB, keep alpha
 				}
-				else if ((IS_VECTOR(val) && VAL_VEC_WIDTH(val) == 1) || IS_BINARY(val)) {
-					Bin_To_Color(src, VAL_BIN_DATA(val), VAL_LEN(val), sym);
+				else if (Get_Image_Source(val, &bin, &blen)) {
+					Bin_To_Color(src, bin, MIN(blen, (REBCNT)len), sym);
 				}
 				else return PE_BAD_SET;
 				break;
@@ -1612,6 +1688,6 @@ is_true:
 	else return PE_BAD_ARGUMENT;
 
 	dp = (REBCNT*)QUAD_SKIP(series, index);
-	*dp = (*dp & 0xffffff) | (n << 24);
+	*dp = (*dp & 0xffffff) | ((REBCNT)n << 24);
 	return PE_OK;
 }

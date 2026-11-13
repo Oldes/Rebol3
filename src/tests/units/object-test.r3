@@ -130,8 +130,188 @@ Rebol [
 		]
 	--test-- "bind to error"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/894
-		err: make error! "foo"
-		--assert all [error? e: try [bind 'id err] e/id = 'expect-arg]
+	;@@ https://github.com/Oldes/Rebol-issues/issues/2704
+		e: make error! "foo"
+		--assert all [
+			[:arg1] = spec: system/catalog/errors/(e/type)/(e/id)
+			["foo"] = reduce bind system/catalog/errors/(e/type)/(e/id) e
+		]
+
+	--test-- "append with protected word leaves object unchanged"
+		o: make object! [a: 1 b: 2]
+		protect in o 'b
+		--assert all [
+			error? e: try [append o [a: 10 c: 3 b: 20]]
+			e/id = 'locked-word
+		]
+		--assert o/a = 1
+		--assert o/b = 2
+		--assert 2 = length? o
+		--assert none? in o 'c
+	--test-- "append with hidden word leaves object unchanged"
+		o: make object! [a: 1 h: 2]
+		protect/hide in o 'h
+		--assert all [
+			error? e: try [append o [a: 10 h: 3 c: 4]]
+			e/id = 'hidden
+		]
+		--assert o/a = 1
+		--assert 2 = length? o
+	--test-- "append with duplicate new word still works"
+		o: make object! [a: 1]
+		append o [c: 3 c: 4]
+		--assert o/c = 4
+		--assert 2 = length? o
+===end-group===
+
+
+===start-group=== "APPEND on object with non-block argument"
+	--test-- "append word"
+		o: make object! [a: 1]
+		append o 'x
+		--assert word? in o 'x
+		--assert 2 = length? o
+	--test-- "append/part word"
+		o: make object! [a: 1]
+		append/part o 'y 2
+		--assert word? in o 'y
+		--assert 2 = length? o
+	--test-- "append invalid argument"
+		o: make object! [a: 1]
+		--assert error? try [append o 1]
+		--assert 1 = length? o
+===end-group===
+
+
+===start-group=== "APPEND on object with existing words"
+	--test-- "append existing words only"
+		o: make object! [a: 1 b: 2]
+		append o [a: 10 b: 20]
+		--assert o/a = 10
+		--assert o/b = 20
+		--assert 2 = length? o
+	--test-- "copy is not affected"
+		o: make object! [a: 1]
+		c: copy o
+		append o [a: 10]
+		--assert c/a = 1
+		append o [b: 2]
+		--assert none? in c 'b
+		--assert o/b = 2
+===end-group===
+
+
+===start-group=== "APPEND on object - binding table after error"
+	--test-- "locked word error with new words collected"
+		o: make object! [a: 1 b: 2]
+		protect in o 'b
+		--assert error? try [append o [x: 1 y: 2 b: 3]]
+		o2: make object! [x: 10 y: 20]
+		--assert [x y] = words-of o2
+		--assert o2/y = 20
+		unprotect in o 'b
+		append o [x: 5]
+		--assert o/x = 5
+		--assert 3 = length? o
+	--test-- "invalid key error with new words collected"
+		o: make object! [a: 1]
+		--assert error? try [append o [x: 1 2 3]]
+		--assert 1 = length? o
+		append o [x: 1]
+		--assert o/x = 1
+===end-group===
+
+
+===start-group=== "Object equality with shared word list"
+	--test-- "copy equal / not equal"
+		o: make object! [a: 1 b: "x"]
+		c: copy o
+		--assert equal? o c
+		c/b: "y"
+		--assert not equal? o c
+	--test-- "child without new words"
+		p: make object! [a: 1 b: 2]
+		c1: make p [a: 3]
+		c2: make p [a: 3]
+		--assert equal? c1 c2
+		c2/b: 4
+		--assert not equal? c1 c2
+	--test-- "hidden field in shared word list is skipped"
+		o: make object! [a: 1 h: 2]
+		c: copy o
+		c/h: 3
+		protect/hide in o 'h   ; shared word list -> hidden in both
+		--assert equal? o c
+===end-group===
+
+
+===start-group=== "Object equality of words"
+	--test-- "objects created differently"
+		o1: make object! [a: 1]
+		o2: append make object! [] [a: 1]
+		o3: make object! #[a: 1]
+		--assert equal? o1 o2
+		--assert strict-equal? o1 o2
+		--assert strict-equal? o1 o3
+	--test-- "word case"
+		o1: make object! [a: 1]
+		o2: make object! [A: 1]
+		--assert equal? o1 o2
+		--assert not strict-equal? o1 o2
+===end-group===
+
+
+===start-group=== "Hashed word lookup in large objects"
+	--test-- "lookup in large object"
+		o: make object! collect [repeat i 100 [keep to set-word! ajoin ["w" i] keep i]]
+		--assert 1 = select o 'w1
+		--assert 100 = select o 'w100
+		--assert 50 = select o 'W50
+		--assert 50 = o/w50
+		--assert none? select o 'w101
+	--test-- "words added after the index was built"
+		append o [w101: 101]
+		--assert 101 = select o 'w101
+		put o 'w102 102
+		--assert 102 = o/W102
+		repeat i 200 [put o to word! ajoin ["x" i] i]   ; forces index rebuilds
+		--assert 200 = select o 'x200
+		--assert 1 = select o 'w1
+	--test-- "copy gets its own index"
+		c: copy o
+		append c [only-in-copy: 1]
+		--assert none? select o 'only-in-copy
+		--assert 1 = select c 'only-in-copy
+		--assert 100 = select c 'w100
+	--test-- "hidden word"
+		protect/hide in o 'w2
+		--assert none? select o 'w2
+		--assert none? in o 'w2
+	--test-- "index survives recycle"
+		recycle
+		--assert 50 = select o 'w50
+		--assert 200 = select c 'x200
+===end-group===
+
+
+===start-group=== "TRIM on object/module/error"
+	--test-- "trim object"
+		o: make object! [a: 1 b: none c: 3]
+		t: trim o
+		--assert object? t
+		--assert [a c] = words-of t
+	--test-- "trim module keeps type and spec"
+		m: module [title: "Trim test"] [a: 1 b: none]
+		t: trim m
+		--assert module? t
+		--assert "Trim test" = title-of t
+		--assert t/a = 1
+		--assert none? in t 'b
+	--test-- "trim error returns object"
+		e: try [1 / 0]
+		t: trim e
+		--assert object? t
+		--assert t/id = 'zero-divide
 ===end-group===
 
 
@@ -325,7 +505,37 @@ Rebol [
 		--assert a = b
 		--assert equal? a b
 		--assert not same? a b
+
+	--test-- "compare objects with circular references"
+		o1: object [a: 1 ref: none]  o1/ref: o1
+		o2: object [a: 1 ref: none]  o2/ref: o2
+		o3: object [a: 2 ref: none]  o3/ref: o3
+		--assert o1 = o2
+		--assert o1 <> o3
+		a: object [x: 1 p: none]  b: object [x: 1 p: none]
+		a/p: b  b/p: a
+		--assert a = b
+		--assert did find reduce [o3 o1] o2
+
+	--test-- "hidden field does not stop comparison"
+		o1: make object! [a: 1 h: 2 b: 3]
+		o2: make object! [a: 1 h: 2 b: 4]
+		protect/hide in o1 'h
+		protect/hide in o2 'h
+		--assert not equal? o1 o2
+	--test-- "fields hidden in both are skipped"
+		o1: make object! [a: 1 h: 2 b: 3]
+		o2: make object! [a: 1 h: 9 b: 3]
+		protect/hide in o1 'h
+		protect/hide in o2 'h
+		--assert equal? o1 o2
+	--test-- "field hidden in only one object"
+		o1: make object! [a: 1 h: 2 b: 3]
+		o2: make object! [a: 1 h: 2 b: 3]
+		protect/hide in o1 'h
+		--assert not equal? o1 o2
 ===end-group===
+
 
 
 ===start-group=== "Object actions"
@@ -361,6 +571,20 @@ Rebol [
 	--assert none? unset in ctx 'd
 
 
+===end-group===
+
+
+===start-group=== "SELECT/FIND on object"
+	--test-- "select/find existing and missing word"
+		o: make object! [a: 1 h: 2]
+		--assert 1 = select o 'a
+		--assert none? select o 'x
+		--assert find o 'a
+		--assert none? find o 'x
+	--test-- "select/find hidden word"
+		protect/hide in o 'h
+		--assert none? select o 'h
+		--assert none? find o 'h
 ===end-group===
 
 

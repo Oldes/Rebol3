@@ -96,7 +96,7 @@ copyable!: make typeset! [
 ]
 
 system/options/result-types: make typeset! [
-	immediate! series! bitset! image! object! map! gob! handle! struct! ;module!
+	immediate! series! bitset! image! object! map! handle! struct! ;module!
 ]
 
 ;-- Create "To-Datatype" conversion functions early in bootstrap:

@@ -3,6 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
+**  Copyright 2012-2026 Rebol Open Source Developers
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -41,13 +42,25 @@ static REBOOL Same_Object(REBVAL *val, REBVAL *arg)
 }
 
 
-static REBOOL Equal_Object(REBVAL *val, REBVAL *arg, REBFLG is_case)
+/***********************************************************************
+**
+*/	REBFLG Equal_Object_Loop(REBVAL *val, REBVAL *arg, REBFLG is_case, REB_CMP_LOOP *loop)
+/*
+**		Compare objects field by field.
+**		A pair of frames already being compared (circular reference)
+**		is considered equal.
+**		Fields hidden in both objects are skipped; a field hidden
+**		in only one of them makes the objects not equal.
+**
+***********************************************************************/
 {
 	REBSER *f1;
 	REBSER *f2;
 	REBSER *w1;
 	REBSER *w2;
 	REBINT n;
+	REBFLG h1, h2;
+	REB_CMP_LOOP node, *l;
 
 	if (VAL_TYPE(arg) != VAL_TYPE(val)) return FALSE;
 
@@ -60,18 +73,49 @@ static REBOOL Equal_Object(REBVAL *val, REBVAL *arg, REBFLG is_case)
 	w2 = FRM_WORD_SERIES(f2);
 	if (w1->tail != w2->tail) return FALSE;
 
+	// Circular reference: this pair of frames is already being compared
+	for (l = loop; l; l = l->prev) {
+		if ((l->a == f1 && l->b == f2) || (l->a == f2 && l->b == f1))
+			return TRUE;
+	}
+
+	CHECK_STACK(&n);
+
+	node.a  = f1;
+	node.b  = f2;
+	node.ai = node.bi = 0;
+	node.prev = loop;
+
 	// Compare each entry:
 	for (n = 1; n < (REBINT)(f1->tail); n++) {
-		if (VAL_HIDDEN(BLK_SKIP(w1, n))) return VAL_HIDDEN(BLK_SKIP(w2, n));
-		if (VAL_HIDDEN(BLK_SKIP(w2, n))) return VAL_HIDDEN(BLK_SKIP(w1, n));
-		if (Cmp_Value(BLK_SKIP(w1, n), BLK_SKIP(w2, n), is_case)) return FALSE;
-		// Use Compare_Values();
-		if (Cmp_Value(BLK_SKIP(f1, n), BLK_SKIP(f2, n), is_case)) return FALSE;
+		if (w1 == w2) {
+			// Shared word list (copies, objects made from the same parent):
+			// words and flags are identical, compare only the values.
+			if (VAL_HIDDEN(BLK_SKIP(w1, n))) continue;
+		}
+		else {
+			h1 = VAL_HIDDEN(BLK_SKIP(w1, n)) ? TRUE : FALSE;
+			h2 = VAL_HIDDEN(BLK_SKIP(w2, n)) ? TRUE : FALSE;
+			if (h1 != h2) return FALSE;
+			if (h1) continue; // hidden in both, skip it
+			// Compare word symbols only; the word type in a word list
+			// (word or set-word) depends on how the frame was created.
+			if (is_case
+				? VAL_BIND_SYM(BLK_SKIP(w1, n)) != VAL_BIND_SYM(BLK_SKIP(w2, n))
+				: VAL_BIND_CANON(BLK_SKIP(w1, n)) != VAL_BIND_CANON(BLK_SKIP(w2, n))
+			) return FALSE;
+		}
+		if (Cmp_Value_Loop(BLK_SKIP(f1, n), BLK_SKIP(f2, n), is_case, &node)) return FALSE;
 	}
 
 	return TRUE;
 }
 
+
+static REBOOL Equal_Object(REBVAL *val, REBVAL *arg, REBFLG is_case)
+{
+	return Equal_Object_Loop(val, arg, is_case, NULL);
+}
 static void Extend_Obj(REBSER *obj, REBVAL *key, REBVAL *value)
 {
 	REBCNT index;
@@ -87,7 +131,8 @@ static void Extend_Obj(REBSER *obj, REBVAL *key, REBVAL *value)
 			if (!value) return;
 			val = FRM_VALUE(obj, index);
 			if (GET_FLAGS(VAL_OPTS(FRM_WORD(obj, index)), OPTS_HIDE, OPTS_LOCK)) {
-				if (VAL_PROTECTED(val)) Trap1(RE_LOCKED_WORD, val);
+				// protection flags are stored on the word, not on the value
+				if (VAL_PROTECTED(FRM_WORD(obj, index))) Trap1(RE_LOCKED_WORD, key);
 				Trap0(RE_HIDDEN);
 			}
 		} else {
@@ -104,11 +149,26 @@ static void Extend_Obj(REBSER *obj, REBVAL *key, REBVAL *value)
 		Trap_Arg(key);
 	}
 }
+static void Collect_Abort(void)
+/*
+**		Release the binding table and BUF_WORDS after an error during
+**		word collection. Unlike Collect_End, no word list is copied.
+*/
+{
+	REBINT *binds = WORDS_HEAD(Bind_Table);
+	REBVAL *words;
+
+	BLK_TERM(BUF_WORDS);
+	for (words = BLK_HEAD(BUF_WORDS); NOT_END(words); words++)
+		binds[VAL_WORD_CANON(words)] = 0;
+	RESET_TAIL(BUF_WORDS);  // allow reuse
+}
 static void Append_Obj(REBSER *obj, REBVAL *arg, REBCNT part)
 {
 	REBCNT i, n, len;
 	REBVAL *word, *val;
 	REBINT *binds; // for binding table
+	REBFLG locked;
 
 	// Can be a word:
 	if (ANY_WORD(arg)) {
@@ -130,23 +190,31 @@ static void Append_Obj(REBSER *obj, REBVAL *arg, REBCNT part)
 
 	part >>= 1; // part must be number of key/value pairs
 
-	// Examine word/value argument block
+	// Examine word/value argument block.
+	// All checks are done here, before the object is modified,
+	// so an error does not leave the object partially updated.
 	for (word = arg, n = 0; n < part && NOT_END(word); word += 2, n++) {
 
 		if (!IS_WORD(word) && !IS_SET_WORD(word)) {
-			// release binding table
-			BLK_TERM(BUF_WORDS);
-			Collect_End(obj);
+			Collect_Abort();
 			Trap_Arg(word);
 		}
 
 		if (NZ(i = binds[VAL_WORD_CANON(word)])) {
 			// bug fix, 'self is protected only in selfish frames:
 			if ((VAL_WORD_CANON(word) == SYM_SELF) && !IS_SELFLESS(obj)) {
-				// release binding table
-				BLK_TERM(BUF_WORDS);
-				Collect_End(obj);
+				Collect_Abort();
 				Trap0(RE_SELF_PROTECTED);
+			}
+			// Word already in the object (not one collected from this block),
+			// check whether it may be modified:
+			if (i < SERIES_TAIL(obj)
+				&& GET_FLAGS(VAL_OPTS(FRM_WORD(obj, i)), OPTS_HIDE, OPTS_LOCK)
+			) {
+				locked = VAL_PROTECTED(FRM_WORD(obj, i));
+				Collect_Abort();
+				if (locked) Trap1(RE_LOCKED_WORD, word);
+				Trap0(RE_HIDDEN);
 			}
 		} else {
 			// collect the word
@@ -160,24 +228,19 @@ static void Append_Obj(REBSER *obj, REBVAL *arg, REBCNT part)
 
 	BLK_TERM(BUF_WORDS);
 
-	// Append new words to obj
+	// Append new words to obj (if any; expanding also copies the word list)
 	len = SERIES_TAIL(obj);
-	Expand_Frame(obj, SERIES_TAIL(BUF_WORDS) - len, 1);
-	for (word = BLK_SKIP(BUF_WORDS, len); NOT_END(word); word++)
-		Append_Frame(obj, 0, VAL_WORD_SYM(word));
+	if (SERIES_TAIL(BUF_WORDS) > len) {
+		Expand_Frame(obj, SERIES_TAIL(BUF_WORDS) - len, 1);
+		for (word = BLK_SKIP(BUF_WORDS, len); NOT_END(word); word++)
+			Append_Frame(obj, 0, VAL_WORD_SYM(word));
+	}
 
-	// Set new values to obj words
+	// Set new values to obj words (already validated above)
 	for (word = arg, n = 0; n < part && NOT_END(word); word += 2, n++) {
 
 		i = binds[VAL_WORD_CANON(word)];
 		val = FRM_VALUE(obj, i);
-		if (GET_FLAGS(VAL_OPTS(FRM_WORD(obj, i)), OPTS_HIDE, OPTS_LOCK)) { 
-			// release binding table
-			Collect_End(obj);
-			if (VAL_PROTECTED(FRM_WORD(obj, i)))
-				Trap1(RE_LOCKED_WORD, FRM_WORD(obj, i));
-			Trap0(RE_HIDDEN);
-		}
 
 		if (IS_END(word + 1)) SET_UNSET(val);
 		else *val = word[1];
@@ -205,6 +268,9 @@ static REBSER *Trim_Object(REBSER *obj)
 	}
 
 	nobj = Make_Frame(cnt);
+	// Keep the spec (module header) and the SELF word (selfless frames):
+	VAL_FRM_SPEC(FRM_VALUES(nobj)) = VAL_FRM_SPEC(FRM_VALUES(obj));
+	*FRM_WORDS(nobj) = *FRM_WORDS(obj);
 	nval = FRM_VALUES(nobj)+1;
 	word = FRM_WORDS(obj)+1;
 	nwrd = FRM_WORDS(nobj)+1;
@@ -299,12 +365,15 @@ static REBSER *Trim_Object(REBSER *obj)
 **
 ***********************************************************************/
 {
-	REBVAL *value = D_ARG(1);
+	REBVAL *value;
 	REBVAL *arg = D_ARG(2);
 	REBINT n;
 	REBVAL *val;
 	REBSER *obj = NULL, *src_obj;
 	REBCNT type = 0;
+
+	REBVAL value_copy = *D_ARG(1); // keep local copy (stack may be moved)
+	value = &value_copy;
 
 	switch (action) {
 
@@ -468,7 +537,12 @@ static REBSER *Trim_Object(REBSER *obj)
 				n = Int32(DS_ARG(AN_COUNT));
 				if (n <= 0) break;
 			}
-			Append_Obj(VAL_OBJ_FRAME(value), arg, Partial1(arg, D_ARG(AN_LENGTH)));
+			// The /part length is meaningful only for a block argument
+			// (a word is handled without it, other types are rejected).
+			Append_Obj(
+				VAL_OBJ_FRAME(value), arg,
+				ANY_BLOCK(arg) ? Partial1(arg, D_ARG(AN_LENGTH)) : 0
+			);
 			return R_ARG1;
 		}
 		else
@@ -498,14 +572,19 @@ static REBSER *Trim_Object(REBSER *obj)
 		if (D_REF(ARG_COPY_DEEP)) {
 			types |= CP_DEEP | (D_REF(ARG_COPY_TYPES) ? 0 : TS_DEEP_COPIED);
 		}
-		if D_REF(ARG_COPY_TYPES) {
+		if (D_REF(ARG_COPY_TYPES)) {
 			arg = D_ARG(ARG_COPY_KINDS);
 			if (IS_DATATYPE(arg)) types |= TYPESET(VAL_DATATYPE(arg));
 			else types |= VAL_TYPESET(arg);
 		}
-		obj = Copy_Block(VAL_OBJ_FRAME(value), 0);
+		src_obj = VAL_OBJ_FRAME(value);
+		obj = Copy_Block(src_obj, 0);
 		VAL_OBJ_FRAME(value) = obj;
-		if (types != 0) Copy_Deep_Values(obj, 1, SERIES_TAIL(obj), types);
+		if (types != 0) {
+			// Register the root, so self references are redirected to the copy
+			REB_COPY_LOOP root = {src_obj, obj, NULL};
+			Copy_Deep_Values_Loop(obj, 1, SERIES_TAIL(obj), types, (types & CP_DEEP) ? &root : NULL);
+		}
 		break; // returns value
 	}
 	case A_SELECT:
@@ -514,8 +593,7 @@ static REBSER *Trim_Object(REBSER *obj)
 		if (IS_WORD(arg))
 			n = Find_Word_Index(VAL_OBJ_FRAME(value), VAL_WORD_SYM(arg), FALSE);
 
-		if (n <= 0 || (REBCNT)n >= SERIES_TAIL(VAL_OBJ_FRAME(value)))
-			return R_NONE;
+		if (n == 0) return R_NONE; // not found (or hidden)
 
 		if (action == A_FIND) goto is_true;
 
@@ -529,34 +607,37 @@ static REBSER *Trim_Object(REBSER *obj)
 			VAL_OBJ_FRAME(value) = VAL_MOD_SPEC(value);
 			VAL_SET(value, REB_OBJECT);
 			if (action == OF_TITLE) {
-				REBCNT n = Find_Word_Index(VAL_OBJ_FRAME(value), SYM_TITLE, FALSE);
+				n = Find_Word_Index(VAL_OBJ_FRAME(value), SYM_TITLE, FALSE);
 				if(!n) return R_NONE;
 				value = VAL_OBJ_VALUE(value, n);
 			}
 			break;
 		}
-		// Adjust for compatibility with PICK:
-		if (action == OF_VALUES) action = 2;
-		else if (action == OF_BODY) action = 3;
-		if (action < 1 || action > 3) Trap_Reflect(VAL_TYPE(value), arg);
-#ifdef obsolete
-		goto reflect;
-
-	case A_PICK:
-		action = Get_Num_Arg(arg); // integer, decimal, logic
-		if (action < 1 || action > 3) Trap_Arg(arg);
-		if (action < 3) action |= 4;  // add SELF to list
-reflect:
-#endif
+		// Map reflectors to Make_Object_Block modes (1: words, 2: values, 3: both):
+		switch (action) {
+		case OF_WORDS:  action = 1; break;
+		case OF_VALUES: action = 2; break;
+		case OF_BODY:   action = 3; break;
+		default:
+			Trap_Reflect(VAL_TYPE(value), arg);
+		}
 		if (THROWN(value)) Trap0(RE_THROW_USAGE);
 		Set_Block(value, Make_Object_Block(VAL_OBJ_FRAME(value), action));
 		break;
 
 	case A_TRIM:
 		if (Find_Refines(ds, ALL_TRIM_REFS)) Trap0(RE_BAD_REFINES); // none allowed
-		type = VAL_TYPE(value);
+		if (THROWN(value)) Trap0(RE_THROW_USAGE); // has no frame
 		obj = Trim_Object(VAL_OBJ_FRAME(value));
-		break;
+		if (IS_MODULE(value)) {
+			// keep the module type and body (spec is kept by Trim_Object)
+			VAL_OBJ_FRAME(value) = obj;
+			break; // returns value
+		}
+		// An error frame has a fixed layout (accessed as ERROR_OBJ),
+		// so a trimmed error can only be an object:
+		type = IS_ERROR(value) ? REB_OBJECT : VAL_TYPE(value);
+		break; // returns obj
 
 	case A_TAILQ:
 		if (IS_OBJECT(value)) {

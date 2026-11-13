@@ -224,6 +224,22 @@ Rebol [
 		--assert     strict-equal? [[1]] [[1]]
 		--assert not strict-equal? [[1]] [(1)]
 
+	--test-- "block comparison respects length"
+		--assert not [1 2] = [1 2 0 0]
+		--assert not [1 2 0 0] = [1 2]
+		--assert not [1 2] == [1 2 0 0]
+		--assert [1 2] <> [1 2 0 0]
+		--assert [1 2] < [1 2 0 0]
+		--assert [1 2 0 0] > [1 2]
+		--assert [1 2] <= [1 2]
+		--assert [1 2] = [1 2]
+		--assert not [] = [1]
+		--assert [] < [1]
+		--assert not (next [1 2 3]) = [2 3 4]
+		--assert (next [1 2 3]) = [2 3]
+		--assert not 'a/b = 'a/b/c
+		--assert none? find/only [[1 2 3]] [1 2]
+		--assert not equal? make hash! [1 2] make hash! [1 2 0 0]
 ===end-group===
 
 

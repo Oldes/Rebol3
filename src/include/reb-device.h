@@ -47,8 +47,9 @@ enum {
 	RDI_CRYPT,
 	RDI_SERIAL,
 	RDI_AUDIO,
-	RDI_MAX,
-	RDI_LIMIT = 32
+	RDI_MAX,		// number of built-in devices
+	RDI_LIMIT = 32	// size of the device table; RDI_MAX..RDI_LIMIT-1
+					// are assigned at run time by RL_Register_Device
 };
 
 
@@ -115,6 +116,14 @@ enum {
 	RDE_NO_DEVICE,	// command did not provide device
 	RDE_NO_COMMAND,	// command past end
 	RDE_NO_INIT,	// device has not been inited
+};
+
+// Device registration results (OS_Register_Device / RL_Register_Device).
+// A non-negative result is the assigned device id.
+enum {
+	RDR_TABLE_FULL   = -1,	// no free slot in the device table
+	RDR_BAD_DEVICE   = -2,	// device structure is not usable
+	RDR_BAD_REBDEV   = -3,	// caller built against a different REBDEV layout
 };
 
 enum {

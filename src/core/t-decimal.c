@@ -94,7 +94,7 @@ static char *gcvt(double value, int digits, char *buffer)
 
 REBOOL almost_equal(REBDEC a, REBDEC b, REBCNT max_diff) {
 	union {REBDEC d; REBI64 i;} ua, ub;
-	REBI64 int_diff;
+	REBU64 diff;
 
 #ifndef USE_NO_INFINITY
 	if (isnan(a) && isnan(b)) return max_diff > 0;
@@ -109,10 +109,12 @@ REBOOL almost_equal(REBDEC a, REBDEC b, REBCNT max_diff) {
 	/* Make ub.i a twos-complement ordinal number */
 	if (ub.i < 0) ub.i = MIN_I64 - ub.i;
 
-	int_diff = ua.i - ub.i;
-	if (int_diff < 0) int_diff = -int_diff;
+	/* Unsigned distance; cannot overflow (true difference < 2^64) */
+	diff = (ua.i >= ub.i)
+		? (REBU64)ua.i - (REBU64)ub.i
+		: (REBU64)ub.i - (REBU64)ua.i;
 
-	return ((REBU64) int_diff <= max_diff);
+	return diff <= max_diff;
 }
 
 

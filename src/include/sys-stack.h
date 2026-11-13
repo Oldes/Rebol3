@@ -3,6 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -79,6 +80,14 @@
 #define DSF_FUNC(d)		(&DS_Base[(d)+3])	// function value saved
 #define DSF_ARGS(d,n)	(&DS_Base[(d)+DSF_SIZE+(n)])
 #define PRIOR_DSF(d)	VAL_BACK(DSF_BACK(d))
+
+// Pointers into the data stack are invalid after the stack expands,
+// so keep offsets and restore the pointers after an evaluation:
+#define DS_IN_STACK(p) \
+    ((REBUPT)(p) >= (REBUPT)DS_Base && \
+     (REBUPT)(p) <  (REBUPT)DS_Base + SERIES_REST(DS_Series) * sizeof(REBVAL))
+#define DS_OFFSET(p)   (DS_IN_STACK(p) ? (REBINT)((p) - DS_Base) : -1)
+#define DS_REBASE(p,o) do { if ((o) >= 0) (p) = DS_Base + (o); } while (0)
 
 // Reference from ds that points to current return value:
 #define	D_RET			(ds)

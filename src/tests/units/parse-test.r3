@@ -82,6 +82,120 @@ Rebol [
 	--assert all [parse "xyz" [copy f thru end]  f = "xyz"]
 	--assert error? try [parse "xyz" [copy f thru to end]]
 	--assert error? try [parse "xyz" [copy f thru thru end]]
+
+--test-- "TO/THRU block with END"
+	--assert parse "abc" [to [end]]
+	--assert parse "abc" [thru [end]]
+	--assert parse "abc" [to ["x" | end]]
+	--assert parse "abc" [thru ["x" | end]]
+	--assert parse "axc" [to ["x" | end] "xc"]
+	--assert parse [1 2] [to [end]]
+	--assert parse [1 2] [thru [word! | end]]
+	n: 0 --assert all [parse "abc" [to [end (n: n + 1)]]  n = 1]
+
+--test-- "TO/THRU block with QUOTE"
+	--assert parse "abc" [thru [quote "b"] "c"]
+	--assert parse "abc" [thru [quote ("b")] "c"]
+	--assert parse [x a b] [thru [quote a] 'b]
+	--assert parse [x a b] [to [quote a] 'a 'b]
+	--assert parse [1 2 3] [thru [quote (1 + 1)] integer! end]
+	--assert all [error? e: try [parse "abc" [thru [quote]]]  e/id = 'parse-rule]
+
+--test-- "TO/THRU block with other command"
+	--assert all [error? e: try [parse "abc" [thru [skip]]]  e/id = 'parse-rule]
+	--assert all [error? e: try [parse [1] [to [skip]]]  e/id = 'parse-rule]
+
+--test-- "TO/THRU block with path"
+	o: context [c: #"c" w: word!]
+	--assert parse "abc" [thru [o/c] end]
+	--assert parse "abc" [to [o/c] "c"]
+	--assert parse [1 a] [thru [o/w] end]
+
+--test-- "TO/THRU block on block input"
+	--assert     parse [1 a "b"] [thru [word!] "b"]
+	--assert     parse [1 a "b"] [to [word!] word! "b"]
+	--assert     parse [1 "a" %b] [thru [any-string!] %b]
+	--assert     parse [x a b] [thru ['a] 'b]
+	--assert     parse [1 2 3] [thru [2] integer! end]
+	--assert     parse [1 2 3] [thru [word! | 2] integer! end]
+	--assert not parse [1 2] [to [word!] to end]
+	--assert all [error? e: try [parse [[1]] [to [[1]]]]  e/id = 'parse-rule]
+	--assert all [error? e: try [parse [1] [to [(1)]]]  e/id = 'parse-rule]
+	--assert     parse [x p/a b] [to ['p/a] 'p/a 'b]
+	--assert     parse [x p/a b] [thru ['p/a] 'b]
+	--assert     parse [x p/a b] [thru [word! | 'p/a] 'p/a 'b]   ;; 'x matched first
+	--assert     parse [x p/b p/a] [thru ['p/a] end]
+	--assert not parse/case [x p/a] [thru ['p/A] to end]
+	--assert     parse [x p/a b] [thru [quote p/a] 'b]
+
+--test-- "TO/THRU block on binary input"
+	--assert     parse #{010203} [thru [#"^B"] #{03}]
+	--assert     parse #{010203} [to [#"^B"] #{0203}]
+	--assert     parse #{010203} [thru [#{02}] #{03}]
+	--assert     parse #{010203} [to [#{0203}] #{0203}]
+	--assert     parse #{010203} [thru [#{0203}] end]
+	--assert     parse #{01020203} [thru [#{0203}] end]
+	--assert     parse #{010203} [thru [2] #{03}]
+	--assert     parse #{010203} [to [2] #{0203}]
+	--assert     parse #{010203} [thru [#{09} | 3] end]
+	--assert not parse #{010203} [thru [4] to end]
+	--assert all [error? e: try [parse #{01} [thru [#"š"]]]  e/id = 'parse-rule]
+	--assert all [error? e: try [parse #{01} [thru [256]]]  e/id = 'parse-rule]
+	--assert all [error? e: try [parse #{01} [thru [1.5]]]  e/id = 'parse-rule]
+
+--test-- "TO/THRU block with char! on string input"
+	--assert     parse "abc" [thru [#"b"] "c"]
+	--assert     parse "abc" [to [#"b"] "bc"]
+	--assert     parse "aBc" [thru [#"b"] "c"]
+	--assert     parse/case "aBc" [thru [#"B"] "c"]
+	--assert not parse/case "aBc" [thru [#"b"] to end]
+
+--test-- "TO/THRU block with any-string! on string input"
+	--assert     parse "abc" [thru ["b"] "c"]
+	--assert     parse "abc" [thru ["bc"] end]
+	--assert     parse "abc" [to ["bc"] "bc"]
+	--assert     parse "abxbc" [thru ["bc"] end]
+	--assert     parse "abc" [thru [%bc] end]
+	--assert     parse "aBC" [thru ["bc"] end]
+	--assert not parse/case "aBC" [thru ["bc"] to end]
+	--assert     parse/case "aBC" [thru ["BC"] end]
+
+--test-- "TO/THRU block with integer! on string input"
+	--assert     parse "abc" [thru [98] "c"]
+	--assert     parse "abc" [to [98] "bc"]
+	--assert not parse "aBc" [thru [98] to end]   ;; no case folding for integers
+
+--test-- "TO/THRU block with invalid target on string input"
+	--assert all [error? e: try [parse "abc" [thru [1.5]]]  e/id = 'parse-rule]
+	--assert all [error? e: try [parse "abc" [thru [[#"a"]]]]  e/id = 'parse-rule]
+
+--test-- "TO/THRU block alternatives must be separated by |"
+	--assert all [error? e: try [parse "abc" [thru [#"b" #"c"]]]  e/id = 'parse-rule]
+	--assert all [error? e: try [parse "abc" [thru [#"x" (n: 1) #"c"]]]  e/id = 'parse-rule]
+
+--test-- "TO/THRU block with action paren"
+	n: 0 --assert all [parse "abc" [thru [#"b" (n: n + 1) | #"c" (n: n + 10)] "c"]  n = 1]
+	n: 0 --assert all [parse "abc" [thru [#"x" (n: 1) | #"c" (n: 2)]]  n = 2]
+	n: 0 --assert all [parse "abc" [thru ["bc" (n: n + 1)] end]  n = 1]
+	n: 0 --assert all [parse [1 a] [thru [word! (n: n + 1)] end]  n = 1]
+
+--test-- "TO/THRU lit-word on block input"
+	--assert     parse [x a b] [to 'a 'a 'b]
+	--assert     parse [x a b] [thru 'a 'b]
+	--assert     parse [x a] [thru 'a end]
+	--assert     parse [a] [to 'a 'a]                   ;; already at the target
+	--assert all [parse [x a b] [to 'a p: to end]  p = [a b]]
+	--assert not parse [x b] [to 'a to end]
+	--assert not parse [x b] [thru 'a to end]
+	;; case sensitivity
+	--assert     parse [x A b] [thru 'a 'b]
+	--assert     parse/case [x A b] [thru 'A 'b]
+	--assert not parse/case [x A b] [thru 'a to end]
+	;; lit-word referenced by a word or path
+	w: quote 'a
+	--assert     parse [x a b] [thru w 'b]
+	o: context [w: quote 'a]
+	--assert     parse [x a b] [thru o/w 'b]
 ===end-group===
 
 
@@ -312,11 +426,44 @@ Rebol [
 	--assert ["ab"] = parse "ab" [collect [keep 2 skip]]
 	--assert [#"a" #"b"] = parse "ab" [collect [keep pick 2 skip]]
 	--assert [#"a" #"b"] = parse @ab  [collect [keep pick 2 skip]]
+	--assert all [
+		a: next [x y]
+		parse "ab" [collect into a [keep pick 2 skip]]
+		[x #"a" #"b" y] == head a
+	]
 
 --test-- "binary collect keep pick"
 	--assert [#{0102}] = parse #{0102} [collect [keep 2 skip]]
 	--assert [1 2] = parse #{0102} [collect [keep pick 2 skip]]
+	--assert all [
+		a: next [x y]
+		parse #{0102} [collect into a [keep pick 2 skip]]
+		[x 1 2 y] == head a
+	]
+--test-- "string collect keep on UTF-8 string"
+	--assert [#"a"]      = parse "šab" [collect [skip keep skip skip]]   ;; ASCII char (count = 1)
+	--assert [#"š" #"a"] = parse "ša"  [collect [keep skip keep skip]]   ;; multi-byte char
+	--assert ["ša" #"b"] = parse "šab" [collect [keep 2 skip keep skip]] ;; more codepoints
+	--assert ["€š"]      = parse "€š"  [collect [keep 2 skip]]
+	--assert [%ša]       = parse %šab  [collect [keep 2 skip skip]]      ;; keeps the input type
 
+--test-- "string collect keep pick on UTF-8 string"
+	--assert [#"š" #"a" #"b"] = parse "šab" [collect [keep pick 3 skip]]
+	--assert [#"a" #"€" #"š"] = parse "a€š" [collect [keep pick to end]]
+	--assert [#"š"]           = parse "aš"  [collect [skip keep pick skip]]
+	--assert all [a: [] parse "šab" [collect into a [keep pick 3 skip]]  a = [#"š" #"a" #"b"]]
+	;; insert at the collect position, not at the tail
+	--assert all [
+		a: next [x y]
+		parse "šb" [collect into a [keep pick 2 skip]]
+		a == [#"š" #"b" y]
+		[x #"š" #"b" y] == head a
+	]
+	--assert all [
+		a: next [x y]
+		parse "šb" [collect into a [keep pick 2 skip keep ('z)]]
+		[x #"š" #"b" z y] == head a
+	]
 --test-- "string collect set"
 	a: none --assert all [#(true)  = parse ""   [collect set a []] a = []]
 	a: none --assert all [#(true)  = parse "1"  [collect set a [keep skip]] a = [#"1"]]
@@ -391,6 +538,30 @@ Rebol [
 	--assert all [error? e: try [a: "1" parse #{01} [collect into a keep skip]] e/id = 'parse-into-type]
 	--assert all [error? e: try [a: "1" parse []    [collect into a keep skip]] e/id = 'parse-into-type]
 
+--test-- "collect into string with keep expression"
+	--assert all [s: copy "" parse "a" [collect into s [keep ("xy") skip]]  s == "xy"]
+	--assert all [s: copy "" parse "a" [collect into s [keep (#"z") skip]]  s == "z"]
+	--assert all [s: copy "" parse "a" [collect into s [keep (1) skip]]  s == "1"]
+	;; order with matched keeps and position
+	--assert all [
+		s: next copy "ab"
+		parse "x" [collect into s [keep ("X") keep skip]]
+		s == "Xxb"
+		"aXxb" == head s
+	]
+	--assert all [
+		s: copy "ab"
+		parse "x" [collect after s [keep skip keep ("cd")]]
+		s == "abxcd"
+	]
+	;; binary target
+	--assert all [b: copy #{} parse #{01} [collect into b [keep (#{0203}) keep skip]]  b == #{020301}]
+	--assert all [b: copy #{} parse #{01} [collect into b [keep (#{0203}) skip]]  b == #{0203}]
+	--assert all [
+		b: next copy #{0A0B}
+		parse #{01} [collect into b [keep (#{02}) keep skip]]
+		#{0A02010B} == head b
+	]
 
 --test-- "string collect complex"
 	; Taken from: https://www.red-lang.org/2013/11/041-introducing-parse.html
@@ -448,6 +619,54 @@ Rebol [
 	--assert all [o: [] parse "a11b22" [some [collect into  o [keep skip keep 2 skip]]] o == [#"b" "22" #"a" "11"] ]
 	--assert all [o: [] parse "a11b22" [some [collect after o [keep skip keep 2 skip]]] o == [#"a" "11" #"b" "22"] ]
 
+--test-- "parse collect keep paren keeps the order"
+	--assert [1 0 2 0] = parse [1 2] [collect some [keep integer! keep (0)]]
+	--assert [0 1] = parse [1] [collect [keep (0) keep integer!]]
+	out: copy []
+	--assert parse [1 2] [collect into out some [keep integer! keep (0)]]
+	--assert [1 0 2 0] = out
+
+--test-- "collect set leaves the variable at its head after a failed nested collect"
+	res: none
+	--assert all [
+		#(true) = parse [1 2] [collect set res [keep integer! collect [fail] | keep integer! keep integer!]]
+		1 = index? res
+	]
+	res: none
+	--assert all [
+		#(true) = parse [1 2] [collect set res [keep integer! keep (0) collect [fail] | keep integer! keep (0) keep integer!]]
+		1 = index? res
+	]
+--test-- "collect keeps the order after a nested collect"
+	--assert [[] #"a" #"b"] = parse "ab"  [collect [collect [] keep skip keep skip]]
+	--assert [[] 1 2]       = parse [1 2] [collect [collect [] keep integer! keep integer!]]
+	--assert [[] #"a" #"b"] = parse "ab"  [collect [collect [] keep pick 2 skip]]
+	--assert [1 [2] 3]      = parse [1 2 3] [collect [keep integer! collect [keep integer!] keep integer!]]
+	--assert [[] 2 #"a"]    = parse "a"   [collect [collect [] keep (1 + 1) keep skip]]
+
+--test-- "keeps after a nested collect set/into go to the parent"
+	a: none
+	--assert all [[2] = parse [1 2] [collect [collect set a keep integer! keep integer!]]  a = [1]]
+	b: copy []
+	--assert all [[2] = parse [1 2] [collect [collect into b keep integer! keep integer!]]  b = [1]]
+
+--test-- "collect into at non-tail position with keep expression"
+	--assert all [
+		a: next [x y]
+		parse "šb" [collect into a [keep pick 2 skip keep ('z)]]
+		[x #"š" #"b" z y] == head a
+	]
+	--assert all [
+		a: next [x y]
+		parse [1] [collect into a [keep (0) keep integer!]]
+		[x 0 1 y] == head a
+	]
+
+--test-- "collect errors"
+	;; nested block collect into a string target
+	--assert all [s: "" error? e: try [parse "a" [collect into s [collect [keep skip]]]]  e/id = 'parse-into-type]
+	;; only one collect per rule
+	--assert all [error? e: try [parse [1] [collect collect [keep skip]]]  e/id = 'parse-rule]
 ===end-group===
 
 
@@ -767,6 +986,58 @@ Rebol [
 ===end-group===
 
 
+===start-group=== "Paths in rules"
+--test-- "set-path in rule"
+	o: context [p: none]
+	--assert all [
+		parse s: "abc" [skip o/p: to end]
+		o/p = "bc"
+		same? head o/p s
+	]
+	--assert all [
+		parse b: [1 2 3] [skip o/p: to end]
+		o/p = [2 3]
+		same? head o/p b
+	]
+	blk: [#(none)]
+	--assert all [
+		parse s: "abc" [2 skip blk/1: to end]
+		blk/1 = "c"
+		same? head blk/1 s
+	]
+
+--test-- "get-path in rule"
+	o: context [p: none q: "xyz" n: 1]
+	;; reset the position in the same series
+	--assert parse "abc" [skip o/p: "b" :o/p "bc"]
+	--assert parse [1 2 3] [skip o/p: integer! :o/p integer! integer!]
+	;; switch to another series (CureCode #1263)
+	--assert parse "abc" [:o/q "xyz"]
+	--assert parse [1] [:o/q "xyz"]
+	;; not a series
+	--assert all [error? e: try [parse "abc" [:o/n]]  e/id = 'parse-series]
+
+	;; switch to another series of a different type/length
+	--assert parse [1] [:o/q "xyz"]
+	--assert parse "ab" [:o/q "xyz"]
+	;; get-path in the middle of a rule (same as get-word, #2269/#2364)
+	o/p: "abcd"
+	--assert all [
+		error? e: try [parse "abcd" [x: "ab" copy y :o/p thru "abcd"]]
+		e/id = 'parse-rule
+	]
+	;; change with position (same as get-word, #2711)
+	--assert all [
+		parse b: [1 2 3 4 5] [skip (o/p: back tail b) change :o/p ('x) skip]
+		b = [1 x 5]
+	]
+	--assert all [
+		parse b: "12345" [skip (o/p: back tail b) change :o/p ('x) skip]
+		b = "1x5"
+	]
+===end-group===
+
+
 ===start-group=== "Other parse issues"
 
 --test-- "parse with none or unset"
@@ -1022,6 +1293,113 @@ if not error? try [str: to string! #{A032}][
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1880
 	--assert not parse "ab" ["" to end] ;-- not like in Red!
 
+--test-- "integer! repeat with paren"
+	;; paren is not a matching rule; it is evaluated once and the rule fails (as in Red)
+	n: 0 --assert all [not parse []  [3 (n: n + 1)]  n = 1]
+	n: 0 --assert all [not parse ""  [3 (n: n + 1)]  n = 1]
+	n: 0 --assert all [not parse [x] [2 4 (n: n + 1) 'x]  n = 1]
+	n: 0 --assert all [not parse "x" [2 4 (n: n + 1) "x"]  n = 1]
+	p: quote (n: n + 1)
+	n: 0 --assert all [not parse [x] [2 p 'x]  n = 1]
+	n: 0 --assert all [not parse "x" [2 p "x"]  n = 1]
+	;; failure continues with the next alternative
+	n: 0 --assert all [parse [x] [2 (n: n + 1) | 'x]  n = 1]
+	n: 0 --assert all [parse "x" [2 (n: n + 1) | "x"]  n = 1]
+
+	;; zero count: paren is not evaluated and the rule succeeds
+	n: 0 --assert all [parse []  [0 (n: n + 1)]  n = 0]
+	n: 0 --assert all [parse ""  [0 (n: n + 1)]  n = 0]
+	n: 0 --assert all [parse [x] [0 (n: n + 1) 'x]  n = 0]
+	;; zero min count: paren is evaluated once and the rule succeeds
+	n: 0 --assert all [parse [x] [0 2 (n: n + 1) 'x]  n = 1]
+	n: 0 --assert all [parse "x" [0 2 (n: n + 1) "x"]  n = 1]
+
+--test-- "integer! repeat with paren modifying input"
+	;; paren modifying the input after a counter
+	--assert all [not parse b: [1 2 3] [2 skip 1 (clear b)]  b = []]
+	--assert all [not parse s: "abc"   [2 skip 1 (clear s)]  s = ""]
+	;; index is clipped to the new tail (without it, stale data past the tail would be matched)
+	--assert all [parse b: [1 2 3] [2 skip 0 1 (clear b) opt integer!]  b = []]
+	--assert all [parse s: "abc"   [2 skip 0 1 (clear s) opt #"c"]  s = ""]
+
+--test-- "sub-rule block after counter or in word"
+	r: [integer!]
+	--assert     parse [1 1] [2 [integer!]]
+	--assert     parse [1 1] [2 r]
+	--assert     parse [1 1] [1 3 r]
+	--assert not parse [1 1] [3 r]
+	r: ["a"]
+	--assert     parse "aa" [2 ["a"]]
+	--assert     parse "aa" [2 r]
+	--assert     parse "aa" [1 3 r]
+	--assert not parse "aa" [3 r]
+	;; nested sub-rule inside a block after a counter
+	--assert     parse [1 a 2 b] [2 [integer! [word!]]]
+	--assert     parse "1a2b" [2 [[#"1" | #"2"] ["a" | "b"]]]
+
+--test-- "success is checked against the current input"
+	;@@ https://github.com/Oldes/Rebol3/issues/1447
+	b: "xyz"
+	o: context [q: "xyz"]
+	--assert     parse "abcdef" [:b "xyz"]
+	--assert     parse "abcdef" [:o/q "xyz"]
+	--assert     parse [1 2 3 4] [:b "xyz"]
+	--assert not parse "ab" [:b "xy"]          ;; was true: index 2 >= tail of "ab"
+	--assert not parse "ab" [:o/q "xy"]
+	;; into
+	--assert     parse ["abcdef"] [into [:b "xyz"]]
+	--assert not parse ["ab"] [into [:b "xy"]]
+
+--test-- "input switched inside a sub-rule"
+	b: "xyz"
+	--assert parse [1] [[:b] "xyz"]
+	--assert parse "abcdef" [["abc" :b] "xyz"]
+
+--test-- "backtracking after input switch stays in the new series"
+	;; documented limitation: failure recovers the index, not the series
+	b: "xyz"
+	--assert parse "abc" [:b "nope" | "xyz"]
+	--assert not parse "abc" [:b "nope" | "abc"]
+
+--test-- "parse with trace"
+	;; covers the Trace_Level branches; keep the input tiny, trace output goes to the console
+	trace on
+	r1: try [parse "ab" [#"a" "b"]]
+	r2: try [parse [a 1] ['a integer!]]
+	trace off
+	--assert r1 = true
+	--assert r2 = true
+
+--test-- "parse ?? (debug print)"
+	;; covers Print_Parse_Index; prints one line per ?? to the console
+	--assert parse "ab" [?? "a" ?? "b"]
+	--assert parse [a 1] [?? 'a ?? integer!]
+	--assert parse "" [??]
+
+--test-- "char! rule on UTF-8 string"
+	;; 2-byte, 3-byte and ASCII chars in a UTF-8 series
+	--assert     parse "š"   [#"š"]
+	--assert     parse "aša" [#"a" #"š" #"a"]
+	--assert     parse "€x"  [#"€" #"x"]
+	--assert     parse "ššš" [3 #"š"]
+	--assert not parse "š"   [#"s"]
+	--assert not parse "s"   [#"š"]
+	--assert all [parse "aša" [#"a" copy x #"š" #"a"]  x = "š"]  ;; advances by the codepoint size
+	;; case sensitivity
+	--assert     parse "Š" [#"š"]
+	--assert     parse "š" [#"Š"]
+	--assert     parse/case "Š" [#"Š"]
+	--assert not parse/case "Š" [#"š"]
+
+--test-- "invalid rule on string input"
+	--assert all [error? e: try [parse "a" [1.5]]      e/id = 'parse-rule  e/arg1 = 1.5]
+	--assert all [error? e: try [parse "a" [string!]]  e/id = 'parse-rule]
+	--assert all [error? e: try [parse "a" [any-string!]]  e/id = 'parse-rule]
+	--assert all [error? e: try [parse "a" ['a]]       e/id = 'parse-rule]
+	--assert all [error? e: try [parse "a" [#(true)]]  e/id = 'parse-rule]
+	;; none rule matches without advancing
+	--assert parse "a" [none "a"]
+	--assert parse "" [none]
 ===end-group===
 
 ~~~end-file~~~

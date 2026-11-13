@@ -407,7 +407,23 @@ if find system/catalog/checksums 'xxh128 [
 		--assert sum1 = port/data
 		close port
 ]
-
+if all [
+	find system/catalog/checksums 'xxh32
+	find system/catalog/checksums 'xxh64
+][
+	--test-- "checksum port xxh32/xxh64 - streaming matches one-shot (state reset)"
+		foreach len [100 800] [
+			data: append/dup copy #{} #{0102030405060708} len / 8
+			foreach method [xxh32 xxh64] [
+				p: open join checksum:// method
+				write p copy/part data 10
+				write p copy/part skip data 10 50
+				write p skip data 60
+				--assert equal? read p checksum data method
+				close p
+			]
+		]
+]
 
 	--test-- "checksum-write-refinements"
 		port: open checksum://
