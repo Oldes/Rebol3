@@ -894,6 +894,51 @@ Rebol [
 		clamp next v 0 1.5                                     ;; from the index
 		--assert v == #(float64! [1.0 1.5 1.5])
 		--assert error? try [clamp v 0 1.0.0]
+	--test-- "clamp vector (all integer types)"
+		v: #(int8! [-128 0 127])
+		--assert (clamp v -200 200) == #(int8! [-128 0 127])        ;; bounds wider than the type
+		--assert (clamp v -10 10) == #(int8! [-10 0 10])
+		v: #(int8! [-128 0 127])
+		--assert (clamp v -300 -200) == #(int8! [-128 -128 -128])   ;; bounds below the type
+
+		v: #(int32! [-2147483647 0 2147483647])
+		--assert (clamp v -3000000000 3000000000) == #(int32! [-2147483647 0 2147483647])
+		--assert (clamp v -5 5) == #(int32! [-5 0 5])
+		v: #(int32! [-10 0 10])
+		--assert (clamp v -2.5 2.5) == #(int32! [-2 0 2])           ;; negative min rounds up
+
+		v: #(int64! [-9223372036854775807 0 9223372036854775807])
+		--assert (clamp v -100 100) == #(int64! [-100 0 100])
+
+		v: #(uint16! [0 1000 65535])
+		--assert (clamp v -1 70000) == #(uint16! [0 1000 65535])
+		--assert (clamp v 100 200) == #(uint16! [100 200 200])
+		--assert (clamp v -10 -5) == #(uint16! [0 0 0])             ;; bounds below the type
+		v: #(uint16! [0 5 10])
+		--assert (clamp v 0.1 9.9) == #(uint16! [1 5 9])            ;; decimal bounds rounded inwards
+
+		v: #(uint32! [0 5 4294967295])
+		--assert (clamp v -1 5000000000) == #(uint32! [0 5 4294967295])
+		--assert (clamp v 1 4294967294) == #(uint32! [1 5 4294967294])
+
+		v: #(uint64! [0 5 9223372036854775807])
+		--assert (clamp v -1 9223372036854775807) == #(uint64! [0 5 9223372036854775807])
+		--assert (clamp v 1 100) == #(uint64! [1 5 100])
+	--test-- "clamp vector (decimal types)"
+		v: #(float32! [-1000.5 0.25 1000.5])
+		--assert (clamp v -2000 2000) == #(float32! [-1000.5 0.25 1000.5])  ;; wide bounds change nothing
+		--assert (clamp v -0.5 0.5) == #(float32! [-0.5 0.25 0.5])          ;; decimal bounds used as they are
+		v: #(float32! [1.0 2.0 3.0])
+		clamp next v 1.5 2.5                                                ;; from the index
+		--assert v == #(float32! [1.0 2.0 2.5])
+
+		v: #(float64! [-1000.5 0.25 1000.5])
+		--assert (clamp v -2000.0 2000.0) == #(float64! [-1000.5 0.25 1000.5])
+		--assert (clamp v -0.75 0.125) == #(float64! [-0.75 0.125 0.125])
+		v: #(float64! [-5.5 0.0 5.5])
+		--assert (clamp v -2 2) == #(float64! [-2.0 0.0 2.0])               ;; integer bounds
+		v: #(float64! [1e300 -1e300])
+		--assert (clamp v -1e10 1e10) == #(float64! [1e10 -1e10])
 ===end-group===
 
 
