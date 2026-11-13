@@ -1394,6 +1394,10 @@ Rebol [
 		--assert  #(i64! [1 2 3 4]) == sort #(i64! [2 4 1 3])
 		--assert  #(f32! [1 2 3 4]) == sort #(f32! [2 4 1 3])
 		--assert  #(f64! [1 2 3 4]) == sort #(f64! [2 4 1 3])
+		v: #(uint32! [4294967295 0 2147483648 1])
+		--assert (sort v) == #(uint32! [0 1 2147483648 4294967295])
+		v: #(uint64! [9223372036854775807 0 4294967296 1])
+		--assert (sort v) == #(uint64! [0 1 4294967296 9223372036854775807])
 	--test-- "SORT/reverse vector!"
 		--assert  #(i8!  [4 3 2 1]) == sort/reverse #(i8!  [2 4 1 3])
 		--assert  #(i16! [4 3 2 1]) == sort/reverse #(i16! [2 4 1 3])
@@ -1401,6 +1405,12 @@ Rebol [
 		--assert  #(i64! [4 3 2 1]) == sort/reverse #(i64! [2 4 1 3])
 		--assert  #(f32! [4 3 2 1]) == sort/reverse #(f32! [2 4 1 3])
 		--assert  #(f64! [4 3 2 1]) == sort/reverse #(f64! [2 4 1 3])
+		v: #(uint16! [65535 0 32768 1])
+		--assert (sort/reverse v) == #(uint16! [65535 32768 1 0])
+		v: #(uint32! [4294967295 0 2147483648 1])
+		--assert (sort/reverse v) == #(uint32! [4294967295 2147483648 1 0])
+		v: #(uint64! [9223372036854775807 0 4294967296 1])
+		--assert (sort/reverse v) == #(uint64! [9223372036854775807 4294967296 1 0])
 	--test-- "SORT/part vector!"
 		--assert  #(i8!  [1 2 4 3]) == sort/part #(i8!  [2 4 1 3]) 3
 		--assert  #(i16! [1 2 4 3]) == sort/part #(i16! [2 4 1 3]) 3
