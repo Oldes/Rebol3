@@ -713,6 +713,52 @@ if value? 'blur [
 ===end-group===
 ]
 
+if any-function? :resize [
+===start-group=== "RESIZE"
+	--test-- "resize default filter"
+	i: make image! 100x10
+	--assert image? try [resize i 10x10]
+	--assert image? try [resize i 10]
+	--assert image? try [resize i 10%]
+	--assert error? try [resize i 0]
+	--test-- "resize default filter with alpha"
+	i/alpha: 10
+	--assert image? try [resize i 10x10]
+	--assert image? try [resize i 10]
+	--assert image? try [resize i 10%]
+	--assert error? try [resize i 0]
+	--test-- "resize default filter"
+	i: make image! 10x100
+	--assert image? try [resize i 10x10]
+	--assert image? try [resize i 10]
+	--assert image? try [resize i 10%]
+	--assert error? try [resize i 0]
+	--test-- "resize default filter with alpha"
+	i/alpha: 10
+	--assert image? try [resize i 10x10]
+	--assert image? try [resize i 10]
+	--assert image? try [resize i 10%]
+	--assert error? try [resize i 0]
+	i: load %units/files/flower.png
+	foreach filter system/catalog/filters [
+		--test--  ajoin ["resize " filter]
+		--assert image? try [resize/filter i 10x10 filter]
+		--assert image? try [resize/filter i 10  filter]
+		--assert image? try [resize/filter i 10% filter]
+		--assert error? try [resize/filter i 0x0 filter]
+		--assert image? try [resize/filter/blur i 10 filter 0.2]
+		--assert image? try [resize/filter/blur i 10 filter 5.0]
+	]
+	i/alpha: 50
+	foreach filter system/catalog/filters [
+		--test--  ajoin ["resize with alpha " filter]
+		--assert image? try [resize/filter i 10x10 filter]
+		--assert image? try [resize/filter/blur i 10 filter 0.2]
+		--assert image? try [resize/filter/blur i 10 filter 5.0]
+	]
+===end-group===
+]
+
 if any-function? :remap [
 ===start-group=== "REMAP"
 	--test-- "remap with a vector palette"
