@@ -1106,7 +1106,7 @@ static int Do_Ordinal(REBVAL *ds, REBINT n)
 	else
 		Dump_Values(arg, 1);
 #endif
-	return R_ARG1;
+	return R_UNSET;
 }
 
 

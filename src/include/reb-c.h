@@ -282,6 +282,10 @@ typedef void(*CFUNC)(void *);
 **
 ***********************************************************************/
 
+#if defined(_DEBUG) && !defined(DEBUG)
+#define DEBUG
+#endif
+
 #ifdef __has_builtin
 #  define HAS_BUILTIN(x) __has_builtin(x)
 #else

@@ -166,7 +166,9 @@
 	series->tail += delta;
 
 	if ((SERIES_TAIL(series) + SERIES_BIAS(series)) * wide >= SERIES_TOTAL(series)) {
+#ifdef DEBUG
 		Dump_Series(series, "Overflow");
+#endif
 		ASSERT(0, RP_OVER_SERIES);
 	}
 

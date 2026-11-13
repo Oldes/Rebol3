@@ -125,7 +125,7 @@ const REBPOOLSPEC Mem_Pool_Spec[MAX_POOLS] =
 	void *ptr;
 
 	if (!(ptr = malloc(size))) return 0;
-#if defined(DEBUG) || defined(_DEBUG)
+#ifdef DEBUG
 	PG_Mem_Make++;
 	if (Reb_Opts && Reb_Opts->watch_alloc)
 		Debug_Fmt(BOOT_STR(RS_WATCH, 4), size);
@@ -135,7 +135,7 @@ const REBPOOLSPEC Mem_Pool_Spec[MAX_POOLS] =
 		Check_Security(SYM_MEMORY, POL_EXEC, 0);
 	}
 
-#if defined(DEBUG) || defined(_DEBUG)
+#ifdef DEBUG
 	// Fill the allocated memory with content to detect
 	// potential issues where it should have been cleared.
 	memset(ptr, 42, size);
@@ -1005,12 +1005,14 @@ crash:
 							  SERIES_FLAGS(series),
 							  (SERIES_LABEL(series) ? SERIES_LABEL(series) : "-")
 							 );
+#if defined(DEBUG) || defined(_DEBUG)
 					//Dump_Series(series, "Dump");
 					if (SERIES_WIDE(series) == sizeof(REBVAL)) {
 						Debug_Values(BLK_HEAD(series), SERIES_TAIL(series), 1024); /* FIXME limit */
 					} else{
 						Dump_Bytes(series->data, (SERIES_TAIL(series)+1) * SERIES_WIDE(series));
 					}
+#endif
 				}
 			}
 			series++;

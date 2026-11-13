@@ -1186,7 +1186,7 @@ static void Set_Option_File(REBCNT field, REBYTE* src, REBOOL dir )
 	Dispose_Pools();
 	Free_Mem(PG_Reb_Stats, sizeof(*PG_Reb_Stats));
 	Free_Mem(Reb_Opts, sizeof(*Reb_Opts));
-#if defined(DEBUG) || defined(_DEBUG)
+#ifdef DEBUG
 //	if (PG_Mem_Make != PG_Mem_Free || PG_Mem_Usage > 0)
 //		printf("PG_Mem_Make: %llu free: %llu used: %llu\n", PG_Mem_Make, PG_Mem_Free, PG_Mem_Usage);
 #endif
