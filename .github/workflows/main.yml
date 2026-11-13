@@ -76,6 +76,9 @@ jobs:
           cp ./build/test-x64.rebx ./src/tests/
           export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/$PWD/src/tests/
 
+      - name: Test suite runner exit status
+        run: sh src/tests/test-runner-exit-status.sh ./build/rebol3-bulk-linux-x64
+
       - name: Test 64bit Rebol/Bulk
         run: ./build/rebol3-bulk-linux-x64 -s ./src/tests/run-tests.r3
 

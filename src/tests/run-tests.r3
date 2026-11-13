@@ -112,7 +112,7 @@ dt [ ;- delta time
 	prin "Checking bindings... " evoke 2 print "OK"
 	print "------------------------------------------------------------"
 	
-	***end-run***
+	tests-passed?: ***end-run***
 	recycle/on
 
 	unless empty? failed-units [
@@ -124,5 +124,6 @@ dt [ ;- delta time
 		]
 	]
 
+	unless all [tests-passed? empty? failed-units] [quit/return 1]
 
 ]

@@ -231,6 +231,7 @@ end-run: func [][
 	prin "^/^/***********NOT COMPATIBLE WITH RED***********"
 	print incomp
 	]
+	zero? qt-run-failures
 ]
 
 print-totals: func [
