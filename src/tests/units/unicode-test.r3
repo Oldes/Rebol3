@@ -1019,4 +1019,36 @@ Rebol [
 		--assert "č^@x" == head insert/part "" "č^@xy" 3
 ===end-group===
 
+===start-group=== "UTF-16/32 decoding with BOM"
+	--test-- "UTF-8 BOM"
+		--assert "š" == to string! #{EFBBBFC5A1}
+	--test-- "UTF-16 surrogate pairs"
+		--assert "🙂" == to string! #{FFFE3DD842DE}       ;; LE
+		--assert "🙂" == to string! #{FEFFD83DDE42}       ;; BE
+	--test-- "UTF-16 invalid surrogates"
+		--assert error? try [to string! #{FFFE3DD8}]      ;; truncated pair
+		--assert error? try [to string! #{FFFE3DD84100}]  ;; high + non-low
+		--assert error? try [to string! #{FFFE42DE}]      ;; unpaired low
+	--test-- "UTF-32"
+		--assert "🙂" == to string! #{FFFE000042F60100}   ;; LE
+		--assert "🙂" == to string! #{0000FEFF0001F642}   ;; BE
+	--test-- "UTF-32 invalid codepoints"
+		--assert error? try [to string! #{FFFE000000001100}] ;; > 10FFFF
+		--assert error? try [to string! #{FFFE000000D80000}] ;; surrogate
+===end-group===
+
+===start-group=== "UTF-8 surrogates in the middle of a string"
+	--test-- "surrogate pair with prefix and suffix"
+		--assert "a𝄢b" == to string! #{61EDA0B4EDB4A262}
+		--assert "š𝄢"  == to string! #{C5A1EDA0B4EDB4A2}
+===end-group===
+
+===start-group=== "char width above BMP"
+	--test-- "zero width (u32 table)"
+		--assert all [s: "^(E0001)" zero? s/width]
+		--assert all [s: "^(1D167)" zero? s/width]
+	--test-- "normal width (u32, not wide)"
+		--assert all [s: "^(10000)" 1 == s/width]
+===end-group===
+
 ~~~end-file~~~
