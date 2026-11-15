@@ -151,8 +151,10 @@ static struct termios *Get_Serial_Settings(int ttyfd)
 	attr= (struct termios *) MAKE_NEW(struct termios);
 	if (attr != NULL) {
         	if (tcgetattr(ttyfd,attr) == -1) {
+				int err = errno; // keep the reason of the failure
           		FREE_MEM(attr);
           		attr = NULL;
+				errno = err;
         	}
       	}
 	return attr;
@@ -168,7 +170,10 @@ static REBOOL Set_Serial_Settings(int ttyfd, REBREQ *req)
 	printf("setting attributes: speed %d\n", req->serial.baud);
 #endif
 
-	if (!Get_Baud_Speed(req->serial.baud, &speed)) return FALSE;
+	if (!Get_Baud_Speed(req->serial.baud, &speed)) {
+		errno = EINVAL;
+		return FALSE;
+	}
 
 	if (cfsetospeed(&attr, speed)!=0 || cfsetispeed(&attr, speed)!=0)
 		return FALSE;
@@ -285,21 +290,22 @@ static REBOOL Set_Serial_Settings(int ttyfd, REBREQ *req)
 	}
 	h = open(path, O_RDWR | O_NOCTTY | O_NONBLOCK);
 	if (h < 0) {
-		req->error = -RFE_OPEN_FAIL;
+		req->error = errno; // system error code as the reason
 		return DR_ERROR;
 	}
 
 	// Keep prior attributes, so these may be restored on close.
 	// It fails when the device is not a terminal.
+	errno = 0;
 	req->serial.prior_attr = Get_Serial_Settings(h);
 
 	if (!req->serial.prior_attr || !Set_Serial_Settings(h, req)) {
+		req->error = errno ? errno : -RFE_OPEN_FAIL;
 		if (req->serial.prior_attr) {
 			FREE_MEM(req->serial.prior_attr);
 			req->serial.prior_attr = NULL;
 		}
 		close(h);
-		req->error = -RFE_OPEN_FAIL;
 		return DR_ERROR;
 	}
 

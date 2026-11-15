@@ -134,13 +134,16 @@ static REBOOL Set_Serial_Settings(HANDLE hComm, REBREQ *req)
 
 	hComm = CreateFile(fullpath, GENERIC_READ|GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL );
 	if (hComm == INVALID_HANDLE_VALUE) {
-		req->error = -RFE_OPEN_FAIL;
+		// For example: 2 = no such device, 5 = access denied (device in use)
+		req->error = GetLastError();
 		return DR_ERROR;
 	}
 
 	if (!Set_Serial_Settings(hComm, req)) {
+		// For example: 87 = invalid parameter (unsupported settings)
+		req->error = GetLastError(); // must be before closing the handle!
 		CloseHandle(hComm);
-		req->error = -RFE_OPEN_FAIL;
+		if (!req->error) req->error = -RFE_OPEN_FAIL;
 		return DR_ERROR;
 	}
 

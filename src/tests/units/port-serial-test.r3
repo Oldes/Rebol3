@@ -14,6 +14,9 @@ serial?: all [
 	find system/schemes 'serial
 	native? select system/schemes/serial 'actor
 ]
+unless serial? [
+	print "  SKIPPED: this Rebol is built without the serial device!"
+]
 
 if all [
 	serial?
@@ -66,13 +69,16 @@ if all [
 				loop 2000 [close open serial://ptmx/9600]
 			]
 		--test-- "Open a device which is not a terminal"
+			;; the reason is the system's error code
 			--assert all [
 				error? e: try [open serial://null/9600]
 				e/id = 'cannot-open
+				e/arg2 = 25 ;; ENOTTY
 			]
 			--assert all [
 				error? e: try [open serial://not-existing-device/9600]
 				e/id = 'cannot-open
+				e/arg2 = 2  ;; ENOENT
 			]
 			;; failed attempts must not break the following valid one
 			--assert not error? try [
@@ -172,6 +178,7 @@ if all [
 				--assert all [
 					error? e: try [open join serial://ptmx/ speed]
 					e/id = 'cannot-open
+					e/arg2 = 22 ;; EINVAL
 				]
 			]
 	===end-group===
@@ -215,7 +222,12 @@ open-serial: func [
 	open append compose [scheme: 'serial path: (path) speed: 9600] any [spec []]
 ]
 
+if all [serial? not tty-a][
+	print "  SKIPPED: tests which need a pair of connected serial devices!"
+	print "           (set R3_SERIAL_A and R3_SERIAL_B environment variables)"
+]
 if all [tty-a tty-b][
+	print ["  Using serial devices:" mold tty-a "and" mold tty-b]
 	===start-group=== "SERIAL (device pair)"
 		--test-- "Read received data"
 			a: open-serial tty-a

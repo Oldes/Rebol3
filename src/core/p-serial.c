@@ -193,7 +193,7 @@
 			req->serial.path = path;
 			result = OS_Do_Device(req, RDC_OPEN);
 			req->serial.path = NULL;
-			if (result) Trap_Port(RE_CANNOT_OPEN, port, -12);
+			if (result) Trap_Port(RE_CANNOT_OPEN, port, req->error); // system error code
 			SET_OPEN(req);
 			return R_RET;
 
