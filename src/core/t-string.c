@@ -925,12 +925,25 @@ FORCE_INLINE
 	REBSER *ser;
 	REB_MOLD mo = {0};
 	REBCNT n;
-	REBUNI c = 0;
+	REBU32 c = 0;
 	REBSER *arg;
+	REBVAL *val = pvs->value;
+	REBVAL snapped;
 
 	if (pvs->setval) return PE_BAD_SET;
 
-	ser = Copy_Series_Value(pvs->value);
+	// Index may be inside of a multi-byte sequence (invalidated by a modification
+	// made through another reference), use a value with a valid index instead.
+	if (VAL_INDEX(val) < VAL_TAIL(val)) {
+		n = Val_Str_Index(val);
+		if (n != VAL_INDEX(val)) {
+			snapped = *val;
+			VAL_INDEX(&snapped) = n;
+			val = &snapped;
+		}
+	}
+
+	ser = Copy_Series_Value(val);
 
 	n = SERIES_TAIL(ser);
 	if (n > 0) c = GET_ANY_CHAR(ser, n-1);
@@ -938,7 +951,7 @@ FORCE_INLINE
 
 	if (ANY_STR(pvs->select)) {
 		arg = VAL_SERIES(pvs->select);
-		n = VAL_INDEX(pvs->select);
+		n = Val_Str_Index(pvs->select); // clipped to tail and snapped
 	}
 	else {
 		Reset_Mold(&mo);

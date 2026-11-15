@@ -438,6 +438,12 @@ Rebol [
 		--assert "ás" == all [s: "áb" s/2: #"s" s]
 		--assert error? try [all s: "ab" s/3: #"š"]
 
+	--test-- "file path with invalidated index"
+		swap f1: %🙂b f2: next f1 ;; f2 index is now inside of the 🙂 sequence
+		d: %dir
+		--assert %🙂/x   == f2/x
+		--assert %dir/🙂 == d/:f2
+===end-group===
 
 
 ===start-group=== "actions"
