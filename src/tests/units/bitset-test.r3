@@ -420,6 +420,15 @@ Rebol [
 		--assert not strict-equal? b complement b
 		--assert not same? b complement b
 
+	--test-- "copy of complemented bitset"
+		bs: complement charset "a"
+		--assert complement? copy bs
+		--assert bs == copy bs
+		--assert not find copy bs #"a"
+		--assert find copy bs #"b"
+		--assert complement? make bitset! bs
+		--assert not complement? copy charset "a"
+		--assert complement? first copy/deep reduce [complement charset "a"]
 ===end-group===
 
 ===start-group=== "bitset issues"

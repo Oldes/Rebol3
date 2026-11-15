@@ -686,7 +686,9 @@ scan_bits:
 	case A_MAKE:
 	case A_TO:
 		if (IS_BITSET(arg)) {
-			VAL_SERIES(arg) = Copy_Series_Value(arg);
+			ser = Copy_Series_Value(arg);
+			BITS_NOT(ser) = BITS_NOT(VAL_SERIES(arg));
+			VAL_SERIES(arg) = ser;
 			return R_ARG2;
 		}
 		// Determine size of bitset. Returns -1 for errors.
@@ -733,7 +735,9 @@ set_bits:
 		Trap_Arg(D_ARG(3));
 
 	case A_COPY:
-		VAL_SERIES(value) = Copy_Series_Value(value);
+		ser = Copy_Series_Value(value);
+		BITS_NOT(ser) = BITS_NOT(VAL_SERIES(value));
+		VAL_SERIES(value) = ser;
 		break;
 
 	case A_LENGTHQ:
