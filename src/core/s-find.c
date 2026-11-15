@@ -224,6 +224,20 @@
 
 /***********************************************************************
 **
+*/	REBCNT Val_Snapped_Index(REBVAL *val)
+/*
+**		Returns index of any series value. When it is a string with
+**		index inside of a multi-byte sequence, returns the char start.
+**		Unlike Val_Str_Index, an index past tail is not clipped.
+**
+***********************************************************************/
+{
+	if (ANY_STR(val) && VAL_INDEX(val) < VAL_TAIL(val)) return Val_Str_Index(val);
+	return VAL_INDEX(val);
+}
+
+/***********************************************************************
+**
 */	REBINT Compare_String_Vals(REBVAL *v1, REBVAL *v2, REBOOL uncase)
 /*
 **		Compare two string values.

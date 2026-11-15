@@ -620,6 +620,19 @@ Rebol [
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2665
 		--assert all [(change/part o: next "éeeé" "🙂" 2) == "é"  o == "🙂é"  (head o) == "é🙂é"]
 
+	--test-- "/part position with invalidated index"
+		swap s1: "🙂b" s2: next s1 ;; s2 index is now inside of the 🙂 sequence
+		--assert "b"   == copy/part s1 s2
+		--assert "b"   == head insert/part copy "" s1 s2
+		--assert "x🙂" == head change/part s1 "x" s2
+		--assert "🙂"  == head remove/part s1 s2
+	--test-- "/part position past tail of UTF-8 string"
+		--assert all [
+			s: "🙂abc" p: tail s
+			clear next s
+			"🙂" == copy/part s p
+		]
+
 	--test-- "change char!"
 		--assert all [(change o: "---" #"╔") == "--"  o == "╔--"]
 		--assert all [(change o: "---" #"🙂") == "--"  o == "🙂--"]
