@@ -915,6 +915,18 @@ Rebol [
 			parse s: "ab" [skip (poke s 1 #"🙂") copy x to end]
 			x == "b"
 		]
+	--test-- "to/thru block on UTF-8 input"
+		--assert parse "🙂b"  [to [#"b"] #"b"]
+		--assert parse "🙂b"  [thru [#"🙂"] #"b"]
+		--assert parse "a🙂b" [to [#"🙂"] skip #"b"]
+		--assert parse "a🙂b" [thru ["🙂"] #"b"]
+		--assert parse "a🙂b" [to [#"x" | "🙂b"] 2 skip]
+		--assert parse "a🙂"  [thru [128578]]
+		cs: charset "š"
+		--assert parse "aš" [thru [cs]]
+		--assert parse "aš" [to [cs] skip]
+		;; must not match inside of a multi-byte char
+		--assert not parse "🙂" [to [#"^(9F)"] to end]
 ===end-group===
 
 ===start-group=== "char column (terminal) width"

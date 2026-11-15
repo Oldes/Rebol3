@@ -402,8 +402,23 @@ no_result:
 	REBCNT cmd;
 	REBCNT i;
 	REBCNT len;
+	REBCNT step = 1; // size of the value at the current position (bytes of the char in strings)
+	REBU32 chr  = 0; // char at the current position (string input only)
+	const REBOOL is_str = (type < REB_BLOCK && type != REB_BINARY);
 
-	for (; index <= series->tail; index++) {
+	for (; index <= series->tail; index += step) {
+
+		if (is_str) {
+			// Decode the char only once for all alternatives.
+			if (index < series->tail && IS_UTF8_SERIES(series)) {
+				chr  = UTF8_Get_Codepoint(BIN_SKIP(series, index));
+				step = UTF8_Next_Char_Size(BIN_HEAD(series), index);
+			}
+			else {
+				chr  = BIN_HEAD(series)[index]; // ASCII char or the terminator at tail
+				step = 1;
+			}
+		}
 
 		for (blk = VAL_BLK(block); NOT_END(blk); blk++) {
 
@@ -472,8 +487,8 @@ no_result:
 				else goto bad_target;
 			}
 			else { // String
-				REBUNI ch1 = GET_ANY_CHAR(series, index);
-				REBUNI ch2;
+				REBU32 ch1 = chr;
+				REBU32 ch2;
 
 				if (!HAS_CASE(parse) && ch1 < UNICODE_CASES) ch1 = UP_CASE(ch1);
 
@@ -501,7 +516,7 @@ no_result:
 				}
 				else if (ANY_STR(item)) {
 					item = Snap_Item(item, &snapped);
-					ch2 = VAL_ANY_CHAR(item);
+					ch2 = GET_UTF8_CHAR(VAL_SERIES(item), VAL_INDEX(item));
 					if (!HAS_CASE(parse) && ch2 < UNICODE_CASES) ch2 = UP_CASE(ch2);
 					if (ch1 == ch2) {
 						len = VAL_LEN(item);
@@ -515,8 +530,7 @@ no_result:
 					}
 				}
 				else if (IS_INTEGER(item)) {
-					ch1 = GET_ANY_CHAR(series, index);  // No casing!
-					if (ch1 == (REBCNT)VAL_INT32(item)) goto found1;
+					if (chr == (REBU32)VAL_INT32(item)) goto found1; // No casing!
 				}
 				else goto bad_target;
 			}
@@ -539,7 +553,7 @@ found:
 
 found1:
 	if (IS_PAREN(blk+1)) Do_Block_Value_Throw(blk+1);
-	return index + (is_thru ? 1 : 0);
+	return index + (is_thru ? step : 0);
 
 bad_target:
 	Trap1(RE_PARSE_RULE, item);
