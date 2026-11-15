@@ -203,6 +203,27 @@
 
 /***********************************************************************
 **
+*/	REBCNT Val_Str_Index(REBVAL *val)
+/*
+**		Returns index of the string value, clipped to the tail and
+**		snapped back to the start of a codepoint.
+**
+**		A width-changing modification made through another reference
+**		may leave the index inside of a multi-byte sequence.
+**
+***********************************************************************/
+{
+	REBSER *ser = VAL_SERIES(val);
+	REBCNT  idx = VAL_INDEX(val);
+
+	if (idx >= SERIES_TAIL(ser)) return SERIES_TAIL(ser);
+	if (IS_UTF8_SERIES(ser) && !IS_BINARY(val) && (BIN_HEAD(ser)[idx] & 0xC0) == 0x80)
+		idx = UTF8_Prev_Char_Position(BIN_HEAD(ser), idx);
+	return idx;
+}
+
+/***********************************************************************
+**
 */	REBINT Compare_String_Vals(REBVAL *v1, REBVAL *v2, REBOOL uncase)
 /*
 **		Compare two string values.
@@ -213,20 +234,24 @@
 **
 ***********************************************************************/
 {
-	REBCNT l1  = VAL_LEN(v1);
-	REBCNT l2  = VAL_LEN(v2);
+	REBCNT i1  = Val_Str_Index(v1);
+	REBCNT i2  = Val_Str_Index(v2);
+	REBCNT l1  = VAL_TAIL(v1) - i1;
+	REBCNT l2  = VAL_TAIL(v2) - i2;
 	REBCNT len = MIN(l1, l2);
+	const REBYTE *b1 = VAL_BIN_SKIP(v1, i1);
+	const REBYTE *b2 = VAL_BIN_SKIP(v2, i2);
 	REBINT n;
 
 	if (IS_BINARY(v1) || IS_BINARY(v2)) uncase = FALSE;
 	if (uncase && (IS_UTF8_SERIES(VAL_SERIES(v1)) || IS_UTF8_SERIES(VAL_SERIES(v2)))) {
-		n = Compare_UTF8_Len(VAL_BIN_DATA(v1), l1, VAL_BIN_DATA(v2), l2);
+		n = Compare_UTF8_Len(b1, l1, b2, l2);
 		// exact (0) or non-case match (1, 3) is a match in case-insensitive compare
 		if (n >= 0) return 0;
 		return n + 2; // -1: v1 > v2, -3: v2 > v1
 	}
 	else {
-		n = Compare_Bytes(VAL_BIN_DATA(v1), VAL_BIN_DATA(v2), len, uncase);
+		n = Compare_Bytes(b1, b2, len, uncase);
 		return (n != 0) ? n : l1 - l2;
 	}
 }

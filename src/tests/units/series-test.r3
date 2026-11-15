@@ -2135,6 +2135,14 @@ try/with [
 			2 == length? s2
 			"🙂b" == copy s2
 		]
+	--test-- "comparing string with invalidated index"
+		--assert all [
+			"b🙂" == swap s1: "🙂b" s2: next s1
+			"🙂" == s2
+			"🙂" =  s2
+			s2 == next s1
+			(reduce [s2]) = ["🙂"]
+		]
 	--test-- "swap binary"
 		--assert all [
 			s1: #{0102} s2: #{AABB}
