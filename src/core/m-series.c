@@ -330,7 +330,15 @@
 **
 ***********************************************************************/
 {
-	return Copy_Series_Part(VAL_SERIES(value), VAL_INDEX(value), VAL_LEN(value));
+	REBSER *series = VAL_SERIES(value);
+	REBCNT  tail   = SERIES_TAIL(series);
+	REBCNT  index  = VAL_INDEX(value);
+
+	// Index may be past the tail (when the series was shortened through another
+	// reference). Clip it, so the terminator is copied from the tail.
+	if (index > tail) index = tail;
+
+	return Copy_Series_Part(series, index, tail - index);
 }
 
 

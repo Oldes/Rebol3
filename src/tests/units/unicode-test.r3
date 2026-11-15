@@ -443,6 +443,13 @@ Rebol [
 		d: %dir
 		--assert %🙂/x   == f2/x
 		--assert %dir/🙂 == d/:f2
+
+	--test-- "copy of series value with index past tail"
+		--assert all [
+			f: %abcdef p: skip f 2
+			clear f
+			%/x == p/x
+		]
 ===end-group===
 
 
