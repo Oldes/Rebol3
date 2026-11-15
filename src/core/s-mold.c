@@ -1233,11 +1233,23 @@ STOID Mold_Error(REBVAL *value, REB_MOLD *mold, REBFLG molded)
 	REBYTE buf[60];
 	REBINT len;
 	REBSER *ser = mold->series;
+	REBVAL snapped;
 
 	CHECK_STACK(&len);
 
 	ASSERT2(SERIES_WIDE(mold->series) == sizeof(REBUNI), RP_BAD_SIZE);
 	ASSERT2(ser, RP_NO_BUFFER);
+
+	// Index may be inside of a multi-byte sequence (invalidated by a modification
+	// made through another reference), use a value with a valid index instead.
+	if (ANY_STR(value) && VAL_INDEX(value) < VAL_TAIL(value)) {
+		REBCNT idx = Val_Str_Index(value);
+		if (idx != VAL_INDEX(value)) {
+			snapped = *value;
+			VAL_INDEX(&snapped) = idx;
+			value = &snapped;
+		}
+	}
 
 	// Special handling of string series: {
 	if (ANY_STR(value) && !IS_TAG(value)) { // tag! has different rules!

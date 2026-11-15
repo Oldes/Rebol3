@@ -334,6 +334,13 @@ Rebol [
 		--assert (unique/skip "baaččbač" 2) == "baaččb"
 		--assert (unique/skip "b🙂aččb🙂č" 2) == "b🙂aččb🙂č"
 
+	--test-- "mold/form string with invalidated index"
+		--assert all [
+			"b🙂" == swap s1: "🙂b" s2: next s1
+			{"🙂"} == mold s2
+			"🙂" == form s2
+			{#(string! "b🙂" 2)} == mold/all s2
+		]
 	--test-- "mold/part"
 		str: "═════"
 		--assert {"}   == mold/part str 1
