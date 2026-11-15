@@ -190,8 +190,12 @@
 	case A_WRITE:
 		refs = Find_Refines(ds, ALL_WRITE_REFS);
 
-		// Determine length. Clip /PART to size of string if needed.
+		// Only bytes may be sent (strings are internally UTF-8 encoded).
+		// Any other value has no series data or it holds Rebol values!
 		spec = D_ARG(2);
+		if (!ANY_BINSTR(spec)) Trap1(RE_INVALID_ARG, spec);
+
+		// Determine length. Clip /PART to size of string if needed.
 		len = VAL_LEN(spec);
 		if (refs & AM_WRITE_PART) {
 			REBCNT n = Int32s(D_ARG(ARG_WRITE_LENGTH), 0);

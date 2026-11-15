@@ -143,6 +143,38 @@ if all [
 				port? try [close p]
 				tty-flag? "-crtscts"
 			]
+		--test-- "Write binary and string data"
+			;; data are collected from the second device by an external process
+			call/shell "timeout 1 cat /tmp/r3-ttyB > /tmp/r3-serial-out"
+			wait 0.3
+			--assert all [
+				port? p: try [open [scheme: 'serial path: %/tmp/r3-ttyA speed: 9600]]
+				port? try [write p #{010203}]
+				port? try [write p "abc"]
+				port? try [write p "ěšč"] ;; sent as UTF-8
+				port? try [write p %file]
+				port? try [write p <tag>]
+				port? try [write p skip #{0A0B0C0D} 2]
+				port? try [write/part p #{0405060708} 2]
+				port? try [write/part p "xyz" 100] ;; clipped to the data length
+				port? try [write p #{}]
+			]
+		--test-- "Write value which has no bytes"
+			;; these were sent as a raw memory or crashed!
+			foreach value reduce [42 1.5 #"a" [1 2 "x"] 'word none true 1x2 now object [a: 1]][
+				--assert all [
+					error? e: try [write p :value]
+					e/id = 'invalid-arg
+				]
+			]
+			--assert port? try [write p #{FF}] ;; the port is still usable
+			wait 1
+			try [close p]
+			--assert (read %/tmp/r3-serial-out) == rejoin [
+				#{010203} #{616263} to binary! "ěšč" to binary! "file" to binary! "tag"
+				#{0C0D} #{0405} #{78797A} #{FF}
+			]
+			try [delete %/tmp/r3-serial-out]
 		--test-- "Invalid flow control"
 			--assert all [
 				error? e: try [open [scheme: 'serial path: %/tmp/r3-ttyA speed: 9600 flow-control: 'foo]]
