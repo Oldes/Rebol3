@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2013 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -48,6 +48,7 @@
 	REBCNT len;		// generic length
 	REBSER *ser;	// simplifier
 	REBSER *port;
+	REBCHR path[MAX_SERIAL_DEV_PATH];	// device path (used only while opening)
 
 	port = Validate_Port_With_Request(port_value, RDI_SERIAL, &req);
 
@@ -67,8 +68,12 @@
 			if (! (IS_FILE(arg) || IS_STRING(arg) || IS_BINARY(arg))) {
 				Trap1(RE_INVALID_PORT_ARG, arg);
 			}
-			req->serial.path = MAKE_STR(MAX_SERIAL_DEV_PATH);
-			TO_OS_STR(req->serial.path, (char *) VAL_DATA(arg), MAX_SERIAL_DEV_PATH);  
+			if (VAL_LEN(arg) >= MAX_SERIAL_DEV_PATH) {
+				Trap1(RE_INVALID_PORT_ARG, arg); // would be truncated
+			}
+			// The buffer is cleared, so the path is always terminated.
+			CLEAR(path, sizeof(path));
+			TO_OS_STR(path, (char *) VAL_DATA(arg), MAX_SERIAL_DEV_PATH - 1);
 			arg = Obj_Value(spec, STD_PORT_SPEC_SERIAL_SPEED);
 			if (! IS_INTEGER(arg)) {
 				Trap1(RE_INVALID_PORT_ARG, arg);
@@ -129,7 +134,12 @@
 				}
 			}
 
-			if (OS_Do_Device(req, RDC_OPEN)) Trap_Port(RE_CANNOT_OPEN, port, -12);
+			// The device needs the path only to open it, so there
+			// is no need to allocate it (and to free it later).
+			req->serial.path = path;
+			result = OS_Do_Device(req, RDC_OPEN);
+			req->serial.path = NULL;
+			if (result) Trap_Port(RE_CANNOT_OPEN, port, -12);
 			SET_OPEN(req);
 			return R_RET;
 

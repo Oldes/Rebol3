@@ -45,6 +45,36 @@ if all [
 				loop 2000 [try [open serial://null/9600]]
 				close open serial://ptmx/9600
 			]
+		--test-- "Device path as file, string and binary"
+			foreach path reduce [%ptmx "ptmx" to binary! "ptmx" next "/ptmx" %/dev/ptmx][
+				--assert all [
+					port? p: try [open compose [scheme: 'serial path: (path) speed: 9600]]
+					open? p
+					port? try [close p]
+				]
+			]
+		--test-- "Device path which is too long"
+			--assert all [
+				error? e: try [open compose [scheme: 'serial path: (append/dup copy "" #"a" 127) speed: 9600]]
+				e/id = 'cannot-open ;; valid length, but there is no such device
+			]
+			--assert all [
+				error? e: try [open compose [scheme: 'serial path: (append/dup copy "" #"a" 128) speed: 9600]]
+				e/id = 'invalid-port-arg
+			]
+			--assert all [
+				error? e: try [open compose [scheme: 'serial path: (append/dup copy "" #"a" 5000) speed: 9600]]
+				e/id = 'invalid-port-arg
+			]
+		--test-- "Invalid device path"
+			--assert all [
+				error? e: try [open [scheme: 'serial path: 42 speed: 9600]]
+				e/id = 'invalid-port-arg
+			]
+			--assert all [
+				error? e: try [open [scheme: 'serial speed: 9600]]
+				e/id = 'invalid-port-arg
+			]
 		--test-- "Open with unsupported baud rate"
 			foreach speed [0 -9600 12345][
 				--assert all [
