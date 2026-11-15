@@ -200,17 +200,23 @@ Rebol [
 	 	--assert 0 = to integer! "+00000000000"
 	 	--assert 0 = to integer! "000'000'000"
 
-	 --test-- "make/to integer! string! (known issue)"
+	--test-- "to integer! string with exponent"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/2099
-	 	--assert 302961000000 = to integer! "3.02961E+11"
-
-	--test-- "make/to integer! 1.#NaN and 1.#INF"
-		--assert error? try [to integer! 1.#NaN]
-		--assert error? try [to integer! 1.#INF]
-		--assert error? try [to integer! -1.#INF]
-		--assert error? try [make integer! 1.#NaN]
-		--assert error? try [make integer! 1.#INF]
-		--assert error? try [make integer! -1.#INF]
+		--assert  302961000000 = to integer! "3.02961E+11"
+		--assert -302961000000 = to integer! "-3.02961E+11"
+		--assert  4294967296   = to integer! "4294967296.0"
+	--test-- "to integer! decimal string (truncation)"
+		--assert  3 = to integer! "3.7"
+		--assert -3 = to integer! "-3.7"
+	--test-- "to integer! decimal string out of range"
+		--assert all [error? e: try [  to integer!  "1.0E+30"] e/id = 'overflow]
+		--assert all [error? e: try [  to integer!  "1.#INF"]  e/id = 'overflow]
+		--assert all [error? e: try [  to integer! "-1.#INF"]  e/id = 'overflow]
+		--assert all [error? e: try [  to integer!  "1.#NaN"]  e/id = 'overflow]
+		--assert all [error? e: try [make integer!  "1.0E+30"] e/id = 'overflow]
+		--assert all [error? e: try [make integer!  "1.#INF"]  e/id = 'overflow]
+		--assert all [error? e: try [make integer! "-1.#INF"]  e/id = 'overflow]
+		--assert all [error? e: try [make integer!  "1.#NaN"]  e/id = 'overflow]
 
 ===end-group===
 
