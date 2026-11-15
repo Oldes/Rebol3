@@ -983,7 +983,7 @@ Rebol [
 			data: make string! 40000
 			insert/dup data "ABCD" 10000
 
-			dir: clean-path %units/files/
+			dir: clean-path %files/
 			save dir/tmp.data reduce [1 data]
 			exe: system/options/boot
 			;@@ CALL seems not to work same on all OSes :-(

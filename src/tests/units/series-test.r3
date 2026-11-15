@@ -2415,25 +2415,25 @@ try/with [
 
 ; additional tests which also contain CRLF
 --test-- "issue-2186 read UCS16-LE"
-	bin: read %units/files/issue-2186-UTF16-LE.txt
+	bin: read %files/issue-2186-UTF16-LE.txt
 	--assert all [
 		string? try [str: to-string bin]
 		8206283 = checksum str 'crc24
 	]
 --test-- "issue-2186 read UCS16-BE"
-	bin: read %units/files/issue-2186-UTF16-BE.txt
+	bin: read %files/issue-2186-UTF16-BE.txt
 	--assert all [
 		string? try [str: to-string bin]
 		8206283 = checksum str 'crc24
 	]
 --test-- "issue-2186 read UCS32-LE"
-	bin: read %units/files/issue-2186-UTF32-LE.txt
+	bin: read %files/issue-2186-UTF32-LE.txt
 	--assert all [
 		string? try [str: to-string bin]
 		8206283 = checksum str 'crc24
 	]
 --test-- "issue-2186 read UCS32-BE"
-	bin: read %units/files/issue-2186-UTF32-BE.txt
+	bin: read %files/issue-2186-UTF32-BE.txt
 	--assert all [
 		string? try [str: to-string bin]
 		8206283 = checksum str 'crc24
@@ -2441,22 +2441,22 @@ try/with [
 ;- read/string converts CRLF to LF, so the checksum is different
 --test-- "issue-2186 read/string UCS16-LE"
 	--assert all [
-		string? try [str: read/string %units/files/issue-2186-UTF16-LE.txt]
+		string? try [str: read/string %files/issue-2186-UTF16-LE.txt]
 		5408699 = checksum str 'crc24
 	]
 --test-- "issue-2186 read/string UCS16-BE"
 	--assert all [
-		string? try [str: read/string %units/files/issue-2186-UTF16-BE.txt]
+		string? try [str: read/string %files/issue-2186-UTF16-BE.txt]
 		5408699 = checksum str 'crc24
 	]
 --test-- "issue-2186 read/string UCS32-LE"
 	--assert all [
-		string? try [str: read/string %units/files/issue-2186-UTF32-LE.txt]
+		string? try [str: read/string %files/issue-2186-UTF32-LE.txt]
 		5408699 = checksum str 'crc24
 	]
 --test-- "issue-2186 read/string UCS32-BE"
 	--assert all [
-		string? try [str: read/string %units/files/issue-2186-UTF32-BE.txt]
+		string? try [str: read/string %files/issue-2186-UTF32-BE.txt]
 		5408699 = checksum str 'crc24
 	]
 
@@ -2478,10 +2478,10 @@ try/with [
 	--assert "^(FFFD)" = to-string #{EFBFBD}
 
 	;- using quickbrown.bin instead of quickbrown.txt beacause GIT modifies CRLF to LF on posix
-	--assert none? invalid-utf? bin: read %units/files/quickbrown.bin
+	--assert none? invalid-utf? bin: read %files/quickbrown.bin
 	--assert  1872109 = checksum str: to-string bin 'crc24 ; does not normalize CRLF
 	--assert 16295532 = checksum deline str 'crc24
-	--assert 16295532 = checksum read/string %units/files/quickbrown.bin 'crc24 ;converts CRLF to LF
+	--assert 16295532 = checksum read/string %files/quickbrown.bin 'crc24 ;converts CRLF to LF
 
 --test-- "invalid utf16"
 	--assert try ["á🙂" == to-string #{FEFF00E1D83DDE42}]

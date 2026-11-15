@@ -221,13 +221,13 @@ rebol-cmd: func[cmd][
 ===start-group=== "LAUNCH"
 	--test-- "launch"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/1403
-		--assert 0 < launch %units/files/launched.r3 ;; returns a process id if not used /wait 
+		--assert 0 < launch %files/launched.r3 ;; returns a process id if not used /wait 
 	--test-- "do launch"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/914
-		--assert 0:0:1 > delta-time [do %units/files/launch.r3] ;; should not wait
+		--assert 0:0:1 > delta-time [do %files/launch.r3] ;; should not wait
 	--test-- "do launch/wait"
-		--assert 0:0:2 < delta-time [do %units/files/launch-wait.r3] ;; should wait
-		--assert 6 = try [length? read/lines %units/files/launched.txt] ;; 6 because 3x launched!
+		--assert 0:0:2 < delta-time [do %files/launch-wait.r3] ;; should wait
+		--assert 6 = try [length? read/lines %files/launched.txt] ;; 6 because 3x launched!
 
 	--test-- "do launch/with"
 		--assert all [
@@ -238,7 +238,7 @@ rebol-cmd: func[cmd][
 		delete %temp
 		delete %args.r3
 
-	try [delete %units/files/launched.txt]
+	try [delete %files/launched.txt]
 ===end-group===
 
 

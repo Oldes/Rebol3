@@ -238,34 +238,34 @@ if find [Linux macOS] system/platform [
 ===start-group=== "WILDCARD"
 	--test-- "wildcard *"
 		--assert all [
-			block? files: wildcard %units/files/ %*.zip
+			block? files: wildcard %files/ %*.zip
 			empty? find/last/tail files/1 %.zip
 		]
-		--assert empty? wildcard %units/files/ %*.something
+		--assert empty? wildcard %files/ %*.something
 	--test-- "wildcard ?"
 		--assert all [
-			block? files: wildcard %units/files/ %issue-2186-UTF??-BE.txt
+			block? files: wildcard %files/ %issue-2186-UTF??-BE.txt
 			2 = length? files
 		]
 	--test-- "wildcard *?*"
 		--assert all [
-			block? files: wildcard %units/files/ %*2186-UTF??*.txt
+			block? files: wildcard %files/ %*2186-UTF??*.txt
 			4 = length? files
 		]
 	--test-- "read wildcard"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2443
 		--assert all [
-			block? files: try [read %units/files/issue-2186-*.txt]
+			block? files: try [read %files/issue-2186-*.txt]
 			4 = length? files
 			to logic! find files %issue-2186-UTF16-LE.txt
 		]
 		--assert all [
-			block? files: try [read %units/files/issue-2186-UTF??-BE.txt]
+			block? files: try [read %files/issue-2186-UTF??-BE.txt]
 			2 = length? files
 			to logic! find files %issue-2186-UTF32-BE.txt
 		]
 		--assert all [
-			block? files: try [read %units/files/*2186-UTF??*.txt]
+			block? files: try [read %files/*2186-UTF??*.txt]
 			4 = length? files
 			to logic! find files %issue-2186-UTF16-BE.txt
 		]

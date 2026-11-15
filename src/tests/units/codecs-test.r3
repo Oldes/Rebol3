@@ -107,22 +107,22 @@ has-lzma?: did find system/catalog/compressions 'lzma
 ;@@ https://github.com/Oldes/Rebol-issues/issues/2424
 --test-- "load UCS16-LE txt"
 	--assert all [
-		string? try [str: load %units/files/issue-2186-UTF16-LE.txt]
+		string? try [str: load %files/issue-2186-UTF16-LE.txt]
 		5408699 = checksum str 'crc24
 	]
 --test-- "load UCS16-BE txt"
 	--assert all [
-		string? try [str: load %units/files/issue-2186-UTF16-BE.txt]
+		string? try [str: load %files/issue-2186-UTF16-BE.txt]
 		5408699 = checksum str 'crc24
 	]
 --test-- "load UCS32-LE txt"
 	--assert all [
-		string? try [str: load %units/files/issue-2186-UTF32-LE.txt]
+		string? try [str: load %files/issue-2186-UTF32-LE.txt]
 		5408699 = checksum str 'crc24
 	]
 --test-- "load UCS32-BE txt"
 	--assert all [
-		string? try [str: load %units/files/issue-2186-UTF32-BE.txt]
+		string? try [str: load %files/issue-2186-UTF32-BE.txt]
 		5408699 = checksum str 'crc24
 	]
 --test-- "load/save issue! as .txt"
@@ -139,8 +139,8 @@ has-lzma?: did find system/catalog/compressions 'lzma
 
 --test-- "loading a binary longer than 32262 bytes"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1677
-	--assert 32733 = length? do %units/files/issue-1677.txt
-	--assert 32733 = length? do bin: read %units/files/issue-1677.txt
+	--assert 32733 = length? do %files/issue-1677.txt
+	--assert 32733 = length? do bin: read %files/issue-1677.txt
 	write %tmp.reb bin
 	--assert 32733 = length? do %tmp.reb
 
@@ -155,7 +155,7 @@ if find codecs 'wav [
 	===start-group=== "WAV codec"
 		
 		--test-- "Load WAV file"
-			--assert object? snd: load %units/files/drumloop.wav
+			--assert object? snd: load %files/drumloop.wav
 			--assert   'wave = snd/type
 			--assert   44100 = snd/rate
 			--assert       1 = snd/channels
@@ -163,7 +163,7 @@ if find codecs 'wav [
 			--assert 3097828 = checksum to-binary snd/data  'crc24
 			snd: none
 		--test-- "Decode WAV data"
-			--assert binary? bin: read %units/files/zblunk_02.wav
+			--assert binary? bin: read %files/zblunk_02.wav
 			--assert object? snd: decode 'WAV bin
 			--assert 4283614 = checksum to-binary snd/data 'crc24
 			snd: none
@@ -188,7 +188,7 @@ if find codecs 'der [
 	===start-group=== "DER codec"
 		
 		--test-- "Load DER file"
-			--assert block? pfx: load %units/files/test.pfx
+			--assert block? pfx: load %files/test.pfx
 			--assert binary? try [a: pfx/sequence/sequence/4/2]
 			--assert block? b: decode 'DER a
 			--assert binary? try [c: b/sequence/sequence/4/2]
@@ -210,13 +210,13 @@ if find codecs 'crt [
 	codecs/crt/verbose: 3
 	===start-group=== "CRT codec"
 		--test-- "Load CRT file"
-			--assert object? cert: load %units/files/google.crt
+			--assert object? cert: load %files/google.crt
 			--assert "Google Internet Authority G3" = try [cert/issuer/commonName]
 			--assert block? try [key: cert/public-key/rsaEncryption]
 			--assert #{010001} = try [key/2]
 			
 		--test-- "Load Docker's CRT file"
-			--assert object? cert: load %units/files/apiserver.crt
+			--assert object? cert: load %files/apiserver.crt
 			--assert "kubernetes" = try [cert/issuer/commonName]
 			--assert block? try [key: cert/public-key/rsaEncryption]
 			--assert #{010001} = try [key/2]
@@ -419,17 +419,17 @@ if find codecs 'swf [
 	===start-group=== "SWF codec"
 		
 		--test-- "Load SWF file"
-			--assert object? swf1: load %units/files/test1-deflate.swf
+			--assert object? swf1: load %files/test1-deflate.swf
 			if has-lzma? [
-				--assert object? swf2: load %units/files/test2-lzma.swf
+				--assert object? swf2: load %files/test2-lzma.swf
 				--assert swf1/tags = swf2/tags
 			]
 			--assert swf1/header/frames = 25
 
 		codecs/swf/verbose: 3
 		--test-- "Load SWF file with decoding tags"
-			--assert not error? try [swf1: load %units/files/test3.swf]
-			--assert not error? try [swf2: load %units/files/test4-as2btn.swf]
+			--assert not error? try [swf1: load %files/test3.swf]
+			--assert not error? try [swf2: load %files/test4-as2btn.swf]
 
 	===end-group===
 	codecs/swf/verbose: 0
@@ -442,19 +442,19 @@ if find codecs 'zip [
 		
 		--test-- "Load ZIP file"
 		if has-lzma? [
-			--assert block? load %units/files/test-lzma.zip
+			--assert block? load %files/test-lzma.zip
 		]
-			--assert block? load %units/files/test-stored.zip
-			--assert block? load %units/files/test-deflate.zip
+			--assert block? load %files/test-stored.zip
+			--assert block? load %files/test-deflate.zip
 
 		--test-- "Decode ZIP using the codec directly"
-			--assert block? data: codecs/zip/decode/only %units/files/test.aar [%classes.jar]
+			--assert block? data: codecs/zip/decode/only %files/test.aar [%classes.jar]
 			--assert data/2/3 = 646121705
 			--assert block? codecs/zip/decode data/2/2
 
 		--test-- "Decode ZIP using info"
 		if has-lzma? [
-			bin: read %units/files/test-lzma.zip
+			bin: read %files/test-lzma.zip
 			--assert block? info: codecs/zip/decode/info bin
 			--assert info/1   = %xJSFL.komodoproject
 			--assert info/2/1 = 18-Aug-2012/5:20:28
@@ -488,7 +488,7 @@ if find codecs 'zip [
 			]
 
 		--test-- "Encode ZIP using directory"
-			--assert not error? try [save %ico.zip %units/files/ico/]
+			--assert not error? try [save %ico.zip %files/ico/]
 			data: load %ico.zip
 			--assert 30 = length? data ; 14 files and 1 directory
 			--assert %ico/ = data/1
@@ -524,7 +524,7 @@ if find codecs 'zip [
 
 
 		--test-- "Encode ZIP using wildcard"
-			--assert not error? try [save %temp.zip %units/files/issue-2186*.txt]
+			--assert not error? try [save %temp.zip %files/issue-2186*.txt]
 			data: load %temp.zip
 			--assert 8 = length? data ; 4 files
 			--assert %issue-2186-UTF16-BE.txt = data/1
@@ -676,11 +676,11 @@ if find codecs 'tar [
 	===start-group=== "TAR codec"
 		
 		--test-- "Load TAR file"
-			--assert block? load %units/files/test.tar
+			--assert block? load %files/test.tar
 
 		--test-- "Decode TAR using the codec directly"
 			tar-decode: :codecs/tar/decode
-			--assert block? data: tar-decode/only %units/files/test.tar %test.txt
+			--assert block? data: tar-decode/only %files/test.tar %test.txt
 			--assert data/2/1 = #{7465737474657374}
 
 	===end-group===
@@ -722,12 +722,12 @@ if all [
 	===start-group=== "ICO codec"
 	--test-- "ICO encode"
 		--assert all [
-			binary? bin: try [codecs/ico/encode sort wildcard %units/files/ico/ %*.png]
+			binary? bin: try [codecs/ico/encode sort wildcard %files/ico/ %*.png]
 			#{0E7368623AD1DBD1BD94FC55B174778C} = checksum bin 'md5
 		]
 	--test-- "ICO decode"
 		--assert all [
-			block? ico: try [codecs/ico/decode %units/files/test.ico]
+			block? ico: try [codecs/ico/decode %files/test.ico]
 			ico/1/1  = 128 ico/1/2  = 32  binary? ico/1/3
 			ico/2/1  = 16  ico/2/2  = 32  binary? ico/2/3
 			ico/3/1  = 20  ico/3/2  = 32  binary? ico/3/3
@@ -828,13 +828,13 @@ if find codecs 'PNG [
 	system/options/log/png: 3
 	===start-group=== "PNG codec"
 	--test-- "png/size?"
-		--assert 24x24 = codecs/png/size? read %units/files/r3.png
-		--assert none?   codecs/png/size? read %units/files/test.aar
+		--assert 24x24 = codecs/png/size? read %files/r3.png
+		--assert none?   codecs/png/size? read %files/test.aar
 
 	--test-- "png/chunks"
 		--assert all [
 			; read PNG file as a block of chunks...
-			block? blk: try [codecs/png/chunks %units/files/png-from-photoshop.png]
+			block? blk: try [codecs/png/chunks %files/png-from-photoshop.png]
 			10 = length? blk
 			"IHDR" = to string! blk/1    13 = length? blk/2
 			"pHYs" = to string! blk/3     9 = length? blk/4
@@ -844,7 +844,7 @@ if find codecs 'PNG [
 		]
 		--assert all [
 			; read PNG with only specified set of chunks...
-			block? blk: try [codecs/png/chunks/only %units/files/png-from-photoshop.png ["IHDR" "IDAT" "PLTE"]]
+			block? blk: try [codecs/png/chunks/only %files/png-from-photoshop.png ["IHDR" "IDAT" "PLTE"]]
 			4 = length? blk
 			"IHDR" = to string! blk/1
 			"IDAT" = to string! blk/3
@@ -856,14 +856,14 @@ if find codecs 'PNG [
 			img/size = 72x72
 			; compare sizes of the original and the reduced version
 			321  = size? %new.png
-			3015 = size? %units/files/png-from-photoshop.png
+			3015 = size? %files/png-from-photoshop.png
 		]
 		try [delete %new.png]
 
 	--test-- "png rgb image"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/2495
 		--assert all [
-			image? img: try [load %units/files/rbgw.png]
+			image? img: try [load %files/rbgw.png]
 			img/1 = 200.0.0.255
 			img/2 = 0.0.200.255
 			img/3 = 0.200.0.255
@@ -912,14 +912,14 @@ if find codecs 'JPEG [
 	===start-group=== "JPEG codec"
 	--test-- "load jpeg"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/678
-		--assert image? load %units/files/flower.jpg
-		--assert image? load %units/files/flower-from-photoshop.jpg
-		--assert image? load %units/files/flower-tiny.jpg
+		--assert image? load %files/flower.jpg
+		--assert image? load %files/flower-from-photoshop.jpg
+		--assert image? load %files/flower-tiny.jpg
 	--test-- "jpeg/size?"
-		--assert 256x256 = codecs/jpeg/size? %units/files/flower.jpg
-		--assert 256x256 = codecs/jpeg/size? %units/files/flower-from-photoshop.jpg
-		--assert 256x256 = codecs/jpeg/size? %units/files/flower-tiny.jpg
-		--assert none?     codecs/jpeg/size? %units/files/test.aar
+		--assert 256x256 = codecs/jpeg/size? %files/flower.jpg
+		--assert 256x256 = codecs/jpeg/size? %files/flower-from-photoshop.jpg
+		--assert 256x256 = codecs/jpeg/size? %files/flower-tiny.jpg
+		--assert none?     codecs/jpeg/size? %files/test.aar
 
 	--test-- "encode/decode JPEG"
 		--assert all [
@@ -935,8 +935,8 @@ if find codecs 'JPEG [
 if find codecs 'GIF [
 	===start-group=== "GIF codec"
 	--test-- "gif/size?"
-		--assert 256x256 = codecs/gif/size? %units/files/flower.gif
-		--assert none?     codecs/gif/size? %units/files/test.aar
+		--assert 256x256 = codecs/gif/size? %files/flower.gif
+		--assert none?     codecs/gif/size? %files/test.aar
 
 	--test-- "encode/decode GIF"
 		--assert all [
@@ -950,7 +950,7 @@ if find codecs 'GIF [
 	--test-- "gif rgb image"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/2495
 		--assert all [
-			image? img: try [load %units/files/rbgw.gif]
+			image? img: try [load %files/rbgw.gif]
 			img/1 = 200.0.0.255
 			img/2 = 0.0.200.255
 			img/3 = 0.200.0.255
@@ -965,9 +965,9 @@ if find codecs 'GIF [
 if native? :image [
 	--test-- "animated gif"
 		--assert true == try [all [
-			i1: image/load/frame %units/files/animation.gif 1
-			i2: image/load/frame %units/files/animation.gif 2
-			i3: image/load/frame %units/files/animation.gif 3
+			i1: image/load/frame %files/animation.gif 1
+			i2: image/load/frame %files/animation.gif 2
+			i3: image/load/frame %files/animation.gif 3
 			#{4D99990699791F57F238C7195ABB0DE7} == checksum i1/rgba 'md5
 			#{878BACEFB949C6435702F87D5B62F9FA} == checksum i2/rgba 'md5
 			#{1414A649C4CF2E2D9DE3A8502A4425AA} == checksum i3/rgba 'md5
@@ -979,8 +979,8 @@ if native? :image [
 if find codecs 'BMP [
 	===start-group=== "BMP codec"
 	--test-- "bmp/size?"
-		--assert 256x256 = codecs/bmp/size? %units/files/flower.bmp
-		--assert none?     codecs/bmp/size? %units/files/test.aar
+		--assert 256x256 = codecs/bmp/size? %files/flower.bmp
+		--assert none?     codecs/bmp/size? %files/test.aar
 	--test-- "encode/decode BMP"
 		--assert all [
 			binary? try [b: encode 'bmp make image! 1x1] 
@@ -996,8 +996,8 @@ if find codecs 'BMP [
 if find codecs 'DDS [
 	===start-group=== "DDS codec"
 	--test-- "dds/size?"
-		--assert 256x256 = codecs/dds/size? %units/files/flower.dds
-		--assert none?     codecs/dds/size? %units/files/test.aar
+		--assert 256x256 = codecs/dds/size? %files/flower.dds
+		--assert none?     codecs/dds/size? %files/test.aar
 	===end-group===
 ]
 
@@ -1005,7 +1005,7 @@ try [import 'xml]
 if find codecs 'XML [
 	===start-group=== "XML codec"
 	--test-- "XML decode test1"
-		--assert block? data: load %units/files/test1.xml
+		--assert block? data: load %files/test1.xml
 		--assert none? data/document/version
 		--assert none? data/document/encoding
 		--assert none? data/document/standalone
@@ -1018,7 +1018,7 @@ if find codecs 'XML [
 		--assert 17 = length? data/3/1/3
 
 	--test-- "XML decode test2"
-		--assert block? data: load %units/files/test2.xml
+		--assert block? data: load %files/test2.xml
 		--assert data/document/version = "1.0"
 		--assert none? data/document/encoding
 		--assert data/document/standalone = "no"
@@ -1111,13 +1111,13 @@ try [import 'plist]
 if find codecs 'plist [
 	===start-group=== "PLIST codec"		
 		--test-- "Load PLIST file (XML version)"
-			--assert map? data: load %units/files/Some.plist
+			--assert map? data: load %files/Some.plist
 			--assert data/AppIDName = "Test Application"
 			--assert data/UUID      = "bba91992-3a72-46b3-bc5f-f7b59aa49236"
 	
 		--test-- "Load mobileprovision file"
 			--assert all [
-				map? data: load %units/files/Some.mobileprovision
+				map? data: load %files/Some.mobileprovision
 				data/AppIDName = "Samorost 1"
 				data/UUID      = "be387546-d90d-40cd-83e6-95eb6f5f0861"
 				block? data/ProvisionedDevices

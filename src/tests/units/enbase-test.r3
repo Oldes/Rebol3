@@ -52,7 +52,7 @@ Rebol [
 ===end-group===
 
 ===start-group=== "enbase/flat"
-	bin: read/binary %units/files/rbgw.gif
+	bin: read/binary %files/rbgw.gif
 	--test-- "enbase/flat 2"
 		--assert (enbase bin 2) == {
 0100011101001001010001100011100000110111011000010000001000000000

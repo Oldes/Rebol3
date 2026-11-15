@@ -554,9 +554,9 @@ if any-function? :color-distance [
 if any-function? :image-diff [
 ===start-group=== "Image difference"
 --test-- "image-diff (same sizes)"
-	i1: load %units/files/flower.png
-	i2: load %units/files/flower.bmp
-	;i3: load %units/files/flower.jpg ;; it looks that on macOS the raw image is different then on Windows
+	i1: load %files/flower.png
+	i2: load %files/flower.bmp
+	;i3: load %files/flower.jpg ;; it looks that on macOS the raw image is different then on Windows
 	i3: tint copy i2 128.128.128 50%  ;; so better use another difference
 	--assert 0.00% =          image-diff i1 i2
 	--assert 11.6% = round/to image-diff i1 i3 0.01%
@@ -689,7 +689,7 @@ if any-function? :blur [
 ===start-group=== "BLUR"
 if value? 'blur [
 --test--  "blur"
-	i: load %units/files/flower.png
+	i: load %files/flower.png
 	c: checksum to binary! i 'crc32
 	t: copy i
 	--assert all [
@@ -739,7 +739,7 @@ if any-function? :resize [
 	--assert image? try [resize i 10]
 	--assert image? try [resize i 10%]
 	--assert error? try [resize i 0]
-	i: load %units/files/flower.png
+	i: load %files/flower.png
 	foreach filter system/catalog/filters [
 		--test--  ajoin ["resize " filter]
 		--assert image? try [resize/filter i 10x10 filter]
@@ -805,8 +805,8 @@ if any-function? :remap [
 	if find codecs 'png [
 		--test-- "save/load PNG"
 			img1: make image! [2x2 255.0.0.10]
-			save %units/files/test.png img1
-			img2: load %units/files/test.png
+			save %files/test.png img1
+			img2: load %files/test.png
 			--assert not none? find [
 				#{FF00000AFF00000AFF00000AFF00000A}
 				#{0A00000A0A00000A0A00000A0A00000A} ;; premultiplied on macOS :/
@@ -815,8 +815,8 @@ if any-function? :remap [
 	if find codecs 'bmp [
 		--test-- "save/load BMP"
 			img1: make image! [2x2 255.0.0.10]
-			save %units/files/test.bmp img1
-			img2: load %units/files/test.bmp
+			save %files/test.bmp img1
+			img2: load %files/test.bmp
 			--assert not none? find [
 				#{FF00000AFF00000AFF00000AFF00000A}
 				#{0A00000A0A00000A0A00000A0A00000A} ;; premultiplied on macOS :/
@@ -827,7 +827,7 @@ if any-function? :remap [
 		--test-- "loading JPEG file with an unexpected property type"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/2587
 		--assert all [
-			image? try [img: load %units/files/issue-2587.jpg] ;; no error!
+			image? try [img: load %files/issue-2587.jpg] ;; no error!
 			img/size = 105x150
 		]
 	]
@@ -930,6 +930,6 @@ if any-function? :remap [
 
 ;clean up
 foreach file [
-	%units/files/test.png
-	%units/files/test.bmp
+	%files/test.png
+	%files/test.bmp
 ][	error? try [delete file] ]

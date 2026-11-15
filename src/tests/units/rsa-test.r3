@@ -156,14 +156,14 @@ Rebol [
 ===start-group=== "RSA initialization using codecs"
 	--test-- "RSA sign/verify using external file"
 	; Bob has data, which wants to sign, so it's clear, that nobody modifies them
-	data: read %units/files/apiserver.crt
+	data: read %files/apiserver.crt
 	; Bob uses private key which keeps secret...
-	--assert handle? try [private-key: load %units/files/rebol-private-no-pass.ppk]
+	--assert handle? try [private-key: load %files/rebol-private-no-pass.ppk]
 	; .. and signs data with specified message digest algorithm
 	--assert binary? signature: rsa/sign/hash private-key data 'SHA512
 
 	; than sends data and its signature to Eve, who have his public key, even using some unsecure way
-	--assert handle? try [public-key: load %units/files/rebol-public.ppk]
+	--assert handle? try [public-key: load %files/rebol-public.ppk]
 	; Eve uses the key to verify the received data using its signature and hash
 	--assert rsa/verify/hash public-key data signature 'SHA512
 	; so she knows, that data were not modified
@@ -175,11 +175,11 @@ Rebol [
 
 ===start-group=== "RSA initialization from file"
 	--test-- "RSA private key from OpenSSL format (RSA PRIVATE KEY)"
-	--assert handle? try [private-key: load %units/files/rebol-private-no-pass.key]
+	--assert handle? try [private-key: load %files/rebol-private-no-pass.key]
 	release private-key
 	--test-- "RSA private key from OpenSSL x509 format (PRIVATE KEY)"
 	; openssl req -new -newkey rsa:4096 -x509 -sha256 -days 365 -nodes -out MyCertificate.crt -keyout MyKey.key
-	--assert handle? try [private-key: load %units/files/MyKey.key]
+	--assert handle? try [private-key: load %files/MyKey.key]
 	release private-key
 ===end-group===
 

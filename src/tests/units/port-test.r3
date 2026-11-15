@@ -124,18 +124,18 @@ Rebol [
 
 	--test-- "READ wildcard"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/158
-		--assert all [block? b: try [read %*.r3]             not empty? b]
-		--assert all [block? b: try [read %run-tests.?3]     not empty? b]
-		--assert all [block? b: try [read %units/files/*.r3] not empty? b]
-		--assert all [block? b: try [read %*.xxx]                empty? b]
+		--assert all [block? b: try [read %../*.r3]         not empty? b]
+		--assert all [block? b: try [read %../run-tests.?3] not empty? b]
+		--assert all [block? b: try [read %files/*.r3]      not empty? b]
+		--assert all [block? b: try [read %../*.xxx]            empty? b]
 
 	--test-- "DELETE-DIR"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/1545
 		--assert all [
-			not error? try [make-dir/deep %units/temp-dir/sub-dir/]
-			not error? try [write %units/temp-dir/file "hello"]
-			not error?      delete-dir %units/temp-dir/
-			not exists? %units/temp-dir/
+			not error? try [make-dir/deep %temp-dir/sub-dir/]
+			not error? try [write %temp-dir/file "hello"]
+			not error?      delete-dir %temp-dir/
+			not exists? %temp-dir/
 		]
 		;@@ https://github.com/Oldes/Rebol-issues/issues/2447
 		--assert all [
@@ -147,19 +147,19 @@ if system/platform = 'Windows [
 ;@@ it looks that on Linux there is no lock on opened file
 		--assert all [
 			all [
-				not error? try [make-dir/deep %units/temp-dir/]
+				not error? try [make-dir/deep %temp-dir/]
 				; open a file for writing in the directory
-				p: open/write %units/temp-dir/file
+				p: open/write %temp-dir/file
 				; and see that the directory cannot be deleted
-				error? e: delete-dir %units/temp-dir/
+				error? e: delete-dir %temp-dir/
 				e/id = 'no-delete
-				exists? %units/temp-dir/
+				exists? %temp-dir/
 			]
 			all [
 				; closing the file
 				close p
 				; and now the file and dir are both deleted
-				not error? delete-dir %units/temp-dir/
+				not error? delete-dir %temp-dir/
 			]
 		]
 ]
@@ -182,10 +182,10 @@ if system/platform = 'Windows [
 	--test-- "RENAME dir"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/1533
 		--assert all [
-			not error? try [make-dir %units/temp-dir/]
-			not error? try [rename %units/temp-dir/ %units/new-dir/]
-			exists? %units/new-dir/
-			not error? try [delete-dir %units/new-dir/]
+			not error? try [make-dir %temp-dir/]
+			not error? try [rename %temp-dir/ %new-dir/]
+			exists? %new-dir/
+			not error? try [delete-dir %new-dir/]
 		]
 
 if system/platform = 'Windows [
@@ -230,7 +230,7 @@ if system/platform = 'Windows [
 ===start-group=== "file port"
 	--test-- "query file info"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/1712
-		file: %units/files/alice29.txt.gz
+		file: %files/alice29.txt.gz
 		--assert (words-of system/standard/file-info) = query file none
 		--assert 'file = query file 'type
 		--assert date?   query file 'modified
@@ -240,12 +240,12 @@ if system/platform = 'Windows [
 
 	--test-- "query file name"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/2442
-		file: %units/files/čeština.txt
+		file: %files/čeština.txt
 		--assert not none? find (query file 'name) file
 
 	--test-- "query file info (port)"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/2008
-		file: open %units/files/alice29.txt.gz
+		file: open %files/alice29.txt.gz
 		--assert (words-of system/standard/file-info) = query file none
 		--assert 'file = query file 'type
 		--assert date?   query file 'modified
@@ -265,16 +265,16 @@ if system/platform = 'Windows [
 		delete %tmp.txt
 
 	--test-- "read/lines - issue/1794"
-		--assert 1 = length? read/lines %units/files/issue-1794.txt
+		--assert 1 = length? read/lines %files/issue-1794.txt
 
 	--test-- "read/string - issue/622"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/622
 			; making file where is one CRLF and one LF
-			write %units/files/issue-622.txt to-binary "a^M^/b^/c"
-			--assert "a^M^/b^/c" = to string! read %units/files/issue-622.txt
-			--assert "a^/b^/c" = deline to string! read %units/files/issue-622.txt
-			--assert "a^/b^/c" = read/string %units/files/issue-622.txt
-			delete %units/files/issue-622.txt
+			write %files/issue-622.txt to-binary "a^M^/b^/c"
+			--assert "a^M^/b^/c" = to string! read %files/issue-622.txt
+			--assert "a^/b^/c" = deline to string! read %files/issue-622.txt
+			--assert "a^/b^/c" = read/string %files/issue-622.txt
+			delete %files/issue-622.txt
 
 	--test-- "read write CRLF conversion"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/2586

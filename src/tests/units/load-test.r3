@@ -102,7 +102,7 @@ Rebol [
 	--test-- "issue-2302"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2302
 		--assert all [
-			error? e: try [load %units/files/invalid-decimal.r]
+			error? e: try [load %files/invalid-decimal.r]
 			e/near = "(line 4) 4line"
 		]
 

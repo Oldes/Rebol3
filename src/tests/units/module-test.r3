@@ -358,7 +358,7 @@ probe all [
 		--assert unset? :system/contexts/user/issue-1721-a
 		--assert system/contexts/user/issue-1721-b = 2
 
-system/options/modules: %units/files/
+system/options/modules: %files/
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1694
 	--test-- "import needs word!"
 		import 'test-needs-name
@@ -366,7 +366,7 @@ system/options/modules: %units/files/
 	--test-- "import needs file!"
 		;- at this moment files imported from other file
 		;- does not use parent file's location!
-		m: import %units/files/test-needs-file.reb
+		m: import %files/test-needs-file.reb
 		--assert true? test-needs-file-result
 		--assert all [
 			;@@ https://github.com/Oldes/Rebol-wishes/issues/13
@@ -387,7 +387,7 @@ system/options/modules: modules-dir
 
 	--test-- "do module from file"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1203
-		do %units/files/test-1203.reb
+		do %files/test-1203.reb
 		--assert all [
 			object? o: system/modules/test-1203/f
 			o/title = "test-1203"

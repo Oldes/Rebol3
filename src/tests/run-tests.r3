@@ -9,91 +9,93 @@ Rebol [
 ;- check speed of available checksum methods
 ;do %test-checksums.r3
 
+change-dir %units/
+
 ;- run unit tests..
 dt [ ;- delta time
 	***start-run*** "All tests"
 	;recycle/torture
 	failed-units: copy []
 	foreach file [
-		%units/bbcode-test.r3
-		%units/bincode-test.r3
-		%units/bitset-test.r3
-		%units/call-test.r3
-		%units/char-test.r3
-		%units/codecs-test.r3
-		%units/codecs-test-pdf.r3
-		%units/compare-test.r3
-		%units/compress-test.r3
-		%units/conditional-test.r3
-		%units/copy-test.r3
-		%units/crash-test.r3
-		%units/csv-test.r3
-		%units/datatype-test.r3
-		%units/date-test.r3
-		%units/decimal-test.r3
-		%units/delect-test.r3
-		%units/enbase-test.r3
-		%units/enum-test.r3
-		%units/error-test.r3
-		%units/evaluation-test.r3
-		%units/event-test.r3
-		%units/handle-test.r3
-		%units/file-test.r3
-		%units/format-test.r3
-		%units/func-test.r3
-		%units/image-test.r3
-		%units/integer-test.r3
-		%units/issue-test.r3
-		%units/lexer-test.r3
-		%units/load-test.r3
-		%units/make-test.r3
-		%units/map-test.r3
-		%units/module-test.r3
-		%units/mold-test.r3
-		%units/money-test.r3
-		%units/native-test.r3
-		%units/object-test.r3
-		%units/os-test.r3
-		%units/pair-test.r3
-		%units/parse-test.r3
-		%units/percent-test.r3
-		%units/port-test.r3
-		%units/port-clipboard-test.r3
-		%units/port-console-test.r3
-		%units/port-net-test.r3
-	;@@	%units/port-http-test.r3 ;; temporary disabled, because httpbin.org server has serious connection issues!
-		%units/power-test.r3
-		%units/protect-test.r3
-		%units/repl-test.r3
-		%units/series-test.r3
-		%units/stack-test.r3
-		%units/struct-test.r3
-		%units/task-test.r3
-		%units/time-test.r3
-		%units/tuple-test.r3
-		%units/typeset-test.r3
-		%units/unicode-test.r3
-		%units/url-test.r3
-		%units/vector-test.r3
-		%units/word-test.r3
-		%units/thru-cache-test.r3
+		%bbcode-test.r3
+		%bincode-test.r3
+		%bitset-test.r3
+		%call-test.r3
+		%char-test.r3
+		%codecs-test.r3
+		%codecs-test-pdf.r3
+		%compare-test.r3
+		%compress-test.r3
+		%conditional-test.r3
+		%copy-test.r3
+		%crash-test.r3
+		%csv-test.r3
+		%datatype-test.r3
+		%date-test.r3
+		%decimal-test.r3
+		%delect-test.r3
+		%enbase-test.r3
+		%enum-test.r3
+		%error-test.r3
+		%evaluation-test.r3
+		%event-test.r3
+		%handle-test.r3
+		%file-test.r3
+		%format-test.r3
+		%func-test.r3
+		%image-test.r3
+		%integer-test.r3
+		%issue-test.r3
+		%lexer-test.r3
+		%load-test.r3
+		%make-test.r3
+		%map-test.r3
+		%module-test.r3
+		%mold-test.r3
+		%money-test.r3
+		%native-test.r3
+		%object-test.r3
+		%os-test.r3
+		%pair-test.r3
+		%parse-test.r3
+		%percent-test.r3
+		%port-test.r3
+		%port-clipboard-test.r3
+		%port-console-test.r3
+		%port-net-test.r3
+	;@@	%port-http-test.r3 ;; temporary disabled, because httpbin.org server has serious connection issues!
+		%power-test.r3
+		%protect-test.r3
+		%repl-test.r3
+		%series-test.r3
+		%stack-test.r3
+		%struct-test.r3
+		%task-test.r3
+		%time-test.r3
+		%tuple-test.r3
+		%typeset-test.r3
+		%unicode-test.r3
+		%url-test.r3
+		%vector-test.r3
+		%word-test.r3
+		%thru-cache-test.r3
 		;- cryptography tests:
-		%units/aes-test.r3
-		%units/chacha20-test.r3
-		%units/checksum-test.r3
-		%units/dh-test.r3
-		%units/crypt-test.r3
-		%units/crypt-port-test.r3
-		%units/crypt-port-camelia-test.r3
-		%units/crypt-port-ccm-test.r3
-		%units/crypt-port-gcm-test.r3
-		%units/poly1305-test.r3
-		%units/rc4-test.r3
-		%units/rsa-test.r3
+		%aes-test.r3
+		%chacha20-test.r3
+		%checksum-test.r3
+		%dh-test.r3
+		%crypt-test.r3
+		%crypt-port-test.r3
+		%crypt-port-camelia-test.r3
+		%crypt-port-ccm-test.r3
+		%crypt-port-gcm-test.r3
+		%poly1305-test.r3
+		%rc4-test.r3
+		%rsa-test.r3
 		;- known issues - waiting for fix
-		;%units/_known-issues_.r3
-		;%units/xx-test.r3
-		;%units/_test.r3
+		;%_known-issues_.r3
+		;%xx-test.r3
+		;%_test.r3
 	][
 		try/with [wrap load file] func[error][
 			repend failed-units [file error]

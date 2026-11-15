@@ -200,7 +200,7 @@ sY29ouezv4Xz2PuMch5VGPP+CDqzCM4loWgV
 
 --test-- "Load PKIX data from file using PKIX codec"
 
-	--assert block? pkix: load %units/files/dhparam2048.pem
+	--assert block? pkix: load %files/dhparam2048.pem
 	--assert "DH PARAMETERS" = pkix/label
 	--assert binary? pkix/binary
 
@@ -233,12 +233,12 @@ sY29ouezv4Xz2PuMch5VGPP+CDqzCM4loWgV
 
 ===start-group=== "SSH-key codec"
 --test-- "Init RSA key from file"
-	--assert handle? try [key: decode 'ssh-key read %units/files/rebol-public.ppk]
+	--assert handle? try [key: decode 'ssh-key read %files/rebol-public.ppk]
 	release key ; don't wait on GC, release it now
 
 --test-- "Init public DH params from file"
 	--assert all [
-		handle? key: load %units/files/dhparam2048.key
+		handle? key: load %files/dhparam2048.key
 		'dhm = query key 'type
 		release key ; release it now (don't wait on GC)
 	]
@@ -247,19 +247,19 @@ sY29ouezv4Xz2PuMch5VGPP+CDqzCM4loWgV
 ===start-group=== "PPK codec"
 --test-- "Init RSA key from PPK file"
 	--assert all [
-		handle? try [key: load %units/files/rebol-private-no-pass.ppk]
+		handle? try [key: load %files/rebol-private-no-pass.ppk]
 		release key ; don't wait on GC, release it now
 	]
 
 --test-- "Init RSA key from encrypted PPK file"
 	--assert all [
-		handle? try [key: codecs/ppk/decode/password %units/files/rebol-private.ppk "Rebol"]
+		handle? try [key: codecs/ppk/decode/password %files/rebol-private.ppk "Rebol"]
 		release key ; don't wait on GC, release it now
 	]
 
 --test-- "Init public RSA key from SSH2 PPK file"
 	--assert all [
-		handle? try [key: load %units/files/rebol-public.ppk]
+		handle? try [key: load %files/rebol-public.ppk]
 		release key ; don't wait on GC, release it now
 	]
 ===end-group===
