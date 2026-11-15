@@ -82,6 +82,9 @@ jobs:
         echo "SISKIN_INSTALL=$GITHUB_WORKSPACE/install" >> $GITHUB_ENV
         echo "SISKIN_TEMP=$GITHUB_WORKSPACE/temp" >> $GITHUB_ENV
     
+    - name: "[INSTALL] For serial port test"
+      run: sudo apt-get install -y socat
+
     - name: "[BUILD] Blend2D static library x64"
       run: ./siskin make/blend2d.nest cmake-blend2d-x64
 

@@ -23,6 +23,9 @@ build: [
 		flags: "--gzip"
 		artifact-suffix: "gz"
 		arch: [x64]
+		dependencies: [
+			"For serial port test" [socat]
+		] 
 	]
 	macos: [
 		runs-on: 'macos-latest

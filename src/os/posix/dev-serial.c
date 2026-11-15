@@ -52,6 +52,13 @@
 
 #define MAX_SERIAL_PATH 128
 
+// Hardware (RTS/CTS) flow control flag has different names:
+#if defined(CRTSCTS)
+#define SERIAL_RTSCTS CRTSCTS
+#elif defined(CNEW_RTSCTS)
+#define SERIAL_RTSCTS CNEW_RTSCTS
+#endif
+
 
 /***********************************************************************
 **
@@ -211,19 +218,22 @@ static REBOOL Set_Serial_Settings(int ttyfd, REBREQ *req)
 			break;
 	}
 
-#ifdef CNEW_RTSCTS
-	switch (req->serial.parity) {
+	switch (req->serial.flow_control) {
 		case SERIAL_FLOW_CONTROL_HARDWARE:
-			attr.c_cflag |= CNEW_RTSCTS;
+#ifdef SERIAL_RTSCTS
+			attr.c_cflag |= SERIAL_RTSCTS;
 			break;
+#else
+			return FALSE; // not supported on this system
+#endif
 		case SERIAL_FLOW_CONTROL_SOFTWARE:
-			attr.c_cflag &= ~CNEW_RTSCTS;
+			// XON/XOFF is an input mode (attr is zeroed, so RTS/CTS is off)
+			attr.c_iflag |= IXON | IXOFF;
 			break;
 		case SERIAL_FLOW_CONTROL_NONE:
 		default:
 			break;
 	}
-#endif
 
 	// L-flags - local modes:
 	attr.c_lflag = 0; // raw, not ICANON

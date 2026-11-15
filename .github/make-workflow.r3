@@ -26,11 +26,21 @@ make-workflow: function/with [spec] [
 
 	emit-form template-header
 	emit "^/jobs:"
+	base: ctx
 	foreach [host host-spec] ctx/build [
-		ctx: make ctx host-spec
+		ctx: make base host-spec
 		ctx/host: host
 		append clear ctx/steps LF
 		apps: clear []
+		unless empty? ctx/dependencies [
+			foreach [title deps] ctx/dependencies [
+				emit-step [
+					"    - name: ^"[INSTALL] " title {"^/}
+					"      run: sudo apt-get install -y " deps LF
+				]
+			]
+			append ctx/steps LF
+		]
 		if block? ctx/libs [
 			foreach lib ctx/libs [
 				foreach arch ctx/arch [
@@ -84,6 +94,7 @@ make-workflow: function/with [spec] [
 		tests:   []
 		no-test: []
 		libs:    []
+		dependencies: []
 		triggers: ""
 	]
 
@@ -104,7 +115,7 @@ on: @TRIGGERS@
   workflow_dispatch:
 }%%
 
- 	template-job: %%{
+	template-job: %%{
   @HOST@:
     strategy:
       fail-fast: true
@@ -136,7 +147,7 @@ on: @TRIGGERS@
 ]
 
 if all [
-	name: first system/script/args
+	name: first probe system/script/args
 	spec: try [load ajoin [%./ name %.reb]]
 ][
 	try/with [
