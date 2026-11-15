@@ -1024,6 +1024,19 @@ Rebol [
 		--assert "^@x^@" == find/last "č^@x^@" "^@x"
 	--test-- "insert/part from UTF-8 string with null char"
 		--assert "č^@x" == head insert/part "" "č^@xy" 3
+
+	--test-- "string with invalidated index as an argument"
+		swap s1: "🙂b" s2: next s1 ;; s2 index is now inside of the 🙂 sequence
+		--assert "a🙂" == append "a" s2
+		--assert "🙂a" == head insert "a" s2
+		--assert "🙂"  == head change "a" s2
+		--assert "🙂"  == find "a🙂" s2
+		--assert #"c"  == select "a🙂c" s2
+		--assert all [
+			swap s3: "a" s2
+			s3 == "🙂"
+			s1 == "ba"
+		]
 ===end-group===
 
 ===start-group=== "UTF-16/32 decoding with BOM"

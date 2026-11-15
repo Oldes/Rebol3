@@ -240,6 +240,14 @@ static REBSER *make_string(REBVAL *arg, REBOOL make, REBCNT type)
 	return ser;
 }
 
+static void snap_index(REBVAL *val)
+{
+	// Index may be inside of a multi-byte sequence, when the series
+	// was modified through another reference. Snap it to the char start.
+	if (ANY_STR(val) && VAL_INDEX(val) < VAL_TAIL(val))
+		VAL_INDEX(val) = Val_Str_Index(val);
+}
+
 REBSER *Make_Binary_BE64(REBVAL *arg)
 {
 	REBSER *ser = Make_Binary(9);
@@ -958,9 +966,7 @@ FORCE_INLINE
 	// A width-changing modification made through another reference may leave
 	// the index inside of a multi-byte sequence. Snap it back to the char start.
 	if (ANY_STR(value) && IS_UTF8_SERIES(VAL_SERIES(value))) {
-		index = VAL_INDEX(value);
-		if (index < VAL_TAIL(value) && (VAL_BIN_HEAD(value)[index] & 0xC0) == 0x80)
-			VAL_INDEX(value) = UTF8_Prev_Char_Position(VAL_BIN_HEAD(value), index);
+		snap_index(value);
 	}
 
 	len = Do_Series_Action(action, value, arg);
@@ -984,6 +990,7 @@ FORCE_INLINE
 	case A_APPEND:
 	case A_INSERT:
 	case A_CHANGE:
+		snap_index(arg);
 		// Length of target (may modify index): (arg can be anything)
 		len = Partial1((action == A_CHANGE) ? value : arg, DS_ARG(AN_LENGTH));
 		index = VAL_INDEX(value);
@@ -1002,6 +1009,7 @@ FORCE_INLINE
 		ret = ALL_FIND_REFS;
 find:
 		args = Find_Refines(ds, ret);
+		snap_index(arg);
 
 		if (IS_BINARY(value)) {
 			args |= AM_FIND_CASE;
@@ -1255,6 +1263,7 @@ pick_it:
 	case A_SWAP:
 		if (VAL_TYPE(value) != VAL_TYPE(arg)) Trap0(RE_NOT_SAME_TYPE);
 		if (IS_PROTECT_SERIES(VAL_SERIES(arg))) Trap0(RE_PROTECTED);
+		snap_index(arg);
 		if (index < tail && VAL_INDEX(arg) < VAL_TAIL(arg))
 			swap_chars(value, arg);
 		// Trap_Range(arg);  // ignore range error
