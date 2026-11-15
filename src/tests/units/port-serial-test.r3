@@ -109,6 +109,30 @@ if all [
 				not queued? p2
 				port? try [close p2]
 			]
+		--test-- "Modify control lines"
+			p: open serial://ptmx/9600
+			;; pty has no RTS and DTR lines, so the failure must be reported
+			--assert none? try [modify p 'rts true]
+			--assert none? try [modify p 'rts false]
+			--assert none? try [modify p 'dtr true]
+			--assert none? try [modify p 'dtr false]
+			--assert not error? try [modify p 'brk true]
+			--assert not error? try [modify p 'brk false]
+			--assert all [
+				error? e: try [modify p 'foo true]
+				e/id = 'bad-file-mode
+			]
+			--assert all [
+				error? e: try [modify p 'rts 1]
+				e/id = 'invalid-value-for
+			]
+			;; the port must stay usable (and close must not crash)
+			--assert open? p
+			--assert port? try [close p]
+			--assert all [
+				error? e: try [modify p 'rts true]
+				e/id = 'not-open
+			]
 		--test-- "Open with unsupported baud rate"
 			foreach speed [0 -9600 12345][
 				--assert all [
@@ -251,6 +275,16 @@ if all [
 			--assert all [
 				b = wait [b 1]
 				#{0C0D0E} == b/data
+			]
+			clear b/data
+		--test-- "Modify does not cancel a pending read"
+			--assert empty? read b ;; pending read
+			modify b 'brk false
+			modify b 'rts true
+			write a #{0F}
+			--assert all [
+				b = wait [b 1]
+				#{0F} == b/data
 			]
 			clear b/data
 		--test-- "Write does not use the port's data"

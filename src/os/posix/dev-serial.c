@@ -21,7 +21,7 @@
 ************************************************************************
 **
 **  Title: Device: Serial port access for Posix
-**  Author: Carl Sassenrath, Joshua Shireman, Shixin Zeng, Oldes
+**  Author: Carl Sassenrath, Joshua Shireman, Shixin Zeng
 **
 ************************************************************************
 **
@@ -429,11 +429,12 @@ static REBOOL Set_Serial_Settings(int ttyfd, REBREQ *req)
 		return DR_ERROR;
 	}
 
+	// Note: the error must be set, else the result is reported as a success!
 	if (mode == 1) {
-		ioctl(req->id, value ? TIOCSBRK : TIOCCBRK);
+		if (ioctl(req->id, value ? TIOCSBRK : TIOCCBRK) == -1) goto error;
 		return DR_DONE;
 	}
-	if (ioctl(req->id, TIOCMGET, &status) == -1) return DR_ERROR;
+	if (ioctl(req->id, TIOCMGET, &status) == -1) goto error;
 	if (mode == 2) {
 		// (request-to-send) signal
 		if (value) {
@@ -449,8 +450,12 @@ static REBOOL Set_Serial_Settings(int ttyfd, REBREQ *req)
 			status &= ~TIOCM_DTR;
 		}
 	}
-	if (ioctl(req->id, TIOCMSET, &status) == -1) return DR_ERROR;
+	if (ioctl(req->id, TIOCMSET, &status) == -1) goto error;
 	return DR_DONE;
+
+error:
+	req->error = errno;
+	return DR_ERROR;
 }
 
 

@@ -94,6 +94,7 @@
 	REBREQ *req;	// IO request
 	REBREQ *wreq;	// IO request used for writing
 	REBHOB *hob;	// port's state handle context
+	REBREQ mreq;	// temporary request used by MODIFY
 	REBVAL *spec;	// port spec
 	REBVAL *arg;	// action argument value
 	REBINT result;	// IO result
@@ -317,15 +318,24 @@
 		arg = D_ARG(2);
 		if (IS_WORD(arg)) {
 			switch (VAL_WORD_CANON(arg)) {
-			case SYM_BRK:  req->modify.mode = 1; break;
-			case SYM_RTS:  req->modify.mode = 2; break;
-			case SYM_DTR:  req->modify.mode = 3; break;
+			case SYM_BRK:  len = 1; break;
+			case SYM_RTS:  len = 2; break;
+			case SYM_DTR:  len = 3; break;
 			default: Trap1(RE_BAD_FILE_MODE, arg);
 			}
 			spec = D_ARG(3);
 			if (!IS_LOGIC(spec)) Trap2(RE_INVALID_VALUE_FOR, spec, arg);
-			req->modify.value = VAL_LOGIC(spec);
-			OS_Do_Device(req, RDC_MODIFY);
+			// A temporary request is used, because:
+			// 1. the modify fields share memory with the serial ones
+			//    (on 32bit systems with the saved settings used on close!)
+			// 2. a command on the port's request would cancel its pending READ.
+			CLEARS(&mreq);
+			mreq.device = req->device;
+			mreq.handle = req->handle; // the opened device (handle or id)
+			mreq.modify.mode  = len;
+			mreq.modify.value = VAL_LOGIC(spec);
+			// Not all devices have these control lines...
+			if (OS_Do_Device(&mreq, RDC_MODIFY) < 0) return R_NONE;
 		}
 		else Trap1(RE_BAD_FILE_MODE, arg);
 		return R_ARG3;
