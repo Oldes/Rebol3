@@ -214,6 +214,16 @@ Rebol [
 		--assert {"^^@a"} == mold {^@a}
 		--assert {{^^@"}} == mold {^@"}
 
+	--test-- "mold/all of UTF-8 string not at head"
+		--assert {#(string! "🙂b" 2)} == mold/all next "🙂b"
+		--assert "b" == #(string! "🙂b" 2)
+		--assert 2 == index? #(string! "🙂b" 2)
+		--assert "b" == load mold/all next "🙂b"
+		--assert tail? #(string! "🙂b" 3)
+		--assert tail? #(string! "🙂b" 100)
+		;; binary keeps index in bytes
+		--assert {#(binary! #{F09F998262} 5)} == mold/all skip #{F09F998262} 4
+
 
 ===end-group=== 
 

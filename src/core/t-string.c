@@ -348,6 +348,17 @@ static REBSER *make_binary(REBVAL *arg, REBOOL make)
 	*out = *data++;
 	VAL_SET(out, type);
 	i = IS_INTEGER(data) ? Int32(data) - 1 : 0;
+	if (type != REB_BINARY && IS_UTF8_SERIES(VAL_SERIES(out))) {
+		// The index is in chars, convert it to bytes.
+		const REBYTE *bin = VAL_BIN_HEAD(out);
+		REBCNT tail = VAL_TAIL(out);
+		REBCNT pos = 0;
+		while (i > 0 && pos < tail) {
+			pos += UTF8_Next_Char_Size(bin, pos);
+			i--;
+		}
+		i = pos;
+	}
 	if (i > VAL_TAIL(out)) i = VAL_TAIL(out); // clip it
 	VAL_INDEX(out) = i;
 	return TRUE;

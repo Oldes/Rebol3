@@ -222,6 +222,16 @@ enum {
 }
 
 
+static REBCNT Mold_Index(REBVAL *value)
+{
+	// 1-based index for the construction syntax (in chars for UTF-8 strings)
+	REBCNT idx = VAL_INDEX(value);
+	if (ANY_STR(value) && IS_UTF8_SERIES(VAL_SERIES(value))) {
+		if (idx > VAL_TAIL(value)) idx = VAL_TAIL(value);
+		idx = UTF8_Length(VAL_BIN_HEAD(value), idx);
+	}
+	return idx + 1;
+}
 /***********************************************************************
 **
 */  void Post_Mold(REBVAL *value, REB_MOLD *mold)
@@ -233,7 +243,7 @@ enum {
 {
 	if (VAL_INDEX(value)) {
 		Append_Byte(mold->series, ' ');
-		Append_Int(mold->series, VAL_INDEX(value)+1);
+		Append_Int(mold->series, Mold_Index(value));
 	}
 	if (GET_MOPT(mold, MOPT_MOLD_ALL)) Append_Byte(mold->series, ')');
 }
@@ -538,7 +548,7 @@ STOID Mold_All_Constr_String(REBVAL *value, REB_MOLD *mold)
 	// post...
 	if (VAL_INDEX(value)) {
 		Append_Byte(mold->series, ' ');
-		Append_Int(mold->series, VAL_INDEX(value) + 1);
+		Append_Int(mold->series, Mold_Index(value));
 	}
 	Append_Byte(mold->series, ')');
 }
