@@ -63,6 +63,7 @@ dt [ ;- delta time
 		%port-clipboard-test.r3
 		%port-console-test.r3
 		%port-net-test.r3
+		%port-serial-test.r3
 	;@@	%port-http-test.r3 ;; temporary disabled, because httpbin.org server has serious connection issues!
 		%power-test.r3
 		%protect-test.r3

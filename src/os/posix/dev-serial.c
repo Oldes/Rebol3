@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2013 REBOL Technologies
-**  Copyright 2013-2023 Rebol Open Source Developers
+**  Copyright 2013-2026 Rebol Open Source Developers
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -59,6 +59,84 @@
 **
 ***********************************************************************/
 
+// Baud rates and their termios speed constants.
+// On Linux these constants are not equal to the numeric rates
+// (B9600 is 13), so the rate must not be used as a speed directly!
+static const struct {REBINT baud; speed_t speed;} Baud_Speeds[] = {
+	{50, B50}, {75, B75}, {110, B110}, {134, B134}, {150, B150},
+	{200, B200}, {300, B300}, {600, B600}, {1200, B1200}, {1800, B1800},
+	{2400, B2400}, {4800, B4800}, {9600, B9600}, {19200, B19200},
+	{38400, B38400},
+#ifdef B57600
+	{57600, B57600},
+#endif
+#ifdef B115200
+	{115200, B115200},
+#endif
+#ifdef B230400
+	{230400, B230400},
+#endif
+#ifdef B460800
+	{460800, B460800},
+#endif
+#ifdef B500000
+	{500000, B500000},
+#endif
+#ifdef B576000
+	{576000, B576000},
+#endif
+#ifdef B921600
+	{921600, B921600},
+#endif
+#ifdef B1000000
+	{1000000, B1000000},
+#endif
+#ifdef B1152000
+	{1152000, B1152000},
+#endif
+#ifdef B1500000
+	{1500000, B1500000},
+#endif
+#ifdef B2000000
+	{2000000, B2000000},
+#endif
+#ifdef B2500000
+	{2500000, B2500000},
+#endif
+#ifdef B3000000
+	{3000000, B3000000},
+#endif
+#ifdef B3500000
+	{3500000, B3500000},
+#endif
+#ifdef B4000000
+	{4000000, B4000000},
+#endif
+};
+
+static REBOOL Get_Baud_Speed(REBINT baud, speed_t *speed)
+{
+	// Converts the numeric baud rate to the termios speed constant.
+	// Returns FALSE when the rate is not supported.
+	size_t n;
+	if (baud <= 0) return FALSE;
+	for (n = 0; n < sizeof(Baud_Speeds) / sizeof(Baud_Speeds[0]); n++) {
+		if (Baud_Speeds[n].baud == baud) {
+			*speed = Baud_Speeds[n].speed;
+			return TRUE;
+		}
+	}
+#if B9600 == 9600
+	// Speeds are plain numbers on this system (BSD, macOS),
+	// so let the driver decide if a non-standard rate is usable.
+	*speed = (speed_t)baud;
+	return TRUE;
+#else
+	return FALSE;
+#endif
+}
+
+
 static struct termios *Get_Serial_Settings(int ttyfd)
 {
 	struct termios *attr = NULL;
@@ -77,10 +155,12 @@ static REBOOL Set_Serial_Settings(int ttyfd, REBREQ *req)
 {
 	REBINT n;
 	struct termios attr = {};
-	REBINT speed = req->serial.baud;
+	speed_t speed;
 #ifdef DEBUG_SERIAL
-	printf("setting attributes: speed %d\n", speed);
+	printf("setting attributes: speed %d\n", req->serial.baud);
 #endif
+
+	if (!Get_Baud_Speed(req->serial.baud, &speed)) return FALSE;
 
 	if (cfsetospeed(&attr, speed)!=0 || cfsetispeed(&attr, speed)!=0)
 		return FALSE;
@@ -382,4 +462,3 @@ static DEVICE_CMD_FUNC Dev_Cmds[RDC_MAX] = {
 };
 
 DEFINE_DEV(Dev_Serial, "Serial IO", 1, Dev_Cmds, RDC_MAX, sizeof(REBREQ));
-
