@@ -1037,6 +1037,21 @@ Rebol [
 			s3 == "🙂"
 			s1 == "ba"
 		]
+	--test-- "path access on string with invalidated index"
+		swap s1: "🙂b" s2: next s1 ;; s2 index is now inside of the 🙂 sequence
+		--assert #"🙂" == s2/1
+		--assert none? s2/2
+		--assert 1 == s2/length
+		--assert 4 == s2/size
+		--assert all [
+			s3: "ab"
+			s3/1: s2
+			s3 == "🙂b"
+		]
+		--assert all [
+			s2/1: #"c"
+			s1 == "bc"
+		]
 ===end-group===
 
 ===start-group=== "UTF-16/32 decoding with BOM"

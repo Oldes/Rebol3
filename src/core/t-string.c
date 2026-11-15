@@ -766,6 +766,19 @@ FORCE_INLINE
 	REBINT i;
 	REBINT c;
 	REBSER *ser = VAL_SERIES(data);
+	REBVAL snapped;
+
+	// Index may be inside of a multi-byte sequence (invalidated by a modification
+	// made through another reference), use a value with a valid index instead.
+	if (ANY_STR(data) && VAL_INDEX(data) < VAL_TAIL(data)) {
+		n = Val_Str_Index(data);
+		if (n != VAL_INDEX(data)) {
+			snapped = *data;
+			VAL_INDEX(&snapped) = n;
+			data = &snapped;
+		}
+		n = 0;
+	}
 
 	if (IS_INTEGER(pvs->select) || IS_DECIMAL(pvs->select)) {
 		i = Int32(pvs->select);
@@ -784,11 +797,10 @@ FORCE_INLINE
 	else if (IS_WORD(pvs->select)) {
 		REBU32  len;
 		REBSER* ser  = VAL_SERIES(pvs->value);
-		REBCNT  idx  = VAL_INDEX(pvs->value);
+		REBCNT  idx  = Val_Str_Index(pvs->value); // clipped to tail and snapped
 		REBCNT  tail = VAL_TAIL(pvs->value);
-		REBYTE* data = VAL_BIN_DATA(pvs->value);
+		REBYTE* data = BIN_SKIP(ser, idx);
 		REBCNT  word = VAL_WORD_CANON(pvs->select);
-		if (idx > tail) idx = tail;
 
 		if (pvs->setval) {
 			switch (word) {
@@ -882,8 +894,9 @@ FORCE_INLINE
 	}
 	else if (ANY_BINSTR(val)) {
 		// for example: s: "abc" s/2: "xyz" s == "axc"
-		if (VAL_INDEX(val) >= VAL_TAIL(val)) return PE_BAD_SET;
-		c = GET_UTF8_CHAR(VAL_SERIES(val), VAL_INDEX(val));
+		REBCNT vidx = Val_Str_Index(val);
+		if (vidx >= VAL_TAIL(val)) return PE_BAD_SET;
+		c = GET_UTF8_CHAR(VAL_SERIES(val), vidx);
 	}
 	else
 		return PE_BAD_SELECT;
