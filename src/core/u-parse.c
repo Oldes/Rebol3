@@ -929,6 +929,16 @@ bad_target:
 		// a GET-WORD variable.
 		//--------------------------------------------------------------------
 
+		// Code evaluated from the rules may change the width of some previous char
+		// and leave the position inside of a multi-byte sequence. Move it forward
+		// to the next char, so the rule cannot match the same input again.
+		if (IS_UTF8_SERIES(series) && ANY_STR_TYPE(parse->type)
+			&& index < series->tail && (BIN_HEAD(series)[index] & 0xC0) == 0x80) {
+			i = index;
+			do i++; while (i < series->tail && (BIN_HEAD(series)[i] & 0xC0) == 0x80);
+			if (begin == index) begin = i;
+			index = i;
+		}
 		item = rules++;
 
 		// If word, set-word, or get-word, process it:

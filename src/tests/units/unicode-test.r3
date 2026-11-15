@@ -906,6 +906,15 @@ Rebol [
 			parse s3: "ab" [skip change skip s2]
 			s3 == "a🙂"
 		]
+	--test-- "parse position invalidated by a modification from a paren"
+		--assert all [
+			parse s: "ab" [skip (poke s 1 #"🙂") #"b"]
+			s == "🙂b"
+		]
+		--assert all [
+			parse s: "ab" [skip (poke s 1 #"🙂") copy x to end]
+			x == "b"
+		]
 ===end-group===
 
 ===start-group=== "char column (terminal) width"
