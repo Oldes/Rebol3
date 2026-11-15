@@ -209,6 +209,100 @@ if all [
 				#{0C0D} #{0405} #{78797A} #{FF}
 			]
 			try [delete %/tmp/r3-serial-out]
+		--test-- "Read received data"
+			a: open [scheme: 'serial path: %/tmp/r3-ttyA speed: 9600]
+			b: open [scheme: 'serial path: %/tmp/r3-ttyB speed: 9600]
+			--assert all [
+				binary? try [read b] ;; nothing to read yet
+				empty? b/data
+			]
+			write a #{010203}
+			wait 0.1
+			;; received data are available right after the read...
+			--assert #{010203} == try [read b]
+			;; ... and are not counted again when the read event is processed
+			wait 0.1
+			--assert #{010203} == b/data
+			;; next data are appended to the port's buffer
+			write a "abc"
+			wait 0.1
+			--assert #{010203616263} == try [read b]
+			--assert same? b/data read b
+			;; and the buffer may be cleared when the data are processed
+			;; (even though the last read is still pending)
+			clear b/data
+			write a #{0405}
+			wait 0.1
+			--assert #{0405} == try [read b]
+			clear b/data
+		--test-- "Read data received while waiting"
+			;; the read is pending when there are no data...
+			--assert empty? read b
+			write a #{0A0B0C}
+			;; ... and it is finished while waiting for the port
+			--assert all [
+				b = wait [b 1]
+				#{0A0B0C} == b/data
+			]
+			;; the buffer may be shortened while the read is pending
+			--assert #{0A0B0C} == read b
+			remove/part b/data 2
+			write a #{0D0E}
+			--assert all [
+				b = wait [b 1]
+				#{0C0D0E} == b/data
+			]
+			clear b/data
+		--test-- "Write does not use the port's data"
+			write a #{0102}
+			wait 0.1
+			read b
+			data: copy #{AABB}
+			--assert all [
+				port? try [write b data]  ;; must not drop the received data
+				#{0102} == b/data
+			]
+			wait 0.1
+			--assert all [
+				#{0102} == b/data
+				#{AABB} == read a         ;; duplex
+				#{AABB} == data           ;; received data are not appended to the written series
+				not same? data a/data
+			]
+			;; the written series may be modified while its data are being sent
+			write a data
+			clear data
+			wait 0.1
+			--assert #{0102AABB} == read b
+			clear a/data
+			clear b/data
+		--test-- "Write more data than the device accepts at once"
+			;; the write stays pending and the following writes must keep the order
+			data: make binary! 150000
+			loop 50 [
+				chunk: make binary! 3000
+				loop 3000 [append chunk random 255]
+				append data chunk
+				write a chunk
+			]
+			loop 300 [
+				read b
+				if 150000 <= length? b/data [break]
+				wait 0.01
+			]
+			--assert 150000 = length? b/data
+			--assert data == b/data
+			clear b/data
+		--test-- "Close with pending read and write"
+			--assert all [
+				empty? read b                  ;; pending read
+				port? try [loop 20 [write a data]] ;; nobody reads it, so it must stay pending
+				port? try [close a]
+				port? try [close b]
+				not error? try [wait 0.1]
+				not open? a
+				not open? b
+			]
 		--test-- "Invalid flow control"
 			--assert all [
 				error? e: try [open [scheme: 'serial path: %/tmp/r3-ttyA speed: 9600 flow-control: 'foo]]

@@ -33,6 +33,57 @@
 #include "reb-evtypes.h"
 
 #define MAX_SERIAL_DEV_PATH 128
+#define SERIAL_BUF_SIZE     32000
+
+// The second request of the port's state is used for WRITE, so it may
+// be pending while a READ is pending too (the same way as in net ports).
+#define SERIAL_WRITE_REQ(req) ((req) + 1)
+
+/***********************************************************************
+**
+*/	static REBHOB *Serial_State_Hob(REBSER *port)
+/*
+**		Returns the state handle context of an open serial port.
+**		Its series keeps the data of the pending WRITE (GC safe).
+**
+***********************************************************************/
+{
+	return VAL_HANDLE_CTX(OFV(port, STD_PORT_STATE));
+}
+
+/***********************************************************************
+**
+*/	static void Accept_Read_Data(REBVAL *data, REBREQ *req)
+/*
+**		Adds the bytes received by a finished READ to the port's buffer.
+**
+**		The device stores the bytes at the tail which the buffer had when
+**		the READ was started. A pending READ may be finished much later,
+**		and the buffer may be cleared (or shortened) in the meantime, so
+**		the bytes are moved to the current tail when needed.
+**
+***********************************************************************/
+{
+	REBSER *ser;
+	REBYTE *tail;
+	REBCNT len = req->actual;
+
+	req->actual = 0; // consumed (UPDATE is called for every event of the port)
+	if (len == 0 || !IS_BINARY(data)) return;
+
+	ser = VAL_SERIES(data);
+	tail = BIN_TAIL(ser);
+	if (req->data != tail) {
+		// The bytes may be used only when they are still inside the buffer
+		// and behind its tail. (The buffer must not be extended while
+		// a READ is pending!)
+		if (req->data < tail || req->data + len > BIN_HEAD(ser) + SERIES_REST(ser)) return;
+		memmove(tail, req->data, len);
+	}
+	SERIES_TAIL(ser) += len;
+	TERM_SERIES(ser);
+}
+
 
 /***********************************************************************
 **
@@ -41,6 +92,8 @@
 ***********************************************************************/
 {
 	REBREQ *req;	// IO request
+	REBREQ *wreq;	// IO request used for writing
+	REBHOB *hob;	// port's state handle context
 	REBVAL *spec;	// port spec
 	REBVAL *arg;	// action argument value
 	REBINT result;	// IO result
@@ -162,15 +215,20 @@
 
 		// Setup the read buffer (allocate a buffer if needed):
 		arg = OFV(port, STD_PORT_DATA);
-		if (!IS_STRING(arg) && !IS_BINARY(arg)) {
-			Set_Binary(arg, Make_Binary(32000));
+		if (!IS_BINARY(arg)) {
+			Set_Binary(arg, Make_Binary(SERIAL_BUF_SIZE));
+		}
+		else if (req->command == RDC_READ) {
+			// The previous READ may be done, but its event was not processed yet.
+			// Apply its data now, else the new READ would overwrite it.
+			// (The later UPDATE is fine with it, as the length is consumed.)
+			Accept_Read_Data(arg, req);
 		}
 		ser = VAL_SERIES(arg);
 		req->length = SERIES_AVAIL(ser); // space available
-		if (req->length < 32000/2) Extend_Series(ser, 32000);
+		if (req->length < SERIAL_BUF_SIZE/2) Extend_Series(ser, SERIAL_BUF_SIZE);
 		req->length = SERIES_AVAIL(ser);
 		req->data = STR_TAIL(ser); // write at tail
-		//if (SERIES_TAIL(ser) == 0)
 		req->actual = 0;  // Actual for THIS read, not for total.
 #ifdef DEBUG_SERIAL
 		printf("(max read length %d)", req->length);
@@ -184,6 +242,12 @@
 		}
 		printf("\n");
 #endif
+		if (result == DR_DONE) {
+			// Make the received data visible right away. The device has
+			// already queued the READ event, so mark the data as consumed,
+			// else the UPDATE action would append the same length again.
+			Accept_Read_Data(arg, req);
+		}
 		*D_RET = *arg;
 		return R_RET;
 
@@ -202,32 +266,49 @@
 			if (n <= len) len = n;
 		}
 
-		// Setup the write:
-		*OFV(port, STD_PORT_DATA) = *spec;	// keep it GC safe
-		req->length = len;
-		req->data = VAL_BIN_DATA(spec);
-		req->actual = 0;
+		// WRITE has its own request, so it does not disturb a pending READ
+		// and it does not use the port's data, where the received bytes are.
+		wreq = SERIAL_WRITE_REQ(req);
+		hob = Serial_State_Hob(port);
+
+		// Append to the data of a still pending WRITE (keeps the order).
+		if (GET_FLAG(wreq->flags, RRF_PENDING) && hob->series) {
+			Append_Bytes_Len(hob->series, VAL_BIN_DATA(spec), len);
+			wreq->data = BIN_HEAD(hob->series) + wreq->actual; // may be reallocated
+			wreq->length += len;
+			break;
+		}
+
+		// Setup the write (with a copy of the data, so it is GC safe
+		// and it cannot be modified while it is being sent):
+		hob->series = Copy_Bytes(VAL_BIN_DATA(spec), len);
+		wreq->handle = req->handle; // the opened device (handle or id)
+		wreq->length = len;
+		wreq->data   = BIN_HEAD(hob->series);
+		wreq->actual = 0;
 
 		//Print("(write length %d)", len);
-		result = OS_Do_Device(req, RDC_WRITE); // send can happen immediately
-		if (result < 0) Trap_Port(RE_WRITE_ERROR, port, req->error);
+		result = OS_Do_Device(wreq, RDC_WRITE); // send can happen immediately
+		if (result <= 0) hob->series = NULL; // done or failed
+		if (result < 0) Trap_Port(RE_WRITE_ERROR, port, wreq->error);
 		break;
 	case A_UPDATE:
 		// Update the port object after a READ or WRITE operation.
 		// This is normally called by the WAKE-UP function.
 		arg = OFV(port, STD_PORT_DATA);
-		if (req->command == RDC_READ) {
-			if (ANY_BINSTR(arg)) VAL_TAIL(arg) += req->actual;
-		}
-		else if (req->command == RDC_WRITE) {
-			SET_NONE(arg);  // Write is done.
-		}
+		if (req->command == RDC_READ) Accept_Read_Data(arg, req);
+		// Release the data of a finished (or failed) WRITE:
+		if (!GET_FLAG(SERIAL_WRITE_REQ(req)->flags, RRF_PENDING))
+			Serial_State_Hob(port)->series = NULL;
 		return R_NONE;
 	case A_OPENQ:
 		return R_TRUE;
 
 	case A_CLOSE:
 		if (IS_OPEN(req)) {
+			// A pending WRITE must not be polled with the closed device:
+			OS_Abort_Device(SERIAL_WRITE_REQ(req));
+			Serial_State_Hob(port)->series = NULL;
 			OS_Do_Device(req, RDC_CLOSE);
 			Release_Port_State(port);
 		}
