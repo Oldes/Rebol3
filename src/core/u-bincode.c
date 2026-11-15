@@ -69,6 +69,7 @@
 
 #include "sys-core.h"
 #include "reb-ext.h" // RXT_* types used by the handle path callbacks
+#include "sys-leb128.h" // ENCODEDU32 and ENCODEDU64
 #include <stdio.h>
 #include <time.h>
 
@@ -210,12 +211,6 @@ typedef struct rebol_bincode_ctx {
                           bc->r_mask = r_mask, bc->w_mask = w_mask)
 #define BINCODE_RETURN(r) do { BINCODE_COMMIT(); return (r); } while (0)
 
-
-static REBCNT EncodedU64_Size(u64 value) {
-	REBCNT count = 1;
-	while ((value >>= 7) != 0) count++;
-	return count;
-}
 
 static REBCNT EncodedVINT_Size(REBU64 value) {
 	REBCNT count = 1;
@@ -808,7 +803,7 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 					case SYM_ENCODEDU32:
 					case SYM_ENCODEDU64:
 						if (IS_INTEGER(next)) {
-							count += EncodedU64_Size(VAL_UNT64(next));
+							count += Size_LEB128(VAL_UNT64(next));
 							continue;
 						}
 						goto error;
@@ -1322,13 +1317,7 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 						else {
 							u = VAL_UNT64(next);
 						}
-						n = 0;
-						do {
-							cp[n] = (char)(u & 0x7F);  // Take the lowest 7 bits of the value
-							u >>= 7;                   // Shift the value right by 7 bits
-							if (u != 0) cp[n] |= 0x80; // Set the continuation bit if there are more bytes to write
-							n++;
-						} while (u != 0);
+						n = Write_LEB128(cp, u);
 						break;
 
 					case SYM_VINT:
@@ -1783,25 +1772,14 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 							VAL_INDEX(temp) = 0;
 							break;
 						case SYM_ENCODEDU32:
-						case SYM_ENCODEDU64: {
-							REBCNT shift = 0;
-							REBYTE byte = 0;
-							n = 0;
-							u = 0;
-							do {
-								// max 10 bytes (64 bits); also covers 10-byte sign-extended negative int32 values
-								if (n >= 10) Trap1(RE_OUT_OF_RANGE, value);
-								ASSERT_READ_SIZE(value, cp, ep, n+1);
-								byte = cp[n];
-								u |= (u64)(byte & 0x7F) << shift;
-								shift += 7;
-								n++;
-							} while ((byte & 0x80) != 0);
-							VAL_SET(temp, REB_INTEGER);
-							if (cmd == SYM_ENCODEDU32) u &= 0xFFFFFFFF;
-							VAL_UNT64(temp) = u;
-							break;
-						}
+						case SYM_ENCODEDU64:
+							// max 10 bytes (64 bits); also covers 10-byte sign-extended negative int32 values
+							n = Read_LEB128(cp, ep, &u);
+							if (n == 0) Trap1(RE_OUT_OF_RANGE, value); // truncated or too long
+ 							VAL_SET(temp, REB_INTEGER);
+ 							if (cmd == SYM_ENCODEDU32) u &= 0xFFFFFFFF;
+ 							VAL_UNT64(temp) = u;
+ 							break;
 						case SYM_UB:
 						case SYM_SB:
 						case SYM_FB:

@@ -423,6 +423,18 @@ is-protected-error?: func[code][
 		--assert error? try [binary/read #{80} 'encodedu32]
 		--assert error? try [binary/read #{8080808080808080808000} 'encodedu64]
 		--assert error? try [binary/read #{8080808080808080808000} 'encodedu32]
+		;; the error is out-of-range and the read position is not moved
+		b: binary #{01AC}
+		--assert 1 = binary/read b 'ui8
+		--assert all [error? e: try [binary/read b 'encodedu32]  e/id = 'out-of-range]
+		--assert all [error? e: try [binary/read #{8080808080808080808000} 'encodedu64]  e/id = 'out-of-range]
+		--assert #{AC} = b/buffer
+	--test-- "write encodedu64 negative"
+		;; negative numbers are written as 64-bit two's complement (always 10 bytes)
+		b: binary/init none 16
+		binary/write b [EncodedU64 -1 EncodedU64 -129 EncodedU64 -9223372036854775808 UI8 1]
+		--assert b/buffer = #{FFFFFFFFFFFFFFFFFF01FFFEFFFFFFFFFFFFFF018080808080808080800101}
+		--assert [-1 -129 -9223372036854775808 1] = binary/read b [EncodedU64 EncodedU64 EncodedU64 UI8]
 	--test-- "VINT"
 	;; Another variable-length integer encoding (used in EBML/Matroska files)
 		b: binary/init none 16

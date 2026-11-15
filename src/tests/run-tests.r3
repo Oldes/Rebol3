@@ -64,6 +64,7 @@ dt [ ;- delta time
 	;@@	%units/port-http-test.r3 ;; temporary disabled, because httpbin.org server has serious connection issues!
 		%units/power-test.r3
 		%units/protect-test.r3
+		%units/rebin-test.r3
 		%units/repl-test.r3
 		%units/series-test.r3
 		%units/stack-test.r3
