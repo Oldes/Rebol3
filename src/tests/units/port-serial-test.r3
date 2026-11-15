@@ -26,6 +26,33 @@ if all [
 					not open? p
 				]
 			]
+		--test-- "Open with the default baud rate"
+			;; the speed is optional in the url
+			--assert all [
+				port? p: try [open serial://ptmx]
+				p/spec/path  = %ptmx
+				p/spec/speed = 115200
+				port? try [close p]
+			]
+			--assert all [
+				port? p: try [open serial://ptmx/]
+				p/spec/path  = %ptmx
+				p/spec/speed = 115200
+				port? try [close p]
+			]
+			--assert all [
+				port? p: try [open serial://ptmx/9600]
+				p/spec/path  = %ptmx
+				p/spec/speed = 9600
+				port? try [close p]
+			]
+		--test-- "Invalid url"
+			foreach url [serial://ptmx/abc serial://ptmx/9600x serial://ptmx/9600/8 serial:// serial:///9600][
+				--assert all [
+					error? e: try [open url]
+					e/id = 'invalid-spec
+				]
+			]
 		--test-- "Open and close many times"
 			;; no file descriptor may be left open
 			--assert not error? try [

@@ -495,14 +495,18 @@ init-schemes: func [
 			if url? port/spec/ref [
 				parse port/spec/ref [
 					thru #":" 0 2 slash
-					copy path [to slash | end] skip
-					copy speed to end
+					copy path [to slash | to end]
+					opt [slash copy speed to end]
 				]
-				try/with [port/spec/path: to file! path][
-					cause-error 'access 'invalid-spec :path
+				if empty? any [path ""][
+					cause-error 'access 'invalid-spec port/spec/ref
 				]
-				try/with [port/spec/speed: to integer! speed][
-					cause-error 'access 'invalid-spec :speed
+				port/spec/path: as file! path
+				;; The speed is optional (the default one is used when missing)
+				unless empty? any [speed ""][
+					try/with [port/spec/speed: to integer! speed][
+						cause-error 'access 'invalid-spec :speed
+					]
 				]
 			]
 		]
