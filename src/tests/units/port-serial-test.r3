@@ -26,6 +26,25 @@ if all [
 					not open? p
 				]
 			]
+		--test-- "Open and close many times"
+			;; no file descriptor may be left open
+			--assert not error? try [
+				loop 2000 [close open serial://ptmx/9600]
+			]
+		--test-- "Open a device which is not a terminal"
+			--assert all [
+				error? e: try [open serial://null/9600]
+				e/id = 'cannot-open
+			]
+			--assert all [
+				error? e: try [open serial://not-existing-device/9600]
+				e/id = 'cannot-open
+			]
+			;; failed attempts must not break the following valid one
+			--assert not error? try [
+				loop 2000 [try [open serial://null/9600]]
+				close open serial://ptmx/9600
+			]
 		--test-- "Open with unsupported baud rate"
 			foreach speed [0 -9600 12345][
 				--assert all [
@@ -86,6 +105,14 @@ if all [
 				tty-flag? "ixoff"
 			]
 			try [close p]
+		--test-- "Close restores prior settings"
+			--assert tty-flag? "-crtscts"
+			--assert all [
+				port? p: try [open [scheme: 'serial path: %/tmp/r3-ttyA speed: 9600 flow-control: 'hardware]]
+				tty-flag? "crtscts"
+				port? try [close p]
+				tty-flag? "-crtscts"
+			]
 		--test-- "Invalid flow control"
 			--assert all [
 				error? e: try [open [scheme: 'serial path: %/tmp/r3-ttyA speed: 9600 flow-control: 'foo]]

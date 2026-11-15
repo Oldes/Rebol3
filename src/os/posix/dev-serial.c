@@ -21,7 +21,7 @@
 ************************************************************************
 **
 **  Title: Device: Serial port access for Posix
-**  Author: Carl Sassenrath, Joshua Shireman, Shixin Zeng
+**  Author: Carl Sassenrath, Joshua Shireman, Shixin Zeng, Oldes
 **
 ************************************************************************
 **
@@ -279,6 +279,7 @@ static REBOOL Set_Serial_Settings(int ttyfd, REBREQ *req)
 	if (path[0] != '/') { //relative path
 		strcpy(&devpath[0], "/dev/");
 		strncpy(&devpath[5], path, MAX_SERIAL_PATH-6);
+		devpath[MAX_SERIAL_PATH-1] = 0; // strncpy does not terminate a long path
 		path = &devpath[0];
 	}
 	h = open(path, O_RDWR | O_NOCTTY | O_NONBLOCK);
@@ -287,18 +288,19 @@ static REBOOL Set_Serial_Settings(int ttyfd, REBREQ *req)
 		return DR_ERROR;
 	}
 
-	//Getting prior atttributes:
+	// Keep prior attributes, so these may be restored on close.
+	// It fails when the device is not a terminal.
 	req->serial.prior_attr = Get_Serial_Settings(h);
-	if (tcgetattr(h, req->serial.prior_attr)) {
-		close(h);
-		return DR_ERROR;
-	}
 
-	if (!Set_Serial_Settings(h, req)) {
+	if (!req->serial.prior_attr || !Set_Serial_Settings(h, req)) {
+		if (req->serial.prior_attr) {
+			FREE_MEM(req->serial.prior_attr);
+			req->serial.prior_attr = NULL;
+		}
 		close(h);
 		req->error = -RFE_OPEN_FAIL;
 		return DR_ERROR;
-	}		
+	}
 
 	req->id = h;
 	return DR_DONE;
@@ -312,8 +314,11 @@ static REBOOL Set_Serial_Settings(int ttyfd, REBREQ *req)
 ***********************************************************************/
 {
 	if (req->id) {
-		//Warning: should free req->serial.prior_attr termios struct?
-		tcsetattr(req->id, TCSANOW, req->serial.prior_attr);
+		if (req->serial.prior_attr) {
+			tcsetattr(req->id, TCSANOW, req->serial.prior_attr);
+			FREE_MEM(req->serial.prior_attr);
+			req->serial.prior_attr = NULL;
+		}
 		close(req->id);
 		req->id = 0;
 	}
