@@ -944,6 +944,14 @@ FORCE_INLINE
 		return T_Port(ds, action);
 	}
 
+	// A width-changing modification made through another reference may leave
+	// the index inside of a multi-byte sequence. Snap it back to the char start.
+	if (ANY_STR(value) && IS_UTF8_SERIES(VAL_SERIES(value))) {
+		index = VAL_INDEX(value);
+		if (index < VAL_TAIL(value) && (VAL_BIN_HEAD(value)[index] & 0xC0) == 0x80)
+			VAL_INDEX(value) = UTF8_Prev_Char_Position(VAL_BIN_HEAD(value), index);
+	}
+
 	len = Do_Series_Action(action, value, arg);
 	if (len >= 0) return len;
 

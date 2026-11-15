@@ -2119,10 +2119,21 @@ try/with [
 		--assert all [
 			"b🙂" == swap s1: "🙂b" next s1
 		]
-	--test-- "swap invalidating index (known issue)"
+	--test-- "swap invalidating index"
 		--assert all [
 			"b🙂" == swap s1: "🙂b" s2: next s1
-			"🙂" == length? s2 ;@@ Known issue!!! The index is not valid anymore.
+			1 == length? s2
+			2 == index? s2
+			#"🙂" == pick s2 1
+			"🙂" == copy s2
+		]
+	--test-- "poke invalidating index"
+		;; the index stays valid, but not on the same character!
+		--assert all [
+			s2: next s1: "ab"
+			#"🙂" == poke s1 1 #"🙂"
+			2 == length? s2
+			"🙂b" == copy s2
 		]
 	--test-- "swap binary"
 		--assert all [
