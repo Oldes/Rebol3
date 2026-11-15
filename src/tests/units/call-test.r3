@@ -29,18 +29,18 @@ rebol-cmd: func[cmd][
 		--assert out-buffer = "3^/"
 	--test-- "script args 1"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/1890
-		--assert 0 = rebol-cmd {units/files/print-args.r3 a}
+		--assert 0 = rebol-cmd {files/print-args.r3 a}
 		--assert out-buffer = {["a"]^/["a"]^/}
-		--assert 0 = rebol-cmd {units/files/print-args.r3 a b}
+		--assert 0 = rebol-cmd {files/print-args.r3 a b}
 		--assert out-buffer = {["a" "b"]^/["a" "b"]^/}
-		--assert 0 = rebol-cmd {units/files/print-args.r3 a "b c"}
+		--assert 0 = rebol-cmd {files/print-args.r3 a "b c"}
 		--assert out-buffer = {["a" "b c"]^/["a" "b c"]^/}
 		either find [Macintosh Linux] system/platform [
 			; single quotes are not used in Windows' command line
-			--assert 0 = rebol-cmd {units/files/print-args.r3 a 'b " c'}
+			--assert 0 = rebol-cmd {files/print-args.r3 a 'b " c'}
 			--assert out-buffer = {["a" {b " c}]^/["a" {b " c}]^/}
 		][
-			--assert 0 = rebol-cmd {units/files/print-args.r3 a "b \" c"}
+			--assert 0 = rebol-cmd {files/print-args.r3 a "b \" c"}
 			--assert out-buffer = {["a" {b " c}]^/["a" {b " c}]^/}
 		]
 	--test-- "script args 2"
@@ -52,26 +52,26 @@ rebol-cmd: func[cmd][
 		--assert out-buffer == join version newline
 		--assert 0 = rebol-cmd {--version --quiet}
 		--assert out-buffer == join version newline
-		--assert 0 = rebol-cmd {units/files/print-args.r3 -v}
+		--assert 0 = rebol-cmd {files/print-args.r3 -v}
 		--assert out-buffer = {["-v"]^/["-v"]^/}
-		--assert 0 = rebol-cmd {units/files/print-args.r3 -x}
+		--assert 0 = rebol-cmd {files/print-args.r3 -x}
 		--assert out-buffer = {["-x"]^/["-x"]^/}
-		--assert 0 = rebol-cmd {units/files/print-args.r3 -- -x}
+		--assert 0 = rebol-cmd {files/print-args.r3 -- -x}
 		--assert out-buffer = {["--" "-x"]^/["--" "-x"]^/}
-		--assert 0 = rebol-cmd {units/files/print-args.r3 -v -- -x}
+		--assert 0 = rebol-cmd {files/print-args.r3 -v -- -x}
 		--assert out-buffer = {["-v" "--" "-x"]^/["-v" "--" "-x"]^/}
-		--assert 0 = rebol-cmd {--args "a b" units/files/print-args.r3 -v}
+		--assert 0 = rebol-cmd {--args "a b" files/print-args.r3 -v}
 		--assert out-buffer = {["a b" "-v"]^/["a b"]^/}
-		--assert 0 = rebol-cmd {--args "á b" units/files/print-args.r3 -v}
+		--assert 0 = rebol-cmd {--args "á b" files/print-args.r3 -v}
 		--assert out-buffer = {["á b" "-v"]^/["á b"]^/}
 
 		; providing script using --script option
 		;@@ https://github.com/Oldes/Rebol-issues/issues/2469
-		--assert 0 = rebol-cmd {--script units/files/print-args.r3 --args "a b" -- -v}
+		--assert 0 = rebol-cmd {--script files/print-args.r3 --args "a b" -- -v}
 		--assert out-buffer = {["a b" "-v"]^/["a b"]^/}
-		--assert 0 = rebol-cmd {--script units/files/print-args.r3 1 2}
+		--assert 0 = rebol-cmd {--script files/print-args.r3 1 2}
 		--assert out-buffer = {["1" "2"]^/["1" "2"]^/}
-		--assert 0 = rebol-cmd {--args 1 --script units/files/print-args.r3 2}
+		--assert 0 = rebol-cmd {--args 1 --script files/print-args.r3 2}
 		--assert out-buffer = {["1" "2"]^/["1"]^/}
 	--test-- "option values"
 		;; empty value must not be read past its end
@@ -80,35 +80,35 @@ rebol-cmd: func[cmd][
 		;; values with `-` as the second char are valid values
 		--assert 0 = rebol-cmd {--do "a-b: 3 print a-b"}
 		--assert out-buffer = "3^/"
-		--assert 0 = rebol-cmd {--args "a-b" units/files/print-args.r3}
+		--assert 0 = rebol-cmd {--args "a-b" files/print-args.r3}
 		--assert out-buffer = {["a-b"]^/["a-b"]^/}
 		;; single dash values are still accepted
-		--assert 0 = rebol-cmd {--args "-x" units/files/print-args.r3}
+		--assert 0 = rebol-cmd {--args "-x" files/print-args.r3}
 		--assert out-buffer = {["-x"]^/["-x"]^/}
 		;; repeated option: the last value is used (the previous is released)
 		--assert 0 = rebol-cmd {--do "print 1" --do "print 2"}
 		--assert out-buffer = "2^/"
-		--assert 0 = rebol-cmd {--args "a" --args "b" units/files/print-args.r3}
+		--assert 0 = rebol-cmd {--args "a" --args "b" files/print-args.r3}
 		--assert out-buffer = {["b"]^/["b"]^/}
 	--test-- "missing option value"
 		;; value option followed by another --option is a usage error
 		;; (help is shown and the script is not evaluated)
-		--assert 0 = rebol-cmd {--args --quiet units/files/print-args.r3 a b}
+		--assert 0 = rebol-cmd {--args --quiet files/print-args.r3 a b}
 		--assert not find out-buffer {["a" "b"]}
-		--assert 0 = rebol-cmd {--script --quiet units/files/print-args.r3 a}
+		--assert 0 = rebol-cmd {--script --quiet files/print-args.r3 a}
 		--assert not find out-buffer {["a"]}
 	--test-- "output into a cleared buffer"
 		;; stale bytes after the new tail must not be counted
 		buf: append/dup copy "" "x" 200
 		clear buf
 		--assert 0 = call/shell/output rejoin [
-			to-local-file system/options/boot { --args "á b" units/files/print-args.r3}
+			to-local-file system/options/boot { --args "á b" files/print-args.r3}
 		] buf
 		--assert 16 = length? buf
 		--assert buf = {["á b"]^/["á b"]^/}
 	--test-- "script args 3"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/2140
-		cmd: "units/files/print-args.r3"
+		cmd: "files/print-args.r3"
 		repeat i 1000 [append append cmd #" " i]
 		--assert 0 = rebol-cmd cmd
 		--assert #{F41512F56B85D5805C62E6587C26A969DC3D41AE} = checksum out-buffer 'sha1
