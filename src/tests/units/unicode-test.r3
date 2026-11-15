@@ -892,6 +892,20 @@ Rebol [
 			parse s1 [to end remove s2]
 			s1 == "b"
 		]
+	--test-- "parse with invalidated index in a rule value"
+		swap s1: "🙂b" s2: next s1 ;; s2 index is now inside of the 🙂 sequence
+		--assert parse "🙂" [s2]
+		--assert parse "a🙂" [to s2 s2]
+		--assert parse "a🙂" [thru s2]
+		--assert parse "a🙂" [to [s2] s2]
+		--assert all [
+			parse s3: "a" [skip insert s2]
+			s3 == "a🙂"
+		]
+		--assert all [
+			parse s3: "ab" [skip change skip s2]
+			s3 == "a🙂"
+		]
 ===end-group===
 
 ===start-group=== "char column (terminal) width"

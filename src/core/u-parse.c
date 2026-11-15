@@ -132,6 +132,21 @@ static REBCNT Parse_Index(REBVAL *val)
 	return VAL_INDEX(val);
 }
 
+static REBVAL *Snap_Item(REBVAL *item, REBVAL *tmp)
+{
+	// Returns the item, or its copy (in tmp) with a valid index, when it is
+	// a string with index inside of a multi-byte sequence.
+	if (ANY_STR(item) && VAL_INDEX(item) < VAL_TAIL(item)) {
+		REBCNT idx = Val_Str_Index(item);
+		if (idx != VAL_INDEX(item)) {
+			*tmp = *item;
+			VAL_INDEX(tmp) = idx;
+			return tmp;
+		}
+	}
+	return item;
+}
+
 /***********************************************************************
 **
 */	static REBFLG Parse_Series(REBVAL *val, REBVAL *rules, REBCNT flags, REBCNT depth, REB_PARSE_COLLECT *collect)
@@ -243,6 +258,7 @@ static REBCNT Parse_Index(REBVAL *val)
 	REBSER *series = parse->series;
 	REBCNT flags = parse->flags | AM_FIND_MATCH | AM_FIND_TAIL;
 	REBCNT ch1, ch2, size;
+	REBVAL snapped;
 //	int rewrite_needed;
 
 	if (Trace_Level) {
@@ -279,6 +295,7 @@ static REBCNT Parse_Index(REBVAL *val)
 	case REB_URL:
 	case REB_EMAIL:
 	case REB_REF:
+		item = Snap_Item(item, &snapped);
 		index = Find_Str_Str(series, 0, index, SERIES_TAIL(series), 1, VAL_SERIES(item), VAL_INDEX(item), VAL_LEN(item), flags);
 		break;
 
@@ -303,6 +320,7 @@ static REBCNT Parse_Index(REBVAL *val)
 		break;
 */
 	case REB_TAG:
+		item = Snap_Item(item, &snapped);
 		index = Find_Str_Tag(series, 0, index, SERIES_TAIL(series), 1, VAL_SERIES(item), VAL_INDEX(item), VAL_LEN(item), flags);
 		break;
 
@@ -380,6 +398,7 @@ no_result:
 	REBCNT type = parse->type;
 	REBVAL *blk;
 	REBVAL *item;
+	REBVAL snapped;
 	REBCNT cmd;
 	REBCNT i;
 	REBCNT len;
@@ -466,6 +485,7 @@ no_result:
 				}
 				else if (IS_TAG(item)) {
 					if (ch1 == '<') {
+						item = Snap_Item(item, &snapped);
 						i = Find_Str_Tag(series, 0, index, series->tail, 1, VAL_SERIES(item), VAL_INDEX(item), VAL_LEN(item),  AM_FIND_MATCH | parse->flags);
 						if (i != NOT_FOUND) {
 							if (is_thru) i += VAL_LEN(item) + 2;
@@ -480,6 +500,7 @@ no_result:
 						goto found1;
 				}
 				else if (ANY_STR(item)) {
+					item = Snap_Item(item, &snapped);
 					ch2 = VAL_ANY_CHAR(item);
 					if (!HAS_CASE(parse) && ch2 < UNICODE_CASES) ch2 = UP_CASE(ch2);
 					if (ch1 == ch2) {
@@ -540,6 +561,7 @@ bad_target:
 {
 	REBSER *series = parse->series;
 	REBCNT i = 0;
+	REBVAL snapped;
 
 	// TO a specific index position.
 	if (IS_INTEGER(item)) {
@@ -570,6 +592,7 @@ bad_target:
 
 			//O: not using ANY_BINSTR as TAG is now handled separately
 			if (VAL_TYPE(item) >= REB_BINARY && VAL_TYPE(item) < REB_TAG) {
+				item = Snap_Item(item, &snapped);
 				i = Find_Str_Str(series, 0, index, series->tail, 1, VAL_SERIES(item), VAL_INDEX(item), VAL_LEN(item), flags);
 			}
 			// #"A"
@@ -581,6 +604,7 @@ bad_target:
 				i = Find_Str_Bitset(series, 0, index, series->tail, 1, VAL_BITSET(item), flags);
 			}
 			else if (IS_TAG(item)) {
+				item = Snap_Item(item, &snapped);
 				i = Find_Str_Tag(series, 0, index, series->tail, 1, VAL_SERIES(item), VAL_INDEX(item), VAL_LEN(item), flags);
 			}
 			else
@@ -1495,9 +1519,10 @@ do_modify:
 						if (IS_LIT_WORD(item)) SET_TYPE(BLK_SKIP(series, index-1), REB_WORD);
 					}
 					else {
+						REBVAL snapped;
 						if (parse->type == REB_BINARY) cmd |= (1<<AN_SERIES); // special flag
 						index = Modify_String(GET_FLAG(flags, PF_CHANGE) ? A_CHANGE : A_INSERT,
-								series, begin, item, cmd, count, 1);
+								series, begin, Snap_Item(item, &snapped), cmd, count, 1);
 					}
 					SET_FLAG(parse->flags, PF_ADVANCE);
 				}
