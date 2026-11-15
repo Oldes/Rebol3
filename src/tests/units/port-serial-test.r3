@@ -337,6 +337,35 @@ if all [
 				not open? a
 				not open? b
 			]
+		--test-- "Device which is gone"
+			;; NOTE: this test must be the last one using the device pair!
+			a: open [scheme: 'serial path: %/tmp/r3-ttyA speed: 9600]
+			b: open [scheme: 'serial path: %/tmp/r3-ttyB speed: 9600]
+			events: copy []
+			b/awake: func [event][append events event/type true]
+			--assert empty? read b ;; pending read
+			call/wait/shell join "kill " socat-pid
+			;; the pending read must be finished with an error event
+			--assert all [
+				b = wait [b 1]
+				events = [error]
+			]
+			;; and it is not possible to read or write anymore
+			--assert all [
+				error? e: try [read b]
+				e/id = 'read-error
+			]
+			--assert all [
+				error? e: try [read a]
+				e/id = 'read-error
+			]
+			--assert all [
+				error? e: try [write a #{01}]
+				e/id = 'write-error
+			]
+			--assert port? try [close a]
+			--assert port? try [close b]
+			--assert not error? try [wait 0.01]
 		--test-- "Invalid flow control"
 			--assert all [
 				error? e: try [open [scheme: 'serial path: %/tmp/r3-ttyA speed: 9600 flow-control: 'foo]]

@@ -46,6 +46,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <termios.h>
+#include <poll.h>
 
 #include "reb-host.h"
 #include "host-lib.h"
@@ -333,6 +334,7 @@ static REBOOL Set_Serial_Settings(int ttyfd, REBREQ *req)
 ***********************************************************************/
 {
 	ssize_t result = 0;
+	struct pollfd pfd;
 	if (!req->id) {
 		req->error = -RFE_NO_HANDLE;
 		return DR_ERROR;
@@ -340,13 +342,26 @@ static REBOOL Set_Serial_Settings(int ttyfd, REBREQ *req)
 
 	result = read(req->id, req->data, req->length);
 #ifdef DEBUG_SERIAL
-	printf("read %d ret: %d\n", req->length, result);
+	printf("read %d ret: %d\n", req->length, (int)result);
 #endif
 	if (result < 0) {
+		// No data yet, or interrupted by a signal; try it again later.
+		if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) return DR_PEND;
 		req->error = -RFE_BAD_READ;
 		OS_Signal_Device(req, EVT_ERROR);
 		return DR_ERROR;
 	} else if (result == 0) {
+		// There are no data, but it is also the result of reading from
+		// a device which is gone (unplugged, other side of a pty closed).
+		// (POLLNVAL is ignored as some systems cannot poll devices.)
+		pfd.fd = req->id;
+		pfd.events = POLLIN;
+		pfd.revents = 0;
+		if (poll(&pfd, 1, 0) > 0 && (pfd.revents & (POLLHUP | POLLERR))) {
+			req->error = -RFE_BAD_READ;
+			OS_Signal_Device(req, EVT_ERROR);
+			return DR_ERROR;
+		}
 		return DR_PEND;
 	} else {
 		req->actual = result;
