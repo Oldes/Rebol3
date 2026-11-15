@@ -123,6 +123,15 @@ static REBVAL *Collect_Value(REB_PARSE_COLLECT *c)
 	return c->value;
 }
 
+static REBCNT Parse_Index(REBVAL *val)
+{
+	// Index of the value, snapped to the char start when it is a string with
+	// index inside of a multi-byte sequence (invalidated by a modification
+	// made through another reference).
+	if (ANY_STR(val) && VAL_INDEX(val) < VAL_TAIL(val)) return Val_Str_Index(val);
+	return VAL_INDEX(val);
+}
+
 /***********************************************************************
 **
 */	static REBFLG Parse_Series(REBVAL *val, REBVAL *rules, REBCNT flags, REBCNT depth, REB_PARSE_COLLECT *collect)
@@ -143,7 +152,7 @@ static REBVAL *Collect_Value(REB_PARSE_COLLECT *c)
 	//parse.retval = NULL;
 	parse.collect = collect;
 
-	n = Parse_Rules_Loop(&parse, VAL_INDEX(val), rules, depth);
+	n = Parse_Rules_Loop(&parse, Parse_Index(val), rules, depth);
 	return n != NOT_FOUND && n >= SERIES_TAIL(parse.series);
 }
 
@@ -160,7 +169,7 @@ static REBVAL *Collect_Value(REB_PARSE_COLLECT *c)
 	parse->type = VAL_TYPE(item);
 	if (IS_BINARY(item) || (parse->flags & PF_CASED)) parse->flags |= PF_CASE;
 	else parse->flags &= ~PF_CASE;
-	return (VAL_INDEX(item) > VAL_TAIL(item)) ? VAL_TAIL(item) : VAL_INDEX(item);
+	return (VAL_INDEX(item) > VAL_TAIL(item)) ? VAL_TAIL(item) : Parse_Index(item);
 }
 
 
@@ -962,13 +971,14 @@ bad_target:
 							item = Get_Var(rules);
 							if (VAL_SERIES(item) == parse->series) {
 								rules++;
-								if (VAL_INDEX(item) < index) {
-									begin = VAL_INDEX(item);
-									count = index - VAL_INDEX(item);
+								i = Parse_Index(item);
+								if (i < index) {
+									begin = i;
+									count = index - i;
 								}
 								else {
 									begin = index;
-									count = VAL_INDEX(item) - index;
+									count = i - index;
 								}
 								goto do_remove;
 							}
