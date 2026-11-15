@@ -313,7 +313,7 @@ Rebol [
 
 --test-- "block collect nested"
 	--assert [[[]]] = parse [][collect [collect [collect []]]]
-	--assert [[     ]] = parse [   ][collect [collect [keep 2 skip]]]
+	--assert [    ] = parse [][collect [collect [keep 2 skip]]]
 	--assert [[[1 2]]] = parse [1 2][collect [collect [keep 2 skip]]]
 	--assert [[ 1 2 ]] = parse [1 2][collect [collect [keep pick 2 skip]]]
 	--assert [[ 1 2 ]] = parse [1 2][collect [collect [keep integer! keep integer!]]]
@@ -321,11 +321,20 @@ Rebol [
 	--assert all [x: 0  [[] 1] = parse [1 2][collect some [collect [] (x: x + 1) keep (x)]] ]
 	--assert all [x: 0  [[] 1 [] 2] = parse [1 2][collect 2 [collect [] (x: x + 1) keep (x)]] ]
 	
---test-- "block collect nested (known issues)"
-	;; following tests produces empty block at tail :-/
+--test-- "block collect nested in a loop"
 	--assert [[1] [2]]     == parse [1 2][collect some [collect keep integer!]]
 	--assert [[1] a [2] a] == parse [1 2][collect some [collect keep integer! keep ('a)]]
 	--assert [[1 a] [2 a]] == parse [1 2][collect some [collect [keep integer! keep ('a)]]]
+
+--test-- "failed nested collect which kept nothing leaves no trace"
+	--assert []      == parse [] [collect [collect [collect [fail]]]]
+	--assert [1]     == parse [1] [collect [collect [fail] | keep integer!]]
+	a: none
+	--assert all [parse [1 2] [collect set a some [collect keep integer!]]  a == [[1] [2]]]
+	;; a failed collect which kept something stays (keeps are never rolled back)
+	--assert [[1] 2] == parse [1 2] [collect [collect [keep integer! fail] | skip keep integer!]]
+	;; a successful empty collect stays
+	--assert [[]]    == parse [] [collect [collect []]]
 
 --test-- "block collect bizzar"
 	--assert [[1 2] [3]] = parse [1 2 3] [collect [keep 2 integer!] collect [keep integer!]]

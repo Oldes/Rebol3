@@ -727,10 +727,14 @@ bad_target:
 
 /***********************************************************************
 **
-*/	static void Parse_Collect_End(REB_PARSE_COLLECT *collect, REB_PARSE_COLLECT_SAVE *save)
+*/	static void Parse_Collect_End(REB_PARSE_COLLECT *collect, REB_PARSE_COLLECT_SAVE *save, REBOOL failed)
 /*
 ***********************************************************************/
 {
+	REBSER *block = collect->block; // block of the ending collect
+	REBVAL *val;
+	REBVAL *item;
+
 	// Restore the position of the variable's series (SET, INTO and AFTER):
 	if (save->var) VAL_INDEX(Get_Var(save->var)) = save->index;
 
@@ -743,6 +747,18 @@ bad_target:
 	// Drop the nested collect's slot (and any temporaries left above it):
 	if (save->dsp >= 0) DSP = save->dsp;
 	*collect = save->parent;
+
+	// A failed nested block collect, which kept nothing, leaves no trace in its parent:
+	if (failed && save->dsp >= 0 && SERIES_TAIL(block) == 0) {
+		val = Collect_Value(collect);
+		if (save->index < SERIES_TAIL(collect->block)) {
+			item = BLK_SKIP(collect->block, save->index);
+			if (IS_BLOCK(item) && VAL_SERIES(item) == block) {
+				Remove_Series(collect->block, save->index, 1);
+				if (VAL_INDEX(val) > save->index) VAL_INDEX(val)--;
+			}
+		}
+	}
 }
 
 /***********************************************************************
@@ -1105,6 +1121,7 @@ bad_target:
 								Expand_Series(collect->block, i, 1);
 								Set_Series(REB_BLOCK, BLK_SKIP(collect->block, i), ser);
 								VAL_INDEX(val) = i + 1;
+								coll_save.index = i; // position of the nested block in its parent
 								coll_save.dsp = DSP; // the slot is dropped at the end
 								DS_PUSH_NONE;
 								Set_Series(REB_BLOCK, DS_TOP, ser);
@@ -1443,7 +1460,7 @@ post:
 					if (!IS_END(rules)) rules++;
 				}
 				if (GET_FLAG(flags, PF_COLLECT)) {
-					Parse_Collect_End(collect, &coll_save);
+					Parse_Collect_End(collect, &coll_save, TRUE);   // in the failure actions
 				}
 			}
 			else {  // Success actions:
@@ -1499,7 +1516,7 @@ post:
 					}
 				}
 				if (GET_FLAG(flags, PF_COLLECT)) {
-					Parse_Collect_End(collect, &coll_save);
+					Parse_Collect_End(collect, &coll_save, FALSE);  // in the success actions
 				}
 				if (GET_FLAG(flags, PF_RETURN)) {
 					ser = (IS_BLOCK_INPUT(parse))
