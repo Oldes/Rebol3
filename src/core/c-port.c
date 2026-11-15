@@ -484,7 +484,16 @@ FORCE_INLINE
 **
 ***********************************************************************/
 {
-	Free_Hob(VAL_HANDLE_CTX(OFV(port, STD_PORT_STATE)));
+	REBVAL *state = OFV(port, STD_PORT_STATE);
+
+	// Queued events of this port would refer to the released request!
+	if (IS_HANDLE(state)
+		&& VAL_HANDLE_TYPE(state) == SYM_PORT_STATEX
+		&& IS_USED_HOB(VAL_HANDLE_CTX(state))
+	){
+		Remove_Device_Events((REBREQ *)VAL_HANDLE_CONTEXT_DATA(state), PORT_STATE_REQS);
+	}
+	Free_Hob(VAL_HANDLE_CTX(state));
 }
 
 

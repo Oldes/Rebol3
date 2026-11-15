@@ -137,6 +137,41 @@
 
 /***********************************************************************
 **
+*/	void Remove_Device_Events(REBREQ *req, REBCNT count)
+/*
+**		Remove all queued device events of the given requests.
+**
+**		A device event holds just a pointer to its request, so it
+**		must not stay in the queue when the request is released!
+**		(count is the number of requests in the released memory)
+**
+***********************************************************************/
+{
+	REBVAL *port;
+	REBVAL *state;
+	REBVAL *value;
+	REBREQ *evt_req;
+	REBCNT n;
+
+	port = Get_System(SYS_PORTS, PORTS_SYSTEM);
+	if (!IS_PORT(port)) return; // verify it is a port object
+
+	// Get queue block:
+	state = VAL_BLK_SKIP(port, STD_PORT_STATE);
+	if (!IS_BLOCK(state)) return;
+
+	for (n = VAL_TAIL(state); n > 0; n--) {
+		value = VAL_BLK_SKIP(state, n - 1);
+		if (!IS_EVENT(value) || !IS_EVENT_MODEL(value, EVM_DEVICE)) continue;
+		evt_req = VAL_EVENT_REQ(value);
+		if (evt_req >= req && evt_req < req + count) {
+			Remove_Series(VAL_SERIES(state), n - 1, 1);
+		}
+	}
+}
+
+/***********************************************************************
+**
 */	static int Event_Actor(REBVAL *ds, REBVAL *port_value, REBCNT action)
 /*
 **		Internal port handler for events.

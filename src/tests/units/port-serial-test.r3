@@ -75,6 +75,40 @@ if all [
 				error? e: try [open [scheme: 'serial speed: 9600]]
 				e/id = 'invalid-port-arg
 			]
+		--test-- "Close with a queued event"
+			;; a finished write leaves an event in the system port's queue
+			;; and this event must not survive the port's request
+			events: system/ports/system/state ;; may hold events of other tests
+			queued?: func [port][
+				foreach event events [if port = event/port [return true]]
+				false
+			]
+			n: length? events
+			--assert all [
+				port? p: try [open serial://ptmx/9600]
+				port? try [write p #{01}]
+				(n + 1) = length? events
+				queued? p
+				port? try [close p]
+				n = length? events
+				not error? try [wait 0.01]
+			]
+			;; events of other ports must not be removed
+			n: length? events
+			--assert all [
+				port? p1: try [open serial://ptmx/9600]
+				port? p2: try [open serial://ptmx/9600]
+				port? try [write p1 #{01}]
+				port? try [write p2 #{02}]
+				port? try [write p1 #{03}]
+				(n + 3) = length? events
+				port? try [close p1]
+				(n + 1) = length? events
+				queued? p2
+				not error? try [loop 10 [wait 0.01]]
+				not queued? p2
+				port? try [close p2]
+			]
 		--test-- "Open with unsupported baud rate"
 			foreach speed [0 -9600 12345][
 				--assert all [
