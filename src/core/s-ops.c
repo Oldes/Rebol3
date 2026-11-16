@@ -837,7 +837,7 @@ static REBYTE seed_str[SEED_LEN] = {
 	while (idx < len) {
 		c = BIN_HEAD(str)[idx];
 		if (c == LF || c == CR) {
-			out = Copy_Bytes(BIN_SKIP(str, start), idx - start);
+			out = Copy_String(str, start, idx - start);
 			val = Append_Value(ser);
 			SET_STRING(val, out);
 			VAL_SET_LINE(val);

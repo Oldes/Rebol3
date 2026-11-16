@@ -307,5 +307,17 @@ if find [Linux macOS] system/platform [
 		delete %query-test
 ===end-group===
 
+===start-group=== "READ/lines"
+	--test-- "read/lines with UTF-8 content"
+		write %tmp-read-lines-utf8 "Ψ^/a^/žluť^M^/x"
+		lines: read/lines %tmp-read-lines-utf8
+		--assert lines = ["Ψ" "a" "žluť" "x"]
+		--assert 1 = length? lines/1        ;; LF-terminated line
+		--assert "Ψ" = find lines/1 "Ψ"
+		--assert 4 = length? lines/3        ;; CRLF-terminated line
+		--assert "ť" = find lines/3 #"ť"
+		--assert 1 = length? lines/4        ;; unterminated remainder
+		delete %tmp-read-lines-utf8
+===end-group===
 
 ~~~end-file~~~
