@@ -489,6 +489,32 @@ test-do-value: 2
 		]
 		delete %test-do-module.reb
 
+	--test-- "module file as a command line script"
+		;; unlike with DO, the module is imported, so it may be used from the console (--halt)
+		;- using the legacy REPL, because it accepts a piped input
+		write %test-cli-module.reb {
+Rebol [type: module name: test-cli-module exports: [test-cli-value]]
+test-cli-value: 42
+print "module evaluated"
+}
+		o: copy ""
+		call/wait/shell/input/output reform [
+			to-local-file system/options/boot "--legacy-repl --halt" %test-cli-module.reb
+		] {print ["result:" test-cli-value module? select system/modules 'test-cli-module  same? :test-cli-value :lib/test-cli-value]^/quit^/} o
+		--assert did find o "module evaluated"
+		--assert did find o "result: 42 true true"
+		;; unnamed module is not registered and its exports are only in the user's context
+		write %test-cli-module.reb {
+Rebol [type: module exports: [test-cli-value]]
+test-cli-value: 42
+}
+		o: copy ""
+		call/wait/shell/input/output reform [
+			to-local-file system/options/boot "--legacy-repl --halt" %test-cli-module.reb
+		] {print ["result:" test-cli-value none? in lib 'test-cli-value]^/quit^/} o
+		--assert did find o "result: 42 true"
+		delete %test-cli-module.reb
+
 	--test-- "do module file with and without the isolate option"
 		;; DO does not force the isolation, it is the module's header, which decides
 		repend lib ['test-do-lib-value 1]
