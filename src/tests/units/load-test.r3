@@ -84,6 +84,15 @@ Rebol [
 		--assert [lib-local a] = words-of import {rebol [length: 5] a: 1 b: 2 print "evil code"}
 		--assert [lib-local a] = words-of import/check {rebol [length: 5 checksum: #{E9A16FDEC8FF093599E2AA10C30D2D98D1C541C5}] a: 1 b: 2 print "evil code"} #{E9A16FDEC8FF093599E2AA10C30D2D98D1C541C5}
 
+	--test-- "Loading embedded Rebol data"
+	;@@ https://github.com/Oldes/Rebol3/issues/2800
+		--assert parse load/header "[Rebol [] 1 2]"      [object! integer! integer!]
+		--assert parse load/header "[Rebol [] 1 2] 3"    [object! integer! integer!]
+		--assert parse load/header "0^/[Rebol [] 1 2] 3" [object! integer! integer!]
+		--assert parse load/header #{92AF0A5B5265626F6C205B5D203120325D03} [object! integer! integer!]
+		--assert [1 2] = load "0^/[Rebol [] 1 2] 3"
+		--assert [1 2] = load/as #{92AF0A5B5265626F6C205B5D203120325D03} 'unbound
+		
 	--test-- "issue-858"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/858
 		--assert [<] = load mold [ < ]
