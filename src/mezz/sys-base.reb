@@ -51,7 +51,7 @@ do*: func [
 	mark [word!]
 	"Variable updated with new block position"
 
-	/local body file spec current-path header saved-script is-module
+	/local body file spec current-path header saved-script is-module result
 ][
 	; This code is only called for urls, files, and strings.
 	; DO of functions, blocks, paths, and other do-able types is done in the
@@ -150,7 +150,11 @@ do*: func [
 			; Eval the block or make the module, returned
 
 			either is-module [
-				; Import the module and set the var
+				; The script is evaluated as an isolated module: it is made
+				; every time, it is not registered in the system modules
+				; and nothing is exported from it (not even to the user
+				; context). The result is the result of its body.
+				; Use IMPORT to get the module and its exports.
 
 				spec: reduce [
 					header
@@ -158,15 +162,16 @@ do*: func [
 					do-needs/no-user header
 				]
 
-				also
-				import (
-					catch/quit [
-						make module! spec
-					]
-				)
+				set/any 'result catch/quit [
+					make-module*/result spec 'result
+					:result
+				]
+
 				if mark [
 					set mark tail body
 				]
+
+				:result
 			][
 				do-needs header
 				; Load the script requirements
@@ -202,6 +207,12 @@ make-module*: func [
 
 	spec [block!]
 	"As [spec-block body-block opt-mixins-object]"
+
+	/result
+	"Provides also the result of the body evaluation"
+
+	var [word!]
+	"Variable set to the result"
 
 	/local body context mixins hidden words
 ][
@@ -372,7 +383,11 @@ make-module*: func [
 		spec context
 	]
 
-	do body
+	either result [
+		set/any var do body
+	][
+		do body
+	]
 
 	;print ["Module created" spec/name spec/version]
 

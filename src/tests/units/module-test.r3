@@ -446,12 +446,67 @@ system/options/modules: modules-dir
 
 	--test-- "do module from file"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1203
-		do %files/test-1203.reb
 		--assert all [
-			object? o: system/modules/test-1203/f
+			function? fn: do %files/test-1203.reb ;; result of the module's body
+			object? o: fn                         ;; system/script at the time, when the module was evaluated
 			o/title = "test-1203"
 			system/script/title <> "test-1203"
 		]
+
+	--test-- "do module file"
+	;@@ https://github.com/Oldes/Rebol3/issues/2915
+		system/user/data/test-do: copy []
+		write %test-do-module.reb {
+Rebol [type: module name: test-do-module exports: [test-do-value]]
+append system/user/data/test-do 'init
+test-do-value: 1
+1 + 2
+}
+		--assert 3 = try [do %test-do-module.reb] ;; result of the module's body
+		--assert 3 = try [do %test-do-module.reb] ;; and it is evaluated every time
+		--assert [init init] = system/user/data/test-do
+		--assert all [ ;; the module is isolated: it is not registered and nothing is exported
+			none? select system/modules 'test-do-module
+			none? in lib 'test-do-value
+			unset? get/any in system/contexts/user 'test-do-value
+		]
+		write %test-do-module.reb {
+Rebol [type: module name: test-do-module exports: [test-do-value]]
+test-do-value: 2
+}
+		--assert 2 = try [do %test-do-module.reb]
+		;; IMPORT is the way to get the module and to have it registered
+		--assert all [
+			module? m: try [import %test-do-module.reb]
+			same? m select system/modules 'test-do-module
+			2 = lib/test-do-value
+			2 = get/any in system/contexts/user 'test-do-value
+		]
+		;; DO of the already imported module still evaluates it as an isolated one
+		--assert all [
+			2 = try [do %test-do-module.reb]
+			same? m select system/modules 'test-do-module
+		]
+		delete %test-do-module.reb
+
+	--test-- "do module file with and without the isolate option"
+		;; DO does not force the isolation, it is the module's header, which decides
+		repend lib ['test-do-lib-value 1]
+		write %test-do-module.reb {
+Rebol [type: module]
+change-it: does [test-do-lib-value: 2]
+change-it
+}
+		--assert 2 = try [do %test-do-module.reb]
+		--assert 2 = lib/test-do-lib-value ;; not isolated module shares words with lib
+		write %test-do-module.reb {
+Rebol [type: module options: [isolate]]
+change-it: does [test-do-lib-value: 3]
+change-it
+}
+		--assert 3 = try [do %test-do-module.reb]
+		--assert 2 = lib/test-do-lib-value ;; isolated module has its own copies
+		delete %test-do-module.reb
 
 ===end-group===
 
