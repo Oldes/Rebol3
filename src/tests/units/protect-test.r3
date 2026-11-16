@@ -169,6 +169,31 @@ Rebol [
 			is-protected-error? [append p 'x]
 		]
 
+	--test-- "protect/deep of a variable not holding a series"
+		;; it was crashing when the value was for example a word! or a datatype!
+		o: context [a: 'word b: integer! c: :print d: 1 e: none f: #"a" g: [word] h: "str"]
+		--assert not error? try [foreach w words-of o [protect/deep in o w]]
+		--assert is-locked-error? [o/a: 1]
+		--assert is-locked-error? [o/b: 1]
+		--assert is-protected-error? [append o/g 1]
+		--assert not error? try [foreach w words-of o [unprotect/deep in o w]]
+		--assert all [
+			1 = try [o/a: 1]
+			[word 1] = try [append o/g 1]
+		]
+		;; using paths
+		o: context [a: 'word b: integer! c: :print d: 1 e: none f: #"a" g: [word] h: "str"]
+		--assert not error? try [protect/deep 'o/a protect/deep 'o/b protect/deep 'o/d protect/deep 'o/g]
+		--assert is-locked-error? [o/b: 1]
+		--assert is-protected-error? [append o/g 1]
+		;; using lists
+		o: context [a: 'word b: integer! c: :print d: 1 e: none f: #"a" g: [word] h: "str"]
+		--assert not error? try [protect/deep/words   [o/a o/b o/c o/d o/e o/f o/g o/h]]
+		--assert is-locked-error? [o/a: 1]
+		--assert not error? try [unprotect/deep/words [o/a o/b o/c o/d o/e o/f o/g o/h]]
+		--assert not error? try [protect/deep/values  [o/a o/b o/c o/d o/e o/f o/g o/h]]
+		--assert is-protected-error? [append o/g 1]
+
 
 ===end-group===
 
@@ -222,4 +247,4 @@ Rebol [
 		--assert 1 = length? words-of o
 ===end-group===
 
-~~~end-file~~~
+~~~end-file~~~

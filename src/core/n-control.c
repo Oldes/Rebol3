@@ -32,6 +32,7 @@
 #include "sys-core.h"
 
 static void Protect_Value(REBVAL *value, REBCNT flags);
+static void Unmark_Protected(REBVAL *value);
 
 
 /***********************************************************************
@@ -97,7 +98,7 @@ static void Protect_Value(REBVAL *value, REBCNT flags);
 				Protect_Value(val, flags);
 				// Protect_Value marks the series it walks, so it must be
 				// unmarked here - the caller unmarks just the struct itself.
-				Unmark(val);
+				Unmark_Protected(val);
 			}
 			break;
 		case STRUCT_TYPE_STRUCT:
@@ -221,6 +222,21 @@ static void Protect_Value(REBVAL *value, REBCNT flags);
 
 /***********************************************************************
 **
+*/	static void Unmark_Protected(REBVAL *value)
+/*
+**		Clear the recursion markers left by Protect_Value.
+**		Only blocks and objects are marked there; Unmark must not be
+**		used with a value which holds no series (word, datatype...)!
+**
+***********************************************************************/
+{
+	if (ANY_BLOCK(value) || IS_OBJECT(value) || IS_MODULE(value))
+		Unmark(value);
+}
+
+
+/***********************************************************************
+**
 */	static void Protect_Word_Value(REBVAL *word, REBCNT flags)
 /*
 ***********************************************************************/
@@ -233,10 +249,8 @@ static void Protect_Value(REBVAL *value, REBCNT flags);
 		Protect_Word(wrd, flags);
 		if (GET_FLAG(flags, PROT_DEEP)) {
 			val = Get_Var(word);
-			if(!IS_SCALAR(val)) {
-				Protect_Value(val, flags);
-				Unmark(val);
-			}
+			Protect_Value(val, flags);
+			Unmark_Protected(val);
 		}
 	}
 	else if (ANY_PATH(word)) {
@@ -247,7 +261,7 @@ static void Protect_Value(REBVAL *value, REBCNT flags);
 			Protect_Word(wrd, flags);
 			if (GET_FLAG(flags, PROT_DEEP)) {
 				Protect_Value(val = FRM_VALUE(obj, index), flags);
-				Unmark(val);
+				Unmark_Protected(val);
 			}
 		}
 	}
@@ -296,7 +310,7 @@ static void Protect_Value(REBVAL *value, REBCNT flags);
 			REBVAL *val2;
 			for (val = VAL_BLK_DATA(val); NOT_END(val); val++) {
 				Protect_Value(val2 = Get_Any_Var(val), flags);
-				if (GET_FLAG(flags, PROT_DEEP)) Unmark(val2);
+				if (GET_FLAG(flags, PROT_DEEP)) Unmark_Protected(val2);
 			}
 			return R_ARG1;
 		}
@@ -306,7 +320,7 @@ static void Protect_Value(REBVAL *value, REBCNT flags);
 
 	Protect_Value(val, flags);
 
-	if (GET_FLAG(flags, PROT_DEEP)) Unmark(val);
+	if (GET_FLAG(flags, PROT_DEEP)) Unmark_Protected(val);
 
 	return R_ARG1;
 }
@@ -1061,4 +1075,4 @@ callback:	// ...and the last result.
 ***********************************************************************/
 {
 	return IS_FALSE(D_ARG(1)) ? R_FALSE : R_TRUE;
-}
+}
