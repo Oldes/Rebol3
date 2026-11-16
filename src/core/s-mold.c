@@ -859,10 +859,14 @@ STOID Mold_Block(REBVAL *value, REB_MOLD *mold, REBFLG molded)
 
 
 	if (all) {
+		REBOOL was_all = GET_MOPT(mold, MOPT_MOLD_ALL);
 		SET_FLAG(mold->opts, MOPT_MOLD_ALL);
 		Pre_Mold(value, mold); // #(block! part
 		Mold_Block_Series(mold, VAL_SERIES(value), 0, 0);
 		Post_Mold(value, mold);
+		// Construction syntax may be forced only for this value (special path cases),
+		// so don't let it leak to the values which follow.
+		if (!was_all) CLR_FLAG(mold->opts, MOPT_MOLD_ALL);
 	}
 	else
 	{
@@ -1044,6 +1048,8 @@ STOID Mold_Map(REBVAL *value, REB_MOLD *mold, REBFLG molded)
 
 	// Prevent endless mold loop:
 	if (Find_Same_Block(MOLD_LOOP, value) > 0) {
+		// Value containing itself cannot be expressed in the construction syntax
+		if (all) Trap1(RE_RECURSIVE_VALUE, Get_Type(VAL_TYPE(value)));
 		Append_Bytes(mold->series, "#[...]");
 		return;
 	}
@@ -1132,6 +1138,8 @@ STOID Mold_Object_Block(REBVAL *value, REB_MOLD *mold, REBOOL no_none)
 
 	// Prevent infinite looping:
 	if (Find_Same_Block(MOLD_LOOP, value) > 0) {
+		// Value containing itself cannot be expressed in the construction syntax
+		if (GET_MOPT(mold, MOPT_MOLD_ALL)) Trap1(RE_RECURSIVE_VALUE, Get_Type(VAL_TYPE(value)));
 		Append_Bytes(mold->series, "...]");
 		return;
 	}

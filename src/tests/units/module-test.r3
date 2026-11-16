@@ -605,6 +605,12 @@ export test-1360-value: 2
 		m: module [][me: none]
 		m/me: m
 		--assert (mold/flat m) = {make module! [[version: 0.0.0 title: "Untitled" type: 'module] [lib-local: make object! [] me: make module! [[version: 0.0.0 title: "Untitled" type: 'module] [...]]]]}
+		;; but there is no construction syntax for it
+		--assert all [
+			error? e: try [mold/all m]
+			e/id = 'recursive-value
+			e/arg1 = module!
+		]
 
 	--test-- "issue-1708"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1708

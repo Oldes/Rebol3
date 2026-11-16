@@ -515,6 +515,24 @@ Rebol [
 	--test-- "mold with recursive value"
 		m/c: m
 		--assert "#[a: 1 b: 2 c: #[...]]" = mold/flat m
+		;; there is no construction syntax for a value which contains itself
+		--assert all [
+			error? e: try [mold/all m]
+			e/id = 'recursive-value
+			e/arg1 = map!
+		]
+		o: object [a: 1 b: none]
+		o/b: o
+		--assert "make object! [a: 1 b: make object! [...]]" = mold/flat o
+		--assert all [
+			error? e: try [mold/all o]
+			e/id = 'recursive-value
+			e/arg1 = object!
+		]
+		--assert "make object! [a: 1 b: make object! [...]]" = mold/flat o ;; still usable after the error
+		;; path, which must be molded using construction syntax, must not switch it on for the next values
+		--assert "[#(path! [1 2]) make object! [a: 1 b: make object! [...]]]" = mold/flat reduce [to path! [1 2] o]
+		--assert "[#(path! [1 2]) #[a: 1]]" = mold/flat reduce [to path! [1 2] #[a: 1]]
 
 	--test-- "mold #[]"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/725
