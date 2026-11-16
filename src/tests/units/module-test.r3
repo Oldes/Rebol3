@@ -483,10 +483,13 @@ system/options/modules: modules-dir
 	--test-- "import file! of already imported named module"
 	;@@ https://github.com/Oldes/Rebol3/issues/1360
 		system/user/data/test-1360: copy []
+		repend lib ['test-1360-own 'mine] ;; value, which is in lib before the module is imported
 		write modules-dir/test-1360.reb {
 Rebol [type: module name: test-1360 version: 1.0.0]
 append system/user/data/test-1360 1.0.0
 export test-1360-value: 1
+export test-1360-own: 1
+export test-1360-gone: 1
 }
 		--assert all [
 			module? m: try [import 'test-1360]
@@ -511,10 +514,18 @@ export test-1360-old-value: 0
 		]
 
 	--test-- "import of a newer version of already imported module"
+		--assert all [ ;; state before the upgrade
+			1 = lib/test-1360-value
+			1 = lib/test-1360-gone
+			'mine = lib/test-1360-own ;; lib's own value was not replaced by the export
+			none? in lib 'test-1360-added
+		]
 		write modules-dir/test-1360-new.reb {
 Rebol [type: module name: test-1360 version: 2.0.0]
 append system/user/data/test-1360 2.0.0
 export test-1360-value: 2
+export test-1360-own: 2
+export test-1360-added: 2
 }
 		--assert all [
 			module? o: try [import (modules-dir/test-1360-new.reb)]
@@ -522,6 +533,17 @@ export test-1360-value: 2
 			same? o select system/modules 'test-1360
 			2.0.0 = select spec-of o 'version
 			[1.0.0 2.0.0] = system/user/data/test-1360
+		]
+		--assert all [ ;; exports of the older version are replaced in lib
+			2 = lib/test-1360-value
+			2 = lib/test-1360-added   ;; new export is added
+			'mine = lib/test-1360-own ;; lib's own value is still not touched
+			1 = lib/test-1360-gone    ;; value, which is not exported anymore, stays
+		]
+		--assert all [ ;; importing the newer version again changes nothing
+			same? o try [import (modules-dir/test-1360-new.reb)]
+			[1.0.0 2.0.0] = system/user/data/test-1360
+			2 = lib/test-1360-value
 		]
 		delete modules-dir/test-1360.reb
 		delete modules-dir/test-1360-old.reb

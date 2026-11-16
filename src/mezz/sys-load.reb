@@ -1535,6 +1535,27 @@ load-module: function/with [
 					not mixin? module-header
 					block? words: select module-header 'exports
 				][
+					; When the module replaces its older version, replace also
+					; values, which the older version exported into the lib.
+					; (words, which lib has from somewhere else, are not touched)
+					;
+					if all [
+						module? :existing
+						not same? module existing
+						block? old-words: select spec-of existing 'exports
+					][
+						foreach word words [
+							if all [
+								find old-words word
+								old-word: in existing word
+								lib-word: in lib word
+								same? get/any old-word get/any lib-word
+							][
+								set/any lib-word get/any in module word
+							]
+						]
+					]
+
 					resolve/extend/only lib module words ; no-op if empty
 					;; extend also the REPL context, if exists
 					try [
