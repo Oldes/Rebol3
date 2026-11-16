@@ -286,7 +286,7 @@ start: func [
 
 	;-- Make the user's global context:
 	tmp: make object! 320
-	append tmp reduce ['REBOL :system 'lib-local :tmp]
+	append tmp reduce ['REBOL :system]
 	system/contexts/user: tmp
 
 	sys/log/info 'REBOL ["Checking for user.reb file in" data]
@@ -347,4 +347,4 @@ start: func [
 
 	exit
 
-] system/options
+] system/options

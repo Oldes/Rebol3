@@ -211,10 +211,8 @@ import (module [
 			if all [
 				user?   ;; if we are using user's context (system/contexts/user)
 				match   ;; with a pattern or a datatype
-				any [   ;; don't show results
-					word = 'lib-local ;; for internal `lib-local` value (as it would always match)
-					strict-equal? :val select system/contexts/lib word ;; or if the same value is in the library context (already reported)
-				]
+				;; don't show results if the same value is in the library context (already reported)
+				strict-equal? :val select system/contexts/lib word
 			][ continue ]
 
 			;; construct in multiple steps to compensate padding with long names

@@ -18,11 +18,11 @@ modules-dir: system/options/modules
 	--test-- "hidden"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1696
 		--assert all [
-			[lib-local a] = words-of m: module [] [a: 1]
+			[a] = words-of m: module [] [a: 1]
 			m/a = 1
 		]
 		--assert all [
-			[lib-local b] = words-of m: module [] [hidden a: 1 b: does[a + 1]]
+			[b] = words-of m: module [] [hidden a: 1 b: does[a + 1]]
 			error? try [m/a]
 			m/b = 2
 		]
@@ -372,8 +372,7 @@ probe all [
 		--assert module? m: try [import/version (m-1687) 1.0.0]
 		--assert all [
 			;@@ https://github.com/Oldes/Rebol-wishes/issues/13
-			object? m/lib-local
-			empty?  m/lib-local ; because there was no import in this module
+			none? in m 'lib-local ; because there was no import in this module
 		]
 
 	--test-- "import/check"
@@ -414,8 +413,7 @@ system/options/modules: %files/
 		--assert true? test-needs-file-result
 		--assert all [
 			;@@ https://github.com/Oldes/Rebol-wishes/issues/13
-			object? m/lib-local
-			m/lib-local/test-needs-file-value = 42 ; value imported from the inner module
+			none? in m 'lib-local ; the local import library is not visible from outside
 		]
 
 	--test-- "import needs url!"
@@ -427,7 +425,24 @@ system/options/modules: modules-dir
 
 	--test-- "lib-local"
 	;@@ https://github.com/Oldes/Rebol-wishes/issues/13
-		--assert same? lib-local system/contexts/user
+		;; module with private imports has them available as `lib-local`...
+		m: module/mixin [][
+			x: 1
+			get-local: does [lib-local/x]
+			get-words: does [words-of lib-local]
+		] object [x: 42 y: 2]
+		--assert 1  = m/x
+		--assert 42 = m/get-local
+		--assert [x y] = m/get-words
+		;; ...but only for its own code
+		--assert [x get-local get-words] = words-of m
+		--assert none? in m 'lib-local
+		--assert error? try [m/lib-local]
+		--assert [x: get-local: get-words:] = extract body-of m 2
+		;; module without private imports does not have it at all
+		m: module [][get-local: does [lib-local]]
+		--assert [get-local] = words-of m
+		--assert error? try [m/get-local]
 
 	--test-- "do module from file"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1203
@@ -569,21 +584,21 @@ export test-1360-value: 2
 	--test-- "issue-1005"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1005
 		m: module [] [a: 1 2]
-		--assert [lib-local: #(object![]) a: 1] = body-of m
-		--assert [lib-local a] = keys-of m
-		--assert [#(object![]) 1] = values-of m
+		--assert [a: 1] = body-of m
+		--assert [a] = keys-of m
+		--assert [1] = values-of m
 		m: module [exports: [a]] [a: 1 2]
-		--assert [lib-local: #(object![]) a: 1] = body-of m
-		--assert [lib-local a] = keys-of m
-		--assert [#(object![]) 1] = values-of m
+		--assert [a: 1] = body-of m
+		--assert [a] = keys-of m
+		--assert [1] = values-of m
 
 	--test-- "mold module!"
 	;@@ https://github.com/Oldes/Rebol3/issues/1169
 	;@@ https://github.com/Oldes/Rebol3/issues/1183
 		;; module is molded as its spec (only used fields) and its body (not hidden words)
 		m: module [title: "my-module" name: test-1169 version: 1.2.3][export a: 1 b: 2 hidden c: 3]
-		--assert (mold/flat m) = {make module! [[version: 1.2.3 title: "my-module" name: 'test-1169 type: 'module exports: [a]] [lib-local: make object! [] a: 1 b: 2]]}
-		--assert (mold/all/flat m) = {#(module! [[version: 1.2.3 title: "my-module" name: test-1169 type: module exports: [a]] [lib-local: #(object! []) a: 1 b: 2]])}
+		--assert (mold/flat m) = {make module! [[version: 1.2.3 title: "my-module" name: 'test-1169 type: 'module exports: [a]] [a: 1 b: 2]]}
+		--assert (mold/all/flat m) = {#(module! [[version: 1.2.3 title: "my-module" name: test-1169 type: module exports: [a]] [a: 1 b: 2]])}
 		--assert (mold m) = {make module! [
     [
         version: 1.2.3
@@ -593,18 +608,16 @@ export test-1360-value: 2
         exports: [a]
     ]
     [
-        lib-local: make object! [
-        ]
         a: 1
         b: 2
     ]
 ]}
-		--assert (mold/flat module [][]) = {make module! [[version: 0.0.0 title: "Untitled" type: 'module] [lib-local: make object! []]]}
+		--assert (mold/flat module [][]) = {make module! [[version: 0.0.0 title: "Untitled" type: 'module] []]}
 		--assert (mold/flat reduce [m 1]) = ajoin [#"[" mold/flat m " 1]"]
 		;; module referencing itself
 		m: module [][me: none]
 		m/me: m
-		--assert (mold/flat m) = {make module! [[version: 0.0.0 title: "Untitled" type: 'module] [lib-local: make object! [] me: make module! [[version: 0.0.0 title: "Untitled" type: 'module] [...]]]]}
+		--assert (mold/flat m) = {make module! [[version: 0.0.0 title: "Untitled" type: 'module] [me: make module! [[version: 0.0.0 title: "Untitled" type: 'module] [...]]]]}
 		;; but there is no construction syntax for it
 		--assert all [
 			error? e: try [mold/all m]
@@ -623,7 +636,7 @@ export test-1360-value: 2
 			'test-1169  = select spec-of o 'name
 			[private]   = select spec-of o 'options
 			[a]         = select spec-of o 'exports
-			[lib-local a b] = words-of o ;; hidden words are not molded, so these are lost
+			[a b] = words-of o ;; hidden words are not molded, so these are lost
 			1 = o/a
 		]
 		;; nothing is evaluated, when the module is constructed

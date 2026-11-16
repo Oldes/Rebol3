@@ -232,18 +232,19 @@ make-module*: func [
 	context: make object! 7
 	; arbitrary starting size
 
-	either find spec/options 'extension [
+	if find spec/options 'extension [
 		bind/new [
 			lib-base
 			; specific runtime values MUST BE FIRST
 
 			lib-file
-			lib-local
 			words
 		] context
-	][
+	]
+
+	if object? mixins [
 		append context 'lib-local
-		; local import library for the module
+		; local import library, only for a module with private imports
 	]
 
 	if spec/name [
@@ -355,10 +356,12 @@ make-module*: func [
 
 	bind body context
 
-	context/lib-local: any [
-		; always set, always overrides
-		mixins
-		make object! 0
+	if object? mixins [
+		context/lib-local: mixins
+		; always overrides
+
+		protect/hide in context 'lib-local
+		; internal value, available only to the code of the module
 	]
 
 	if block? hidden [

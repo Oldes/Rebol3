@@ -81,8 +81,8 @@ Rebol [
 		code: {return 3^/rebol [length: 2] 1 2}
 		--assert 3 = try [do code] ;; when the input is string, the header is not evaluated
 		--assert 1 = try [do to binary! code] ;; only when it is binary value
-		--assert [lib-local a] = words-of import {rebol [length: 5] a: 1 b: 2 print "evil code"}
-		--assert [lib-local a] = words-of import/check {rebol [length: 5 checksum: #{E9A16FDEC8FF093599E2AA10C30D2D98D1C541C5}] a: 1 b: 2 print "evil code"} #{E9A16FDEC8FF093599E2AA10C30D2D98D1C541C5}
+		--assert [a] = words-of import {rebol [length: 5] a: 1 b: 2 print "evil code"}
+		--assert [a] = words-of import/check {rebol [length: 5 checksum: #{E9A16FDEC8FF093599E2AA10C30D2D98D1C541C5}] a: 1 b: 2 print "evil code"} #{E9A16FDEC8FF093599E2AA10C30D2D98D1C541C5}
 
 	--test-- "Loading embedded Rebol data"
 	;@@ https://github.com/Oldes/Rebol3/issues/2800
@@ -107,7 +107,7 @@ Rebol [
 		src: save/length/header none [1 2] [options: [compress]]
 		--assert [1 2] = load src
 		--assert [1 2] = load append copy src " 3 4"
-		--assert [lib-local a] = words-of import (append save/length/header none [a: 1] [type: module options: [compress]] " b: 2")
+		--assert [a] = words-of import (append save/length/header none [a: 1] [type: module options: [compress]] " b: 2")
 
 	--test-- "Invalid script compression"
 		--assert all [
