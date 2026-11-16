@@ -109,6 +109,24 @@ Rebol [
 		--assert [1 2] = load append copy src " 3 4"
 		--assert [lib-local a] = words-of import (append save/length/header none [a: 1] [type: module options: [compress]] " b: 2")
 
+	--test-- "Invalid script compression"
+		--assert all [
+			error? e: try [load "Rebol [options: [compress]] 1 2"]
+			e/id = 'bad-compress
+		]
+		--assert all [
+			error? e: try [load "Rebol [options: [compress]] #{00010203}"]
+			e/id = 'bad-compress
+		]
+		--assert all [
+			error? e: try [load "[Rebol [options: [compress]] 1 2] 3"]
+			e/id = 'bad-compress
+		]
+		--assert all [
+			error? e: try [import "Rebol [type: module options: [compress]] 1 2"]
+			e/id = 'bad-compress
+		]
+
 	--test-- "issue-858"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/858
 		--assert [<] = load mold [ < ]

@@ -45,6 +45,7 @@ Syntax: [
 	bad-char:           [{invalid character in:} :arg1]
 	needs:              [{this script needs} :arg1 :arg2 {or better to run correctly}]
 	recursive-needs:    [{module needs itself:} :arg1]
+	bad-compress:       [{script decompression failed:} :arg1]
 ]
 
 Script: [
