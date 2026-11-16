@@ -577,6 +577,35 @@ export test-1360-value: 2
 		--assert [lib-local a] = keys-of m
 		--assert [#(object![]) 1] = values-of m
 
+	--test-- "mold module!"
+	;@@ https://github.com/Oldes/Rebol3/issues/1169
+	;@@ https://github.com/Oldes/Rebol3/issues/1183
+		;; module is molded as its spec (only used fields) and its body (not hidden words)
+		m: module [title: "my-module" name: test-1169 version: 1.2.3][export a: 1 b: 2 hidden c: 3]
+		--assert (mold/flat m) = {make module! [[version: 1.2.3 title: "my-module" name: 'test-1169 type: 'module exports: [a]] [lib-local: make object! [] a: 1 b: 2]]}
+		--assert (mold/all/flat m) = {#(module! [[version: 1.2.3 title: "my-module" name: test-1169 type: module exports: [a]] [lib-local: #(object! []) a: 1 b: 2]])}
+		--assert (mold m) = {make module! [
+    [
+        version: 1.2.3
+        title: "my-module"
+        name: 'test-1169
+        type: 'module
+        exports: [a]
+    ]
+    [
+        lib-local: make object! [
+        ]
+        a: 1
+        b: 2
+    ]
+]}
+		--assert (mold/flat module [][]) = {make module! [[version: 0.0.0 title: "Untitled" type: 'module] [lib-local: make object! []]]}
+		--assert (mold/flat reduce [m 1]) = ajoin [#"[" mold/flat m " 1]"]
+		;; module referencing itself
+		m: module [][me: none]
+		m/me: m
+		--assert (mold/flat m) = {make module! [[version: 0.0.0 title: "Untitled" type: 'module] [lib-local: make object! [] me: make module! [[version: 0.0.0 title: "Untitled" type: 'module] [...]]]]}
+
 	--test-- "issue-1708"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1708
 		--assert none? find system/modules module [] []

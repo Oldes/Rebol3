@@ -1108,13 +1108,16 @@ STOID Form_Object(REBVAL *value, REB_MOLD *mold)
 	Remove_Last(MOLD_LOOP);
 }
 
-STOID Mold_Object(REBVAL *value, REB_MOLD *mold)
+STOID Mold_Object_Block(REBVAL *value, REB_MOLD *mold, REBOOL no_none)
 {
+	// Mold words and values of the object as a block: [word: value ...]
+	// Hidden words are not included; none values are skipped when requested.
 	REBSER *wser;
 	REBVAL *words;
 	REBVAL *vals; // first value is context
 	REBCNT n;
 	REBOOL indented = !GET_MOPT(mold, MOPT_INDENT);
+	REBOOL first = TRUE;
 
 	ASSERT(VAL_OBJ_FRAME(value), RP_NO_OBJECT_FRAME);
 
@@ -1124,8 +1127,6 @@ STOID Mold_Object(REBVAL *value, REB_MOLD *mold)
 	words = BLK_HEAD(wser);
 
 	vals  = VAL_OBJ_VALUES(value); // first value is context
-
-	Pre_Mold(value, mold);
 
 	Append_Byte(mold->series, '[');
 
@@ -1140,12 +1141,13 @@ STOID Mold_Object(REBVAL *value, REB_MOLD *mold)
 	for (n = 1; n < SERIES_TAIL(wser); n++) {
 		if (
 			!VAL_GET_OPT(words+n, OPTS_HIDE) &&
-			((VAL_TYPE(vals+n) > REB_NONE) || !GET_MOPT(mold, MOPT_NO_NONE))
+			((VAL_TYPE(vals+n) > REB_NONE) || !(no_none || GET_MOPT(mold, MOPT_NO_NONE)))
 		){
 			if(indented)
 				New_Indented_Line(mold);
-			else if (n > 1)
+			else if (!first)
 				Append_Byte(mold->series, ' ');
+			first = FALSE;
 
 			Append_UTF8(mold->series, Get_Sym_Name(VAL_WORD_SYM(words+n)), -1);
 			//Print("Slot: %s", Get_Sym_Name(VAL_WORD_SYM(words+n)));
@@ -1162,8 +1164,46 @@ STOID Mold_Object(REBVAL *value, REB_MOLD *mold)
 	mold->indent--;
 	if (indented) New_Indented_Line(mold);
 	Append_Byte(mold->series, ']');
-	End_Mold(mold);
 	Remove_Last(MOLD_LOOP);
+}
+
+STOID Mold_Object(REBVAL *value, REB_MOLD *mold)
+{
+	Pre_Mold(value, mold);
+	Mold_Object_Block(value, mold, FALSE);
+	if (MOLD_HAS_LIMIT(mold) && MOLD_OVER_LIMIT(mold)) return;
+	End_Mold(mold);
+}
+
+STOID Mold_Module(REBVAL *value, REB_MOLD *mold)
+{
+	// Module is molded as its spec (header) and body (words and values):
+	//     make module! [[title: "..." ...] [word: value ...]]
+	// Only used (not none) fields of the spec are included.
+	REBVAL spec;
+	REBOOL indented = !GET_MOPT(mold, MOPT_INDENT);
+
+	Pre_Mold(value, mold);
+	Append_Byte(mold->series, '[');
+	mold->indent++;
+
+	if (indented) New_Indented_Line(mold);
+	if (VAL_MOD_SPEC(value)) {
+		SET_OBJECT(&spec, VAL_MOD_SPEC(value));
+		Mold_Object_Block(&spec, mold, TRUE);
+	}
+	else Append_Bytes(mold->series, "[]");
+	if (MOLD_HAS_LIMIT(mold) && MOLD_OVER_LIMIT(mold)) return;
+
+	if (indented) New_Indented_Line(mold);
+	else Append_Byte(mold->series, ' ');
+	Mold_Object_Block(value, mold, FALSE);
+	if (MOLD_HAS_LIMIT(mold) && MOLD_OVER_LIMIT(mold)) return;
+
+	mold->indent--;
+	if (indented) New_Indented_Line(mold);
+	Append_Byte(mold->series, ']');
+	End_Mold(mold);
 }
 
 STOID Mold_Error(REBVAL *value, REB_MOLD *mold, REBFLG molded)
@@ -1499,8 +1539,12 @@ STOID Mold_Error(REBVAL *value, REB_MOLD *mold, REBFLG molded)
 		Mold_Function(value, mold);
 		break;
 
-	case REB_OBJECT:
 	case REB_MODULE:
+		if (!molded) Form_Object(value, mold);
+		else Mold_Module(value, mold);
+		break;
+
+	case REB_OBJECT:
 	case REB_PORT:
 		if (!molded) Form_Object(value, mold);
 		else Mold_Object(value, mold);
