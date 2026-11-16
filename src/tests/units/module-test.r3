@@ -767,6 +767,84 @@ export test-1360-added: 2
 
 ===end-group===
 
+===start-group=== "unload"
+	--test-- "unload module"
+		system/user/data/test-unload: copy []
+		write modules-dir/test-unload.reb {
+Rebol [type: module name: test-unload]
+append system/user/data/test-unload 'init
+export test-unload-a: 1
+export test-unload-b: 2
+}
+		--assert all [
+			module? m: try [import 'test-unload]
+			1 = lib/test-unload-a
+			1 = system/contexts/user/test-unload-a
+			2 = system/contexts/user/test-unload-b
+		]
+		lib/test-unload-b: 'changed ;; lib's value is not the module's value anymore
+		--assert same? m try [unload 'test-unload]
+		--assert all [ ;; it is not registered anymore (using its name and its location)
+			none? select system/modules 'test-unload
+			none? select system/modules to-real-file modules-dir/test-unload.reb
+		]
+		--assert all [ ;; exported values are unset in lib and in the user's context...
+			unset? get/any in lib 'test-unload-a
+			unset? get/any in system/contexts/user 'test-unload-a
+			unset? get/any in system/contexts/user 'test-unload-b
+			'changed = lib/test-unload-b ;; ...unless there is already a different value
+		]
+		--assert 1 = m/test-unload-a ;; the module itself is still usable, when referenced
+		unset in lib 'test-unload-b
+		;; the module may be imported again
+		--assert all [
+			module? o: try [import 'test-unload]
+			not same? m o
+			[init init] = system/user/data/test-unload
+			1 = lib/test-unload-a
+			2 = lib/test-unload-b
+		]
+		;; a protected module is not unloaded
+		protect o
+		--assert all [
+			error? e: try [unload 'test-unload]
+			e/id = 'protected
+			same? o select system/modules 'test-unload
+			1 = lib/test-unload-a
+		]
+		unprotect o
+		;; unload using the module value
+		--assert same? o try [unload (o)]
+		--assert none? select system/modules 'test-unload
+		;; unload of something what is not loaded
+		--assert none? try [unload 'test-unload]
+		--assert none? try [unload 'test-unload-unknown]
+		;; a module value is accepted even when it is not registered (anymore)
+		--assert same? o try [unload (o)]
+		;; so also exports of a module, which was never registered, may be removed
+		o: module [][export test-unload-d: 4]
+		import (o)
+		--assert 4 = system/contexts/user/test-unload-d
+		--assert same? o try [unload (o)]
+		--assert unset? get/any in system/contexts/user 'test-unload-d
+		delete modules-dir/test-unload.reb
+
+	--test-- "unload unnamed module"
+		write modules-dir/test-unload.reb {Rebol [type: module] export test-unload-c: 3}
+		--assert all [
+			module? m: try [import (modules-dir/test-unload.reb)]
+			3 = system/contexts/user/test-unload-c
+			same? m select system/modules to-real-file modules-dir/test-unload.reb
+		]
+		--assert all [ ;; using its location
+			same? m try [unload (modules-dir/test-unload.reb)]
+			none? select system/modules to-real-file modules-dir/test-unload.reb
+			unset? get/any in system/contexts/user 'test-unload-c
+		]
+		delete modules-dir/test-unload.reb
+
+===end-group===
+
 ===start-group=== "module issues"
 	--test-- "issue-1005"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1005

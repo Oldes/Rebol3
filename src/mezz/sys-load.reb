@@ -1897,8 +1897,89 @@ import: function [
 	; module! returned
 ]
 
+unload: function [
+	"Unloads a module; removes it from the system modules and unsets its exported words."
+
+	'module [any-word! file! url! module!]
+	"Name of the module, its location, or the module itself"
+
+	; Returns the module (it lives until there is any reference to it),
+	; or none, if there is no module loaded with the given name or location.
+][
+	source: :module
+
+	case [
+		any-word? source [
+			module: select system/modules to word! source
+		]
+
+		file? source [
+			module: select system/modules any [
+				to-real-file source
+				source
+			]
+		]
+
+		url? source [
+			module: select system/modules source
+		]
+	]
+
+	unless module? :module [
+		return _
+		; not loaded (unknown, delayed, or just a known location)
+	]
+
+	if protected? module [
+		cause-error 'script 'protected _
+	]
+
+	; Unset the exported words, but only where these still hold values of this
+	; module (so values set later by somebody else, or by the user, are kept).
+	;
+	if block? exports: select spec-of module 'exports [
+		foreach context reduce [
+			lib
+			system/contexts/user
+			attempt [system/console/current/console-ctx]
+		][
+			if any [
+				object? :context
+				module? :context
+			][
+				foreach word exports [
+					if all [
+						exported: in module word
+						target: in context word
+						not protected? target
+						same? get/any exported get/any target
+					][
+						unset target
+					]
+				]
+			]
+		]
+	]
+
+	; The module may be registered using more keys (name and location).
+	;
+	keys: make block! 2
+
+	foreach [key value] system/modules [
+		if same? :value module [
+			append/only keys key
+		]
+	]
+
+	foreach key keys [
+		remove/key system/modules key
+	]
+
+	module
+]
+
 export [
-	load import
+	load import unload
 ]
 
 #test [
