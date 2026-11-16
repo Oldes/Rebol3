@@ -824,7 +824,7 @@ static REBYTE seed_str[SEED_LEN] = {
 {
 	REBSER *ser = BUF_EMIT; // GC protected (because it is emit buffer)
 	REBSER *str = VAL_SERIES(val);
-	REBCNT len = VAL_LEN(val);
+	REBCNT len = VAL_TAIL(val); // absolute end (idx is absolute too)
 	REBCNT idx = VAL_INDEX(val);
 	REBCNT start = idx;
 	REBSER *out;

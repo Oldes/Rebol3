@@ -3108,6 +3108,11 @@ try/with [
 ===start-group=== "SPLIT-LINES"
 --test-- "split-lines string!"
 	--assert ["a" "b" "c"]  = split-lines "a^/b^M^/c"
+--test-- "split-lines with non-head index"
+	--assert ["b" "cd"] = split-lines next "ab^/cd"
+	--assert ["b" "c"]  = split-lines next "ab^M^/c^/"
+	--assert ["Ψ" "x"]  = split-lines next "aΨ^/x"
+	--assert []         = split-lines tail "ab^/cd"
 ===end-group===
 
 
