@@ -92,7 +92,23 @@ Rebol [
 		--assert parse load/header #{92AF0A5B5265626F6C205B5D203120325D03} [object! integer! integer!]
 		--assert [1 2] = load "0^/[Rebol [] 1 2] 3"
 		--assert [1 2] = load/as #{92AF0A5B5265626F6C205B5D203120325D03} 'unbound
-		
+
+	--test-- "Compressed script with data after its end"
+		bin: compress to binary! "1 2" 'zlib
+		sum: #{3C28D037E32CD30EEFD8183A83153083CCED6CB7} ; SHA1 of the uncompressed body
+		;- block-embedded script (script encoded compression only)
+		--assert [1 2] = load ajoin ["[Rebol [options: [compress]] " mold bin "] 3"]
+		--assert [1 2] = load ajoin ["[Rebol [options: [compress] checksum: " mold sum "] " mold bin "] 3"]
+		--assert all [
+			error? e: try [load ajoin ["[Rebol [options: [compress] checksum: #{00}] " mold bin "] 3"]]
+			e/id = 'bad-checksum
+		]
+		;- length-specified script
+		src: save/length/header none [1 2] [options: [compress]]
+		--assert [1 2] = load src
+		--assert [1 2] = load append copy src " 3 4"
+		--assert [lib-local a] = words-of import (append save/length/header none [a: 1] [type: module options: [compress]] " b: 2")
+
 	--test-- "issue-858"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/858
 		--assert [<] = load mold [ < ]

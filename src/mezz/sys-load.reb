@@ -138,14 +138,14 @@ load-header: function/with [
 	; header 'checksum is compared to the checksum of the decompressed binary.
 	;
 	; Normally, returns the header object, the body text (as binary), and the
-	; the end of the script or script-in-a-block. The end position can be used
-	; to determine where to stop decoding the body text. After the end is the
+	; the end of the script or script-in-a-block. After the end is the
 	; rest of the binary data, which can contain anything you like. This can
 	; support multiple scripts in the same binary data, multi-scripts.
 	;
-	; If not /only and the script is embedded in a block and not compressed
-	; then the body text will be a decoded block instead of binary, to avoid
-	; the overhead of decoding the body twice.
+	; If not /only, the body text is complete: it is either decompressed, or
+	; copied up to the end position, so there is nothing more to cut from it.
+	; With /only the body is just a position in the source and the end position
+	; must be used to determine where to stop decoding it.
 	;
 	; Syntax errors are returned as words:
 	;    no-header
@@ -348,7 +348,7 @@ load-header: function/with [
 				find header/options 'compress [
 					; script encoded only
 
-					if error? body: try [
+					if error? mark: try [
 						decompress first body 'zlib
 					][
 						return 'bad-compress
@@ -356,7 +356,7 @@ load-header: function/with [
 
 					if all [
 						hash
-						hash != checksum next remaining 'sha1
+						hash != checksum mark 'sha1
 					][
 						return 'bad-checksum
 					]
@@ -371,7 +371,16 @@ load-header: function/with [
 			]
 		]
 
-		; assert/type [body [block! binary!]] _
+		not find header/options 'compress [
+			; body is still a part of the source, so cut it at the script's end
+			; (a decompressed body is a new binary, which is already complete)
+
+			unless tail? remaining [
+				mark: copy/part mark remaining
+			]
+		]
+
+		; assert/type [mark binary!] _
 	]
 
 	; assert/type [header object! mark [binary! block!] remaining binary!]
@@ -693,10 +702,6 @@ load: function [
 
 			if word? script [
 				cause-error 'syntax script source
-			]
-
-			unless tail? remaining [
-				body: copy/part body remaining
 			]
 		]
 
@@ -1223,10 +1228,6 @@ load-module: function [
 				not delay [
 					delay: did find module-header/options 'delay
 				]
-			]
-
-			unless tail? remaining [
-				module-code: copy/part module-code remaining
 			]
 
 			if module-header/checksum [
