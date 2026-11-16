@@ -99,12 +99,27 @@ static REBVAL *Func_Word(REBINT dsf)
 **
 ***********************************************************************/
 {
-	if (SERIES_REST(DS_Series) >= STACK_LIMIT) Trap_Stack();
-	DS_Series->tail = DSP+1;
-	if((amount + SERIES_REST(DS_Series)) >= STACK_LIMIT) {
-		amount = STACK_LIMIT - SERIES_REST(DS_Series) - 1;
-	}
-	Extend_Series(DS_Series, amount);
+	REBCNT rest = SERIES_REST(DS_Series);
+	REBCNT size;
+	REBSER *ns, swap;
+
+	if (rest >= STACK_LIMIT) Trap_Stack();
+
+	// Grow geometrically, but cap the actual allocation rather than the
+	// delta passed to Extend_Series (which can double and round it again).
+	size = rest > STACK_LIMIT / 2 ? STACK_LIMIT : rest * 2;
+	if (amount > size - rest)
+		size = amount > STACK_LIMIT - rest ? STACK_LIMIT : rest + amount;
+	ns = Make_Series(size, sizeof(REBVAL), FALSE);
+	COPY_MEM(ns->data, DS_Series->data, (DSP + 1) * sizeof(REBVAL));
+	ns->tail = DSP + 1;
+
+	// Preserve the series identity held by the root and other callers.
+	swap = *DS_Series;
+	*DS_Series = *ns;
+	*ns = swap;
+	Free_Series(ns);
+	Set_Root_Series(TASK_STACK, DS_Series, cb_cast("data stack"));
 	DS_Base = BLK_HEAD(DS_Series);
 #ifdef SHOW_EXPAND_STACK
 	Debug_Fmt(BOOT_STR(RS_STACK, 0), DSP, SERIES_REST(DS_Series));
@@ -1460,6 +1475,7 @@ eval_func2:
 
 	if (start + VAL_LEN(block) + 100 > SERIES_REST(DS_Series)) {
 		Expand_Stack(VAL_LEN(block));
+		if (start + VAL_LEN(block) + 100 > SERIES_REST(DS_Series)) Trap_Stack();
 	}
 
 	for (; NOT_END(value); value++) {

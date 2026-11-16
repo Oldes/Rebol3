@@ -624,6 +624,8 @@ static const cmp_func sfunc_table[2][2][2][2] = {
 ***********************************************************************/
 {
 	REBCNT len;
+	REBINT stack = DSP;
+	REBSER *series = VAL_SERIES(string);
 	REBCNT skip = 1;
 	REBCNT size = 1;
 	REBSER *args;
@@ -712,18 +714,11 @@ static const cmp_func sfunc_table[2][2][2][2] = {
 		stable_sort((void*)str_bin, len, size * wide, sfunc);
 	}
 	if (wide == 4) {
-		UTF32_To_UTF8(VAL_SERIES(string), str_bin, len*4*skip, OS_LITTLE_ENDIAN);
+		UTF32_To_UTF8(series, str_bin, len*4*skip, OS_LITTLE_ENDIAN);
 	}
 
-	DS_DROP; // Stored skip or offset
-	if (ANY_FUNC(compv)) {
-		// Stored comparator and flags are not needed anymore
-		DS_DROP;
-		DS_DROP;
-	}
-	else if (IS_INTEGER(compv)) {
-		DS_DROP; // Stored flags
-	}
+	// The comparator may have moved the stack; do not inspect compv here.
+	DSP = stack;
 }
 
 FORCE_INLINE
@@ -1311,6 +1306,7 @@ pick_it:
 			D_REF(10),	// reverse
 			(D_REF(11) || IS_BINARY(value)) // unstable
 		);
+		value = DS_ARG(1); // the comparator may have moved the data stack
 		break;
 
 	case A_RANDOM:

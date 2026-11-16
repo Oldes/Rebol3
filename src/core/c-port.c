@@ -49,9 +49,11 @@
 ***********************************************************************/
 {
 	REBVAL *value;
+	REBVAL spec_value = *spec;
 
-	value = Do_Sys_Func(SYS_CTX_MAKE_PORT_P, spec, 0); // volatile
-	if (IS_NONE(value)) Trap1(RE_INVALID_SPEC, spec);
+	// The system function may move the data stack containing spec.
+	value = Do_Sys_Func(SYS_CTX_MAKE_PORT_P, &spec_value, 0); // volatile
+	if (IS_NONE(value)) Trap1(RE_INVALID_SPEC, &spec_value);
 
 	return value;
 }
