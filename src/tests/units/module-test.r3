@@ -612,6 +612,54 @@ export test-1360-value: 2
 			e/arg1 = module!
 		]
 
+	--test-- "construct module!"
+	;@@ https://github.com/Oldes/Rebol3/issues/1169
+		m: module [title: "my-module" name: test-1169 version: 1.2.3 options: [private]][export a: 1 b: 2 hidden c: 3]
+		--assert all [
+			module? o: try [load mold/all m]
+			not same? o m
+			(mold/all o) = (mold/all m)
+			"my-module" = title-of o
+			'test-1169  = select spec-of o 'name
+			[private]   = select spec-of o 'options
+			[a]         = select spec-of o 'exports
+			[lib-local a b] = words-of o ;; hidden words are not molded, so these are lost
+			1 = o/a
+		]
+		;; nothing is evaluated, when the module is constructed
+		--assert all [
+			module? o: try [load "#(module! [[title: reverse {ab}] [a: 1 + 1]])"]
+			'reverse = select spec-of o 'title
+			1 = o/a
+		]
+		;; missing type is set
+		--assert all [
+			module? o: try [load "#(module! [[] []])"]
+			'module = select spec-of o 'type
+		]
+		;; spec and body blocks are required and important fields of the spec are validated
+		foreach src [
+			"#(module! [])"
+			"#(module! [a: 1])"
+			"#(module! [[title: {x}]])"
+			"#(module! [[] [] []])"
+			"#(module! [[name: {x}] []])"
+			"#(module! [[type: 1] []])"
+			"#(module! [[version: 1] []])"
+			"#(module! [[options: private] []])"
+		][
+			--assert all [
+				error? e: try [load src]
+				e/id = 'malconstruct
+			]
+		]
+		;; module may be also made from its (not serialized) molded form
+		--assert all [
+			module? o: try [do mold m]
+			not same? o m
+			(mold o) = (mold m)
+		]
+
 	--test-- "issue-1708"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1708
 		--assert none? find system/modules module [] []

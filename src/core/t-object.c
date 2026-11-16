@@ -320,6 +320,35 @@ static REBSER *Trim_Object(REBSER *obj)
 ***********************************************************************/
 {
 	if (!IS_BLOCK(data)) return FALSE;
+	if (type == REB_MODULE) {
+		// #(module! [[spec] [body]])
+		// Both blocks are only constructed (no evaluation); the spec is
+		// based on the standard header, like when a script is loaded.
+		REBVAL *spec = VAL_BLK_DATA(data);
+		REBSER *frame;
+		if (VAL_BLK_LEN(data) != 2 || !IS_BLOCK(spec) || !IS_BLOCK(spec + 1)) return FALSE;
+		frame = Construct_Object(
+			VAL_OBJ_FRAME(Get_System(SYS_STANDARD, STD_HEADER)), VAL_BLK_DATA(spec), 0
+		);
+		// Validate the important fields of the header (like sys/make-module*):
+		spec = FRM_VALUE(frame, STD_HEADER_NAME);
+		if (!IS_WORD(spec) && !IS_NONE(spec)) return FALSE;
+		spec = FRM_VALUE(frame, STD_HEADER_VERSION);
+		if (!IS_TUPLE(spec) && !IS_NONE(spec)) return FALSE;
+		spec = FRM_VALUE(frame, STD_HEADER_OPTIONS);
+		if (!IS_BLOCK(spec) && !IS_NONE(spec)) return FALSE;
+		spec = FRM_VALUE(frame, STD_HEADER_TYPE);
+		if (IS_NONE(spec)) Init_Word(spec, Make_Word(cb_cast("module"), 6));
+		else if (!IS_WORD(spec)) return FALSE;
+
+		spec = VAL_BLK_DATA(data);
+		SAVE_SERIES(frame);
+		VAL_OBJ_FRAME(out) = Construct_Object(0, VAL_BLK_DATA(spec + 1), 0);
+		UNSAVE_SERIES(frame);
+		VAL_SET(out, REB_MODULE);
+		VAL_MOD_SPEC(out) = frame;
+		return TRUE;
+	}
 	VAL_OBJ_FRAME(out) = Construct_Object(0, VAL_BLK_DATA(data), 0);
 	VAL_SET(out, type);
 	if (type == REB_ERROR) {
@@ -742,4 +771,4 @@ REBVAL *Get_Obj_Mods(REBFRM *frame, REBVAL **inter_block)
 	//ENABLE_GC;
 	return Temp_Blk_Value;
 }
-#endif
+#endif
