@@ -143,6 +143,7 @@ Script: [
 	bad-event-type:        [{incompatible event type:} :arg1 {- the event is} :arg2]
 	no-event-key:          [{not a valid event key:} :arg1]
 	recursive-value:       [{cannot use construction syntax for} :arg1 {which contains itself}]
+	newer-module:          [{module} :arg1 {is already imported in a newer version:} :arg2]
 ]
 
 Math: [

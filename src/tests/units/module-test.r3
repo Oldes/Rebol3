@@ -549,6 +549,38 @@ export test-1360-added: 2
 		delete modules-dir/test-1360-old.reb
 		delete modules-dir/test-1360-new.reb
 
+	--test-- "import of an older module! value"
+	;@@ https://github.com/Oldes/Rebol3/issues/1358
+		m: module [name: test-1358 version: 1.0.0][export test-1358-value: 1]
+		o: module [name: test-1358 version: 0.5.0][export test-1358-value: 0]
+		--assert same? m try [import (m)]
+		--assert all [ ;; the given value cannot be silently replaced by the newer one
+			error? e: try [import (o)]
+			e/id = 'newer-module
+			e/arg1 = 'test-1358
+			e/arg2 = 1.0.0
+		]
+		--assert all [
+			same? m select system/modules 'test-1358
+			1 = lib/test-1358-value
+		]
+		--assert all [ ;; but it still may be imported without touching the lib
+			same? o try [import/no-lib (o)]
+			same? m select system/modules 'test-1358
+			1 = lib/test-1358-value
+		]
+		;; when a module value of the same version is imported, the existing one is used
+		o: module [name: test-1358 version: 1.0.0][export test-1358-value: 3]
+		--assert same? m try [import (o)]
+		;; an older module is recognized also when it has the same content as the newer one
+		o: module [name: test-1358 version: 0.5.0][export test-1358-value: 1]
+		--assert all [
+			equal? m o
+			error? e: try [import (o)]
+			e/id = 'newer-module
+		]
+		--assert same? o try [import/no-lib (o)]
+
 	--test-- "import/version of already imported module"
 		--assert module? try [import/version 'test-1360 2.0.0]
 		--assert all [

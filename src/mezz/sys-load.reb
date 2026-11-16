@@ -1115,7 +1115,9 @@ load-module: function/with [
 				if all [
 					not version
 					not check
-					equal? module existing
+					same? module existing
+					; (a different module value of the same content
+					; is resolved later, according its version)
 				][
 					return reduce [
 						module-header/name existing
@@ -1340,6 +1342,20 @@ load-module: function/with [
 
 					; pos: _
 					; just override, don't replace
+
+					if all [
+						module? source
+						existing-version > module-version
+					][
+						; The given module value would be silently replaced
+						; by the newer one, which is most likely not expected.
+						; (it still may be imported using /no-lib)
+
+						cause-error 'script 'newer-module reduce [
+							name
+							existing-version
+						]
+					]
 
 					if existing-version >= module-version [
 						; it's at least as new, use it instead
