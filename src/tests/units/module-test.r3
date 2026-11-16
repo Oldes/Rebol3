@@ -440,6 +440,103 @@ system/options/modules: modules-dir
 
 ===end-group===
 
+===start-group=== "import of already imported modules"
+	--test-- "import by name of a module with a different name"
+	;@@ https://github.com/Oldes/Rebol3/issues/1362
+	;@@ https://github.com/Oldes/Rebol3/issues/1900
+		write modules-dir/test-1900.reb {Rebol [type: module name: test-1900-spoof] export test-1900-value: 1}
+		--assert all [
+			module? m: try [import 'test-1900]
+			'test-1900 = select spec-of m 'name ;; renamed to the requested name
+			same? m select system/modules 'test-1900
+			none? find system/modules 'test-1900-spoof
+		]
+		delete modules-dir/test-1900.reb
+
+	--test-- "import by name of an unnamed module"
+	;@@ https://github.com/Oldes/Rebol3/issues/1900
+		system/user/data/test-1900: copy []
+		write modules-dir/test-1900-unnamed.reb {Rebol [type: module] append system/user/data/test-1900 'init}
+		--assert all [
+			module? m: try [import 'test-1900-unnamed]
+			'test-1900-unnamed = select spec-of m 'name ;; it gets the requested name
+			same? m try [import 'test-1900-unnamed]     ;; so it is not loaded again
+			[init] = system/user/data/test-1900
+		]
+		delete modules-dir/test-1900-unnamed.reb
+
+	--test-- "import file! of already imported named module"
+	;@@ https://github.com/Oldes/Rebol3/issues/1360
+		system/user/data/test-1360: copy []
+		write modules-dir/test-1360.reb {
+Rebol [type: module name: test-1360 version: 1.0.0]
+append system/user/data/test-1360 1.0.0
+export test-1360-value: 1
+}
+		--assert all [
+			module? m: try [import 'test-1360]
+			same? m try [import (modules-dir/test-1360.reb)] ;; the existing module is reused
+			[1.0.0] = system/user/data/test-1360             ;; and its code is not evaluated again
+		]
+
+	--test-- "import of an older version of already imported module"
+	;@@ https://github.com/Oldes/Rebol3/issues/1361
+		write modules-dir/test-1360-old.reb {
+Rebol [type: module name: test-1360 version: 0.5.0]
+append system/user/data/test-1360 0.5.0
+export test-1360-value: 0
+export test-1360-old-value: 0
+}
+		--assert all [
+			same? m try [import (modules-dir/test-1360-old.reb)] ;; the newer module is used instead
+			same? m select system/modules 'test-1360
+			[1.0.0] = system/user/data/test-1360                 ;; the older one is not even made
+			1 = lib/test-1360-value
+			none? in lib 'test-1360-old-value
+		]
+
+	--test-- "import of a newer version of already imported module"
+		write modules-dir/test-1360-new.reb {
+Rebol [type: module name: test-1360 version: 2.0.0]
+append system/user/data/test-1360 2.0.0
+export test-1360-value: 2
+}
+		--assert all [
+			module? o: try [import (modules-dir/test-1360-new.reb)]
+			not same? m o
+			same? o select system/modules 'test-1360
+			2.0.0 = select spec-of o 'version
+			[1.0.0 2.0.0] = system/user/data/test-1360
+		]
+		delete modules-dir/test-1360.reb
+		delete modules-dir/test-1360-old.reb
+		delete modules-dir/test-1360-new.reb
+
+	--test-- "import/version of already imported module"
+		--assert module? try [import/version 'test-1360 2.0.0]
+		--assert all [
+			error? e: try [import/version 'test-1360 2.0.1]
+			e/id = 'needs
+		]
+
+	--test-- "import of an unnamed module"
+	;@@ https://github.com/Oldes/Rebol3/issues/1363
+		system/user/data/test-1363: copy []
+		write modules-dir/test-1363.reb {Rebol [type: module] append system/user/data/test-1363 'init export test-1363-value: 1}
+		--assert all [
+			module? m: try [import (modules-dir/test-1363.reb)]
+			module? o: try [import (modules-dir/test-1363.reb)]
+			not same? m o                                 ;; unnamed module is always made again
+			[init init] = system/user/data/test-1363
+			none? select spec-of m 'name
+			none? find values-of system/modules m         ;; and is not registered
+			none? in lib 'test-1363-value                 ;; its exports are not in lib,
+			1 = system/contexts/user/test-1363-value      ;; but in the context, which requested it
+		]
+		delete modules-dir/test-1363.reb
+
+===end-group===
+
 ===start-group=== "module issues"
 	--test-- "issue-1005"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1005
