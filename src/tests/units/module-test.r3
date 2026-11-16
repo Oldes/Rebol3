@@ -519,6 +519,34 @@ export test-1360-value: 2
 			e/id = 'needs
 		]
 
+	--test-- "import/check of already imported module"
+	;@@ https://github.com/Oldes/Rebol3/issues/1359
+		s: save/header none [export test-1359-value: 1] [type: module name: test-1359 checksum: true]
+		c: select first load/header s 'checksum
+		write modules-dir/test-1359.reb s
+		--assert module? m: try [import/check 'test-1359 c]
+		--assert same? m try [import/check 'test-1359 c] ;; the saved checksum is used
+		--assert same? m try [import 'test-1359]
+		--assert all [
+			error? e: try [import/check 'test-1359 #{00}]
+			e/id = 'invalid-check
+		]
+		--assert all [ ;; a module without a checksum can never pass the check
+			error? e: try [import/check 'test-1360 c]
+			e/id = 'invalid-check
+		]
+		--assert same? m try [import/check (m) c]       ;; also when used as a value
+		delete modules-dir/test-1359.reb
+		;; delayed module
+		s: save/header none [export test-1359-delayed-value: 1] [type: module name: test-1359-delayed checksum: true]
+		c: select first load/header s 'checksum
+		--assert [test-1359-delayed #(none)] = sys/load-module/delay s
+		--assert all [
+			error? e: try [import/check 'test-1359-delayed #{00}]
+			e/id = 'invalid-check
+		]
+		--assert module? try [import/check 'test-1359-delayed c]
+
 	--test-- "import of an unnamed module"
 	;@@ https://github.com/Oldes/Rebol3/issues/1363
 		system/user/data/test-1363: copy []

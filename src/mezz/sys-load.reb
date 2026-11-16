@@ -1204,6 +1204,13 @@ load-module: function/with [
 			set/any [module-header: module-code:] module
 		]
 
+		module-header [
+			; Preloaded or delayed module: use the checksum saved in its header,
+			; else /check would fail even for the correct checksum.
+
+			module-hash: select module-header 'checksum
+		]
+
 		url? module [
 			; used by `import` for downloading extensions
 
