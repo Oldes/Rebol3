@@ -703,15 +703,67 @@ export test-1360-added: 2
 		write modules-dir/test-1363.reb {Rebol [type: module] append system/user/data/test-1363 'init export test-1363-value: 1}
 		--assert all [
 			module? m: try [import (modules-dir/test-1363.reb)]
-			module? o: try [import (modules-dir/test-1363.reb)]
-			not same? m o                                 ;; unnamed module is always made again
-			[init init] = system/user/data/test-1363
 			none? select spec-of m 'name
-			none? find values-of system/modules m         ;; and is not registered
 			none? in lib 'test-1363-value                 ;; its exports are not in lib,
 			1 = system/contexts/user/test-1363-value      ;; but in the context, which requested it
 		]
+		--assert all [ ;; it is registered using its location, so it is not made again
+			same? m select system/modules to-real-file modules-dir/test-1363.reb
+			same? m try [import (modules-dir/test-1363.reb)]
+			[init] = system/user/data/test-1363
+		]
+		--assert all [ ;; DO is the way, how to evaluate it again
+			1 = try [do modules-dir/test-1363.reb]
+			[init init] = system/user/data/test-1363
+			same? m select system/modules to-real-file modules-dir/test-1363.reb
+		]
 		delete modules-dir/test-1363.reb
+
+	--test-- "system/modules"
+		--assert map? system/modules
+		;; imported module is registered using its name and also its location
+		system/user/data/test-modules: copy []
+		write modules-dir/test-modules.reb {Rebol [type: module name: test-modules version: 1.0.0] append system/user/data/test-modules 'init}
+		--assert all [
+			module? m: try [import 'test-modules]
+			same? m select system/modules 'test-modules
+			same? m select system/modules to-real-file modules-dir/test-modules.reb
+			same? m system/modules/test-modules
+			same? m try [import (modules-dir/test-modules.reb)]
+			[init] = system/user/data/test-modules
+		]
+		;; /version and /check are still validated, when the module is found using its location
+		--assert all [
+			error? e: try [import/version (modules-dir/test-modules.reb) 2.0.0]
+			e/id = 'needs
+		]
+		--assert all [
+			error? e: try [import/check (modules-dir/test-modules.reb) #{00}]
+			e/id = 'invalid-check
+		]
+		;; when the module is replaced by its newer version, the old location is not used anymore
+		write modules-dir/test-modules-new.reb {Rebol [type: module name: test-modules version: 2.0.0] append system/user/data/test-modules 'new}
+		--assert all [
+			module? o: try [import (modules-dir/test-modules-new.reb)]
+			not same? m o
+			same? o select system/modules 'test-modules
+			same? o try [import (modules-dir/test-modules.reb)] ;; the newer one is used instead
+			[init new] = system/user/data/test-modules
+		]
+		;; module imported using /no-lib is not registered using its name, but it is not made again
+		system/user/data/test-modules: copy []
+		write modules-dir/test-modules-no-lib.reb {Rebol [type: module name: test-modules-no-lib] append system/user/data/test-modules 'init}
+		--assert all [
+			module? m: try [import/no-lib (modules-dir/test-modules-no-lib.reb)]
+			none? select system/modules 'test-modules-no-lib
+			same? m try [import/no-lib (modules-dir/test-modules-no-lib.reb)]
+			same? m try [import (modules-dir/test-modules-no-lib.reb)]
+			same? m select system/modules 'test-modules-no-lib ;; now it is registered also by its name
+			[init] = system/user/data/test-modules
+		]
+		delete modules-dir/test-modules.reb
+		delete modules-dir/test-modules-new.reb
+		delete modules-dir/test-modules-no-lib.reb
 
 ===end-group===
 

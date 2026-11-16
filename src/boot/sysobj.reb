@@ -350,8 +350,10 @@ state: object [
 	wait-list: [] ;; List of ports to add to 'wait
 ]
 
-modules: object [
-	help:    none
+modules: #[
+	;; Holds imported modules using their names and also files or urls, from which
+	;; these were loaded. An url value means a known module, which was not loaded yet.
+
 	;; external native extensions
 	blend2d:       https://github.com/Siskin-framework/Rebol-Blend2D/releases/download/0.12.0/
 	blurhash:      https://github.com/Siskin-framework/Rebol-BlurHash/releases/download/1.0.0/
@@ -400,8 +402,6 @@ modules: object [
 	quoted-printable: https://src.rebol.tech/mezz/codec-quoted-printable.reb
 	webdriver:        https://src.rebol.tech/modules/webdriver.reb
 	websocket:        https://src.rebol.tech/modules/websocket.reb
-	;; and..
-	window: none ;- internal extension for gui (on Windows so far!)
 ]
 
 codecs: object []

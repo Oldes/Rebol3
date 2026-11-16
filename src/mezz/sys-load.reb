@@ -527,9 +527,7 @@ load-boot-exts: function [
 			; no extension dispatcher (call) has been provided.
 			;
 			header/name [
-				repend system/modules [
-					header/name module
-				]
+				put system/modules header/name module
 			]
 		]
 
@@ -1026,9 +1024,31 @@ load-module: function/with [
 				]
 			]
 
+			; Module, which was already loaded from this location, is reused,
+			; unless it has a name, which is now used by another module (when it
+			; was replaced by its newer version), or unless it should be renamed.
+			;
+			if all [
+				module? cached: select system/modules source
+				any [
+					not as
+					name = select spec-of cached 'name
+				]
+				any [
+					not word? cached-name: select spec-of cached 'name
+					none? registered: select system/modules cached-name
+					same? cached registered
+				]
+			][
+				module: cached
+			]
+
 			detected-type: file-type? source
 
 			case [
+				module? :module _
+				; nothing to read
+
 				not detected-type [
 					; @@what's the value in eliding errors reading source here?
 					;
@@ -1541,9 +1561,7 @@ load-module: function/with [
 			not no-lib
 			override?
 		][
-			repend system/modules [
-				name module
-			]
+			put system/modules name module
 
 			case/all [
 				all [
@@ -1580,6 +1598,17 @@ load-module: function/with [
 				]
 			]
 		]
+	]
+
+	if all [
+		module? module
+		any [
+			file? source
+			url? source
+		]
+	][
+		put system/modules source module
+		; so the module is not loaded again from the same location
 	]
 
 	reduce [
