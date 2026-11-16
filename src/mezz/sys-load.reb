@@ -906,7 +906,7 @@ do-needs: function [
 	]
 ]
 
-load-module: function [
+load-module: function/with [
 	"Loads a module (from a file, URL, binary, etc.) and inserts it into the system module list."
 
 	source [word! file! url! string! binary! module! block!]
@@ -1466,14 +1466,51 @@ load-module: function [
 				module-code block!
 			]
 
-			module: reduce [
-				module-header
-				module-code
-				do-needs/no-user module-header
+			; Remember what is being made, so a module, which needs itself
+			; (directly or through the other modules), is detected.
+			;
+			key: any [
+				name
+				; unnamed modules are recognized by their location
+
+				all [
+					any [
+						file? source
+						url? source
+					]
+					source
+				]
 			]
 
-			module: catch/quit [
-				make module! module
+			if key [
+				if find/only loading key [
+					cause-error 'syntax 'recursive-needs key
+				]
+
+				append/only loading key
+			]
+
+			error: try [
+				module: reduce [
+					module-header
+					module-code
+					do-needs/no-user module-header
+				]
+
+				module: catch/quit [
+					make module! module
+				]
+
+				_
+			]
+
+			if key [
+				remove find/only loading key
+			]
+
+			if error? error [
+				do error
+				; pass the error on, when the list is clean again
 			]
 		]
 
@@ -1508,6 +1545,9 @@ load-module: function [
 			module
 		]
 	]
+][
+	loading: make block! 8
+	; names (or locations) of modules, which are just being made
 ]
 
 locate-extension: function [

@@ -203,22 +203,66 @@ myfunc: func [arg [string!]][reverse arg]
 	--assert "cba" = myfunc "abc"
 	delete modules-dir/mymodule.reb
 
-;;; This test would fail as the module needs itself! It should be detected, but it isn't yet.
-;;	write %mymodule2.reb {
-;; Rebol [
-;;     type: module
-;;     name: mymodule2
-;;     exports: [myfunc2]
-;;     needs: [%mymodule2.reb]
-;; ]
-;; print "mymodule2 imported"
-;; myfunc2: func [arg [string!]][reverse arg]
-;; }
-;; 	import 'mymodule2
-;; 	import 'mymodule2
-;; 	import %mymodule2.reb ;-- no crash
-;; 	--assert "cba" = myfunc2 "abc"
-;; 	delete %mymodule2.reb
+	--test-- "module needs itself"
+	;@@ https://github.com/Oldes/Rebol3/issues/1108
+		write modules-dir/needs-self.reb {
+Rebol [
+    type: module
+    name: needs-self
+    needs: [needs-self] ;<--- recursion!
+]
+export needs-self-value: 1
+}
+		--assert all [
+			error? e: try [import 'needs-self]
+			e/id = 'recursive-needs
+			e/arg1 = 'needs-self
+		]
+		--assert all [ ;; the failed import must not leave any trace
+			error? e: try [import 'needs-self]
+			e/id = 'recursive-needs
+			none? find system/modules 'needs-self
+		]
+		;; the same, when the module is referenced using its file
+		write modules-dir/needs-self.reb ajoin [
+			{Rebol [type: module name: needs-self needs: [} mold modules-dir/needs-self.reb {]]}
+		]
+		--assert all [
+			error? e: try [import (modules-dir/needs-self.reb)]
+			e/id = 'recursive-needs
+		]
+		;; unnamed module is recognized by its location
+		write modules-dir/needs-self.reb ajoin [
+			{Rebol [type: module needs: [} mold modules-dir/needs-self.reb {]]}
+		]
+		--assert all [
+			error? e: try [import (modules-dir/needs-self.reb)]
+			e/id = 'recursive-needs
+		]
+		delete modules-dir/needs-self.reb
+
+	--test-- "modules needing each other"
+	;@@ https://github.com/Oldes/Rebol3/issues/1108
+		write modules-dir/needs-a.reb {Rebol [type: module name: needs-a needs: [needs-b]] export needs-a-value: 1}
+		write modules-dir/needs-b.reb {Rebol [type: module name: needs-b needs: [needs-a]] export needs-b-value: 2}
+		--assert all [
+			error? e: try [import 'needs-a]
+			e/id = 'recursive-needs
+			e/arg1 = 'needs-a
+			none? find system/modules 'needs-a
+			none? find system/modules 'needs-b
+		]
+		;; once the cycle is removed, the modules may be imported
+		write modules-dir/needs-b.reb {Rebol [type: module name: needs-b] export needs-b-value: 2}
+		--assert all [
+			module? try [import 'needs-a]
+			module? system/modules/needs-a
+			module? system/modules/needs-b
+			system/modules/needs-a/needs-a-value = 1
+			system/modules/needs-b/needs-b-value = 2
+		]
+		delete modules-dir/needs-a.reb
+		delete modules-dir/needs-b.reb
 
 	--test-- "import to user context"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1680
