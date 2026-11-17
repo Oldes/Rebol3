@@ -1,9 +1,7 @@
 Rebol [
 	title: "Needs module test 2"
 	name:  test-needs-file
-	needs: %files/test-needs-file-value.reb
-	;- at this moment files imported from other file
-	;- does not use parent file's location!
+	needs: %test-needs-file-value.reb ;; relative to this file
 ]
 
 export test-needs-file-result: (42 = test-needs-file-value)

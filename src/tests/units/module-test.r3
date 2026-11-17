@@ -401,14 +401,13 @@ probe all [
 		--assert unset? :system/contexts/user/issue-1721-a
 		--assert system/contexts/user/issue-1721-b = 2
 
-system/options/modules: %files/
+system/options/modules: clean-path %files/ ;; must be absolute, as modules are evaluated in their directories
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1694
 	--test-- "import needs word!"
 		import 'test-needs-name
 		--assert true? test-needs-name-result
 	--test-- "import needs file!"
-		;- at this moment files imported from other file
-		;- does not use parent file's location!
+		;; file in the needs of an imported file is relative to that file
 		m: import %files/test-needs-file.reb
 		--assert true? test-needs-file-result
 		--assert all [
@@ -693,6 +692,40 @@ export get-local: does [words-of lib-local]
 		delete %test-needs-var.reb
 		delete %test-needs-var-2.reb
 		delete %test-needs-var-3.reb
+
+	--test-- "system/script of an imported module"
+		;; the module's code is evaluated in the directory of its file, with its own system/script
+		make-dir %test-script/
+		write %test-script/module.reb {
+Rebol [type: module name: test-script-module title: "Test script" needs: [%helper.reb]]
+info: reduce [system/script/title  system/script/header/name  system/script/path  what-dir  helper-value]
+fail?: false
+if fail? [1 / 0]
+}
+		write %test-script/helper.reb {Rebol [type: module name: test-script-helper exports: [helper-value]] helper-value: 42}
+		dir: what-dir
+		script: system/script
+		--assert all [
+			module? m: try [import %test-script/module.reb]
+			"Test script" = m/info/1
+			'test-script-module = m/info/2
+			m/info/3 = to-real-file %test-script/
+			m/info/4 = to-real-file %test-script/
+			42 = m/info/5 ;; its needs are relative to the module's file
+			dir = what-dir ;; restored
+			same? script system/script
+		]
+		;; restored also when the module fails
+		write %test-script/failing.reb {Rebol [type: module name: test-script-failing] change-dir %/ 1 / 0}
+		--assert all [
+			error? try [import %test-script/failing.reb]
+			dir = what-dir
+			same? script system/script
+		]
+		delete %test-script/module.reb
+		delete %test-script/helper.reb
+		delete %test-script/failing.reb
+		delete %test-script/
 
 	--test-- "import/isolate"
 	;@@ https://github.com/Oldes/Rebol3/issues/1981

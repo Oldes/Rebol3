@@ -1616,6 +1616,29 @@ load-module: function/with [
 				append/only loading key
 			]
 
+			; The module's code is evaluated like DO evaluates a script:
+			; in the directory of its file (so its NEEDS are relative to it)
+			; and with its own SYSTEM/SCRIPT (to know its header and path).
+			;
+			saved-script: system/script
+			saved-path: _
+
+			if all [
+				file? source
+				dir-end: find/last/tail source slash
+			][
+				saved-path: what-dir
+				change-dir copy/part source dir-end
+			]
+
+			system/script: make system/standard/script compose [
+				title: (select module-header 'title)
+				header: (module-header)
+				parent: (saved-script)
+				path: (what-dir)
+				args: _
+			]
+
 			error: try [
 				module: reduce [
 					module-header
@@ -1645,6 +1668,12 @@ load-module: function/with [
 				]
 
 				_
+			]
+
+			system/script: saved-script
+
+			if saved-path [
+				change-dir saved-path
 			]
 
 			if key [
