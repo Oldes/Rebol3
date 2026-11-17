@@ -950,6 +950,9 @@ load-module: function/with [
 	; If source is a module that is loaded already, /as name is an error.
 	;
 	; Returns block of name, and either built module or none if delayed.
+	; When the source is binary (or string), the block contains also the end
+	; of the module's script in the (binary) source. After the end may be
+	; another script, so more modules may be loaded from the same source.
 	; Returns none if source is word and no module of that name is loaded.
 	; Returns none if source is file/url and read or load-extension fails.
 	; sys/log/info 'REBOL ["load-module:" source]
@@ -1452,7 +1455,7 @@ load-module: function/with [
 			]
 		][
 			return reduce [
-				name module
+				name module remaining
 			]
 		]
 
@@ -1616,6 +1619,9 @@ load-module: function/with [
 		if module? module [
 			module
 		]
+
+		remaining
+		; end of the script in a binary source (none for other sources)
 	]
 ][
 	loading: make block! 8

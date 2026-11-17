@@ -718,7 +718,7 @@ export test-1360-added: 2
 		;; delayed module
 		s: save/header none [export test-1359-delayed-value: 1] [type: module name: test-1359-delayed checksum: true]
 		c: select first load/header s 'checksum
-		--assert [test-1359-delayed #(none)] = sys/load-module/delay s
+		--assert [test-1359-delayed #(none)] = copy/part sys/load-module/delay s 2
 		--assert all [
 			error? e: try [import/check 'test-1359-delayed #{00}]
 			e/id = 'invalid-check
@@ -1035,6 +1035,46 @@ export test-unload-b: 2
 			not same? o m
 			(mold o) = (mold m)
 		]
+
+	--test-- "more modules in one source"
+	;@@ https://github.com/Oldes/Rebol3/issues/2051
+		;; load-module returns also the end of the script, so the next one may be loaded
+		bin: to binary! {
+[Rebol [type: module name: test-2051-a] export test-2051-a-value: 1]
+[Rebol [type: module name: test-2051-b] export test-2051-b-value: 2]
+not a script
+}
+		names: copy []
+		while [all [bin find-script bin]] [
+			set [name: mod: bin:] sys/load-module bin ;; not using `module` as it is a function!
+			append names name
+		]
+		--assert [test-2051-a test-2051-b] = names
+		--assert all [
+			1 = lib/test-2051-a-value
+			2 = lib/test-2051-b-value
+		]
+		;; length-specified scripts
+		bin: join save/length/header none [export test-2051-c-value: 3] [type: module name: test-2051-c]
+		          save/length/header none [export test-2051-d-value: 4] [type: module name: test-2051-d]
+		names: copy []
+		while [all [bin find-script bin]] [
+			set [name: mod: bin:] sys/load-module bin ;; not using `module` as it is a function!
+			append names name
+		]
+		--assert [test-2051-c test-2051-d] = names
+		--assert all [
+			3 = lib/test-2051-c-value
+			4 = lib/test-2051-d-value
+		]
+		;; a source with only one script ends at its tail
+		--assert all [
+			block? r: sys/load-module "Rebol [type: module name: test-2051-e] 1"
+			module? r/2
+			tail? r/3
+		]
+		;; other sources do not have any end
+		--assert none? third sys/load-module 'test-2051-e
 
 	--test-- "query module"
 		m: module [title: "Query test" name: test-query version: 1.2.3 options: [private]][export a: 1 title: "own"]
