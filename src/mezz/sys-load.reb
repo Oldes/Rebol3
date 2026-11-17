@@ -1542,8 +1542,25 @@ load-module: function/with [
 					do-needs/no-user module-header
 				]
 
-				module: catch/quit [
+				system/state/quit?: false
+
+				set/any 'module catch/quit [
 					make module! module
+				]
+
+				unless module? :module [
+					; The module's code used QUIT or HALT, so the module
+					; was not finished and it cannot be used.
+
+					how: either system/state/quit? ['quit]['halt]
+
+					system/state/quit?: false
+					; it is now an error, so it must not quit the console
+
+					cause-error 'script 'module-stopped reduce [
+						any [key 'unnamed]
+						how
+					]
 				]
 
 				_

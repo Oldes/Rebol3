@@ -543,6 +543,70 @@ prin ["script:" test-1394-value module? select system/modules 'test-1394]
 		delete %test-1394/script.reb
 		delete %test-1394/
 
+	--test-- "module stopped using quit or halt"
+		;; module, which does not finish its code, is not imported
+		write %test-stopped.reb {
+Rebol [type: module name: test-stopped exports: [test-stopped-value]]
+test-stopped-value: 1
+quit
+}
+		--assert all [
+			error? e: try [import %test-stopped.reb]
+			e/id = 'module-stopped
+			e/arg1 = 'test-stopped
+			e/arg2 = 'quit
+			none? select system/modules 'test-stopped
+			none? in lib 'test-stopped-value
+			not system/state/quit? ;; so the console does not quit
+		]
+		write %test-stopped.reb {
+Rebol [type: module name: test-stopped]
+quit/return 5
+}
+		--assert all [
+			error? e: try [import %test-stopped.reb]
+			e/id = 'module-stopped
+			e/arg2 = 'quit
+			none? select system/modules 'test-stopped ;; it was registered as an integer!
+		]
+		write %test-stopped.reb {
+Rebol [type: module name: test-stopped]
+halt
+}
+		--assert all [
+			error? e: try [import %test-stopped.reb]
+			e/id = 'module-stopped
+			e/arg2 = 'halt
+			none? select system/modules 'test-stopped
+		]
+		;; unnamed module is reported using its location
+		write %test-stopped.reb {
+Rebol [type: module]
+halt
+}
+		--assert all [
+			error? e: try [import %test-stopped.reb]
+			e/id = 'module-stopped
+			e/arg1 = to-real-file %test-stopped.reb
+		]
+		;; the module is not on the list of modules being made, so it may be imported later
+		write %test-stopped.reb {
+Rebol [type: module name: test-stopped]
+export test-stopped-value: 2
+}
+		--assert all [
+			module? try [import %test-stopped.reb]
+			2 = lib/test-stopped-value
+		]
+		;; DO is not changed, it evaluates the module like a script
+		write %test-stopped.reb {
+Rebol [type: module]
+quit/return 5
+}
+		--assert 5 = try [do %test-stopped.reb]
+		system/state/quit?: false
+		delete %test-stopped.reb
+
 	--test-- "do module file with and without the isolate option"
 		;; DO does not force the isolation, it is the module's header, which decides
 		repend lib ['test-do-lib-value 1]

@@ -144,6 +144,7 @@ Script: [
 	no-event-key:          [{not a valid event key:} :arg1]
 	recursive-value:       [{cannot use construction syntax for} :arg1 {which contains itself}]
 	newer-module:          [{module} :arg1 {is already imported in a newer version:} :arg2]
+	module-stopped:        [{module} :arg1 {stopped its initialization using} :arg2]
 ]
 
 Math: [
