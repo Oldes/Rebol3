@@ -515,6 +515,34 @@ test-cli-value: 42
 		--assert did find o "result: 42 true"
 		delete %test-cli-module.reb
 
+	--test-- "--import option"
+	;@@ https://github.com/Oldes/Rebol3/issues/1394
+		;; the module is imported before any other code (--do or the script)
+		;; and its file is relative to the directory, where Rebol was started
+		make-dir %test-1394/
+		write %test-1394/pre.reb {
+Rebol [type: module name: test-1394 exports: [test-1394-value]]
+test-1394-value: 42
+}
+		write %test-1394/script.reb {
+Rebol []
+prin ["script:" test-1394-value module? select system/modules 'test-1394]
+}
+		o: copy ""
+		call/wait/shell/output reform [
+			to-local-file system/options/boot {--import test-1394/pre.reb --do "prin [{do:} test-1394-value]"}
+		] o
+		--assert did find o "do: 42"
+		;; the script is evaluated from its own directory, but the import is still relative to the starting one
+		o: copy ""
+		call/wait/shell/output reform [
+			to-local-file system/options/boot {--import test-1394/pre.reb test-1394/script.reb}
+		] o
+		--assert did find o "script: 42 true"
+		delete %test-1394/pre.reb
+		delete %test-1394/script.reb
+		delete %test-1394/
+
 	--test-- "do module file with and without the isolate option"
 		;; DO does not force the isolation, it is the module's header, which decides
 		repend lib ['test-do-lib-value 1]
@@ -767,6 +795,50 @@ export test-1360-added: 2
 
 ===end-group===
 
+===start-group=== "embedded extensions"
+	;@@ https://github.com/Oldes/Rebol3/issues/1901
+	;- these tests need a build, which includes the embedded extensions (like Rebol/Bulk)
+
+	if block? select system/modules 'xtest [
+		--test-- "delayed embedded extension"
+			;; it is registered, but not made, until it is imported
+			--assert all [
+				object? first select system/modules 'xtest ;; its header
+				find select first select system/modules 'xtest 'options 'delay
+				none? in lib 'xtest
+			]
+			--assert all [
+				module? m: try [import 'xtest]
+				same? m select system/modules 'xtest
+				same? m try [import 'xtest]
+				did find select spec-of m 'options 'extension
+			]
+			--assert all [ ;; its exports are in lib now
+				any-function? get in m 'xtest
+				same? get in m 'xtest get in lib 'xtest
+			]
+			--assert all [ ;; internal values are protected
+				protected? in m 'lib-base
+				none? in m 'lib-boot
+			]
+	]
+
+	if module? m: select system/modules 'easing [
+		--test-- "embedded extension imported on boot"
+			--assert all [
+				find select spec-of m 'options 'extension
+				not find select spec-of m 'options 'delay
+				same? m try [import 'easing]
+			]
+			--assert all [ ;; its exports are in lib
+				[tween] = select spec-of m 'exports
+				any-function? get in m 'tween
+				same? get in m 'tween get in lib 'tween
+			]
+	]
+
+===end-group===
+
 ===start-group=== "unload"
 	--test-- "unload module"
 		system/user/data/test-unload: copy []
@@ -937,6 +1009,15 @@ export test-unload-b: 2
 			not same? o m
 			(mold o) = (mold m)
 		]
+
+	--test-- "issue-1764"
+	;@@ https://github.com/Oldes/Rebol3/issues/1764
+		;; context of a module's word provides the module's header (it is a feature)
+		m: module [title: "Test 1764"][a: 1]
+		o: context? in m 'a
+		--assert same? spec-of o spec-of m
+		--assert "Test 1764" = select spec-of o 'title
+		--assert none? spec-of make object! [a: 1] ;; ordinary object has no spec
 
 	--test-- "issue-1708"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1708
