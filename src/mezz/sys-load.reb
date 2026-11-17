@@ -1045,8 +1045,8 @@ do-needs: function [
 load-module: function/with [
 	"Loads a module (from a file, URL, binary, etc.) and inserts it into the system module list."
 
-	source [word! file! url! string! binary! module! block!]
-	"Source or block of sources"
+	source [word! file! url! string! binary! module!]
+	"Source of the module (use IMPORT with a block to load more modules)"
 
 	/version
 
@@ -1092,6 +1092,7 @@ load-module: function/with [
 	; When the source is binary (or string), the block contains also the end
 	; of the module's script in the (binary) source. After the end may be
 	; another script, so more modules may be loaded from the same source.
+	; (for a file or url it is the end in its content; for others it is none)
 	; Returns none if source is word and no module of that name is loaded.
 	; Returns none if source is file/url and read or load-extension fails.
 	; sys/log/info 'REBOL ["load-module:" source]
@@ -1283,65 +1284,6 @@ load-module: function/with [
 					return reduce [
 						module-header/name existing
 					]
-				]
-			]
-		]
-
-		block? source [
-			if any [
-				version
-				check
-				as
-			][
-				cause-error 'script 'bad-refines _
-			]
-
-			module-content: make block! length? source
-
-			unless parse source [
-				any [
-					mark:
-					set name opt set-word!
-
-					set module [
-						word! | module! | file! | url! | string! | binary!
-					]
-
-					set needs opt tuple!
-
-					set hash opt binary!
-					; ambiguous
-
-					(
-						repend module-content [
-							module
-							needs
-							hash
-							if name [
-								to word! name
-							]
-						]
-					)
-				]
-			][
-				cause-error 'script 'invalid-arg mark
-			]
-
-			; this was MAP-EACH [...] SOURCE
-			;
-			return map-each [module needs hash name] module-content [
-				apply :load-module [
-					module
-					did needs
-					needs
-					did hash
-					hash
-					isolate
-					no-lib
-					import
-					did name
-					name
-					delay
 				]
 			]
 		]
@@ -1777,7 +1719,7 @@ load-module: function/with [
 		]
 
 		remaining
-		; end of the script in a binary source (none for other sources)
+		; end of the script in the source (none for a word or module source)
 	]
 ][
 	loading: make block! 8

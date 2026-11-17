@@ -1308,6 +1308,11 @@ not a script
 		]
 		;; other sources do not have any end
 		--assert none? third sys/load-module 'test-2051-e
+		;; there is no block of sources (use import with a block)
+		--assert all [
+			error? e: try [sys/load-module [test-2051-e]]
+			e/id = 'expect-arg
+		]
 
 	--test-- "query module"
 		m: module [title: "Query test" name: test-query version: 1.2.3 options: [private]][export a: 1 title: "own"]
