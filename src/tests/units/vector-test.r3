@@ -2682,6 +2682,7 @@ Rebol [
 
 
 ===start-group=== "FIND and SELECT for vectors"
+;@@ https://github.com/Oldes/Rebol3/issues/2916
 --test-- "find a value in a numeric vector"
 	v: #(i32! [1 2 3 2 1])
 	--assert 2 = index? find v 2
