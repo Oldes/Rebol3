@@ -884,7 +884,7 @@ do-needs: function [
 			mixins
 			mixin? module
 		][
-			resolve/extend/only mixins module select spec-of module 'exports
+			resolve/extend/only mixins module query module 'exports
 		]
 
 		module
@@ -1031,10 +1031,10 @@ load-module: function/with [
 				module? cached: select system/modules source
 				any [
 					not as
-					name = select spec-of cached 'name
+					name = query cached 'name
 				]
 				any [
-					not word? cached-name: select spec-of cached 'name
+					not word? cached-name: query cached 'name
 					none? registered: select system/modules cached-name
 					same? cached registered
 				]
@@ -1575,7 +1575,7 @@ load-module: function/with [
 					if all [
 						module? :existing
 						not same? module existing
-						block? old-words: select spec-of existing 'exports
+						block? old-words: query existing 'exports
 					][
 						foreach word words [
 							if all [
@@ -1867,7 +1867,7 @@ import: function [
 		;
 		no-user _
 
-		not block? exports: select header: spec-of module 'exports _
+		not block? exports: query module 'exports _
 
 		empty? exports _
 
@@ -1876,7 +1876,7 @@ import: function [
 		any [
 			no-lib
 
-			find select header 'options 'private
+			find query module 'options 'private
 			; /no-lib causes private
 		][
 			resolve/extend/only system/contexts/user module exports
@@ -1932,7 +1932,7 @@ unload: function [
 	; Unset the exported words, but only where these still hold values of this
 	; module (so values set later by somebody else, or by the user, are kept).
 	;
-	if block? exports: select spec-of module 'exports [
+	if block? exports: query module 'exports [
 		foreach context reduce [
 			lib
 			system/contexts/user
