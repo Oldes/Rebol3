@@ -403,6 +403,80 @@ expand-once: does [if armed [armed: false expand-stack]]
 		img/1/2: (expand-stack 100)
 		--assert 100 = img/1/2
 		recycle/stack
+
+	--test-- "sort string comparator moves stack"
+		comp: func [a b] [expand-once a > b]
+		recycle/stack armed: true
+		--assert "zyxcba" == sort/compare copy "abczyx" :comp
+		recycle/stack armed: true
+		--assert "abcxyz" == sort/compare/reverse copy "abczyx" :comp
+		recycle/stack armed: true
+		--assert "zyxcba" == sort/compare/unstable copy "abczyx" :comp
+		recycle/stack armed: true
+		--assert "cbazyx" == sort/compare/part copy "abczyx" :comp 3
+		recycle/stack armed: true
+		--assert "zyxcba" == to string! sort/compare to file! "abczyx" :comp
+		recycle/stack
+
+	--test-- "sort Unicode comparator moves stack"
+		comp: func [a b] [expand-once a > b]
+		recycle/stack armed: true
+		--assert "🙂čbaaA" == sort/compare copy "bač🙂Aa" :comp
+		recycle/stack armed: true
+		--assert "Aaabč🙂" == sort/compare/reverse copy "bač🙂Aa" :comp
+		recycle/stack armed: true
+		--assert "🙂čbaaA" == sort/compare/unstable copy "bač🙂Aa" :comp
+		recycle/stack
+
+	--test-- "sort binary comparator moves stack"
+		comp: func [a b] [expand-once a > b]
+		recycle/stack armed: true
+		--assert #{050403020100} == sort/compare copy #{000102030405} :comp
+		recycle/stack
+
+	--test-- "sort string records comparator moves stack"
+		comp: func [a b] [expand-once a <= b]
+		recycle/stack armed: true
+		--assert "aaabac" == sort/compare/skip/all copy "acabaa" :comp 2
+		recycle/stack
+
+	--test-- "sort string comparator shrinks stack"
+		expand-stack
+		armed: true
+		comp: func [a b] [if armed [armed: false recycle/stack] a > b]
+		--assert "zyxcba" == sort/compare copy "abczyx" :comp
+		recycle/stack
+		expand-stack
+		armed: true
+		--assert "🙂čbaaA" == sort/compare copy "bač🙂Aa" :comp
+		recycle/stack
+
+	--test-- "invalid port spec at every stack depth"
+		sweep-port: func [n] [
+			either n > 0 [sweep-port n - 1] [try [make port! none]]
+		]
+		repeat depth 1000 [
+			recycle/stack
+			err: sweep-port depth
+			--assert error? err
+			--assert all [err/id = 'invalid-spec none? err/arg1]
+		]
+		recycle/stack
+
+	--test-- "data stack capacity stays within limit"
+		repeat step 8 [
+			attempt [reduce append/dup make block! 0 1 100 + stack/limit 0]
+			--assert 400000 >= stack/limit 0
+		]
+		recycle/stack
+		--assert 8064 > stack/limit 0
+		big: append/dup make block! 0 1 400100
+		--assert all [error? err: try [compose big] err/id = 'stack-overflow]
+		recycle/stack
+		--assert all [error? err: try [compose [(big)]] err/id = 'stack-overflow]
+		recycle/stack
+		--assert 3 = add 1 2
+		--assert 8064 > stack/limit 0
 ===end-group===
 
 ~~~end-file~~~
