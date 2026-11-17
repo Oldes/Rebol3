@@ -389,6 +389,20 @@ make-module*: func [
 		do body
 	]
 
+	if find spec/options 'extension [
+		; Internal values of an extension (set by its body above),
+		; not to be changed or seen from outside.
+		; Done here, so it is the same for extensions loaded on boot.
+
+		if in context 'lib-base [
+			protect in context 'lib-base
+		]
+
+		if in context 'lib-boot [
+			protect/hide in context 'lib-boot
+		]
+	]
+
 	;print ["Module created" spec/name spec/version]
 
 	context

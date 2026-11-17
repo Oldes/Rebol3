@@ -825,16 +825,42 @@ export test-1360-added: 2
 
 	if module? m: select system/modules 'easing [
 		--test-- "embedded extension imported on boot"
+			options: select spec-of m 'options
 			--assert all [
-				find select spec-of m 'options 'extension
-				not find select spec-of m 'options 'delay
+				find options 'extension
+				not find options 'delay
 				same? m try [import 'easing]
 			]
-			--assert all [ ;; its exports are in lib
+			--assert all [ ;; its exports are in lib (or only in the user context, when private)
 				[tween] = select spec-of m 'exports
 				any-function? get in m 'tween
-				same? get in m 'tween get in lib 'tween
+				same? get in m 'tween get in either find options 'private [
+					system/contexts/user
+				][	lib ] 'tween
 			]
+			--assert all [ ;; internal values are protected also when loaded on boot
+				protected? in m 'lib-base
+				none? in m 'lib-boot
+			]
+	]
+
+	;; any private extension loaded on boot must export only to the user context
+	foreach [name m] system/modules [
+		if all [
+			module? :m
+			options: select spec: spec-of m 'options
+			find options 'extension
+			find options 'private
+			block? exports: select spec 'exports
+		][
+			--test-- join "private embedded extension " name
+			foreach word exports [
+				--assert all [
+					not same? get/any in m word get/any in lib word ;; not in lib
+					same? get/any in m word get/any in system/contexts/user word
+				]
+			]
+		]
 	]
 
 ===end-group===

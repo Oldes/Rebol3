@@ -43,7 +43,7 @@ find-in-path: func [
 
 start: func [
 	"INIT: Completes the boot sequence. Loads extras, handles args, security, scripts."
-	/local tmp script-path script-args code ver
+	/local tmp script-path script-args code ver name module spec options exports
 ] bind [ ; context is: system/options (must use full path sys/log/.. as there is options/log too!)
 
 	;** Note ** We need to make this work for lower boot levels too!
@@ -288,6 +288,19 @@ start: func [
 	tmp: make object! 320
 	append tmp reduce ['REBOL :system]
 	system/contexts/user: tmp
+
+	;-- Export private extensions loaded on boot (there was no user context then):
+	foreach [name module] system/modules [
+		if all [
+			module? :module
+			options: select spec: spec-of module 'options
+			find options 'extension
+			find options 'private
+			block? exports: select spec 'exports
+		][
+			resolve/extend/only tmp module exports
+		]
+	]
 
 	sys/log/info 'REBOL ["Checking for user.reb file in" data]
 	if all [

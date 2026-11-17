@@ -538,10 +538,9 @@ load-boot-exts: function [
 
 			empty? header/exports _
 
-			find header/options 'private [
-				resolve/extend/only system/contexts/user module header/exports
-				; full export to user
-			]
+			find header/options 'private _
+			; The user context does not exist yet (it is lib during the boot),
+			; so the exports are resolved later, when it is made (in START).
 
 			'else [
 				export-words module header/exports
@@ -1888,10 +1887,6 @@ import: function [
 			resolve/only system/contexts/user lib exports
 		]
 	]
-
-	protect 'module/lib-base
-
-	protect/hide 'module/lib-boot
 
 	module
 	; module! returned
