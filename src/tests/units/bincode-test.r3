@@ -1016,6 +1016,7 @@ is-protected-error?: func[code][
 			UI8 ; and this read should return value 2
 		]
 	--test-- "write ub/sb"
+	;@@ https://github.com/Oldes/Rebol3/issues/2809
 		bin: binary 16
 		binary/write bin [ub 4 10 ub 4 5]
 		--assert #{A5} = binary/read bin 'bytes
