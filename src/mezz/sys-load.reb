@@ -817,13 +817,16 @@ do-needs: function [
 		]
 	]
 
-	; Parse the needs dialect [source |version| |checksum-hash|]
+	; Parse the needs dialect [source |version| |checksum-hash| |[words]|]
+	; The optional block of words selects, which of the module's exports
+	; are imported (an empty block imports none of them).
 	;
 	modules: make block! length? needs
 
 	name:
 	version:
-	hash: _
+	hash:
+	words: _
 
 	unless parse needs [
 		mark:
@@ -840,10 +843,11 @@ do-needs: function [
 			set name [word! | file! | url!]
 			set version opt tuple!
 			set hash opt binary!
+			set words opt block!
 
 			(
 				repend modules [
-					name version hash
+					name version hash words
 				]
 			)
 		]
@@ -864,7 +868,7 @@ do-needs: function [
 
 	; Import the modules:
 	;
-	modules: map-each [name version hash] modules [
+	modules: map-each [name version hash words] modules [
 		; Import the module
 
 		module: apply :import [
@@ -876,6 +880,8 @@ do-needs: function [
 			isolate
 			no-lib
 			no-user
+			did words
+			words
 		]
 
 		; Collect any mixins into the object (if we are doing that)
@@ -884,7 +890,12 @@ do-needs: function [
 			mixins
 			mixin? module
 		][
-			resolve/extend/only mixins module query module 'exports
+			resolve/extend/only mixins module any [
+				words
+				; only the selected exports (already validated by IMPORT)
+
+				query module 'exports
+			]
 		]
 
 		module
@@ -1769,6 +1780,12 @@ import: function [
 	/no-user
 	"Don't export to the user context"
 
+	/only
+	"Import only some of the module's exports"
+
+	words [block!]
+	"Exported words to import (an empty block imports none)"
+
 	; See also: sys/make-module*, sys/load-module, sys/do-needs
 ][
 	source: :module
@@ -1781,7 +1798,9 @@ import: function [
 		assert [
 			not version
 			not check
+			not only
 			; these can only apply to one module
+			; (in the needs block, use a block of words after the module)
 		]
 
 		return apply :do-needs [
@@ -1882,15 +1901,45 @@ import: function [
 		]
 	]
 
+	; Only the selected exports? Validate them, even when not imported to user
+	; (the list is used also by DO-NEEDS for the mixins).
+	;
+	if only [
+		exports: any [
+			query module 'exports
+			[]
+		]
+
+		foreach word words [
+			unless all [
+				any-word? :word
+				find exports to word! word
+			][
+				cause-error 'script 'not-exported reduce [
+					any [
+						query module 'name
+						source
+					]
+					:word
+				]
+			]
+		]
+	]
+
 	; Do any imports to the user context that are necessary.
-	; The lib imports were handled earlier by LOAD-MODULE.
+	; The lib imports were handled earlier by LOAD-MODULE, and these
+	; are always complete; /only limits just the import to user.
 
 	case [
 		; Do nothing if /no-user or no exports.
 		;
 		no-user _
 
-		not block? exports: query module 'exports _
+		not block? exports: either only [
+			words
+		][
+			query module 'exports
+		] _
 
 		empty? exports _
 

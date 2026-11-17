@@ -543,6 +543,62 @@ prin ["script:" test-1394-value module? select system/modules 'test-1394]
 		delete %test-1394/script.reb
 		delete %test-1394/
 
+	--test-- "import/only"
+	;@@ https://github.com/Oldes/Rebol3/issues/2283
+		write modules-dir/test-2283.reb {Rebol [type: module name: test-2283 exports: [test-2283-a test-2283-b]] test-2283-a: 1 test-2283-b: 2}
+		unset in system/contexts/user 'test-2283-a
+		unset in system/contexts/user 'test-2283-b
+		--assert all [
+			module? try [import/only test-2283 [test-2283-a]]
+			1 = get/any in system/contexts/user 'test-2283-a
+			unset? get/any in system/contexts/user 'test-2283-b
+			2 = lib/test-2283-b ;; lib always gets all exports
+		]
+		--assert all [
+			error? e: try [import/only test-2283 [test-2283-x]]
+			e/id = 'not-exported
+			e/arg1 = 'test-2283
+			e/arg2 = 'test-2283-x
+		]
+		--assert all [ ;; empty block imports nothing
+			module? try [import/only test-2283 []]
+			unset? get/any in system/contexts/user 'test-2283-b
+		]
+		;; private module
+		write modules-dir/test-2283-p.reb {Rebol [type: module name: test-2283-p options: [private] exports: [test-2283-pa test-2283-pb]] test-2283-pa: 1 test-2283-pb: 2}
+		unset in system/contexts/user 'test-2283-pa
+		unset in system/contexts/user 'test-2283-pb
+		--assert all [
+			module? try [import/only test-2283-p [test-2283-pb]]
+			unset? get/any in system/contexts/user 'test-2283-pa
+			2 = get/any in system/contexts/user 'test-2283-pb
+			none? in lib 'test-2283-pb
+		]
+		;; /only is not used with a block of modules
+		--assert error? try [import/only [test-2283] [test-2283-a]]
+
+	--test-- "needs with selected exports"
+	;@@ https://github.com/Oldes/Rebol3/issues/2283
+		;; module needing a private module gets only the selected words
+		--assert all [
+			module? m: try [import {Rebol [type: module needs: [test-2283-p [test-2283-pa]]] export get-local: does [words-of lib-local]}]
+			[test-2283-pa] = m/get-local
+		]
+		--assert all [
+			error? e: try [import {Rebol [type: module needs: [test-2283-p [nope]]]}]
+			e/id = 'not-exported
+		]
+		;; in a block of modules, which is the needs dialect too
+		unset in system/contexts/user 'test-2283-pa
+		unset in system/contexts/user 'test-2283-pb
+		--assert all [
+			block? try [import [test-2283 [] test-2283-p [test-2283-pa]]]
+			1 = get/any in system/contexts/user 'test-2283-pa
+			unset? get/any in system/contexts/user 'test-2283-pb
+		]
+		delete modules-dir/test-2283.reb
+		delete modules-dir/test-2283-p.reb
+
 	--test-- "import/isolate"
 	;@@ https://github.com/Oldes/Rebol3/issues/1981
 		;; same as the `isolate` option in the module's header

@@ -145,6 +145,7 @@ Script: [
 	recursive-value:       [{cannot use construction syntax for} :arg1 {which contains itself}]
 	newer-module:          [{module} :arg1 {is already imported in a newer version:} :arg2]
 	module-stopped:        [{module} :arg1 {stopped its initialization using} :arg2]
+	not-exported:          [{module} :arg1 {does not export:} :arg2]
 ]
 
 Math: [
