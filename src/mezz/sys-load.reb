@@ -2003,43 +2003,55 @@ import: function [
 	; Do any imports to the user context that are necessary.
 	; The lib imports were handled earlier by LOAD-MODULE, and these
 	; are always complete; /only limits just the import to user.
+	;
+	; The console (if any) evaluates code in its own context, which may
+	; already have the words (unset), so it must be updated as well.
 
-	case [
-		; Do nothing if /no-user or no exports.
-		;
-		no-user _
+	targets: reduce [
+		system/contexts/user
+	]
 
-		only [
-			; Only the selected exports, which may be renamed.
+	if all [
+		object? console: attempt [system/console/current/console-ctx]
+		not same? console system/contexts/user
+	][
+		append targets console
+	]
 
-			either any [
-				no-lib
-				find query module 'options 'private
-			][
-				import-words/extend system/contexts/user module pairs
-			][
-				import-words system/contexts/user lib pairs
+	private?: any [
+		no-lib
+		; /no-lib causes private
+
+		find query module 'options 'private
+	]
+
+	foreach target targets [
+		case [
+			; Do nothing if /no-user or no exports.
+			;
+			no-user _
+
+			only [
+				; Only the selected exports, which may be renamed.
+				; These are requested explicitly, so missing words are added.
+
+				import-words/extend target either private? [module][lib] pairs
 			]
-		]
 
-		not block? exports: query module 'exports _
+			not block? exports: query module 'exports _
 
-		empty? exports _
+			empty? exports _
 
-		; If it's a private module (mixin), we must add *all* of its exports to user.
-		;
-		any [
-			no-lib
+			; If it's a private module (mixin), we must add *all* of its exports to user.
+			;
+			private? [
+				resolve/extend/only target module exports
+			]
 
-			find query module 'options 'private
-			; /no-lib causes private
-		][
-			resolve/extend/only system/contexts/user module exports
-		]
-
-		; Unless /no-lib its exports are in lib already, so just import what we need.
-		not no-lib [
-			resolve/only system/contexts/user lib exports
+			; Unless /no-lib its exports are in lib already, so just import what we need.
+			'else [
+				resolve/only target lib exports
+			]
 		]
 	]
 

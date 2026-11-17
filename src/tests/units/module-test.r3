@@ -617,6 +617,21 @@ prin ["script:" test-1394-value module? select system/modules 'test-1394]
 			1 = get/any in system/contexts/user 'test-2283-my-pa
 			unset? get/any in system/contexts/user 'test-2283-pa
 		]
+		;; the console has its own context, where the words may already exist (unset)
+		;; because these were used in the same input as the import
+		saved: system/console/current
+		ctx: make object! 3
+		foreach word [test-2283-c-a test-2283-c-b test-2283-c-pa] [append ctx word] ;; unset words
+		system/console/current: object [console-ctx: ctx]
+		--assert all [
+			module? try [import/only test-2283 [test-2283-c-a: test-2283-a]]
+			module? try [import/only test-2283-p [test-2283-c-pa: test-2283-pa]]
+			module? try [import/only test-2283 [test-2283-c-new: test-2283-b]]
+			1 = get/any in ctx 'test-2283-c-a
+			1 = get/any in ctx 'test-2283-c-pa
+			2 = get/any in ctx 'test-2283-c-new ;; added, when missing
+		]
+		system/console/current: saved
 		--assert all [ ;; renamed word must be an export too
 			error? e: try [import/only test-2283 [test-2283-my-x: test-2283-x]]
 			e/id = 'not-exported
