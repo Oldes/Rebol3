@@ -111,6 +111,86 @@ mixin?: func [
 	]
 ]
 
+import-pairs: function [
+	"Validates a list of a module's exports to import; returns [alias export-word ...]."
+
+	module [module!]
+
+	words [block!]
+	"Exported words; `new-name: word` imports an export under a new name"
+][
+	exports: any [
+		query module 'exports
+		[]
+	]
+
+	result: make block! 2 * length? words
+
+	alias: _
+	; (local, it is set only in the parse rule)
+
+	unless parse words [
+		any [
+			mark:
+			set alias opt set-word!
+			set word [word! | lit-word!]
+			(
+				unless find exports word: to word! word [
+					cause-error 'script 'not-exported reduce [
+						any [
+							query module 'name
+							'unnamed
+						]
+						word
+					]
+				]
+
+				repend result [
+					either alias [to word! alias][word]
+					word
+				]
+			)
+		]
+	][
+		cause-error 'script 'invalid-arg mark
+	]
+
+	result
+]
+
+import-words: function [
+	"Sets words of the target context to values of the source context."
+
+	target [object! module!]
+
+	source [object! module!]
+
+	pairs [block!]
+	"[target-word source-word ...] (as returned by IMPORT-PAIRS)"
+
+	/extend
+	"Add words, which the target does not have yet"
+][
+	; Like RESOLVE (/extend), but words may be renamed.
+	; Words, which already have a value in the target, are not changed.
+
+	foreach [alias word] pairs [
+		unless any [
+			in target alias
+			not extend
+		][
+			append target alias
+		]
+
+		if all [
+			alias: in target alias
+			unset? get/any alias
+		][
+			set/any alias get/any in source word
+		]
+	]
+]
+
 load-header: function/with [
 	"Loads script header object and body binary (not loaded)."
 
@@ -886,15 +966,27 @@ do-needs: function [
 
 		; Collect any mixins into the object (if we are doing that)
 		;
-		if all [
-			mixins
-			mixin? module
-		][
-			resolve/extend/only mixins module any [
-				words
-				; only the selected exports (already validated by IMPORT)
+		if mixins [
+			case [
+				mixin? module [
+					either words [
+						import-words/extend mixins module import-pairs module words
+						; only the selected exports (may be renamed)
+					][
+						resolve/extend/only mixins module query module 'exports
+					]
+				]
 
-				query module 'exports
+				words [
+					; The module's exports are in lib, where the code is bound,
+					; but a renamed export must be provided as a mixin.
+
+					foreach [alias word] import-pairs module words [
+						if alias <> word [
+							import-words/extend mixins module reduce [alias word]
+						]
+					]
+				]
 			]
 		]
 
@@ -1905,25 +1997,7 @@ import: function [
 	; (the list is used also by DO-NEEDS for the mixins).
 	;
 	if only [
-		exports: any [
-			query module 'exports
-			[]
-		]
-
-		foreach word words [
-			unless all [
-				any-word? :word
-				find exports to word! word
-			][
-				cause-error 'script 'not-exported reduce [
-					any [
-						query module 'name
-						source
-					]
-					:word
-				]
-			]
-		]
+		pairs: import-pairs module words
 	]
 
 	; Do any imports to the user context that are necessary.
@@ -1935,11 +2009,20 @@ import: function [
 		;
 		no-user _
 
-		not block? exports: either only [
-			words
-		][
-			query module 'exports
-		] _
+		only [
+			; Only the selected exports, which may be renamed.
+
+			either any [
+				no-lib
+				find query module 'options 'private
+			][
+				import-words/extend system/contexts/user module pairs
+			][
+				import-words system/contexts/user lib pairs
+			]
+		]
+
+		not block? exports: query module 'exports _
 
 		empty? exports _
 

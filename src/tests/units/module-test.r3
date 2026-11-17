@@ -596,6 +596,46 @@ prin ["script:" test-1394-value module? select system/modules 'test-1394]
 			1 = get/any in system/contexts/user 'test-2283-pa
 			unset? get/any in system/contexts/user 'test-2283-pb
 		]
+
+	--test-- "import/only with renamed exports"
+	;@@ https://github.com/Oldes/Rebol3/issues/2283
+		;; `new-name: word` imports the export under a new name
+		unset in system/contexts/user 'test-2283-a
+		unset in system/contexts/user 'test-2283-b
+		unset in system/contexts/user 'test-2283-my-b
+		--assert all [
+			module? try [import/only test-2283 [test-2283-a test-2283-my-b: test-2283-b]]
+			1 = get/any in system/contexts/user 'test-2283-a
+			2 = get/any in system/contexts/user 'test-2283-my-b
+			unset? get/any in system/contexts/user 'test-2283-b
+			none? in lib 'test-2283-my-b ;; lib keeps the original names
+		]
+		unset in system/contexts/user 'test-2283-pa
+		unset in system/contexts/user 'test-2283-my-pa
+		--assert all [ ;; private module
+			module? try [import/only test-2283-p [test-2283-my-pa: test-2283-pa]]
+			1 = get/any in system/contexts/user 'test-2283-my-pa
+			unset? get/any in system/contexts/user 'test-2283-pa
+		]
+		--assert all [ ;; renamed word must be an export too
+			error? e: try [import/only test-2283 [test-2283-my-x: test-2283-x]]
+			e/id = 'not-exported
+		]
+		--assert all [ ;; set-word must be followed by the exported word
+			error? e: try [import/only test-2283 [test-2283-my-x:]]
+			e/id = 'invalid-arg
+		]
+		;; renamed in the needs of a module (also from a public module, which is otherwise used from lib)
+		--assert all [
+			module? m: try [import {
+Rebol [type: module needs: [test-2283-p [x-pa: test-2283-pa] test-2283 [x-b: test-2283-b]]]
+export get-values: does [reduce [x-pa x-b]]
+export get-local: does [words-of lib-local]
+}]
+			[1 2] = m/get-values
+			[x-pa x-b] = m/get-local
+		]
+
 		delete modules-dir/test-2283.reb
 		delete modules-dir/test-2283-p.reb
 
