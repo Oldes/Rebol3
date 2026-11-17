@@ -454,7 +454,7 @@ open?: action [
 
 query: action [
 	{Returns information about target if possible.}
-	target [port! file! url! block! vector! date! handle! word! image!]
+	target [port! file! url! block! vector! date! handle! word! image! module!]
 	field [word! block! none! datatype!] "NONE will return valid modes for target type"
 	/mode "** DEPRECATED **"
 ]

@@ -100,6 +100,8 @@ values
 types
 title
 
+exports ; module's header field (not in the standard header)
+
 x
 y
 +
@@ -373,4 +375,4 @@ element-type
 vector-be
 vector-le
 unixtime-le
-buffer-write
+buffer-write

@@ -43,7 +43,7 @@ find-in-path: func [
 
 start: func [
 	"INIT: Completes the boot sequence. Loads extras, handles args, security, scripts."
-	/local tmp script-path script-args code ver name module spec options exports
+	/local tmp script-path script-args code ver name module options exports
 ] bind [ ; context is: system/options (must use full path sys/log/.. as there is options/log too!)
 
 	;** Note ** We need to make this work for lower boot levels too!
@@ -293,10 +293,10 @@ start: func [
 	foreach [name module] system/modules [
 		if all [
 			module? :module
-			options: select spec: spec-of module 'options
+			options: query module 'options
 			find options 'extension
 			find options 'private
-			block? exports: select spec 'exports
+			block? exports: query module 'exports
 		][
 			resolve/extend/only tmp module exports
 		]

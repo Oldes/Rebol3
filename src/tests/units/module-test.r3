@@ -3,7 +3,7 @@ Rebol [
 	Author:  "Peter W A Wood, Oldes"
 	File: 	 %module-test.r3
 	Tabs:	 4
-	Needs:   quick-test
+	Needs:   [%../quick-test-module.r3]
 ]
 system/options/quiet: false
 system/options/log/rebol: 4
@@ -811,7 +811,7 @@ export test-1360-added: 2
 				module? m: try [import 'xtest]
 				same? m select system/modules 'xtest
 				same? m try [import 'xtest]
-				did find select spec-of m 'options 'extension
+				did find query m 'options 'extension
 			]
 			--assert all [ ;; its exports are in lib now
 				any-function? get in m 'xtest
@@ -825,7 +825,7 @@ export test-1360-added: 2
 
 	if module? m: select system/modules 'easing [
 		--test-- "embedded extension imported on boot"
-			options: select spec-of m 'options
+			options: query m 'options
 			--assert all [
 				find options 'extension
 				not find options 'delay
@@ -848,10 +848,10 @@ export test-1360-added: 2
 	foreach [name m] system/modules [
 		if all [
 			module? :m
-			options: select spec: spec-of m 'options
+			options: query m 'options
 			find options 'extension
 			find options 'private
-			block? exports: select spec 'exports
+			block? exports: query m 'exports
 		][
 			--test-- join "private embedded extension " name
 			foreach word exports [
@@ -1035,6 +1035,37 @@ export test-unload-b: 2
 			not same? o m
 			(mold o) = (mold m)
 		]
+
+	--test-- "query module"
+		m: module [title: "Query test" name: test-query version: 1.2.3 options: [private]][export a: 1 title: "own"]
+		--assert "Query test" = query m 'title ;; header's field, even when the module has the same word
+		--assert 'test-query  = query m 'name
+		--assert 1.2.3        = query m 'version
+		--assert [private]    = query m 'options
+		--assert [a]          = query m 'exports
+		--assert none?          query m 'checksum
+		--assert [name: test-query version: 1.2.3] = query m [name version]
+		--assert [test-query 1.2.3] = query m [:name :version]
+		--assert all [
+			block? f: query m none
+			did find f 'name
+			did find f 'exports
+		]
+		--assert all [ ;; whole header as a new object
+			object? o: query m object!
+			not same? o spec-of m
+			o/name = 'test-query
+			o/exports = [a]
+		]
+		--assert all [
+			error? e: try [query m 'foo]
+			e/id = 'cannot-use
+		]
+		;; module without exports
+		m: module [][a: 1]
+		--assert none? query m 'exports
+		--assert none? query m 'name
+		--assert "Untitled" = query m 'title
 
 	--test-- "issue-1764"
 	;@@ https://github.com/Oldes/Rebol3/issues/1764

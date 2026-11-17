@@ -388,6 +388,35 @@ static REBSER *Trim_Object(REBSER *obj)
 
 /***********************************************************************
 **
+*/	static REBOOL Query_Module_Field(REBVAL *value, REBVAL *field, REBVAL *ret, void *ctx)
+/*
+**		Returns a field of the module's header (spec).
+**		A field, which this header does not have, but which is valid
+**		for any module header, is none.
+**
+***********************************************************************/
+{
+	REBSER *spec = VAL_MOD_SPEC(value);
+	REBCNT sym = VAL_WORD_SYM(field);
+	REBCNT n;
+
+	if (spec && NZ(n = Find_Word_Index(spec, sym, FALSE))) {
+		*ret = *FRM_VALUE(spec, n);
+		return TRUE;
+	}
+	if (
+		VAL_WORD_CANON(field) == SYM_EXPORTS ||
+		Find_Word_Index(VAL_OBJ_FRAME(Get_System(SYS_STANDARD, STD_HEADER)), sym, FALSE)
+	) {
+		SET_NONE(ret);
+		return TRUE;
+	}
+	return FALSE;
+}
+
+
+/***********************************************************************
+**
 */	REBTYPE(Object)
 /*
 **		Handles object! and error! datatypes.
@@ -667,6 +696,18 @@ static REBSER *Trim_Object(REBSER *obj)
 		// so a trimmed error can only be an object:
 		type = IS_ERROR(value) ? REB_OBJECT : VAL_TYPE(value);
 		break; // returns obj
+
+	case A_QUERY:
+		if (IS_MODULE(value)) {
+			// Fields of the module's header: query module 'name
+			REBVAL spec;
+			SET_OBJECT(&spec, VAL_MOD_SPEC(value)
+				? VAL_MOD_SPEC(value)
+				: VAL_OBJ_FRAME(Get_System(SYS_STANDARD, STD_HEADER)));
+			Query_Fields(value, D_ARG(ARG_QUERY_FIELD), &spec, Query_Module_Field, NULL, D_RET);
+			return R_RET;
+		}
+		Trap_Action(VAL_TYPE(value), action);
 
 	case A_TAILQ:
 		if (IS_OBJECT(value)) {
