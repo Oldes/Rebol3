@@ -543,6 +543,24 @@ prin ["script:" test-1394-value module? select system/modules 'test-1394]
 		delete %test-1394/script.reb
 		delete %test-1394/
 
+	--test-- "import/isolate"
+	;@@ https://github.com/Oldes/Rebol3/issues/1981
+		;; same as the `isolate` option in the module's header
+		repend lib ['test-isolate-lib-value 1]
+		write %test-isolate.reb {
+Rebol [type: module name: test-isolate]
+change-it: does [test-isolate-lib-value: 2]
+change-it
+}
+		--assert all [
+			module? m: try [import/isolate %test-isolate.reb]
+			did find query m 'options 'isolate
+			1 = lib/test-isolate-lib-value ;; the module has its own copy of the word
+			2 = m/test-isolate-lib-value
+		]
+		--assert error? try [import/no-share %test-isolate.reb] ;; the old name is not available
+		delete %test-isolate.reb
+
 	--test-- "module stopped using quit or halt"
 		;; module, which does not finish its code, is not imported
 		write %test-stopped.reb {

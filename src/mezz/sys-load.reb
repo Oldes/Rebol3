@@ -746,7 +746,7 @@ do-needs: function [
 	needs [block! object! tuple! none!]
 	"Needs block, header or version"
 
-	/no-share
+	/isolate
 	"Force module to use its own non-shared global namespace"
 
 	/no-lib
@@ -873,7 +873,7 @@ do-needs: function [
 			version
 			did hash
 			hash
-			no-share
+			isolate
 			no-lib
 			no-user
 		]
@@ -919,7 +919,7 @@ load-module: function/with [
 	hash [binary!]
 	"Match SHA1 checksum (must be set in header)"
 
-	/no-share
+	/isolate
 	"Force module to use its own non-shared global namespace"
 
 	/no-lib
@@ -944,7 +944,7 @@ load-module: function/with [
 	; The checksum applies to the uncompressed binary source of the body, and
 	; is calculated in LOAD-HEADER if the 'checksum header field is set.
 	; A copy of the checksum is saved in the system modules list for security.
-	; /no-share and /delay are ignored for module! source because it's too late.
+	; /isolate and /delay are ignored for module! source because it's too late.
 	; A name is required for all imported modules, delayed or not; /as can be
 	; specified for unnamed modules. If you don't want to name it, don't import.
 	; If source is a module that is loaded already, /as name is an error.
@@ -1197,7 +1197,7 @@ load-module: function/with [
 					needs
 					did hash
 					hash
-					no-share
+					isolate
 					no-lib
 					import
 					did name
@@ -1213,7 +1213,7 @@ load-module: function/with [
 			; Get info from preloaded or delayed modules
 
 			delay:
-			no-share: _
+			isolate: _
 
 			module-header: spec-of module
 
@@ -1266,7 +1266,7 @@ load-module: function/with [
 			]
 		]
 
-		no-share [
+		isolate [
 			module-header/options: append any [
 				module-header/options
 				make block! 1
@@ -1478,7 +1478,7 @@ load-module: function/with [
 
 			case/all [
 				find module-header/options 'isolate [
-					no-share: yes
+					isolate: yes
 					; in case of delay
 				]
 
@@ -1491,7 +1491,7 @@ load-module: function/with [
 					; in case of delayed rename
 
 					if all [
-						no-share
+						isolate
 						not find module-header/options 'isolate
 					][
 						module-header/options: append any [
@@ -1760,7 +1760,7 @@ import: function [
 	hash [binary!]
 	"Match checksum (must be set in header)"
 
-	/no-share
+	/isolate
 	"Force module to use its own non-shared global namespace"
 
 	/no-lib
@@ -1786,7 +1786,7 @@ import: function [
 
 		return apply :do-needs [
 			source
-			no-share
+			isolate
 			no-lib
 			no-user
 			/block
@@ -1805,7 +1805,7 @@ import: function [
 		needs
 		check
 		hash
-		no-share
+		isolate
 		no-lib
 		/import
 	]
@@ -1825,7 +1825,7 @@ import: function [
 				needs
 				check
 				hash
-				no-share
+				isolate
 				no-lib
 				/import
 				/as
@@ -1853,7 +1853,7 @@ import: function [
 						needs
 						check
 						hash
-						no-share
+						isolate
 						no-lib
 						/import
 						/as
