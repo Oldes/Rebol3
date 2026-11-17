@@ -897,12 +897,15 @@ do-needs: function [
 		]
 	]
 
-	; Parse the needs dialect [source |version| |checksum-hash| |[words]|]
+	; Parse the needs dialect [|var:| source |version| |checksum-hash| |[words]|]
+	; The optional set-word is a variable, which gets the imported module
+	; (in the user context, or locally in a module, which is being made).
 	; The optional block of words selects, which of the module's exports
 	; are imported (an empty block imports none of them).
 	;
 	modules: make block! length? needs
 
+	var:
 	name:
 	version:
 	hash:
@@ -920,6 +923,7 @@ do-needs: function [
 		any [
 			mark:
 
+			set var opt set-word!
 			set name [word! | file! | url!]
 			set version opt tuple!
 			set hash opt binary!
@@ -927,7 +931,7 @@ do-needs: function [
 
 			(
 				repend modules [
-					name version hash words
+					var name version hash words
 				]
 			)
 		]
@@ -948,7 +952,22 @@ do-needs: function [
 
 	; Import the modules:
 	;
-	modules: map-each [name version hash words] modules [
+	; Contexts, where variables of the modules are set, when not making a module
+	;
+	unless no-user [
+		targets: reduce [
+			system/contexts/user
+		]
+
+		if all [
+			object? console: attempt [system/console/current/console-ctx]
+			not same? console system/contexts/user
+		][
+			append targets console
+		]
+	]
+
+	modules: map-each [var name version hash words] modules [
 		; Import the module
 
 		module: apply :import [
@@ -985,6 +1004,23 @@ do-needs: function [
 						if alias <> word [
 							import-words/extend mixins module reduce [alias word]
 						]
+					]
+				]
+			]
+		]
+
+		; Set the variable to the module (if requested)
+		;
+		if var [
+			case [
+				mixins [
+					put mixins to word! var module
+					; local in the module, which is being made
+				]
+
+				targets [
+					foreach target targets [
+						put target to word! var module
 					]
 				]
 			]

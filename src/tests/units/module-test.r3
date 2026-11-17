@@ -654,6 +654,46 @@ export get-local: does [words-of lib-local]
 		delete modules-dir/test-2283.reb
 		delete modules-dir/test-2283-p.reb
 
+	--test-- "needs with a variable for the module"
+		write %test-needs-var.reb {Rebol [type: module] hello: does ["hello"]}
+		write %test-needs-var-2.reb {Rebol [type: module name: test-needs-var-2 exports: [test-needs-var-x]] test-needs-var-x: 2}
+		;; in a block of modules (the needs dialect), the variables are set in the user's context
+		--assert all [
+			block? b: try [import [test-needs-var-1: %test-needs-var.reb  test-needs-var-2: %test-needs-var-2.reb]]
+			module? m: get/any in system/contexts/user 'test-needs-var-1
+			same? m b/1
+			"hello" = m/hello
+			same? b/2 get/any in system/contexts/user 'test-needs-var-2
+			same? b/2 system/modules/test-needs-var-2
+		]
+		;; in a script's header
+		write %test-needs-var-3.reb {Rebol [needs: [test-needs-var-3: %test-needs-var.reb]] test-needs-var-3/hello}
+		--assert "hello" = try [do %test-needs-var-3.reb]
+		;; in a module, the variable is local (not exported and not in lib)
+		--assert all [
+			module? m: try [import {Rebol [type: module needs: [v: %test-needs-var.reb]] export f: does [v/hello]}]
+			"hello" = m/f
+			none? in m 'v
+			none? in lib 'v
+		]
+		;; also in an isolated module
+		--assert all [
+			module? m: try [import {Rebol [type: module options: [isolate] needs: [v: %test-needs-var.reb]] export f: does [v/hello]}]
+			"hello" = m/f
+		]
+		;; combined with other parts of the dialect
+		--assert all [
+			error? e: try [import [test-needs-var-4: %test-needs-var-2.reb 9.0.0]]
+			e/id = 'needs
+		]
+		--assert all [
+			block? try [import [test-needs-var-4: %test-needs-var-2.reb [test-needs-var-x]]]
+			same? system/modules/test-needs-var-2 get/any in system/contexts/user 'test-needs-var-4
+		]
+		delete %test-needs-var.reb
+		delete %test-needs-var-2.reb
+		delete %test-needs-var-3.reb
+
 	--test-- "import/isolate"
 	;@@ https://github.com/Oldes/Rebol3/issues/1981
 		;; same as the `isolate` option in the module's header
