@@ -111,6 +111,8 @@ foreach ecurve system/catalog/elliptic-curves [
 
 		;- Alice generates her key-pair
 		k-Alice: ecdh/init none ecurve
+		;- exports her public key (before signing!)
+		pub-Alice: ecdh/public k-Alice
 		;- wants to sign some data:
 		data: {Ladies and Gentlemen of the class of '99: If I could offer you only one tip for the future, sunscreen would be it.}
 		;- computes its hash:
@@ -128,10 +130,18 @@ foreach ecurve system/catalog/elliptic-curves [
 		;- can verify if it really works:
 		--assert ecdsa/verify k-Alice hash signature
 
+		;- signing must not regenerate the key pair
+		--assert pub-Alice = ecdh/public k-Alice
+
 		;- than Alice may send the data with signature, used curve and public key to Boban
-		pub-Alice: ecdh/public k-Alice
 		;- Boban can verify, that the data are really from Alice
 		--assert ecdsa/verify/curve pub-Alice hash signature ecurve
+		;- but the signature is not valid for any other key
+		k-Other: ecdh/init none ecurve
+		--assert not ecdsa/verify k-Other hash signature
+		release k-Other
+		;- raw public key cannot be used for signing
+		--assert error? try [ecdsa/sign/curve pub-Alice hash ecurve]
 
 		;@@ https://github.com/Oldes/Rebol-issues/issues/2642
 		--assert all [

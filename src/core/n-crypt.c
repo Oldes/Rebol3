@@ -900,6 +900,8 @@ error:
 	if (!ref_sign && !ref_verify) ref_sign = TRUE; //using SIGN as a default action
 
 	if (IS_BINARY(val_key)) {
+		// raw binary key is only a public key (point), so it cannot be used to sign
+		if (ref_sign) Trap_Arg(val_key);
 		if (!ref_curve) Trap0(RE_MISSING_ARG);
 		gid = ECP_GROUP_ID_VAL(val_curve);
 		if (gid < 1 || gid >= MBEDTLS_ECP_DP_MAX)
@@ -935,11 +937,8 @@ error:
 		mbed = &ctx_ecdh->MBEDTLS_PRIVATE(ctx).private_mbed_ecdh;
 		mbedtls_mpi_init(&r);
 		mbedtls_mpi_init(&s);
-		err = mbedtls_ecp_gen_keypair(
-			&mbed->MBEDTLS_PRIVATE(grp),
-			&mbed->MBEDTLS_PRIVATE(d),
-			&mbed->MBEDTLS_PRIVATE(Q),
-			mbedtls_ctr_drbg_random, &ctr_drbg);
+		// sign with the existing private key (never generate a new one!)
+		err = mbedtls_ecp_check_privkey(&mbed->MBEDTLS_PRIVATE(grp), &mbed->MBEDTLS_PRIVATE(d));
 		if (err) goto done;
 
 		err = mbedtls_ecdsa_sign(
