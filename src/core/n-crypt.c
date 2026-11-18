@@ -614,9 +614,7 @@ error:
 {
 	REBVAL *g        = D_ARG(1);
 	REBVAL *p        = D_ARG(2);
-	REBOOL  ref_into = D_REF(3);
-	REBVAL *val_dh   = D_ARG(4);
-	
+
 	REBINT  err = 0;
 	DHM_CTX *dhm;
 
