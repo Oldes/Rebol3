@@ -217,6 +217,16 @@ rebol-cmd: func[cmd][
 		--assert 0 = info/id
 		--assert string? info/error
 
+	--test-- "call/wait with a process killed by a signal"
+		if system/platform <> 'Windows [
+			;; the shell kills itself with SIGKILL (9) => 128 + 9
+			--assert 137 = call/wait/shell "kill -9 $$"
+			info: call/info/wait/shell "kill -9 $$"
+			--assert 137 = info/exit-code
+			--assert 0 < info/id
+			--assert none? select info 'error
+		]
+
 ===end-group===
 
 

@@ -1278,6 +1278,10 @@ child_error:
 	} else if (WIFEXITED(status)) {
 		if (exit_code != NULL) *exit_code = WEXITSTATUS(status);
 		if (pid != NULL) *pid = fpid;
+	} else if (WIFSIGNALED(status)) {
+		// Terminated by a signal; report it like shells do (128 + signal number)
+		if (exit_code != NULL) *exit_code = 128 + WTERMSIG(status);
+		if (pid != NULL) *pid = fpid;
 	} else {
 		goto error;
 	}
