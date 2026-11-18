@@ -77,7 +77,8 @@ do*: func [
 		; Get the header and advance 'data to the code position
 		; object or none
 
-		is-module: 'module = select header 'type
+		is-module: find [module private] select header 'type
+		; Type: private is a script evaluated in its own (module) context
 		; data is a block! here, with the header object in the first position back
 	]
 
@@ -140,7 +141,7 @@ do*: func [
 		; Print out the script info
 		;
 		log/info 'REBOL [
-			pick ["Module:" "Script:"] is-module
+			pick ["Module:" "Script:"] 'module = select header 'type
 			mold select header 'title
 			"Version:" select header 'version
 			"Date:"	   select header 'date
@@ -341,7 +342,11 @@ make-module*: func [
 		bind/new hidden context
 	]
 
-	either find spec/options 'isolate [
+	either any [
+		find spec/options 'isolate
+		'private = spec/type
+		; A private script binds like a regular script, just to its own context
+	][
 		bind/new body context
 		; All words of the module body are module variables
 

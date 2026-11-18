@@ -1358,6 +1358,11 @@ load-module: function/with [
 					cause-error 'syntax module-header source
 				]
 
+				'private = module-header/type [
+					; A private script is only evaluated using DO
+					cause-error 'script 'private-script source
+				]
+
 				import _
 				; /import overrides 'delay option
 

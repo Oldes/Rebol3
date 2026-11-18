@@ -344,12 +344,20 @@ start: func [
 				; and ignore other optional arguments
 				args: either system/options/flags/args [to block! first script-args][script-args]
 			]
-			either 'module = select first code 'type [
-				code: reduce [first+ code code]
-				if object? tmp: do-needs/no-user first code [append code tmp]
-				;; `import` is here the value of the --import option (system/options/import),
-				;; so the function from lib must be used!
-				lib/import (make module! code)
+			switch/default select first code 'type [
+				module [
+					code: reduce [first+ code code]
+					if object? tmp: do-needs/no-user first code [append code tmp]
+					;; `import` is here the value of the --import option (system/options/import),
+					;; so the function from lib must be used!
+					lib/import (make module! code)
+				]
+				private [
+					;; evaluated in its own context, which is not kept
+					code: reduce [first+ code code]
+					if object? tmp: do-needs/no-user first code [append code tmp]
+					make module! code
+				]
 			][
 				do-needs first+ code
 				do intern code

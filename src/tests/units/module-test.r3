@@ -3,7 +3,8 @@ Rebol [
 	Author:  "Peter W A Wood, Oldes"
 	File: 	 %module-test.r3
 	Tabs:	 4
-	Needs:   [%../quick-test-module.r3]
+	Needs:   %../quick-test-module.r3
+	;Type:    private
 ]
 system/options/quiet: false
 system/options/log/rebol: 4
@@ -1438,6 +1439,44 @@ not a script
 			error? try [put spec-of help 'name 'spoof]
 			'help = query help 'name
 		]
+
+===end-group===
+
+===start-group=== "Type: private scripts"
+	--test-- "do of a private script"
+	;@@ https://github.com/Oldes/Rebol3/discussions/164
+		--assert block? r: do %files/test-private-script.reb
+		--assert 'private = r/1
+		--assert 42 = r/2              ;; needed module is available in the script
+		--assert 1 = r/3               ;; its words are in its own context
+		--assert 2 = r/3
+		--assert r/4                   ;; system/script/path is set
+		--assert not attempt [get in system/contexts/user 'private-script-counter]
+		--assert not attempt [get in system/contexts/user 'private-script-value]
+		--assert not attempt [get in lib 'private-script-counter]
+	--test-- "private script is evaluated every time"
+		--assert block? r2: do %files/test-private-script.reb
+		--assert 1 = r2/3              ;; new context, so new counter
+		--assert 3 = r/3               ;; the old one is untouched
+		--assert none? select system/modules to-real-file %files/test-private-script.reb
+	--test-- "private script binds all its words like a regular script"
+		--assert all [
+			block? r: do %files/test-private-script-binding.reb
+			r = reduce [native! 'b 3 "abc" "local" native!]
+		]
+		--assert not attempt [get in system/contexts/user 'nested]
+		--assert native? :lib/checksum
+
+	--test-- "private script cannot be imported"
+		--assert all [
+			error? e: try [import %files/test-private-script.reb]
+			e/id = 'private-script
+		]
+		--assert all [
+			error? e: try [import {Rebol [type: module needs: [%files/test-private-script.reb]] 1}]
+			e/id = 'private-script
+		]
+		--assert none? select system/modules to-real-file %files/test-private-script.reb
 
 ===end-group===
 
