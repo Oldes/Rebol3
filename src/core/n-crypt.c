@@ -99,6 +99,20 @@ static REBOOL Seed_Ctr_Drbg(void);
 	return ctr_drbg_seeded;
 }
 
+/***********************************************************************
+**
+*/	static int Crypt_Random(void *p_rng, unsigned char *output, size_t len)
+/*
+**		RNG callback for mbedtls functions. Makes sure, that the shared
+**		CTR-DRBG is seeded before it is used.
+**
+***********************************************************************/
+{
+	if (!ctr_drbg_seeded && !Seed_Ctr_Drbg())
+		return MBEDTLS_ERR_CTR_DRBG_ENTROPY_SOURCE_FAILED;
+	return mbedtls_ctr_drbg_random(p_rng, output, len);
+}
+
 
 /***********************************************************************
 **
@@ -563,14 +577,14 @@ static mbedtls_md_type_t Sym_To_MD_Type(REBCNT sym)
 	outBinary = BIN_DATA(data);
 
 	if (refSign) {
-		err = mbedtls_rsa_pkcs1_sign(rsa, mbedtls_ctr_drbg_random, &ctr_drbg, md_alg, inBytes, inBinary, outBinary);
+		err = mbedtls_rsa_pkcs1_sign(rsa, Crypt_Random, &ctr_drbg, md_alg, inBytes, inBinary, outBinary);
 	}
 	else if (refEncrypt) {
-		err = mbedtls_rsa_pkcs1_encrypt(rsa, mbedtls_ctr_drbg_random, &ctr_drbg, inBytes, inBinary, outBinary);
+		err = mbedtls_rsa_pkcs1_encrypt(rsa, Crypt_Random, &ctr_drbg, inBytes, inBinary, outBinary);
 	}
 	else {
 		size_t olen = 0;
-		err = mbedtls_rsa_pkcs1_decrypt(rsa, mbedtls_ctr_drbg_random, &ctr_drbg, &olen, inBinary, outBinary, outBytes);
+		err = mbedtls_rsa_pkcs1_decrypt(rsa, Crypt_Random, &ctr_drbg, &olen, inBinary, outBinary, outBytes);
 		outBytes = (REBLEN)olen;
 	}
 	if (err) goto error;
@@ -622,7 +636,7 @@ error:
 	err = dhm_random_below(
 		&dhm->MBEDTLS_PRIVATE(X),
 		&dhm->MBEDTLS_PRIVATE(P),
-		mbedtls_ctr_drbg_random, &ctr_drbg);
+		Crypt_Random, &ctr_drbg);
 	if (err) goto error;
 
 	/*
@@ -700,7 +714,7 @@ error:
 		p_len = mbedtls_dhm_get_len(dhm);
 		out = Make_Binary((REBLEN)p_len);
 		// and derive the shared secret of these 2 public parts
-		err = mbedtls_dhm_calc_secret(dhm, BIN_DATA(out), p_len, &olen, mbedtls_ctr_drbg_random, &ctr_drbg);
+		err = mbedtls_dhm_calc_secret(dhm, BIN_DATA(out), p_len, &olen, Crypt_Random, &ctr_drbg);
 		if (err) goto error;
 		BIN_LEN(out) = (REBLEN)olen;
 	}
@@ -770,7 +784,7 @@ error:
 		mbed = &ctx->MBEDTLS_PRIVATE(ctx).MBEDTLS_PRIVATE(mbed_ecdh);
 		err = mbedtls_ecdh_gen_public(
 			&mbed->MBEDTLS_PRIVATE(grp), &mbed->MBEDTLS_PRIVATE(d), &mbed->MBEDTLS_PRIVATE(Q),
-			mbedtls_ctr_drbg_random, &ctr_drbg);
+			Crypt_Random, &ctr_drbg);
 		if (err) goto error;
 		if (!(ref_type || ref_public || ref_secret)) return R_ARG1;
 	}
@@ -789,7 +803,7 @@ error:
 		if (Q.MBEDTLS_PRIVATE(X).MBEDTLS_PRIVATE(p) == NULL) {
 			err = mbedtls_ecdh_gen_public(
 				&mbed->MBEDTLS_PRIVATE(grp), &mbed->MBEDTLS_PRIVATE(d), &mbed->MBEDTLS_PRIVATE(Q),
-				mbedtls_ctr_drbg_random, &ctr_drbg);
+				Crypt_Random, &ctr_drbg);
 			if (err) goto error;
 		}
 		// and return it.
@@ -813,7 +827,7 @@ error:
 		);
 		if (err) goto error;
 		bin = Make_Binary(256);
-		err = mbedtls_ecdh_calc_secret(ctx, &olen, BIN_DATA(bin), SERIES_REST(bin), mbedtls_ctr_drbg_random, &ctr_drbg);
+		err = mbedtls_ecdh_calc_secret(ctx, &olen, BIN_DATA(bin), SERIES_REST(bin), Crypt_Random, &ctr_drbg);
 		if (err) goto error;
 		
 		SET_BINARY(D_RET, bin);
@@ -852,7 +866,7 @@ error:
 
 	mbedtls_ecdsa_init(&ctx);
 
-	//err = mbedtls_ecdsa_genkey(&ctx, gid, mbedtls_ctr_drbg_random, &ctr_drbg);
+	//err = mbedtls_ecdsa_genkey(&ctx, gid, Crypt_Random, &ctr_drbg);
 	//if (err) goto exit;
 	err = mbedtls_ecp_group_load(&ctx.MBEDTLS_PRIVATE(grp), MBEDTLS_ECP_DP_SECP192R1);
 	//err = mbedtls_ecp_gen_keypair(&ctx.MBEDTLS_PRIVATE(grp), &ctx->d, &ctx->Q, f_rng, p_rng);
@@ -953,7 +967,7 @@ error:
 			&r, &s,
 			&mbed->MBEDTLS_PRIVATE(d),
 			VAL_BIN_AT(val_hash), VAL_LEN(val_hash),
-			mbedtls_ctr_drbg_random, &ctr_drbg);
+			Crypt_Random, &ctr_drbg);
 		if (err) goto done;
 
 		bin = Make_Binary(300);
