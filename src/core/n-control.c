@@ -194,6 +194,7 @@ static void Unmark_Protected(REBVAL *value);
 {
 	REBSER *series = VAL_OBJ_FRAME(value);
 	if (IS_MARK_SERIES(series)) return; // avoid loop
+	Unshare_Frame_Words(series); // https://github.com/Oldes/Rebol3/issues/1333
 	for (value = FRM_WORDS(series)+1; NOT_END(value); value++) {
 		Protect_Word(value, flags);
 	}
@@ -245,6 +246,9 @@ static void Unmark_Protected(REBVAL *value);
 	REBVAL *val;
 
 	if (ANY_WORD(word) && HAS_FRAME(word) && VAL_WORD_INDEX(word) > 0) {
+		// Protection is stored on the word in the frame's word list, which
+		// may be shared with other frames: https://github.com/Oldes/Rebol3/issues/1333
+		Unshare_Frame_Words(VAL_WORD_FRAME(word));
 		wrd = FRM_WORDS(VAL_WORD_FRAME(word))+VAL_WORD_INDEX(word);
 		Protect_Word(wrd, flags);
 		if (GET_FLAG(flags, PROT_DEEP)) {
@@ -257,6 +261,7 @@ static void Unmark_Protected(REBVAL *value);
 		REBCNT index;
 		REBSER *obj;
 		if (NZ(obj = Resolve_Path(word, &index))) {
+			Unshare_Frame_Words(obj);
 			wrd = FRM_WORD(obj, index);
 			Protect_Word(wrd, flags);
 			if (GET_FLAG(flags, PROT_DEEP)) {
@@ -1075,4 +1080,4 @@ callback:	// ...and the last result.
 ***********************************************************************/
 {
 	return IS_FALSE(D_ARG(1)) ? R_FALSE : R_TRUE;
-}
+}

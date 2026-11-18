@@ -523,6 +523,7 @@ static REBSER *Trim_Object(REBSER *obj)
 
 			// make parent none | []
 			if (IS_NONE(arg) || (IS_BLOCK(arg) && IS_EMPTY(arg))) {
+				SHARE_SERIES(FRM_WORD_SERIES(src_obj)); // the new object uses the same word list
 				obj = Copy_Block_Values(src_obj, 0, SERIES_TAIL(src_obj), TS_CLONE);
 				Rebind_Frame(src_obj, obj);
 				break;	// returns obj
@@ -636,6 +637,7 @@ static REBSER *Trim_Object(REBSER *obj)
 			else types |= VAL_TYPESET(arg);
 		}
 		src_obj = VAL_OBJ_FRAME(value);
+		SHARE_SERIES(FRM_WORD_SERIES(src_obj)); // the copy uses the same word list
 		obj = Copy_Block(src_obj, 0);
 		VAL_OBJ_FRAME(value) = obj;
 		if (types != 0) {
@@ -812,4 +814,4 @@ REBVAL *Get_Obj_Mods(REBFRM *frame, REBVAL **inter_block)
 	//ENABLE_GC;
 	return Temp_Blk_Value;
 }
-#endif
+#endif

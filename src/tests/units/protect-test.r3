@@ -247,4 +247,76 @@ Rebol [
 		--assert 1 = length? words-of o
 ===end-group===
 
-~~~end-file~~~
+
+===start-group=== "Derived objects (shared word list)"
+	;@@ https://github.com/Oldes/Rebol3/issues/1333
+	--test-- "protect in derived object (make o [])"
+		po: make object! [a: 1 b: 2]
+		po1: make po []
+		protect in po1 'b
+		--assert all [error? e: try [po1/b: 3] e/id = 'locked-word]
+		--assert not protected? in po 'b
+		--assert not error? try [po/b: 3]
+		--assert po/b = 3
+	--test-- "protect in derived object (make o [a: ...])"
+		po: make object! [a: 1 b: 2]
+		po1: make po [a: 10]  ;; no new words
+		protect in po1 'a
+		--assert all [error? e: try [po1/a: 3] e/id = 'locked-word]
+		--assert not error? try [po/a: 3]
+	--test-- "protect in copied object"
+		po: make object! [a: 1 b: 2]
+		po1: copy po
+		protect in po1 'b
+		--assert all [error? e: try [po1/b: 3] e/id = 'locked-word]
+		--assert not error? try [po/b: 3]
+	--test-- "protect in prototype"
+		po: make object! [a: 1 b: 2]
+		po1: make po []
+		protect in po 'a
+		--assert all [error? e: try [po/a: 3] e/id = 'locked-word]
+		--assert not error? try [po1/a: 3]
+	--test-- "protect whole derived object"
+		po: make object! [a: 1 b: 2]
+		po1: make po []
+		protect po1
+		--assert error? try [po1/a: 3]
+		--assert not error? try [po/a: 3]
+		unprotect po1
+	--test-- "unprotect in derived object"
+		po: make object! [a: 1 b: 2]
+		protect in po 'a
+		po1: make po []      ;; protection is inherited
+		--assert error? try [po1/a: 3]
+		unprotect in po1 'a
+		--assert not error? try [po1/a: 3]
+		--assert error? try [po/a: 3]
+	--test-- "protect/hide in derived object"
+		po: make object! [a: 1 b: 2]
+		po1: make po []
+		protect/hide in po1 'b
+		--assert [a] = words-of po1
+		--assert [a b] = words-of po
+		--assert po/b = 2
+	--test-- "bind/new to derived object"
+		po: make object! [a: 1]
+		po1: make po []
+		bind/new [c: 3] po1
+		--assert [a c] = words-of po1
+		--assert [a] = words-of po
+		--assert none? in po 'c
+	--test-- "bind/set to derived object"
+		po: make object! [a: 1]
+		po1: make po []
+		set bind/set [d:] po1 [4]
+		--assert po1/d = 4
+		--assert [a] = words-of po
+		--assert none? in po 'd
+	--test-- "protect in closure frame"
+		;; each closure call has its own frame, but all used the function's words
+		pc: closure [x /local r][r: try [x: 0] protect 'x r]
+		--assert not error? pc 1
+		--assert not error? pc 2
+===end-group===
+
+~~~end-file~~~

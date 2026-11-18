@@ -449,6 +449,7 @@ enum {
 	SER_SLICE= 1<<10,	// Series is sliced (side link contains the original)
 	SER_SIZEP= 1<<11,   // Series is protected from length modification only (e.g. sliced series)
 	SER_HASH = 1<<12,   // Block series has a hash table of its values in the series link (hash!)
+	SER_SHARE= 1<<13,   // Frame word list is (or was) used by more frames (copy it before modification)
 };
 
 #define SERIES_SET_FLAG(s, f) (SERIES_FLAGS(s) |=  (f))
@@ -478,6 +479,8 @@ enum {
 #define IS_SLICE_SERIES(s)   SERIES_GET_FLAG(s, SER_SLICE)
 #define IS_FIXED_SIZE(s)     SERIES_GET_FLAG(s, SER_LOCK|SER_SIZEP)
 #define IS_FIXED_SIZE_VALUE(v) SERIES_GET_FLAG(VAL_SERIES(v), SER_LOCK|SER_SIZEP)
+#define SHARE_SERIES(s)      SERIES_SET_FLAG(s, SER_SHARE)
+#define IS_SHARED_SERIES(s)  SERIES_GET_FLAG(s, SER_SHARE)
 #define IS_HASH_SERIES(s)    SERIES_GET_FLAG(s, SER_HASH)
 #define SET_HASH_SERIES(s,h) ((s)->series = (h), SERIES_SET_FLAG(s, SER_HASH))
 // Drops the hash table of a modified series (it is rebuilt when needed again)
@@ -988,7 +991,7 @@ typedef struct Reb_Object {
 #define VAL_OBJ_WORDS(v)	FRM_WORD_SERIES((v)->data.object.frame)
 #define VAL_OBJ_WORD(v,n)	BLK_SKIP(VAL_OBJ_WORDS(v), (n))
 //#define VAL_OBJ_SPEC(v)		((v)->data.object.spec)
-#define	CLONE_OBJECT(c)		Copy_Series(c)
+#define	CLONE_OBJECT(c)		Clone_Frame(c)
 
 #define	VAL_MOD_FRAME(v)	((v)->data.object.frame)
 #define VAL_MOD_BODY(v)		((v)->data.object.body)

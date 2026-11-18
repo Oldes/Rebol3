@@ -143,12 +143,58 @@
 	return frame;
 }
 
+/***********************************************************************
+**
+*/  REBSER *Clone_Frame(REBSER *frame)
+/*
+**      Make a shallow copy of a frame. The copy uses the same word
+**      list, so it is marked as shared.
+**
+***********************************************************************/
+{
+	SHARE_SERIES(FRM_WORD_SERIES(frame));
+	return Copy_Series(frame);
+}
+
+
+/***********************************************************************
+**
+*/  void Unshare_Frame_Words(REBSER *frame)
+/*
+**      Give the frame its own copy of the word list, if the list is
+**      (or may be) used by other frames too. Must be called before any
+**      modification of the words (protection flags, new words), else
+**      the modification would be visible in all frames using the list.
+**      https://github.com/Oldes/Rebol3/issues/1333
+**
+**      The original list keeps the shared flag, because it is not known
+**      how many other frames still use it.
+**
+***********************************************************************/
+{
+	REBSER *words = FRM_WORD_SERIES(frame);
+	REBSER *hser;
+
+	if (!words || !IS_SHARED_SERIES(words)) return;
+
+	hser = words->series; // word index (see Find_Word_Index)
+	FRM_WORD_SERIES(frame) = Copy_Series(words);
+	words = FRM_WORD_SERIES(frame);
+	BARE_SERIES(words);
+	SERIES_CLR_FLAG(words, SER_SHARE);
+	if (hser) {
+		// Same words at the same positions, so the index stays valid.
+		words->series = Copy_Series(hser);
+		HASHED_WORDS(words->series) = HASHED_WORDS(hser);
+	}
+}
+
 
 /***********************************************************************
 **
 */  void Expand_Frame(REBSER *frame, REBCNT delta, REBCNT copy)
 /*
-**      Expand a frame. Copy words if flagged.
+**      Expand a frame. Copy words if flagged or if they are shared.
 **
 ***********************************************************************/
 {
@@ -158,7 +204,7 @@
 	BLK_TERM(frame);
 
 	// Expand or copy WORDS block:
-	if (copy) {
+	if (copy || IS_SHARED_SERIES(words)) {
 		REBSER *hser = words->series; // word index (see Find_Word_Index)
 		FRM_WORD_SERIES(frame) = Copy_Expand_Block(words, delta);
 		BARE_SERIES(FRM_WORD_SERIES(frame));
@@ -192,8 +238,13 @@
 **
 ***********************************************************************/
 {
-	REBSER *words = FRM_WORD_SERIES(frame);
+	REBSER *words;
 	REBVAL *value;
+
+	// The word list may be used by other frames (prototype, copies...),
+	// which must not get the new word: https://github.com/Oldes/Rebol3/issues/1333
+	Unshare_Frame_Words(frame);
+	words = FRM_WORD_SERIES(frame);
 
 	// Add to word list:
 	EXPAND_SERIES_TAIL(words, 1);
@@ -494,9 +545,16 @@
 	PG_Reb_Stats->Objects++;
 
 	if (!block || IS_END(block)) {
-		object = parent ? Copy_Block_Values(parent, 0, SERIES_TAIL(parent), TS_CLONE) : Make_Frame(0);
+		if (parent) {
+			// The new object uses the parent's word list:
+			SHARE_SERIES(FRM_WORD_SERIES(parent));
+			object = Copy_Block_Values(parent, 0, SERIES_TAIL(parent), TS_CLONE);
+		}
+		else object = Make_Frame(0);
 	} else {
 		words = Collect_Frame(BIND_ONLY, parent, block); // GC safe
+		// When there are no new words, the parent's word list is reused:
+		if (parent && words == FRM_WORD_SERIES(parent)) SHARE_SERIES(words);
 		object = Create_Frame(words, 0); // GC safe
 		if (parent) {
 #ifdef DEBUG

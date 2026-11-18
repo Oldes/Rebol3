@@ -3,6 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
+**  Copyright 2012-2026 Rebol Open Source Developers
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -472,6 +473,8 @@
 	// Copy stack frame args as the closure object (one extra at head)
 	frame = Copy_Values(BLK_SKIP(DS_Series, DS_ARG_BASE), SERIES_TAIL(VAL_FUNC_ARGS(func)));
 	SET_FRAME(BLK_HEAD(frame), 0, VAL_FUNC_ARGS(func));
+	// The frame uses the function's word list, so it must not be modified:
+	SHARE_SERIES(VAL_FUNC_ARGS(func));
 
 	// Rebind the body to the new context (deeply):
 	Rebind_Block(VAL_FUNC_ARGS(func), frame, BLK_HEAD(body), REBIND_TYPE);

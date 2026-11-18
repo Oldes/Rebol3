@@ -122,6 +122,7 @@ static REBOOL Query_Net_Field(REBVAL *port, REBVAL *word, REBVAL *ret, void *ctx
 	nsock->next = 0;
 
 	// Create a new port using ACCEPT request passed by sock->sock:
+	SHARE_SERIES(FRM_WORD_SERIES(port)); // the new port uses the same word list
 	port = Copy_Block(port, 0);
 	SET_PORT(DS_RETURN, port);	// Also for GC protect
 	SET_NONE(OFV(port, STD_PORT_DATA)); // just to be sure.
