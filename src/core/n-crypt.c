@@ -672,9 +672,10 @@ error:
 	DHM_CTX *dhm;
 	REBLEN   gx_len, gy_len;
 	size_t   olen = 0;
+	size_t   p_len;
 
-	if (refPublic && refSecret) {
-		// only one can be used
+	if (refPublic == refSecret) {
+		// exactly one of /public or /secret must be used
 		Trap0(RE_BAD_REFINES);
 	}
 
@@ -695,9 +696,11 @@ error:
 		gy_len = VAL_SERIES(gy)->tail - VAL_INDEX(gy);
 		err = mbedtls_mpi_read_binary(&dhm->MBEDTLS_PRIVATE(GY), VAL_BIN_AT(gy), gy_len);
 		if (err) goto error;
-		out = Make_Binary(gy_len-1);
+		// the secret may be as large as P (not as the peer's key!)
+		p_len = mbedtls_dhm_get_len(dhm);
+		out = Make_Binary((REBLEN)p_len);
 		// and derive the shared secret of these 2 public parts
-		err = mbedtls_dhm_calc_secret(dhm, BIN_DATA(out), gy_len, &olen, mbedtls_ctr_drbg_random, &ctr_drbg);
+		err = mbedtls_dhm_calc_secret(dhm, BIN_DATA(out), p_len, &olen, mbedtls_ctr_drbg_random, &ctr_drbg);
 		if (err) goto error;
 		BIN_LEN(out) = (REBLEN)olen;
 	}

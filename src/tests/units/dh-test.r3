@@ -53,6 +53,17 @@ C79E915C3277361FBFA587C6DC06FEDE0B7E57FEC0B68F96B3AD651D54264357
 
 	;- This secret can be used in symmetric encryption algorithms like AES
 
+--test-- "DH refinements"
+	;- exactly one of /public or /secret must be used
+	--assert error? try [dh k-Boban]
+	--assert error? try [dh/public/secret k-Boban pub-Alice]
+
+--test-- "DH secret with short or invalid peer's key"
+	;- peer's key shorter than P is valid (here G itself, so the secret is G^X = own public key)
+	--assert (dh/public k-Alice) = dh/secret k-Alice #{02}
+	;- empty peer's key is invalid (0 is out of range)
+	--assert none? dh/secret k-Alice #{}
+
 --test-- "DH keys release"
 
 	;- Once done with the exchange, the DH key must be released!
