@@ -144,6 +144,22 @@ static REBI64 ran_arr_cycle(void)
 	return ran_arr_next();
 }
 
+/***********************************************************************
+**
+*/	static REBU64 Random_U64(REBFLG secure)
+/*
+**		Return 64 random bits. The non-secure PRNG produces only 62 bits,
+**		so two outputs are combined.
+**
+***********************************************************************/
+{
+	REBU64 a, b;
+	if (secure) return (REBU64)Random_Int(TRUE);
+	a = (REBU64)ran_arr_next();
+	b = (REBU64)ran_arr_next();
+	return (a << 2) | (b & 3);
+}
+
 //#define MAX_U64 ((REBU64)(REBI64)-1) //defined in reb-c.h
 /***********************************************************************
 **
@@ -153,12 +169,18 @@ static REBI64 ran_arr_cycle(void)
 {
 	REBU64 s, m, u;
 	if (r == 0) return 0;
-	s = (r < 0) ? -r : r;
-	if (!secure && s > MM) Trap0(RE_OVERFLOW);
-	m = secure ? MAX_U64 - (MAX_U64 - s + 1) % s : MM - MM % s - 1; /* rejection limit */
-	do u = Random_Int(secure); while (u > m); /* get a random below the limit */
+	/* |r| in unsigned arithmetic, so it is valid also for the minimal integer */
+	s = (r < 0) ? (REBU64)0 - (REBU64)r : (REBU64)r;
+	if (!secure && s <= (REBU64)MM) {
+		/* 62-bit path (keeps sequences produced after RANDOM/SEED unchanged) */
+		m = (REBU64)MM - (REBU64)MM % s - 1;      /* rejection limit */
+		do u = (REBU64)ran_arr_next(); while (u > m);
+	} else {
+		m = MAX_U64 - (MAX_U64 - s + 1) % s;      /* rejection limit */
+		do u = Random_U64(secure); while (u > m);
+	}
 	u = u % s + 1;
-	return (r > 0) ? u : - (REBI64)u;
+	return (r > 0) ? (REBI64)u : (REBI64)((REBU64)0 - u);
 }
 
 /***********************************************************************
