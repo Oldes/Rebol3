@@ -412,7 +412,7 @@ static REBOOL Seed_Ctr_Drbg(void);
 		if (err != 0 
 			|| mbedtls_rsa_complete(rsa_ctx) != 0
 			|| mbedtls_rsa_check_privkey(rsa_ctx) != 0 
-		) return R_NONE;
+		) goto error;
 	} else {
 		err = mbedtls_rsa_import_raw(
 			rsa_ctx,
@@ -425,9 +425,14 @@ static REBOOL Seed_Ctr_Drbg(void);
 		if (err != 0 
 			|| mbedtls_rsa_complete(rsa_ctx) != 0
 			|| mbedtls_rsa_check_pubkey(rsa_ctx) != 0 
-		) return R_NONE;
+		) goto error;
 	}
 	return R_RET;
+
+error:
+	// release the handle (and its mbedtls data) now; don't wait for GC
+	Free_Hob(VAL_HANDLE_CTX(ret));
+	return R_NONE;
 #endif //INCLUDE_RSA
 }
 #ifdef unused 

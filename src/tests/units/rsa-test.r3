@@ -73,6 +73,13 @@ Rebol [
 		--assert [type] = words-of key-pri
 		--assert 'rsa = query key-pri 'type
 
+	--test-- "Init RSA keys with invalid values"
+		;invalid keys are released immediately and NONE is returned
+		--assert none? rsa-init #{00} ko/e
+		--assert none? rsa-init ko/n #{}
+		--assert none? rsa-init/private ko/n ko/e ko/d ko/q ko/q ;<-- p is wrong
+		--assert none? rsa-init/private ko/n ko/e ko/d ko/p #{00}
+
 	;-- note: you could use key-pri only as it contains the public properties too
 	;-- the key-pub is there just to simulate situation, where user have only the public parts
 	bin-data: #{41686F6A21}
