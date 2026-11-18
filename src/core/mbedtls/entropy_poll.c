@@ -72,10 +72,16 @@ int mbedtls_platform_entropy_poll(void *data, unsigned char *output, size_t len,
 
 /*
  * Test for Linux getrandom() support.
- * Since there is no wrapper in the libc yet, use the generic syscall wrapper
- * available in GNU libc and compatible libc's (eg uClibc).
+ * Use the generic syscall wrapper when sys/syscall.h is available.
  */
-#if ((defined(__linux__) && defined(__GLIBC__)) || defined(__midipix__))
+#if defined(__linux__) && defined(__has_include)
+#if __has_include(<sys/syscall.h>)
+#define MBEDTLS_PLATFORM_HAS_SYS_SYSCALL_H
+#endif
+#endif
+
+#if defined(MBEDTLS_PLATFORM_HAS_SYS_SYSCALL_H) || \
+    (defined(__linux__) && defined(__GLIBC__)) || defined(__midipix__)
 #include <unistd.h>
 #include <sys/syscall.h>
 #if defined(SYS_getrandom)
@@ -93,7 +99,9 @@ static int getrandom_wrapper(void *buf, size_t buflen, unsigned int flags)
     return (int) syscall(SYS_getrandom, buf, buflen, flags);
 }
 #endif /* SYS_getrandom */
-#endif /* __linux__ || __midipix__ */
+#endif /* sys/syscall.h or a known generic syscall wrapper */
+
+#undef MBEDTLS_PLATFORM_HAS_SYS_SYSCALL_H
 
 #if defined(__FreeBSD__) || defined(__DragonFly__)
 #include <sys/param.h>
@@ -147,6 +155,8 @@ static int sysctl_arnd_wrapper(unsigned char *buf, size_t buflen)
 
 #include <stdio.h>
 
+const char *mbedtls_platform_dev_random = MBEDTLS_PLATFORM_DEV_RANDOM;
+
 int mbedtls_platform_entropy_poll(void *data,
                                   unsigned char *output, size_t len, size_t *olen)
 {
@@ -180,7 +190,7 @@ int mbedtls_platform_entropy_poll(void *data,
 
     *olen = 0;
 
-    file = fopen("/dev/urandom", "rb");
+    file = fopen(mbedtls_platform_dev_random, "rb");
     if (file == NULL) {
         return MBEDTLS_ERR_ENTROPY_SOURCE_FAILED;
     }
