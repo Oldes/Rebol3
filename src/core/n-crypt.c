@@ -723,7 +723,8 @@ error:
 	return R_NONE;
 }
 
-#define ECP_GROUP_ID_VAL(v) (mbedtls_ecp_group_id)(VAL_WORD_CANON(v) - SYM_SECP192R1 + 1);
+// curve words are in the same order as mbedtls_ecp_group_id (see words.reb)
+#define ECP_GROUP_ID_VAL(v) ((mbedtls_ecp_group_id)(VAL_WORD_CANON(v) - SYM_SECP192R1 + 1))
 
 /***********************************************************************
 **
@@ -767,6 +768,9 @@ error:
 	}
 
 	if (ref_init) {
+		gid = ECP_GROUP_ID_VAL(val_curve);
+		if (gid < 1 || gid >= MBEDTLS_ECP_DP_MAX)
+			Trap_Arg(val_curve);
 		MAKE_HANDLE(val_handle, SYM_ECDH);
 	}
 	if (NOT_VALID_CONTEXT_HANDLE(val_handle, SYM_ECDH))
@@ -776,7 +780,6 @@ error:
 
 	if (ref_init) {
 		mbedtls_ecdh_init(ctx);
-		gid = ECP_GROUP_ID_VAL(val_curve);
 		err = mbedtls_ecdh_setup(ctx, gid);
 		if (err) goto error;
 		mbed = &ctx->MBEDTLS_PRIVATE(ctx).MBEDTLS_PRIVATE(mbed_ecdh);
@@ -864,7 +867,7 @@ error:
 
 	mbedtls_ecdsa_init(&ctx);
 
-	//err = mbedtls_ecdsa_genkey(&ctx, gid, Crypt_Random, &ctr_drbg);
+	//err = mbedtls_ecdsa_genkey(&ctx, gid, mbedtls_ctr_drbg_random, &ctr_drbg);
 	//if (err) goto exit;
 	err = mbedtls_ecp_group_load(&ctx.MBEDTLS_PRIVATE(grp), MBEDTLS_ECP_DP_SECP192R1);
 	//err = mbedtls_ecp_gen_keypair(&ctx.MBEDTLS_PRIVATE(grp), &ctx->d, &ctx->Q, f_rng, p_rng);

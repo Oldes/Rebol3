@@ -170,6 +170,10 @@ foreach ecurve system/catalog/elliptic-curves [
 
 ]
 
+--test-- "ECDH init with invalid curve"
+	--assert error? try [ecdh/init none 'foo]
+	--assert error? try [ecdh/init none 'sha256]
+
 
 
 
