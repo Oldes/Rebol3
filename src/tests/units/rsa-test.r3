@@ -86,6 +86,13 @@ Rebol [
 		--assert bin-data = rsa/decrypt key-pri secret 
 		--assert    none?   rsa/decrypt key-pub secret ;because private key is needed
 
+	--test-- "RSA decrypt with input of wrong length"
+		;ciphertext must have exactly the key size
+		--assert none? rsa/decrypt key-pri copy/part secret 10
+		--assert none? rsa/decrypt key-pri #{}
+		--assert none? rsa/decrypt key-pri join secret #{00}
+		--assert none? rsa/decrypt/oaep key-pri join secret #{00}
+
 	--test-- "RSA signing (PKCS#1 v1.5)"
 		;signing needs private parts in the key
 		--assert binary? sign-hash: rsa/sign key-pri bin-data
@@ -95,6 +102,12 @@ Rebol [
 		;you can use both keys for verification (only the public parts are used)
 		--assert rsa/verify key-pub bin-data sign-hash
 		--assert rsa/verify key-pri bin-data sign-hash
+
+	--test-- "RSA verify with signature of wrong length"
+		;signature must have exactly the key size
+		--assert not rsa/verify key-pub bin-data copy/part sign-hash 10
+		--assert not rsa/verify key-pub bin-data #{}
+		--assert not rsa/verify key-pub bin-data join sign-hash #{00}
 
 	;- With RSA-OAEP (Optimal Asymmetric Encryption Padding) Probabilistic Signature Scheme
 	--test-- "RSA-OAEP encrypt"

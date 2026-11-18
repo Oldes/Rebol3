@@ -549,12 +549,16 @@ static mbedtls_md_type_t Sym_To_MD_Type(REBCNT sym)
 	
 	mbedtls_rsa_set_padding(rsa, padding ? MBEDTLS_RSA_PKCS_V21 : MBEDTLS_RSA_PKCS_V15, md_alg);
 	if (refVerify) {
+		// signature must have exactly the key size (mbedtls reads that many bytes)
+		if (VAL_LEN(val_sign) != mbedtls_rsa_get_len(rsa)) return R_FALSE;
 		err = mbedtls_rsa_pkcs1_verify(rsa, md_alg, inBytes, inBinary, VAL_BIN_AT(val_sign));
 		return (err == 0) ? R_TRUE : R_FALSE;
 	}
 
 	//allocate new binary!
 	outBytes = (REBLEN)mbedtls_rsa_get_len(rsa);
+	// ciphertext must have exactly the key size (mbedtls reads that many bytes)
+	if (refDecrypt && inBytes != outBytes) return R_NONE;
 	data = Make_Binary(outBytes-1);
 	outBinary = BIN_DATA(data);
 
