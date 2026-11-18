@@ -149,8 +149,15 @@ foreach ecurve system/catalog/elliptic-curves [
 		--assert ecdsa/verify/curve pub-Alice hash signature ecurve
 		;- but the signature is not valid for any other key
 		k-Other: ecdh/init none ecurve
-		--assert not ecdsa/verify k-Other hash signature
+		--assert false = ecdsa/verify k-Other hash signature
 		release k-Other
+		;- invalid signatures are reported as FALSE
+		--assert false = ecdsa/verify k-Alice checksum "other" 'sha256 signature
+		--assert false = ecdsa/verify k-Alice hash join signature #{00} ;; trailing data
+		--assert false = ecdsa/verify k-Alice hash #{0102}              ;; not ASN1
+		--assert false = ecdsa/verify k-Alice hash #{}
+		;- /sign and /verify cannot be used together
+		--assert error? try [ecdsa/sign/verify k-Alice hash signature]
 		;- raw public key cannot be used for signing
 		--assert error? try [ecdsa/sign/curve pub-Alice hash ecurve]
 

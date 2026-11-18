@@ -560,7 +560,7 @@ static mbedtls_md_type_t Sym_To_MD_Type(REBCNT sym)
 		md_alg = Sym_To_MD_Type(hashSym);
 		if (md_alg == MBEDTLS_MD_NONE) Trap_Arg(val_hash);
 	}
-	
+
 	mbedtls_rsa_set_padding(rsa, padding ? MBEDTLS_RSA_PKCS_V21 : MBEDTLS_RSA_PKCS_V15, md_alg);
 	if (refVerify) {
 		// signature must have exactly the key size (mbedtls reads that many bytes)
@@ -918,6 +918,7 @@ error:
 	mbedtls_ecdh_context_mbed *mbed;
 	mbedtls_mpi r, s;
 
+	if (ref_sign && ref_verify) Trap0(RE_BAD_REFINES);
 	if (!ref_sign && !ref_verify) ref_sign = TRUE; //using SIGN as a default action
 
 	if (IS_BINARY(val_key)) {
@@ -985,17 +986,17 @@ error:
 		const unsigned char *end = VAL_BIN_TAIL(val_sign);
 		mbedtls_mpi_init(&r);
 		mbedtls_mpi_init(&s);
-		err = mbedtls_asn1_get_tag(&p, end, &len, MBEDTLS_ASN1_CONSTRUCTED | MBEDTLS_ASN1_SEQUENCE);
-		if (err || p + len != end) goto done;
-		if ((err = mbedtls_asn1_get_mpi(&p, end, &r)) != 0 ||
-			(err = mbedtls_asn1_get_mpi(&p, end, &s)) != 0) {
-			goto done;
-		}
-		err = mbedtls_ecdsa_verify(
-			&mbed->MBEDTLS_PRIVATE(grp),
-			VAL_BIN_AT(val_hash), VAL_LEN(val_hash),
-			&mbed->MBEDTLS_PRIVATE(Q), &r, &s);
-		if (err) goto done;
+		SET_FALSE(D_RET); // any failure below means an invalid signature
+		if (mbedtls_asn1_get_tag(&p, end, &len, MBEDTLS_ASN1_CONSTRUCTED | MBEDTLS_ASN1_SEQUENCE) != 0
+			|| p + len != end
+			|| mbedtls_asn1_get_mpi(&p, end, &r) != 0
+			|| mbedtls_asn1_get_mpi(&p, end, &s) != 0
+			|| p != end
+			|| mbedtls_ecdsa_verify(
+				&mbed->MBEDTLS_PRIVATE(grp),
+				VAL_BIN_AT(val_hash), VAL_LEN(val_hash),
+				&mbed->MBEDTLS_PRIVATE(Q), &r, &s) != 0
+		) goto done;
 		SET_TRUE(D_RET);
 	}
 
