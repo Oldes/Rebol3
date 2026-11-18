@@ -307,8 +307,18 @@ static void Unmark_Protected(REBVAL *value);
 
 	if (IS_BLOCK(val)) {
 		if (D_REF(3)) { // /words
-			for (val = VAL_BLK_DATA(val); NOT_END(val); val++)
-				Protect_Word_Value(val, flags);  // will unmark if deep
+			REBVAL *val2;
+			for (val = VAL_BLK_DATA(val); NOT_END(val); val++) {
+ 				Protect_Word_Value(val, flags);  // will unmark if deep
+				// /words/values - protect also the values of the words
+				// (with /deep it was already done by Protect_Word_Value)
+				// https://github.com/Oldes/Rebol3/issues/2474
+				if (D_REF(4) && !GET_FLAG(flags, PROT_DEEP)
+					&& (IS_WORD(val) || IS_PATH(val))
+				) {
+					Protect_Value(val2 = Get_Any_Var(val), flags);
+				}
+			}
 			return R_ARG1;
 		}
 		if (D_REF(4)) { // /values

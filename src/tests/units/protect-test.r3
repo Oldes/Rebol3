@@ -319,4 +319,29 @@ Rebol [
 		--assert not error? pc 2
 ===end-group===
 
+===start-group=== "PROTECT/words/values"
+	--test-- "protect/words/values"
+	;@@ https://github.com/Oldes/Rebol3/issues/2474
+		pwv-a: [1 2 3]  pwv-b: "abc"
+		protect/words/values [pwv-a pwv-b]
+		--assert all [error? e: try [pwv-a: 1] e/id = 'locked-word]
+		--assert all [error? e: try [pwv-b: 1] e/id = 'locked-word]
+		--assert all [error? e: try [append pwv-a 4] e/id = 'protected]
+		--assert all [error? e: try [append pwv-b "d"] e/id = 'protected]
+		--assert pwv-a = [1 2 3]
+		--assert pwv-b = "abc"
+	--test-- "unprotect/words/values"
+		unprotect/words/values [pwv-a pwv-b]
+		--assert not error? try [append pwv-a 4]
+		--assert not error? try [append pwv-b "d"]
+		--assert not error? try [pwv-a: 1 pwv-b: 2]
+	--test-- "protect/words/values with a path"
+		pwv-o: object [blk: [1]]
+		protect/words/values [pwv-o/blk]
+		--assert all [error? e: try [pwv-o/blk: 2] e/id = 'locked-word]
+		--assert all [error? e: try [append pwv-o/blk 2] e/id = 'protected]
+		unprotect/words/values [pwv-o/blk]
+		--assert not error? try [append pwv-o/blk 2]
+===end-group===
+
 ~~~end-file~~~
