@@ -21,7 +21,7 @@
 ************************************************************************
 **
 **  Module:  n-crypt.c
-**  Summary: native functions for data sets
+**  Summary: native functions for cryptography
 **  Section: natives
 **  Author:  Oldes, Cyphre
 **  Notes:
@@ -98,6 +98,7 @@ static REBOOL Seed_Ctr_Drbg(void);
 		(const unsigned char *)pers, strlen(pers)));
 	return ctr_drbg_seeded;
 }
+
 
 /***********************************************************************
 **
@@ -383,6 +384,7 @@ static REBOOL Seed_Ctr_Drbg(void);
 {
 #ifndef INCLUDE_RSA
 	Trap0(RE_FEATURE_NA);
+	return R_NONE; // just to silent a warning
 #else
 	REBVAL *n       = D_ARG(1);
 	REBVAL *e       = D_ARG(2);
@@ -435,27 +437,6 @@ error:
 	return R_NONE;
 #endif //INCLUDE_RSA
 }
-#ifdef unused 
-static int myrand(void *rng_state, unsigned char *output, size_t len)
-{
-#if !defined(__OpenBSD__) && !defined(__NetBSD__)
-	size_t i;
-
-	if (rng_state != NULL)
-		rng_state = NULL;
-
-	for (i = 0; i < len; ++i)
-		output[i] = rand();
-#else
-	if (rng_state != NULL)
-		rng_state = NULL;
-
-	arc4random_buf(output, len);
-#endif /* !OpenBSD && !NetBSD */
-
-	return(0);
-}
-#endif
 
 /* Maps a Rebol hash word to an mbedtls MD type; MBEDTLS_MD_NONE if unsupported */
 static mbedtls_md_type_t Sym_To_MD_Type(REBCNT sym)
@@ -494,6 +475,7 @@ static mbedtls_md_type_t Sym_To_MD_Type(REBCNT sym)
 {
 #ifndef INCLUDE_RSA
 	Trap0(RE_FEATURE_NA);
+	return R_NONE; // just to silent a warning
 #else
 	REBVAL *key         = D_ARG(1);
 	REBVAL *val_data    = D_ARG(2);
@@ -540,7 +522,6 @@ static mbedtls_md_type_t Sym_To_MD_Type(REBCNT sym)
 		return R_NONE;
 	}
 
-	data     = VAL_SERIES(val_data);
 	inBinary = VAL_BIN_AT(val_data);
 	inBytes  = VAL_LEN(val_data);
 
@@ -554,7 +535,7 @@ static mbedtls_md_type_t Sym_To_MD_Type(REBCNT sym)
 			hashSym = IS_NONE(val_hash) ? SYM_SHA256 : VAL_WORD_CANON(val_hash);
 			md_alg = Sym_To_MD_Type(hashSym);
 			if (md_alg == MBEDTLS_MD_NONE) Trap_Arg(val_hash);
-			// fails if the digest is excluded from this build
+			// count message digest off the input data (fails if excluded from this build)
 			if (!Message_Digest(hash, inBinary, inBytes, hashSym, &inBytes))
 				Trap_Arg(val_hash);
 			inBinary = hash;
@@ -936,6 +917,7 @@ error:
 			Trap_Arg(val_curve);
 
 		ctx_ecdh = (ECDH_CTX *)malloc(sizeof(ECDH_CTX));
+		if (ctx_ecdh == NULL) return R_NONE;
 		mbedtls_ecdh_init(ctx_ecdh);
 		err = mbedtls_ecdh_setup(ctx_ecdh, gid);
 		if (err) goto failed_init;
@@ -1016,6 +998,3 @@ done:
 	return err ? R_NONE : R_RET;
 
 }
-
-
-
