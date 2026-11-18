@@ -480,20 +480,6 @@ void Trace_Arg(REBINT num, REBVAL *arg, REBVAL *path)
 	// .setval - non-zero for SET-PATH (set to zero after SET is done)
 	// .orig - original path for error messages
 
-#ifdef WIP
-
-	if (pvs->setfrm && IS_WORD(pvs->path-1)
-		&& (IS_DATE(pvs->value) || IS_TIME(pvs->value))
-		//&& pvs->setfrm->series
-	) {
-		REBCNT index = Find_Word_Index(pvs->setfrm, VAL_WORD_SYM(pvs->path-1), FALSE);
-		if (index > 0 && VAL_PROTECTED(FRM_WORD(pvs->setfrm, index))) {
-			SET_END(pvs->path);
-			VAL_TYPE(pvs->orig) = REB_PATH;
-			Trap1(RE_LOCKED_WORD, pvs->orig);
-		}
-	}
-#endif
 	switch (func(pvs)) {
 	case PE_OK:
 		break;
@@ -563,6 +549,11 @@ void Trace_Arg(REBINT num, REBVAL *arg, REBVAL *path)
 		if (IS_UNSET(pvs.value)) Trap1(RE_NO_VALUE, pvs.path);
 		if (pvs.setval) {
 			pvs.setfrm = IS_OBJECT(pvs.value) ? VAL_OBJ_FRAME(pvs.value) : VAL_WORD_FRAME(pvs.path);
+			// Setting a path like `d/year:` modifies the variable itself:
+			// https://github.com/Oldes/Rebol3/issues/2562
+			if (IS_PATH_SET_INPLACE(pvs.value) && VAL_WORD_INDEX(pvs.path) > 0
+				&& VAL_PROTECTED(FRM_WORD(VAL_WORD_FRAME(pvs.path), VAL_WORD_INDEX(pvs.path)))
+			) Trap1(RE_LOCKED_WORD, pvs.orig);
 		}
 	} else pvs.value = pvs.path; //Trap2(RE_INVALID_PATH, pvs.orig, pvs.path);
 

@@ -376,8 +376,11 @@ static REBSER *Trim_Object(REBSER *obj)
 	if (n == 0)
 		return PE_BAD_SELECT;
 
-	if (pvs->setval && IS_END(pvs->path+1) && VAL_PROTECTED(VAL_FRM_WORD(pvs->value, n)))
-		Trap1(RE_LOCKED_WORD, pvs->select);
+	// The field is modified when it is the last one in the path, or when its value
+	// is modified in place (like: obj/date/year: 2000): https://github.com/Oldes/Rebol3/issues/2562
+	if (pvs->setval && VAL_PROTECTED(VAL_FRM_WORD(pvs->value, n))
+		&& (IS_END(pvs->path+1) || IS_PATH_SET_INPLACE(VAL_OBJ_VALUE(pvs->value, n)))
+	) Trap1(RE_LOCKED_WORD, pvs->select);
 
 	pvs->value = VAL_OBJ_VALUES(pvs->value) + n;
 	return PE_SET;

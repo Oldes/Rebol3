@@ -375,4 +375,42 @@ Rebol [
 		--assert [a c] = words-of po
 ===end-group===
 
+===start-group=== "Setting a path in a protected variable"
+	;@@ https://github.com/Oldes/Rebol3/issues/2562
+	--test-- "protected date"
+		pd-d: 1-Jan-2020
+		protect 'pd-d
+		--assert all [error? e: try [pd-d/year: 2200] e/id = 'locked-word]
+		--assert all [error? e: try [pd-d/time: 10:00] e/id = 'locked-word]
+		--assert all [error? e: try [set 'pd-d/month 2] e/id = 'locked-word]
+		--assert pd-d = 1-Jan-2020
+		--assert pd-d/year = 2020 ;; reading is fine
+		unprotect 'pd-d
+		--assert not error? try [pd-d/year: 2021]
+		--assert pd-d = 1-Jan-2021
+	--test-- "protected time, pair and tuple"
+		pd-t: 1:2:3  pd-p: 1x2  pd-c: 1.2.3
+		protect/words [pd-t pd-p pd-c]
+		--assert all [error? e: try [pd-t/hour: 5] e/id = 'locked-word]
+		--assert all [error? e: try [pd-p/x: 5] e/id = 'locked-word]
+		--assert all [error? e: try [pd-c/1: 5] e/id = 'locked-word]
+		--assert all [pd-t = 1:2:3 pd-p = 1x2 pd-c = 1.2.3]
+		unprotect/words [pd-t pd-p pd-c]
+	--test-- "protected object field"
+		pd-o: object [d: 1-Jan-2020 sub: object [d: 1-Jan-2020]]
+		protect in pd-o 'd
+		--assert all [error? e: try [pd-o/d/year: 2200] e/id = 'locked-word]
+		--assert pd-o/d = 1-Jan-2020
+		protect in pd-o 'sub
+		;; the object in a protected field is not protected:
+		--assert not error? try [pd-o/sub/d/year: 2021]
+		--assert pd-o/sub/d = 1-Jan-2021
+		protect in pd-o/sub 'd
+		--assert all [error? e: try [pd-o/sub/d/year: 2200] e/id = 'locked-word]
+	--test-- "date in protected block"
+		pd-b: protect [1-Jan-2020]
+		--assert all [error? e: try [pd-b/1/year: 2200] e/id = 'protected]
+		--assert pd-b/1 = 1-Jan-2020
+===end-group===
+
 ~~~end-file~~~

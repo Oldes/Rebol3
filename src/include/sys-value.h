@@ -99,6 +99,9 @@ enum {
 
 #define	IS_SET(v)			(VAL_TYPE(v) > REB_UNSET)
 #define IS_SCALAR(v)		(VAL_TYPE(v) <= REB_DATE)
+// Values which are modified in place by setting a path (like: date/year: 2000),
+// so the variable holding them is modified too:
+#define IS_PATH_SET_INPLACE(v) (IS_DATE(v) || IS_TIME(v) || IS_PAIR(v) || IS_TUPLE(v) || IS_LOGIC(v) || IS_EVENT(v))
 
 // When key is removed from map, it has OPTS_HIDE flag
 #define VAL_MAP_REMOVED(val) (VAL_GET_OPT(val, OPTS_HIDE)) 
