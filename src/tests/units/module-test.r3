@@ -1393,5 +1393,53 @@ not a script
 
 ===end-group===
 
+===start-group=== "Protected header of a registered module"
+	--test-- "header fields used by the module system are protected"
+	;@@ https://github.com/Oldes/Rebol-issues/issues/1767
+		m: module [title: "Test 1767" name: test-1767 version: 1.0.0][export test-1767-value: 1]
+		o: spec-of m
+		;; not protected until the module is registered
+		--assert not error? try [o/version: 1.0.1]
+		--assert same? m import (m)
+		--assert same? o spec-of m
+		--assert all [error? e: try [o/name: 'spoof]       e/id = 'locked-word]
+		--assert all [error? e: try [o/version: 9.9.9]     e/id = 'locked-word]
+		--assert all [error? e: try [o/checksum: #{00}]    e/id = 'locked-word]
+		--assert all [error? e: try [o/options: [private]] e/id = 'locked-word]
+		--assert all [error? e: try [o/exports: []]        e/id = 'locked-word]
+		--assert all [error? e: try [o/type: 'script]      e/id = 'locked-word]
+		--assert all [error? e: try [append o/exports 'x]  e/id = 'protected]
+		--assert all [
+			'test-1767 = query m 'name
+			1.0.1 = query m 'version
+			[test-1767-value] = query m 'exports
+			same? m select system/modules 'test-1767
+		]
+	--test-- "other header fields are not protected"
+		--assert not error? try [o/title: "New title"]
+		--assert "New title" = title-of m
+		--assert not error? try [o/author: "Somebody"]
+	--test-- "unregistered headers are not affected"
+		;; headers share the word list of the standard header
+		m2: module [title: "Test 1767b"][]
+		o2: spec-of m2
+		--assert not error? try [o2/name: 'any-name]
+		--assert not error? try [o2/version: 2.0.0]
+		--assert not protected? in system/standard/header 'name
+		--assert not protected? in system/standard/header 'options
+	--test-- "registered module with protected header can be imported again"
+		--assert same? m import 'test-1767
+		--assert same? m import (m)
+		--assert same? m import/isolate 'test-1767
+		--assert none? query m 'options
+	--test-- "registered modules of the system are protected"
+		--assert all [
+			module? help: select system/modules 'help
+			error? try [put spec-of help 'name 'spoof]
+			'help = query help 'name
+		]
+
+===end-group===
+
 ~~~end-file~~~
 

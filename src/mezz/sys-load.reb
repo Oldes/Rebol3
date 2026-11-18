@@ -111,6 +111,26 @@ mixin?: func [
 	]
 ]
 
+protect-header: func [
+	"Protects header fields of a registered module, which are used by the module system."
+
+	header [object!]
+	"Header of the module (the real one, not a copy)"
+
+	/local word
+][
+	; Without it, anybody could for example rename a registered module,
+	; change its version, checksum or exports. Other fields are left as is.
+
+	foreach name [name type version options checksum exports needs] [
+		if word: in header name [
+			protect/deep word
+		]
+	]
+
+	header
+]
+
 import-pairs: function [
 	"Validates a list of a module's exports to import; returns [alias export-word ...]."
 
@@ -608,6 +628,10 @@ load-boot-exts: function [
 			;
 			header/name [
 				put system/modules header/name module
+
+				if module? module [
+					protect-header header
+				]
 			]
 		]
 
@@ -1691,6 +1715,10 @@ load-module: function/with [
 			override?
 		][
 			put system/modules name module
+
+			if module? module [
+				protect-header module-header
+			]
 
 			case/all [
 				all [
