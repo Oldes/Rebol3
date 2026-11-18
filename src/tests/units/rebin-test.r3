@@ -3,7 +3,7 @@ Rebol [
 	Author:  "Oldes"
 	File: 	 %rebin-test.r3
 	Tabs:	 4
-	Needs:   [%../quick-test-module.r3]
+	Needs:   [%../quick-test-module.r3 %../fuzz-module.r3]
 ]
 
 ~~~start-file~~~ "REBIN"
@@ -644,6 +644,32 @@ leb: func [n [integer!] /local b][b: binary 16  binary/write b [ENCODEDU64 :n]  
 		]
 		recycle
 		--assert [a] == decode 'rebin rb [#{01 0161  01} word! #{00}]
+===end-group===
+
+===start-group=== "Rebin fuzz"
+	--test-- "damaged data are refused, never crash"
+		;; one valid input with each supported datatype (and the new-line flag)
+		seeds: reduce [
+			rb [#{0004} unset! none! logic! #{01} logic!/line #{00}]
+			rb [#{0006} integer! #{7F} integer! #{FFFFFFFFFFFFFFFFFF01} decimal! #{000000000000F83F} percent! #{000000000000E03F} char! #{E102} pair! #{0000803F00000040}]
+			rb [#{0004} tuple! #{03010203} time! #{8094EBDC03} money! #{FF800000000000000000000F} date!/line #{CF0F 0C 1F 01 8094EBDC03 DE}]
+			rb [#{0008} binary! #{03010203} string! #{04C48D6175} file! #{0161} email! #{03614062} ref! #{03726566} url! #{03612F62} tag! #{0162} bitset! #{01 02 FF00}]
+			rb [#{0004} datatype! (rebin-types/integer!) typeset! #{8001} image! #{0201 FF00008000FF00FF} vector! #{04 02 04 01020304}]
+			rb [#{03 0161 0162 0141  06} word! #{00} set-word! #{01} get-word! #{02} lit-word! #{00} refinement! #{01} issue!/line #{02}]
+			rb [#{02 0161 0162  05}
+				block! #{02} word! #{00} paren! #{01} integer! #{01}
+				path! #{02} word! #{00} word! #{01}
+				set-path! #{02} word! #{00} integer! #{02}
+				hash! #{02} word! #{00} integer! #{01}
+				map! #{04} word! #{00} integer! #{01} string! #{0178} block! #{00}
+			]
+		]
+		foreach s seeds [--assert block? decode 'rebin s] ;; seeds must be valid
+		r: fuzz/count/keep func [b][mold decode 'rebin b] seeds 20000 8
+		--assert r/inputs = 20000
+		--assert r/ok > 1000          ;; many damaged inputs are still valid
+		--assert r/errors/bad-media > 1000
+		--assert [bad-media] = keys-of r/errors
 ===end-group===
 
 ] ;; end of codec check
