@@ -210,6 +210,13 @@ rebol-cmd: func[cmd][
 	]
 	delete %probe-args.r3
 
+	--test-- "call/info with a nonexistent command"
+		;@@ https://github.com/Oldes/Rebol3/issues/2779
+		info: call/info "nonexistent-command-2779"
+		--assert object? info
+		--assert 0 = info/id
+		--assert string? info/error
+
 ===end-group===
 
 

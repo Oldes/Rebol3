@@ -927,7 +927,7 @@ done:
 #define FLAG_INFO 8
 
 	STARTUPINFO			si;
-	PROCESS_INFORMATION	pi;
+	PROCESS_INFORMATION	pi = {0};
 //	REBOOL				is_NT;
 //	OSVERSIONINFO		info;
 	REBINT				result = -1;
@@ -1143,7 +1143,7 @@ done:
 
 	OS_Free(cmd);
 
-	if (pid != NULL) *pid = pi.dwProcessId;
+	if (result && pid != NULL) *pid = pi.dwProcessId;
 
 	if (hInputRead != NULL)
 		CloseHandle(hInputRead);
