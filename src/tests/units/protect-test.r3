@@ -344,4 +344,35 @@ Rebol [
 		--assert not error? try [append pwv-o/blk 2]
 ===end-group===
 
+===start-group=== "BIND/new and BIND/set with protected or hidden words"
+	--test-- "bind/new and bind/set to protected object"
+	;@@ https://github.com/Oldes/Rebol3/issues/1957
+		po: context [x: 1 protect self]
+		--assert all [error? e: try [bind/set [a:] po] e/id = 'protected]
+		--assert all [error? e: try [bind/new [b] po] e/id = 'protected]
+		--assert all [error? e: try [bind/new 'c po] e/id = 'protected]
+		--assert all [error? e: try [bind/new/only [d [e]] po] e/id = 'protected]
+		--assert [x] = words-of po
+		;; binding to existing words is still allowed:
+		--assert block? bind/new [x] po
+		--assert block? bind/set [x:] po
+		--assert word? bind/new 'x po
+	--test-- "bind/new and bind/set to object with hidden word"
+	;@@ https://github.com/Oldes/Rebol3/issues/1374
+		po: object [a: 1 b: 2 protect/hide 'b]
+		--assert 2 = length? po
+		blk: bind/new [b: 0] po
+		--assert not same? po context? first blk
+		--assert 2 = length? po
+		blk: bind/set [b: 0] po
+		--assert not same? po context? first blk
+		--assert 2 = length? po
+		--assert all [error? e: try [bind/new 'b po] e/id = 'hidden]
+		--assert 2 = length? po
+		--assert [a] = words-of po
+		;; other words are still added:
+		bind/new [c] po
+		--assert [a c] = words-of po
+===end-group===
+
 ~~~end-file~~~

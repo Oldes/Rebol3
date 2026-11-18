@@ -379,8 +379,13 @@ static REBYTE arg_to_byte(REBVAL* val) {
 			return R_ARG1;
 		}
 		if (!Bind_Word(frame, arg)) {
-			if (flags & BIND_ALL)
-				Append_Frame(frame, arg, 0); // not in context, so add it.
+			if (flags & BIND_ALL) {
+				// A hidden word must not be added again: https://github.com/Oldes/Rebol3/issues/1374
+				if (Find_Word_Index(frame, VAL_WORD_SYM(arg), TRUE)) Trap0(RE_HIDDEN);
+				// Nor may a word be added to a protected context: https://github.com/Oldes/Rebol3/issues/1957
+				TRAP_PROTECT(frame);
+ 				Append_Frame(frame, arg, 0); // not in context, so add it.
+			}
 			else
 				Trap1(RE_NOT_IN_CONTEXT, arg);
 		}

@@ -89,6 +89,9 @@
 
 #define CHECK_BIND_TABLE
 
+// Bind table mark of a hidden word (see Bind_Block)
+#define BIND_HIDDEN ((REBCNT)(-2))
+
 // Word lists longer than this get a hash index for word lookup.
 // The index is kept in the word list's `series` field (like map's hashes)
 // and the hash series' `size` field holds the number of words indexed.
@@ -872,7 +875,7 @@
 
 /***********************************************************************
 **
-*/  static void Bind_Block_Words(REBSER *frame, REBVAL *value, REBCNT mode)
+*/  static REBVAL *Bind_Block_Words(REBSER *frame, REBVAL *value, REBCNT mode)
 /*
 **      Inner loop of bind block. Modes are:
 **
@@ -885,18 +888,28 @@
 **      bind prior instances of the word before the set-word. That is
 **      forward references are not allowed.
 **
+**      Hidden words are neither bound, nor added again.
+**      Words are not added to a protected frame. The first such word
+**      is returned (else NULL), so the caller can throw an error once
+**      the binding table is released.
+**
 ***********************************************************************/
 {
 	REBINT *binds = WORDS_HEAD(Bind_Table); // GC safe to do here
 	REBCNT n;
 	REBFLG selfish = !IS_SELFLESS(frame);
 	REBVAL *val;
+	REBVAL *rejected = NULL;
+	REBVAL *tmp;
 
 	for (; NOT_END(value); value++) {
 		if (ANY_WORD(value)) {
 			//Print("Word: %s", Get_Sym_Name(VAL_WORD_CANON(value)));
 			// Is the word found in this frame?
 			if (NZ(n = binds[VAL_WORD_CANON(value)])) {
+				// Hidden word: not visible, but it must not be added again
+				// https://github.com/Oldes/Rebol3/issues/1374
+				if (n == BIND_HIDDEN) continue;
 				if (n == NO_RESULT) n = 0; // SELF word
 				ASSERT1(n < SERIES_TAIL(frame), RP_BIND_BOUNDS);
 				// Word is in frame, bind it:
@@ -910,6 +923,11 @@
 			else {
 				// Word is not in frame. Add it if option is specified:
 				if ((mode & BIND_ALL) || ((mode & BIND_SET) && (IS_SET_WORD(value)))) {
+					// https://github.com/Oldes/Rebol3/issues/1957
+					if (IS_PROTECT_SERIES(frame)) {
+						if (!rejected) rejected = value;
+						continue;
+					}
 					Append_Frame(frame, value, 0);
 					binds[VAL_WORD_CANON(value)] = VAL_WORD_INDEX(value);
 				}
@@ -918,17 +936,20 @@
 		else if ((ANY_BLOCK_OR_MAP(value)) && (mode & BIND_DEEP)) {
 			// Recursion check: (variation of: Find_Same_Block(MOLD_LOOP, value))
 			for (val = BLK_HEAD(MOLD_LOOP); NOT_END(val); val++) {
-				if (VAL_SERIES(val) == VAL_SERIES(value)) return;
+				if (VAL_SERIES(val) == VAL_SERIES(value)) return rejected;
 			}
 			val = Append_Value(MOLD_LOOP);
 			Set_Block(val, VAL_SERIES(value));
-			Bind_Block_Words(frame, VAL_BLK_DATA(value), mode);
+			tmp = Bind_Block_Words(frame, VAL_BLK_DATA(value), mode);
+			if (!rejected) rejected = tmp;
 			Remove_Last(MOLD_LOOP);
 		}
-		else if ((IS_FUNCTION(value) || IS_CLOSURE(value)) && (mode & BIND_FUNC))
-			Bind_Block_Words(frame, BLK_HEAD(VAL_FUNC_BODY(value)), mode);
+		else if ((IS_FUNCTION(value) || IS_CLOSURE(value)) && (mode & BIND_FUNC)) {
+			tmp = Bind_Block_Words(frame, BLK_HEAD(VAL_FUNC_BODY(value)), mode);
+			if (!rejected) rejected = tmp;
+		}
 	}
-	
+	return rejected;
 }
 
 
@@ -947,6 +968,7 @@
 ***********************************************************************/
 {
 	REBVAL *words;
+	REBVAL *rejected;
 	REBCNT index;
 	REBINT *binds = WORDS_HEAD(Bind_Table); // GC safe to do here
 
@@ -963,15 +985,20 @@
 		words = FRM_WORD(frame, index);
 		if (!VAL_GET_OPT(words, OPTS_HIDE))
 			binds[VAL_BIND_CANON(words)] = index;
+		else if (!binds[VAL_BIND_CANON(words)])
+			binds[VAL_BIND_CANON(words)] = (REBINT)BIND_HIDDEN;
 	}
 
-	Bind_Block_Words(frame, block, mode);
+	rejected = Bind_Block_Words(frame, block, mode);
 
 	// Reset binding table:
 	for (words = FRM_WORDS(frame)+1; NOT_END(words); words++)
 		binds[VAL_BIND_CANON(words)] = 0;
 
 	CHECK_BIND_TABLE;
+
+	// A word could not be added to a protected frame:
+	if (rejected) Trap0(RE_PROTECTED);
 }
 
 
