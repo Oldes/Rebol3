@@ -974,6 +974,7 @@ more_get_path:
 	REBVAL *word = 0;
 	REBINT ftype;
 	REBCNT dsf;
+	REBCNT start = index; // start of expression (used as NEAR position of infix ops)
 
 	//CHECK_MEMORY(1);
 	CHECK_STACK(&value);
@@ -1069,7 +1070,7 @@ eval_func2:
 		if (!word) word = ROOT_NONAME;
 		if (DSP <= 0 || index == 0) Trap1(RE_NO_OP_ARG, word);
 		ftype = VAL_GET_EXT(value) - REB_NATIVE;
-		dsf = Push_Func(TRUE, block, index, VAL_WORD_SYM(word), value); // TOS has first arg
+		dsf = Push_Func(TRUE, block, start, VAL_WORD_SYM(word), value); // TOS has first arg
 		DS_PUSH(DS_VALUE(dsf)); // Copy prior to first argument
 		goto eval_func;
 
