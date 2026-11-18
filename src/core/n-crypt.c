@@ -438,21 +438,20 @@ static int myrand(void *rng_state, unsigned char *output, size_t len)
 }
 #endif
 
-/* This table is used to convert Rebol symbol values (words) to MbedTLS (3.5.1) MD types */
-static const REBYTE Map_Sym_to_MD_type[] = {
-	0x03, /* SYM_MD5        The MD5 message digest.        */
-	0x05, /* SYM_SHA1       The SHA-1 message digest.      */
-	0x08, /* SYM_SHA224     The SHA-224 message digest.    */
-	0x09, /* SYM_SHA256     The SHA-256 message digest.    */
-	0x0a, /* SYM_SHA384     The SHA-384 message digest.    */
-	0x0b, /* SYM_SHA512     The SHA-512 message digest.    */
-	0x04, /* SYM_RIPEMD-160 The RIPEMD-160 message digest. */
-	// Unused in Rebol yet:
-//	0x10, /* SYM_ The SHA3-224 message digest. */
-//	0x11, /* SYM_ The SHA3-256 message digest. */
-//	0x12, /* SYM_ The SHA3-384 message digest. */
-//	0x13  /* SYM_ The SHA3-512 message digest. */
-};
+/* Maps a Rebol hash word to an mbedtls MD type; MBEDTLS_MD_NONE if unsupported */
+static mbedtls_md_type_t Sym_To_MD_Type(REBCNT sym)
+{
+	switch (sym) {
+	case SYM_MD5:       return MBEDTLS_MD_MD5;
+	case SYM_SHA1:      return MBEDTLS_MD_SHA1;
+	case SYM_SHA224:    return MBEDTLS_MD_SHA224;
+	case SYM_SHA256:    return MBEDTLS_MD_SHA256;
+	case SYM_SHA384:    return MBEDTLS_MD_SHA384;
+	case SYM_SHA512:    return MBEDTLS_MD_SHA512;
+	case SYM_RIPEMD160: return MBEDTLS_MD_RIPEMD160;
+	default:            return MBEDTLS_MD_NONE;
+	}
+}
 /***********************************************************************
 **
 */	REBNATIVE(rsa)
@@ -534,21 +533,18 @@ static const REBYTE Map_Sym_to_MD_type[] = {
 		else {
 			// if /hash was not used, make default to SHA256
 			hashSym = IS_NONE(val_hash) ? SYM_SHA256 : VAL_WORD_CANON(val_hash);
-			// count message digest off the input data
-			if (Message_Digest(hash, inBinary, inBytes, hashSym, &inBytes)) {
-				// map Rebol word to mbedtls_md_type_t
-				// no need to test a range as only known will pass above run
-				md_alg = Map_Sym_to_MD_type[hashSym - SYM_MD5];
-				inBinary = hash;
-			}
-			else {
-				return R_NONE;
-			}
+			md_alg = Sym_To_MD_Type(hashSym);
+			if (md_alg == MBEDTLS_MD_NONE) Trap_Arg(val_hash);
+			// fails if the digest is excluded from this build
+			if (!Message_Digest(hash, inBinary, inBytes, hashSym, &inBytes))
+				Trap_Arg(val_hash);
+			inBinary = hash;
 		}
 	}
 	else if (padding) {
 		hashSym = IS_NONE(val_hash) ? SYM_SHA256 : VAL_WORD_CANON(val_hash);
-		md_alg = Map_Sym_to_MD_type[hashSym - SYM_MD5];
+		md_alg = Sym_To_MD_Type(hashSym);
+		if (md_alg == MBEDTLS_MD_NONE) Trap_Arg(val_hash);
 	}
 	
 	mbedtls_rsa_set_padding(rsa, padding ? MBEDTLS_RSA_PKCS_V21 : MBEDTLS_RSA_PKCS_V15, md_alg);

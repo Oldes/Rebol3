@@ -124,6 +124,22 @@ Rebol [
 		--assert rsa/verify/pss key-pub bin-data signature2
 		--assert rsa/verify/pss key-pri bin-data signature2
 
+	--test-- "RSA sign/verify with supported hashes"
+		foreach h [md5 sha1 sha224 sha256 sha384 sha512] [
+			--assert binary? sig: rsa/sign/hash key-pri bin-data h
+			--assert rsa/verify/hash key-pub bin-data sig h
+		]
+
+	--test-- "RSA sign/verify with unsupported hash"
+		--assert error? try [rsa/sign/hash key-pri bin-data 'xxh3]
+		--assert error? try [rsa/sign/hash key-pri bin-data 'crc32]
+		--assert error? try [rsa/sign/hash key-pri bin-data 'sha3-256]
+		--assert error? try [rsa/verify/hash key-pub bin-data sign-hash 'md4]
+
+	--test-- "RSA-OAEP with unsupported hash"
+		--assert error? try [rsa/encrypt/oaep/hash key-pub bin-data 'foo]
+		--assert error? try [rsa/encrypt/oaep/hash key-pub bin-data 'xxh64]
+
 
 	--test-- "RSA key release"
 		;once RSA key is not needed, release its resources
@@ -182,7 +198,5 @@ Rebol [
 	--assert handle? try [private-key: load %files/MyKey.key]
 	release private-key
 ===end-group===
-
-
 
 ~~~end-file~~~
