@@ -2,7 +2,7 @@ Rebol [
 	Title:   "Runs all available unit tests"
 	Author:  ["Peter W A Wood" "Oldes"]
 	File:    %run-tests.r3
-	Needs:   [%quick-test-module.r3]
+	Needs:   [%quick-test-module.r3 %fuzz-module.r3]
 ]
 ? system/build
 
@@ -67,6 +67,7 @@ dt [ ;- delta time
 	;@@	%port-http-test.r3 ;; temporary disabled, because httpbin.org server has serious connection issues!
 		%power-test.r3
 		%protect-test.r3
+		%rebin-test.r3
 		%repl-test.r3
 		%series-test.r3
 		%stack-test.r3

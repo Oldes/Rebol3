@@ -39,6 +39,17 @@
 #define OS_ESRCH  -4
 
 
+// Reads an unsigned number from bytes (works for any alignment and any host endianness)
+#define READ_LE_2(cp)  ((u16)((cp)[0] | ((cp)[1] << 8)))
+#define READ_LE_3(cp)  ((u32)(cp)[0] | ((u32)(cp)[1] << 8) | ((u32)(cp)[2] << 16))
+#define READ_LE_4(cp)  ((u32)(cp)[0] | ((u32)(cp)[1] << 8) | ((u32)(cp)[2] << 16) | ((u32)(cp)[3] << 24))
+#define READ_LE_8(cp)  ((u64)READ_LE_4(cp) | ((u64)READ_LE_4((cp) + 4) << 32))
+#define READ_BE_2(cp)  ((u16)((cp)[1] | ((cp)[0] << 8)))
+#define READ_BE_3(cp)  ((u32)(cp)[2] | ((u32)(cp)[1] << 8) | ((u32)(cp)[0] << 16))
+#define READ_BE_4(cp)  ((u32)(cp)[3] | ((u32)(cp)[2] << 8) | ((u32)(cp)[1] << 16) | ((u32)(cp)[0] << 24))
+#define READ_BE_8(cp)  ((u64)READ_BE_4((cp) + 4) | ((u64)READ_BE_4(cp) << 32))
+
+
 #ifdef ENDIAN_LITTLE
 #define OS_LITTLE_ENDIAN TRUE 
 #define WRITE_BE_2(cp, bp)  cp[0] = bp[1]; cp[1] = bp[0];
