@@ -62,8 +62,15 @@ static void Unmark_Protected(REBVAL *value);
 ***********************************************************************/
 {
 	if (GET_FLAG(flags, PROT_WORD)) {
-		if (GET_FLAG(flags, PROT_SET)) VAL_SET_OPT(value, OPTS_LOCK);
-		else VAL_CLR_OPT(value, OPTS_LOCK);
+		if (GET_FLAG(flags, PROT_SET)) {
+			VAL_SET_OPT(value, OPTS_LOCK);
+			// protect/lock - the word cannot be unprotected anymore
+			// https://github.com/Oldes/Rebol3/issues/1326
+			if (GET_FLAG(flags, PROT_LOCK)) VAL_SET_OPT(value, OPTS_PERM);
+		}
+		// unprotect is silently ignored for permanently protected words
+		// (the same as for permanently protected series)
+		else if (!VAL_PERMANENT(value)) VAL_CLR_OPT(value, OPTS_LOCK);
 	}
 
 	if (GET_FLAG(flags, PROT_HIDE)) {

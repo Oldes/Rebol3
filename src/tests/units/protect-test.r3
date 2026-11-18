@@ -435,4 +435,40 @@ Rebol [
 		--assert error? pc 2
 ===end-group===
 
+===start-group=== "PROTECT/lock of words"
+	;@@ https://github.com/Oldes/Rebol3/issues/1326
+	--test-- "protect/lock word in object"
+		pl-o: object [a: 1 b: 2 protect/lock 'a]
+		--assert all [error? e: try [pl-o/a: 2] e/id = 'locked-word]
+		unprotect 'pl-o/a  ;; silently ignored
+		--assert all [error? e: try [pl-o/a: 3] e/id = 'locked-word]
+		unprotect in pl-o 'a
+		--assert all [error? e: try [pl-o/a: 3] e/id = 'locked-word]
+		--assert protected? 'pl-o/a
+		--assert pl-o/a = 1
+		;; other words are not affected:
+		--assert not error? try [pl-o/b: 3]
+	--test-- "protect/lock whole object"
+		pl-o: object [a: 1]
+		protect/lock pl-o
+		unprotect pl-o
+		--assert all [error? e: try [pl-o/a: 2] e/id = 'locked-word]
+		--assert all [error? e: try [append pl-o [b: 2]] e/id = 'protected]
+	--test-- "protect/lock word"
+		pl-w: 1
+		protect/lock 'pl-w
+		unprotect 'pl-w
+		--assert all [error? e: try [pl-w: 2] e/id = 'locked-word]
+		--assert pl-w = 1
+	--test-- "permanent protection is inherited"
+		pl-o: object [a: 1 protect/lock 'a]
+		pl-o2: make pl-o []
+		unprotect in pl-o2 'a
+		--assert all [error? e: try [pl-o2/a: 2] e/id = 'locked-word]
+	--test-- "normal protection may be unprotected"
+		pl-o: object [a: 1 protect 'a]
+		unprotect in pl-o 'a
+		--assert not error? try [pl-o/a: 2]
+===end-group===
+
 ~~~end-file~~~

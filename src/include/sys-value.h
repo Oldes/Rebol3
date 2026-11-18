@@ -79,6 +79,7 @@ enum {
 	OPTS_UNWORD,	// Not a normal word
 	OPTS_TEMP,		// Temporary flag - variety of uses
 	OPTS_HIDE,		// Hide the word
+	OPTS_PERM,		// Word lock is permanent (protect/lock)
 };
 
 #define VAL_OPTS(v)			((v)->flags.flags.opts)
@@ -92,6 +93,7 @@ enum {
 
 #define VAL_PROTECTED(v)	VAL_GET_OPT((v), OPTS_LOCK)
 #define VAL_HIDDEN(v)	    VAL_GET_OPT((v), OPTS_HIDE)
+#define VAL_PERMANENT(v)	VAL_GET_OPT((v), OPTS_PERM)
 
 // Used for datatype-dependent data (e.g. op! stores action!)
 #define VAL_GET_EXT(v)		((v)->flags.flags.exts)
