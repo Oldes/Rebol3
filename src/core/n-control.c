@@ -257,6 +257,12 @@ static void Unmark_Protected(REBVAL *value);
 			Unmark_Protected(val);
 		}
 	}
+	else if (ANY_WORD(word) && HAS_FRAME(word) && VAL_WORD_INDEX(word) < 0) {
+		// A function local lives on the stack and its word is shared by all
+		// calls of the function, so its protection is not supported (yet).
+		// https://github.com/Oldes/Rebol3/issues/2564
+		Trap1(RE_PROTECT_LOCAL, word);
+	}
 	else if (ANY_PATH(word)) {
 		REBCNT index;
 		REBSER *obj;

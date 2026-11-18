@@ -413,4 +413,26 @@ Rebol [
 		--assert pd-b/1 = 1-Jan-2020
 ===end-group===
 
+===start-group=== "Protecting function locals"
+	;@@ https://github.com/Oldes/Rebol3/issues/2564
+	--test-- "protect function local"
+		pf: func [d][protect 'd d: 0]
+		--assert all [error? e: try [pf 1] e/id = 'protect-local]
+		pf: func [d][protect/words [d] d: 0]
+		--assert all [error? e: try [pf 1] e/id = 'protect-local]
+		pf: func [d][protect/hide 'd d: 0]
+		--assert all [error? e: try [pf 1] e/id = 'protect-local]
+		pf: func [d][unprotect 'd d: 0]
+		--assert all [error? e: try [pf 1] e/id = 'protect-local]
+	--test-- "protect value of function local"
+		pf: func [d][protect/values [d] d]
+		pv: pf copy [1]
+		--assert all [error? e: try [append pv 2] e/id = 'protected]
+	--test-- "protect closure local"
+		;; closure has its own frame for each call, so it is allowed
+		pc: closure [d][protect 'd try [d: 0]]
+		--assert error? pc 1
+		--assert error? pc 2
+===end-group===
+
 ~~~end-file~~~
