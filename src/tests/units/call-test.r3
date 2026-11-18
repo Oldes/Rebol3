@@ -135,6 +135,16 @@ rebol-cmd: func[cmd][
 		;; exception is redundant only when equal to its nearest parent (or global) policy
 		--assert 0 = rebol-cmd {-s --do "a: to-file {/a/} b: to-file {/a/b/} c: to-file {/a/b/c.reb} secure (reduce [a [ask write] b 'allow c [ask write]]) p: secure query probe select p b probe select p c"}
 		--assert out-buffer == "allow^/[allow read ask write allow execute]^/"
+	--test-- "SECURE file throw - reading a directory"
+	;@@ https://github.com/Oldes/Rebol3/issues/2844
+		--assert 0 = rebol-cmd {-s --do "secure [file throw] probe all [error? e: try [read %./] e/id] probe all [error? e: try [read %/] e/id]"}
+		--assert out-buffer == "security^/security^/"
+	--test-- "SECURE extension throw"
+	;@@ https://github.com/Oldes/Rebol3/issues/2842
+		if exists? %test-x64.rebx [
+			--assert 0 = rebol-cmd {-s --do "secure [extension throw] probe all [error? e: try [import %test-x64.rebx] e/id]"}
+			--assert out-buffer == "security^/"
+		]
 	--test-- "SECURE startup policies"
 		;; default policy protects startup script and modules from silent modification
 		if all [system/options/data system/options/modules] [
