@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -44,6 +44,60 @@
 
 static mbedtls_entropy_context entropy;
 static mbedtls_ctr_drbg_context ctr_drbg;
+static REBOOL ctr_drbg_seeded = FALSE;
+
+static REBOOL Seed_Ctr_Drbg(void);
+
+
+/***********************************************************************
+**
+*/	void Random_Secure_Bytes(REBYTE *dest, REBCNT length)
+/*
+**		Fills the buffer with cryptographically secure random bytes.
+**		Uses CTR-DRBG seeded from the OS entropy source, so it is
+**		completely independent of the RANDOM/SEED (PRNG) state.
+**
+***********************************************************************/
+{
+	REBCNT n;
+
+	if (!ctr_drbg_seeded && !Seed_Ctr_Drbg()) Trap0(RE_FEATURE_NA);
+
+	while (length > 0) {
+		// a single request is limited by MBEDTLS_CTR_DRBG_MAX_REQUEST
+		n = MIN(length, MBEDTLS_CTR_DRBG_MAX_REQUEST);
+		if (mbedtls_ctr_drbg_random(&ctr_drbg, dest, n) != 0)
+			Trap0(RE_FEATURE_NA);
+		dest   += n;
+		length -= n;
+	}
+}
+
+
+/***********************************************************************
+**
+*/	static REBOOL Seed_Ctr_Drbg(void)
+/*
+**		Initializes and seeds the shared CTR-DRBG from OS entropy.
+**		May be called lazily if secure random data is requested
+**		before Init_Crypt (or if the initial seeding failed).
+**
+***********************************************************************/
+{
+	const char *pers = "rebol";
+
+	if (ctr_drbg_seeded) return TRUE;
+
+	mbedtls_ctr_drbg_free(&ctr_drbg);
+	mbedtls_entropy_free(&entropy);
+	mbedtls_ctr_drbg_init(&ctr_drbg);
+	mbedtls_entropy_init(&entropy);
+
+	ctr_drbg_seeded = (0 == mbedtls_ctr_drbg_seed(
+		&ctr_drbg, mbedtls_entropy_func, &entropy,
+		(const unsigned char *)pers, strlen(pers)));
+	return ctr_drbg_seeded;
+}
 
 
 /***********************************************************************
@@ -58,13 +112,8 @@ static mbedtls_ctr_drbg_context ctr_drbg;
 
 	mbedtls_platform_set_calloc_free(Make_Managed_CMem, Free_Managed_CMem);
 
-	mbedtls_ctr_drbg_init(&ctr_drbg);
-	mbedtls_entropy_init(&entropy);
-	const char *pers = "rebol";
+	Seed_Ctr_Drbg(); // failure is reported on first use of secure random data
 
-	mbedtls_ctr_drbg_seed(
-		&ctr_drbg, mbedtls_entropy_func, &entropy,
-		(const unsigned char *)pers, strlen(pers));
 #ifdef INCLUDE_AES_DEPRECATED
 	Register_Handle(SYM_AES,  sizeof(AES_CTX), NULL);
 #endif
@@ -250,7 +299,9 @@ static mbedtls_ctr_drbg_context ctr_drbg;
 /*
 ***********************************************************************/
 {
+	mbedtls_ctr_drbg_free(&ctr_drbg);
 	mbedtls_entropy_free(&entropy);
+	ctr_drbg_seeded = FALSE;
 }
 
 /***********************************************************************

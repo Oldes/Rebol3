@@ -3,6 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -127,24 +128,20 @@ static REBI64 ran_arr_cycle(void)
 **
 */	REBI64 Random_Int(REBFLG secure)
 /*
-**		Return random integer. Secure uses SHA1 for better safety.
+**		Return random integer.
+**		Non-secure: 62-bit value from the seedable PRNG (RANDOM/SEED).
+**		Secure: full 64-bit value from the CSPRNG (not affected by
+**		RANDOM/SEED and not advancing the PRNG state).
 **
 ***********************************************************************/
 {
 	REBI64 tmp;
-	tmp = ran_arr_next();
 
 	if (secure) {
-		REBYTE srcbuf[20], dstbuf[20];
-
-		memcpy(srcbuf, (REBYTE*)&tmp, sizeof(tmp));
-		memset(srcbuf + sizeof(tmp), *(REBYTE*)&tmp, 20 - sizeof(tmp));
-
-		SHA1(srcbuf, 20, dstbuf);
-		memcpy((REBYTE*)&tmp, dstbuf, sizeof(tmp));
+		Random_Secure_Bytes((REBYTE*)&tmp, sizeof(tmp));
+		return tmp;
 	}
-
-	return tmp;
+	return ran_arr_next();
 }
 
 //#define MAX_U64 ((REBU64)(REBI64)-1) //defined in reb-c.h
@@ -182,30 +179,19 @@ static REBI64 ran_arr_cycle(void)
 **
 */	void Random_Bytes(REBYTE* dest, REBCNT length, REBOOL	no_zeros)
 /*
-**		Fills destination buffer with random bytes.
+**		Fills destination buffer with secure random bytes.
 **
 ***********************************************************************/
 {
-	REBI64 rnd;
-	REBCNT k = length / 8;
-	REBCNT r = length % 8;
-	REBYTE *cp = dest;
 	REBCNT i;
 
-	for (i = 0; i < k; i++) {
-		rnd = Random_Int(TRUE);
-		memcpy(cp, (REBYTE*)&rnd, 8);
-		cp += 8;
-	}
-	if (r > 0) {
-		rnd = Random_Int(TRUE);
-		memcpy(cp, (REBYTE*)&rnd, r);
-	}
-	if(no_zeros) {
-		// make result without null bytes
+	Random_Secure_Bytes(dest, length);
+
+	if (no_zeros) {
+		// make result without null bytes (redraw keeps it uniform in 1..255)
 		for (i = 0; i < length; i++) {
-			while (dest[i] == 0) 
-				dest[i] = (u8)(rand());
+			while (dest[i] == 0)
+				Random_Secure_Bytes(dest + i, 1);
 		}
 	}
 }

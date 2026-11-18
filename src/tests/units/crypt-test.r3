@@ -265,4 +265,29 @@ sY29ouezv4Xz2PuMch5VGPP+CDqzCM4loWgV
 ===end-group===
 
 
+===start-group=== "random/secure"
+;@@ https://github.com/Oldes/Rebol3/issues/2935
+	--test-- "random/secure is not affected by random/seed (integer)"
+		random/seed 1 a: random/secure 1000000000
+		random/seed 1 b: random/secure 1000000000
+		--assert a <> b
+	--test-- "random/secure is not affected by random/seed (decimal)"
+		random/seed 1 a: random/secure 1.0
+		random/seed 1 b: random/secure 1.0
+		--assert a <> b
+	--test-- "random/secure is not affected by random/seed (string)"
+		random/seed 1 a: random/secure "abcdefghijklmnopqrstuvwxyz"
+		random/seed 1 b: random/secure "abcdefghijklmnopqrstuvwxyz"
+		--assert a <> b
+	--test-- "random/secure does not advance the seeded PRNG"
+		random/seed 1 a: random 1000000000
+		random/seed 1 random/secure 100 b: random 1000000000
+		--assert a = b
+	--test-- "random/seed is still reproducible"
+		random/seed 1 a: random 255
+		random/seed 1 b: random 255
+		--assert a = b
+===end-group===
+
+
 ~~~end-file~~~
