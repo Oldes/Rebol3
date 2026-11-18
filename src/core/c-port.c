@@ -73,11 +73,12 @@
 	REBVAL *state = BLK_SKIP(port, STD_PORT_STATE);
 	REBCNT type = SYM_PORT_STATEX; //TODO: make it per-device type instead one state type for all devices
 
-	// Validate if handle has correct type and is for the expected device
-	if (IS_HANDLE(state) && VAL_HANDLE_TYPE(state) == type) {
-		req = (REBREQ *)VAL_HANDLE_CONTEXT_DATA(state);
-		if (req->device == device) return state;
-	}
+	// Validate if handle has correct type and is for the expected device.
+	// A released state (of a closed port) has no data and must not be used.
+	if (IS_HANDLE(state) && IS_VALID_CONTEXT_HANDLE(state, type)) {
+ 		req = (REBREQ *)VAL_HANDLE_CONTEXT_DATA(state);
+ 		if (req->device == device) return state;
+ 	}
 	// If state is not a handle of the request type, create it:
 	MAKE_HANDLE(state, type);
 	if (!VAL_HANDLE_CTX(state)) {
@@ -112,6 +113,8 @@
 	if (IS_PORT(port)) {
 		state = BLK_SKIP(VAL_PORT(port), STD_PORT_STATE);
 		if (IS_HANDLE(state) && VAL_HANDLE_TYPE(state) == SYM_PORT_STATEX) {
+			// A released state has no requests, so nothing is pending.
+			if (!IS_USED_HOB(VAL_HANDLE_CTX(state))) return FALSE;
 			req = (REBREQ*)VAL_HANDLE_CONTEXT_DATA(state);
 			for (n = 0; n < PORT_STATE_REQS; n++) {
 				if (GET_FLAG(req[n].flags, RRF_PENDING)) return TRUE;
@@ -482,20 +485,22 @@ FORCE_INLINE
 **
 */	void Release_Port_State(REBSER *port)
 /*
-**		Release the request handle early, without waiting for GC
+**		Release the request handle early, without waiting for GC.
+**
+**		The port's state value still refers to the handle, so the handle
+**		is only marked as released (its node cannot be given to another
+**		handle until the GC finds it unreferenced). Using Free_Hob here
+**		would let a closed port share the state of a port opened later!
 **
 ***********************************************************************/
 {
 	REBVAL *state = OFV(port, STD_PORT_STATE);
 
-	// Queued events of this port would refer to the released request!
-	if (IS_HANDLE(state)
-		&& VAL_HANDLE_TYPE(state) == SYM_PORT_STATEX
-		&& IS_USED_HOB(VAL_HANDLE_CTX(state))
-	){
-		Remove_Device_Events((REBREQ *)VAL_HANDLE_CONTEXT_DATA(state), PORT_STATE_REQS);
-	}
-	Free_Hob(VAL_HANDLE_CTX(state));
+	if (!IS_HANDLE(state) || !IS_VALID_CONTEXT_HANDLE(state, SYM_PORT_STATEX)) return;
+
+ 	// Queued events of this port would refer to the released request!
+	Remove_Device_Events((REBREQ *)VAL_HANDLE_CONTEXT_DATA(state), PORT_STATE_REQS);
+	Release_Hob(VAL_HANDLE_CTX(state));
 }
 
 

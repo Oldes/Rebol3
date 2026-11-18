@@ -638,6 +638,48 @@ if all [system/platform != 'Windows exists? %/proc/cpuinfo] [
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2661
 		--assert none? query %"" 'type
 
+	--test-- "Closed port does not share state with a port opened later"
+		;; The state of a closed port was returned to the pool while the port
+		;; still referred to it, so it became the state of the next opened port!
+		write %tmp-a.txt "AAAA"
+		write %tmp-b.txt "BBBB"
+		a: open %tmp-a.txt
+		close a
+		b: open %tmp-b.txt
+		--assert not same? a/state b/state
+		--assert not open? a
+		--assert open? b
+		--assert "AAAA" = read/string a ;; not the content of the other file!
+		--assert port? try [close a]    ;; must not close the other port
+		--assert open? b
+		--assert "BBBB" = read/string b
+		close b
+		--assert not open? b
+
+	--test-- "Reopen a closed port"
+		a: open %tmp-a.txt
+		close a
+		--assert all [
+			port? try [open a]
+			open? a
+			"AAAA" = read/string a
+		]
+		close a
+		--assert not open? a
+		recycle ;; the released state is still referred by the port
+		--assert not open? a
+		--assert all [
+			port? try [open a]
+			open? a
+			port? try [close a]
+		]
+
+	--test-- "Wait on a closed port"
+		--assert not error? try [wait [a 0.01]]
+		--assert not open? a
+		delete %tmp-a.txt
+		delete %tmp-b.txt
+
 ===end-group===
 
 
