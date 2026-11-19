@@ -912,13 +912,24 @@ STOID Mold_Block(REBVAL *value, REB_MOLD *mold, REBFLG molded)
 	}
 }
 
-STOID Mold_Hash(REBVAL *value, REB_MOLD *mold, REBFLG molded) {
-	Pre_Mold(value, mold); // #(hash! part
-	Mold_Block_Series(mold, VAL_SERIES(value), VAL_INDEX(value), 0);
-	if (GET_MOPT(mold, MOPT_MOLD_ALL))
-		Post_Mold(value, mold);
-	else
-		End_Mold(mold);
+STOID Mold_Hash(REBVAL *value, REB_MOLD *mold)
+{
+	// Always uses the construction syntax: #(hash! [...])
+	// With /all the whole series is molded followed by the index (if not at head),
+	// else only values from the current position.
+	REBOOL all = GET_MOPT(mold, MOPT_MOLD_ALL);
+
+	// Reset index if it is over series tail
+	if (VAL_INDEX(value) > VAL_TAIL(value))
+		VAL_INDEX(value) = VAL_TAIL(value);
+
+	Emit(mold, "#(T ", value);
+	Mold_Block_Series(mold, VAL_SERIES(value), all ? 0 : VAL_INDEX(value), 0);
+	if (all && VAL_INDEX(value)) {
+		Append_Byte(mold->series, ' ');
+		Append_Int(mold->series, Mold_Index(value));
+	}
+	Append_Byte(mold->series, ')');
 }
 
 STOID Mold_Simple_Block(REB_MOLD *mold, REBVAL *block, REBCNT len)
@@ -1572,7 +1583,7 @@ STOID Mold_Error(REBVAL *value, REB_MOLD *mold, REBFLG molded)
 
 	case REB_HASH:
 		if (molded)
-			Mold_Hash(value, mold, molded);
+			Mold_Hash(value, mold);
 		else
 			Form_Block_Series(VAL_SERIES(value), VAL_INDEX(value), mold, 0);
 		break;

@@ -563,6 +563,32 @@ Rebol [
 		--assert [[a] [b]] = to block! h
 ===end-group===
 
+===start-group=== "MOLD hash!"
+	--test-- "mold hash!"
+		--assert "#(hash! [])" = mold make hash! []
+		--assert "#(hash! [1 2 3])" = mold make hash! [1 2 3]
+		--assert "#(hash! [2 3])" = mold next make hash! [1 2 3]
+		--assert "#(hash! [])" = mold tail make hash! [1 2 3]
+		--assert "[#(hash! [1])]" = mold reduce [make hash! [1]]
+
+	--test-- "mold/all hash!"
+		--assert "#(hash! [1 2 3])" = mold/all make hash! [1 2 3]
+		--assert "#(hash! [1 2 3] 2)" = mold/all next make hash! [1 2 3]
+
+	--test-- "load molded hash!"
+		h: make hash! [a 1 "b" 2 3.0 c]
+		--assert hash? h2: transcode/one mold h
+		--assert h = h2
+		--assert 'c = select h2 3.0
+		h2: transcode/one mold/all next h
+		--assert hash? h2
+		--assert 2 = index? h2
+		--assert 6 = length? head h2
+
+	--test-- "form hash!"
+		--assert "1 2 3" = form make hash! [1 2 3]
+===end-group===
+
 ===start-group=== "HASH! misc"
 	--test-- "protected hash!"
 		h: make hash! []
