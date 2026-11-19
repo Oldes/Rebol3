@@ -1454,8 +1454,7 @@ include-ext-blend2d: [
 		lflag: "-Wl,-search_paths_first"
 	]
 	#if Posix? [
-		libraries: [%c %m %stdc++]
-		libraries: [%$SISKIN_INSTALL/$SISKIN_ARCH/lib/ %blend2d]
+		libraries: [%$SISKIN_INSTALL/$SISKIN_ARCH/lib/ %blend2d %stdc++]
 	]
 	#if Windows? [
 		libraries: [%$SISKIN_INSTALL/$SISKIN_ARCH/lib/blend2d]
