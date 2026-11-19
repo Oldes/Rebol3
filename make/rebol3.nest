@@ -272,6 +272,7 @@ core-files: [
 	%core/u-parse.c
 ;	%core/u-png.c             ;optional, use: include-native-png-codec
 ;	%core/u-rc4.c             ;optional, use: include-cryptography
+	%core/u-rebin.c           ;used by: include-rebin-boot and include-codec-rebin
 ;	%core/u-wav.c             ;optional, use: include-native-wav-codec
 
 	%core/u-mbedtls.c
@@ -452,7 +453,8 @@ include-native-qoi-codec: [:include-ext-qoi] ;; embedded extension
 include-native-jpg-codec: [config: INCLUDE_JPG_CODEC core-files: %core/u-jpg.c]
 include-native-gif-codec: [config: INCLUDE_GIF_CODEC core-files: %core/u-gif.c]
 
-include-codec-rebin: [config: INCLUDE_REBIN_CODEC core-files: %core/u-rebin.c]
+include-codec-rebin: [config: INCLUDE_REBIN_CODEC mezz-lib-files: %mezz/codec-rebin.reb]
+include-rebin-boot:  [config: INCLUDE_REBIN_BOOT] ;; boot data in the Rebin format (faster boot, no scanning)
 
 
 ;@@ on Windows it's better to use system image codec (ability to use more types)
@@ -958,6 +960,9 @@ include-native-oid: [core-files: %core/n-oid.c] ; `form-oid` native (used in DER
 
 ;:include-zlib-compression   ;= Original Adler's implementation
 :include-deflate-compression ;= libdeflate's zlib, gzip and deflate
+
+;- Boot data stored in the Rebin format (without it the boot code is scanned from text)
+;:include-rebin-boot
 
 ;- Product specifications                                                       
 

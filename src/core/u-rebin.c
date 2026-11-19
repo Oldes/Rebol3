@@ -96,7 +96,9 @@
 #include "sys-core.h"
 #include "sys-leb128.h"
 #include "sys-deci-funcs.h" // binary_to_deci
-#ifdef INCLUDE_REBIN_CODEC
+
+// The decoder is needed for the boot data in the Rebin format or for the codec.
+#if defined(INCLUDE_REBIN_BOOT) || defined(INCLUDE_REBIN_CODEC)
 
 #define REBIN_VERSION    1
 #define REBIN_HEAD_SIZE  8
@@ -622,6 +624,8 @@ done:
 }
 
 
+#ifdef INCLUDE_REBIN_CODEC
+
 /***********************************************************************
 **
 */	REBINT Codec_REBIN(REBCDI *codi)
@@ -662,4 +666,5 @@ done:
 	Register_Codec("rebin", Codec_REBIN);
 }
 
-#endif
+#endif // INCLUDE_REBIN_CODEC
+#endif // INCLUDE_REBIN_BOOT || INCLUDE_REBIN_CODEC
