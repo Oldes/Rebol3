@@ -730,11 +730,12 @@ Rebol [
 
 ===start-group=== "form error!"
 	--test-- "form error!"
+	;@@ https://github.com/Oldes/Rebol3/issues/252
 		; no ANSI escape sequence!
 		--assert parse (form try [1 / 0]) [
 			{^/** Math error: attempt to divide by zero^/}
 			{** Where: / try} thru #"^/"
-			{** Near: / 0^/}
+			{** Near: 1 / 0^/}
 		]
 
 ===end-group===
