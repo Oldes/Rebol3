@@ -3,7 +3,7 @@ REBOL [
 	Title: "REBOL 3 Boot Sys: Startup"
 	Rights: {
 		Copyright 2012 REBOL Technologies
-		Copyright 2012-2023 Rebol Open Source Contributors
+		Copyright 2012-2026 Rebol Open Source Contributors
 		REBOL is a trademark of REBOL Technologies
 	}
 	License: {
@@ -194,6 +194,8 @@ start: func [
 		load-boot-exts
 		sys/log/debug 'REBOL "Init mezz plus..."
 
+		write %xxxx mold boot-mezz
+
 		do bind-lib boot-mezz
 		boot-mezz: 'done
 
@@ -370,4 +372,4 @@ start: func [
 
 	exit
 
-] system/options
+] system/options
