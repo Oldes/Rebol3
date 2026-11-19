@@ -128,6 +128,24 @@ Rebol [
 ===end-group===
 
 
+===start-group=== "FUNC copies its body"
+	;- In the boot, FUNC does not copy (the boot code is used only once).
+	;- The final (copying) FUNC is defined in mezz-tail.reb, which must be
+	;- evaluated as the last one (after all modules and protocols).
+	--test-- "func copies the body"
+	blk: [1 + 1]
+	fce: func [] blk
+	append blk 5
+	--assert 2 = fce
+	--assert [1 + 1] = body-of :fce
+	--test-- "funco does not copy the body"
+	blk: [1 + 1]
+	fce: funco [] blk
+	append blk 5
+	--assert 5 = fce
+===end-group===
+
+
 ===start-group=== "body-of"
 
 --test-- "body-of NATIVE or ACTION"

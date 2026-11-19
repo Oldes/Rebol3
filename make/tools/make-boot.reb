@@ -919,13 +919,14 @@ write-generated inc/gen-portmodes.h out
 
 print-info "Load Boot Mezzanine Functions - Base, Sys, Lib and Prot"
 
-;make sure that mezz-tail.reb is the last file in boot-mezz
-if all [
-	pos: find mezz-files/3 %mezz-tail.reb
-	1 <> length? pos
-][
-	append mezz-files/3 take pos
+;- mezz-tail.reb must be evaluated as the last one in boot-mezz (after all modules
+;- and protocols), because it redefines FUNC to deep copy the spec and the body.
+;- (the boot code is used only once, so functions made before it don't need copies)
+mezz-tail: none
+foreach file mezz-files/3 [
+	if find/match/last file %/mezz-tail.reb [mezz-tail: file]
 ]
+if mezz-tail [remove find mezz-files/3 mezz-tail]
 
 foreach section [boot-base boot-sys boot-mezz] [
 	set section make block! 200
@@ -1024,6 +1025,11 @@ foreach file first mezz-files [
 		append/only append/only boot-protocols hdr code
 	]
 ]
+if mezz-tail [
+	code: load-file/header mezz-tail
+	take code ;; the header
+	append boot-mezz code
+]
 
 emit-head "Sys Context" %sysctx.h
 sctx: construct boot-sys
@@ -1110,7 +1116,7 @@ boot-ops:  load-boot %ops.reb
 data: reduce sections
 rebin-boot?: any [
 	did find configs 'INCLUDE_REBIN_BOOT
-	did find spec/defines "INCLUDE_REBIN_BOOT"
+	did find spec/defines "INCLUDE_REBIN_BOOT" ;; can come from command-line override
 ]
 either rebin-boot? [
 	if find [on true #(true)] select spec 'remove-docstrings [
