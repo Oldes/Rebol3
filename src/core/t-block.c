@@ -1193,7 +1193,6 @@ zero_blk:
 	case A_TRIM:
 		if (IS_FIXED_SIZE_VALUE(value)) Trap0(RE_FIXED_SIZED_SERIES);
 		args = Find_Refines(ds, ALL_TRIM_REFS);
-		DROP_SERIES_HASH(ser);
 		Trim_Block(ser, index, args);
 		break;
 
