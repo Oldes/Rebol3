@@ -18,6 +18,32 @@ REBOL [
 	}
 ]
 
+;- Schemes provided by a module with a different name than the scheme
+;- (modules are imported on the first use of their scheme, see make-port*)
+scheme-modules: [
+	https  http
+	smtps  smtp
+	pop3s  pop3
+]
+
+import-scheme-module: function [
+	"SYS: Import a not yet imported module providing the scheme. Return TRUE on success."
+	name [word!] "Scheme name"
+][
+	module: any [select scheme-modules name  name]
+	all [
+		not module? select system/modules module ;; already imported (does not provide the scheme)
+		any [
+			block? select system/modules module  ;; embedded delayed module
+			all [                                ;; or a module file in the modules directory
+				file? dir: system/options/modules
+				exists? join dir [module system/options/default-suffix]
+			]
+		]
+		module? import (module) ;; (import does not evaluate a word)
+	]
+]
+
 make-port*: func [
 	"SYS: Called by system on MAKE of PORT! port from a scheme."
 	spec [file! url! block! object! word! port!] "port specification"
@@ -61,7 +87,14 @@ make-port*: func [
 	; Get the scheme definition:
 	unless all [
 		word? name
-		scheme: get in system/schemes name
+		any [
+			scheme: get in system/schemes name
+			;- The scheme may be provided by a module, which is imported on its first use
+			all [
+				import-scheme-module name
+				scheme: get in system/schemes name
+			]
+		]
 	][cause-error 'access 'no-scheme name]
 
 	; Create the port with the correct scheme spec:

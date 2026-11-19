@@ -8,6 +8,10 @@ Rebol [
 
 ~~~start-file~~~ "port-http"
 
+;; the http module is imported on the first use of its scheme,
+;; so it must be imported before changing its settings
+import 'http
+
 ;; it looks that httpbin.org has long response times:/
 ;; so let's give it more time...
 system/schemes/http/spec/timeout: 30

@@ -3,6 +3,7 @@ REBOL [
 	Title: "Rebol3 HTTP protocol scheme"
 	Name: http
 	Type: module
+	Options: [delay]
 	Rights: {
 		Copyright 2012 REBOL Technologies
 		Copyright 2012-2026 Rebol Open Source Contributors

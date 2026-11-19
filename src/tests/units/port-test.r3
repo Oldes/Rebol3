@@ -847,4 +847,36 @@ if all [system/platform != 'Windows exists? %/proc/cpuinfo] [
 		--assert n < 17                  ;; backlog over 4 ticks was dropped
 ===end-group===
 
+
+===start-group=== "Scheme modules imported on first use"
+	--test-- "delayed module providing a scheme"
+		sys/load-module/delay {Rebol [name: test-lazy-scheme type: module options: [delay]] sys/make-scheme [name: 'test-lazy-scheme title: "Lazy"]}
+		--assert block? select system/modules 'test-lazy-scheme
+		--assert none? in system/schemes 'test-lazy-scheme
+		--assert port? p: make port! test-lazy-scheme://x
+		--assert module? select system/modules 'test-lazy-scheme
+		--assert "Lazy" = p/scheme/title
+	--test-- "module file in the modules directory"
+		dir: system/options/modules
+		system/options/modules: make-dir %tmp-modules/
+		write %tmp-modules/test-lazy-file.reb {Rebol [name: test-lazy-file type: module] sys/make-scheme [name: 'test-lazy-file title: "Lazy file"]}
+		--assert port? p: make port! test-lazy-file://x
+		--assert "Lazy file" = p/scheme/title
+		--assert module? select system/modules 'test-lazy-file
+		system/options/modules: dir
+		delete %tmp-modules/test-lazy-file.reb
+		delete %tmp-modules/
+	--test-- "scheme provided by a module with another name"
+		;; https scheme is in the http module
+		--assert port? p: make port! https://example.com/
+		--assert module? select system/modules 'http
+		--assert 'https = p/scheme/name
+	--test-- "unknown scheme"
+		--assert all [error? e: try [make port! test-unknown-scheme://x] e/id = 'no-scheme]
+	--test-- "module which does not provide the scheme"
+		;; already imported module is not imported again
+		--assert all [error? e: try [make port! help://x] e/id = 'no-scheme]
+
+===end-group===
+
 ~~~end-file~~~

@@ -3,6 +3,7 @@ REBOL [
     title: "TLS Protocol"
     name: 'tls
     type: 'module
+    options: [delay]
     date: 28-Oct-2026
     file: %tls.reb
     author: "Oldes"
