@@ -1060,7 +1060,7 @@ zero_blk:
 			Set_Series(
 				VAL_TYPE(value), D_RET,
 				D_REF(ARG_TAKE_DEEP)
-					? Copy_Block_Values(ser, 0, len, CP_DEEP | TS_DEEP_COPIED)
+					? Copy_Block_Values(ser, index, index + len, CP_DEEP | TS_DEEP_COPIED)
 					: Copy_Block_Len(ser, index, len)
 			);
 		}

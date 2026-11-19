@@ -534,6 +534,35 @@ Rebol [
 		--assert 3 = last h
 ===end-group===
 
+===start-group=== "TAKE/PART/DEEP"
+	--test-- "take/part/deep from offset"
+		b: copy/deep [[a] [b] [c] [d]]
+		r: take/part/deep next b 2
+		--assert [[b] [c]] = r
+		--assert [[a] [d]] = b
+
+	--test-- "take/last/part/deep"
+		b: copy/deep [[a] [b] [c] [d]]
+		r: take/last/part/deep b 2
+		--assert [[c] [d]] = r
+		--assert [[a] [b]] = b
+
+	--test-- "take/part/deep copies nested series"
+		x: [a]
+		b: reduce [1 x 2]
+		r: take/part/deep next b 1
+		--assert [[a]] = r
+		--assert not same? x first r
+		--assert [1 2] = b
+
+	--test-- "take/part/deep on hash!"
+		h: make hash! [[a] [b] [c] [d]]
+		r: take/part/deep at h 3 2
+		--assert hash? r
+		--assert [[c] [d]] = to block! r
+		--assert [[a] [b]] = to block! h
+===end-group===
+
 ===start-group=== "HASH! misc"
 	--test-- "protected hash!"
 		h: make hash! []
