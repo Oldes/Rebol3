@@ -1480,5 +1480,20 @@ not a script
 
 ===end-group===
 
+
+===start-group=== "Module name in the header"
+	--test-- "lit-word name of a delayed module"
+		;; the header is not evaluated, so `name: 'foo` must be accepted too (prot-tls uses it)
+		--assert 'test-lit-name = first sys/load-module/delay {Rebol [name: 'test-lit-name type: module options: [delay]] 1}
+		--assert block? select system/modules 'test-lit-name
+		--assert module? m: import 'test-lit-name
+		--assert 'test-lit-name = query m 'name
+	--test-- "lit-word name of a module"
+		--assert module? m: import {Rebol [name: 'test-lit-name-2 type: module] 1}
+		--assert 'test-lit-name-2 = query m 'name
+		--assert same? m select system/modules 'test-lit-name-2
+
+===end-group===
+
 ~~~end-file~~~
 
