@@ -448,6 +448,16 @@ Rebol [
 		--assert none? find h "k50"
 		--assert 50 = index? find h "x"
 
+	--test-- "hash! trim/all + append without lookup"
+		h: make hash! []
+		repeat i 100 [append h reduce [none i]]
+		--assert 2 = index? find h 1    ;; builds the table
+		trim/all h ;== removes nones
+		--assert 100 = length? h
+		repeat i 100 [append h i + 100]
+		--assert 1 = index? find h 1
+		--assert 101 = index? find h 101
+
 	--test-- "hash! after recycle"
 		h: make hash! []
 		repeat i 1000 [append h ajoin ["k" i]]
