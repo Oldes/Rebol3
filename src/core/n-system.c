@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -122,12 +122,19 @@
 **
 */	REBNATIVE(release)
 /*
+**		Releases the resources of a context handle now.
+**
+**		Other values may still refer to the context, so it must stay
+**		allocated (flagged as released) until the GC finds it unreferenced.
+**		Free_Hob would return it to the pool at once, and the next handle
+**		made would get it - so an old value would name an unrelated handle.
+**
 ***********************************************************************/
 {
 	REBVAL *val = D_ARG(1);
 
 	if (IS_CONTEXT_HANDLE(val)) {
-		Free_Hob(VAL_HANDLE_CTX(val));
+		Release_Hob(VAL_HANDLE_CTX(val));
 		return R_TRUE;
 	}
 	return R_FALSE;
