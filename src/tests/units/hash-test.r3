@@ -458,6 +458,39 @@ Rebol [
 		--assert 1 = index? find h 1
 		--assert 101 = index? find h 101
 
+	--test-- "hash! put"
+		;; same map-like equality as SELECT
+		h: make hash! [1 a]
+		put h 1.0 'b
+		--assert 'a = select h 1
+		--assert 'b = select h 1.0
+		--assert 4 = length? h
+		;; words by canon, /case needs exact word
+		h: make hash! [foo 1]
+		put h 'FOO 2
+		--assert [foo 2] = to block! h
+		put/case h 'FOO 3
+		--assert [foo 2 FOO 3] = to block! h
+		;; large (hashed) series
+		h: make hash! []
+		repeat i 100 [append h reduce [i none]]
+		--assert 1 = put h 50 1
+		--assert 1 = select h 50
+		--assert 200 = length? h
+		put h 50.0 2
+		--assert 1 = select h 50
+		--assert 2 = select h 50.0
+		--assert 202 = length? h
+		;; key as the last value
+		append h 'last
+		put h 'last 3
+		--assert 3 = select h 'last
+		--assert 204 = length? h
+		;; put from offset
+		h: make hash! [a 1 b 2 a 3]
+		put next next h 'a 4
+		--assert [a 1 b 2 a 4] = to block! h
+		
 	--test-- "hash! after recycle"
 		h: make hash! []
 		repeat i 1000 [append h ajoin ["k" i]]

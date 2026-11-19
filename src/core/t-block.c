@@ -1071,7 +1071,16 @@ zero_blk:
 		arg2 = D_ARG(ARG_PUT_VALUE);
 		args = D_REF(ARG_PUT_CASE) ? AM_FIND_CASE : 0;
 		ret = IS_INTEGER(D_ARG(ARG_PUT_SIZE)) ? Int32s(D_ARG(ARG_PUT_SIZE), 1) : 1;
-		ret = Find_Block(ser, index, tail, arg, len, args, ret);
+		if (
+			IS_HASH(value) && ret == 1
+			&& !(ANY_BLOCK(arg) || IS_DATATYPE(arg) || IS_TYPESET(arg))
+		) {
+			// Single value key in a hash! series (map-like equality, same as SELECT)
+			ret = Find_Hash_Block(ser, index, arg, args != 0);
+		}
+		else {
+			ret = Find_Block(ser, index, tail, arg, len, args, ret);
+		}
 		if(ret != NOT_FOUND) {
 			ret++;
 			DROP_SERIES_HASH(ser);
