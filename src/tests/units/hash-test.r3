@@ -490,7 +490,7 @@ Rebol [
 		h: make hash! [a 1 b 2 a 3]
 		put next next h 'a 4
 		--assert [a 1 b 2 a 4] = to block! h
-		
+
 	--test-- "hash! after recycle"
 		h: make hash! []
 		repeat i 1000 [append h ajoin ["k" i]]
@@ -498,6 +498,41 @@ Rebol [
 		--assert 500 = index? find h "k500"
 ===end-group===
 
+===start-group=== "PUT with non-scalar keys"
+	--test-- "put with block key"
+		b: copy [[x] 1]
+		put b [x] 2
+		--assert [[x] 2] = b
+		put b [y] 3
+		--assert [[x] 2 [y] 3] = b
+		h: make hash! [[x] 1]
+		put h [x] 2
+		--assert [[x] 2] = to block! h
+		put h [y] 3
+		--assert [[x] 2 [y] 3] = to block! h
+
+	--test-- "put with datatype key"
+		b: reduce [1 integer! 2]
+		put b integer! 3
+		--assert 3 = length? b
+		--assert 3 = last b
+		--assert 1 = first b
+		h: make hash! reduce [1 integer! 2]
+		put h integer! 3
+		--assert 3 = length? h
+		--assert 3 = last h
+
+	--test-- "put with typeset key"
+		t: make typeset! [integer!]
+		b: reduce [1 t 2]
+		put b t 3
+		--assert 3 = length? b
+		--assert 3 = last b
+		h: make hash! reduce [1 t 2]
+		put h t 3
+		--assert 3 = length? h
+		--assert 3 = last h
+===end-group===
 
 ===start-group=== "HASH! misc"
 	--test-- "protected hash!"
