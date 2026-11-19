@@ -40,6 +40,7 @@ dt [ ;- delta time
 		%evaluation-test.r3
 		%event-test.r3
 		%handle-test.r3
+		%hash-test.r3
 		%file-test.r3
 		%format-test.r3
 		%func-test.r3
