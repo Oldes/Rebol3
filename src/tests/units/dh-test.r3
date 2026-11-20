@@ -109,7 +109,11 @@ foreach ecurve system/catalog/elliptic-curves [
 		--assert none? ecdh/public k-Alice
 
 		;- re-initialization...
-		--assert handle? ecdh/init k-Alice ecurve ;- using existing key for a new init
+		;- /init always makes a new key, so its result must be used...
+		--assert handle? new-Alice: ecdh/init k-Alice ecurve
+		;- ...while the released key stays unusable.
+		--assert none? ecdh/public k-Alice
+		k-Alice: new-Alice
 		--assert binary? pub-Alice: ecdh/public k-Alice
 		--assert binary? secret-Alice: ecdh/secret k-Alice pub-Boban
 		--assert binary? secret-Boban: ecdh/secret k-Boban pub-Alice
