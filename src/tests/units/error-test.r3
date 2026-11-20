@@ -228,6 +228,11 @@ Rebol [
 		--assert all [error? e: try [1 + 2 / 0]  e/near = [1 + 2 / 0]]
 		--assert all [error? e: try [abs 1 / 0]  e/near = [1 / 0]]
 		--assert all [error? e: try [a: 1 / 0]   e/near = [1 / 0]]
+
+	--test-- "compare errors"
+		;@@ https://github.com/Oldes/Rebol3/issues/1320
+		--assert not equal? (try [1 / 0]) (try [2 / 0])
+
 ===end-group===
 
 
