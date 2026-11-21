@@ -258,7 +258,7 @@ import (module [
 		/doc "Open web browser to related documentation"
 		/into "Help text will be inserted into provided string instead of printed"
 			string [string!] "Returned series will be past the insertion"
-		/local value spec args refs rets type ret desc desc-ext arg def des ref str tmp ret-desc
+		/local value spec args refs rets type ret desc desc-ext arg def des ref str tmp ret-desc attrs
 	][
 		if all [
 			doc
@@ -397,11 +397,12 @@ import (module [
 					refs: none
 					rets: ret-desc: none
 					type: type? :value
-					
+					attrs: copy []
 					clear find spec /local
 					parse spec [
-						any block!
+						any [set tmp block! (append attrs tmp)]   ; R2-style attributes, e.g. [throw]
 						set desc string! copy desc-ext any string!
+						any [set tmp block! (append attrs tmp)]   ; may also follow the description
 						any [
 							set arg [word! | lit-word! | get-word!] 
 							set def opt block!
@@ -433,6 +434,18 @@ import (module [
 					]
 					output ["^/     " uppercase form word " is " a-an form :type " value."]
 
+					unless empty? attrs [
+						out-title/line "ATTRIBUTES"
+						foreach attr attrs [
+							output [
+								"^/     " ansi/bright-green pad mold attr 14 "^[[m"
+								select [
+									catch "Errors are reported at the call site."
+									throw "RETURN and EXIT pass through to the caller."
+								] attr
+							]
+						]
+					]
 					unless empty? args [
 						out-title/line "ARGUMENTS"
 						foreach [arg def des] args [

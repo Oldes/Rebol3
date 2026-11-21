@@ -650,4 +650,25 @@ Rebol [
 
 ===end-group===
 
+if any-function? :help [
+===start-group=== "HELP"
+--test-- "HELP shows function attributes"
+	--assert did all [
+		help/into use s: copy ""
+		find s "ATTRIBUTES"
+		find s "throw"
+	]
+	ha-f2: func [[catch throw] "Doc string." a][]
+	--assert did all [
+		help/into ha-f2 s: copy ""
+		find s "catch"
+		find s "throw"
+	]
+
+--test-- "HELP without attributes has no ATTRIBUTES section"
+	--assert not find help/into append copy "" "ATTRIBUTES"
+===end-group===
+]
+
+
 ~~~end-file~~~
