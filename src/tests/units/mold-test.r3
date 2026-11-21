@@ -632,6 +632,14 @@ Rebol [
 
 ===end-group===
 
+===start-group=== "mold datetime"
+	--test-- "mold datetime"
+		--assert (mold 1-10-2026/1:2:3) == "1-Oct-2026/1:02:03"
+	--test-- "mold/all datetime"
+		--assert (mold/all 1-10-2026/1:2:3) == "2026-10-01T01:02:03"
+		--assert (mold/all 1-10-2026/1:2:3+2:00) == "2026-10-01T01:02:03+02:00"
+===end-group===
+
 ===start-group=== "mold image!"
 
 	--test-- "mold empty image"

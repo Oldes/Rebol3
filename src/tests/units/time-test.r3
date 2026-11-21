@@ -197,6 +197,7 @@ Rebol [
 	--test-- "time/second: decimal"
 		t: 1:2:3
 		t/second: 1.5 --assert t = 1:02:01.5
+		t/second: 4   --assert t = 1:02:04
 	--test-- "time/minute: decimal (truncated by Int32s)"
 		t: 1:2:3
 		t/minute: 4.9 --assert t = 1:04:03
@@ -305,7 +306,7 @@ Rebol [
 		o: object [t: 1 protect/words o: object [t: now/time]]
 		--assert protected? 'o/o/t
 		--assert protected? 'o/o/t/hour        ;@@ <--- fails!
-		--assert error? e: try [o/o/t/hour: 0] ;@@ <--- fails!
+		--assert error? e: try [o/o/t/hour: 0]
 ===end-group===
 
 ~~~end-file~~~
