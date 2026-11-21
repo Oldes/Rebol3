@@ -389,12 +389,13 @@ supplement: func [
 
 collect: func [
 	"Evaluates a block, storing values via KEEP function, and returns block of collected values."
+	[throw]
 	body [block!] "Block to evaluate"
 	/into "Insert into a buffer instead (returns position after insert)"
 	output [series!] "The buffer series (modified)"
 ][
 	unless output [output: make block! 16]
-	do func [keep] body func [value [any-type!] /only] [
+	do func [[throw] keep] body func [value [any-type!] /only] [
 		output: insert/:only output :value
 		:value
 	]

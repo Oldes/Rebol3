@@ -3460,7 +3460,29 @@ try/with [
 	;@@ https://github.com/Oldes/Rebol-issues/issues/880
 	--assert unset? first collect [keep #(unset)]
 	--assert unset? first head insert copy [] #(unset)
+--test-- "COLLECT passes RETURN to the caller"
+	col-f1: func [][collect [keep 1 return 2] 3]
+	--assert 2 = col-f1
 
+--test-- "COLLECT passes EXIT to the caller"
+	col-n: 0
+	col-f2: func [][collect [col-n: 1 exit] col-n: 100]
+	col-f2
+	--assert col-n = 1
+
+--test-- "COLLECT/into with RETURN"
+	col-out: copy []
+	col-f3: func [][collect/into [keep 1 return col-out] col-out]
+	--assert [1] = col-f3
+
+--test-- "COLLECT still collects"
+	--assert [1 2 3] = collect [repeat i 3 [keep i]]
+	--assert [[1]] = collect [keep/only [1]]
+	--assert did all [
+		col-out: collect/into [keep 1] s: copy []
+		tail? col-out
+		s = [1]
+	]
 ===end-group===
 
 ===start-group=== "MOVE"
