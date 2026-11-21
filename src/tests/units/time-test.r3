@@ -10,6 +10,32 @@ Rebol [
 
 ~~~start-file~~~ "TIME"
 
+===start-group=== "construction syntax - time!"
+	--test-- "#(time! time)"
+		--assert 1:2:3 = load "#(time! 1:2:3)"
+	--test-- "#(time! string)"
+		--assert 1:2:3 = load {#(time! "1:2:3")}
+		--assert error? try [load {#(time! "abc")}]          ;; Scan_Time fails
+	--test-- "#(time! integer/decimal)"
+		--assert 0:0:10  = load "#(time! 10)"
+		--assert 0:0:1.5 = load "#(time! 1.5)"
+	--test-- "#(time! block)"
+		--assert 1:0:0    = load "#(time! [1])"
+		--assert 1:2:0    = load "#(time! [1 2])"
+		--assert 1:2:3    = load "#(time! [1 2 3])"
+		--assert 1:2:3.5  = load "#(time! [1 2 3.5])"
+		--assert -1:2:3   = load "#(time! [-1 2 3])"
+	--test-- "#(time! invalid) - NO_TIME branch"
+		--assert error? try [load "#(time! foo)"]            ;; unsupported type
+		--assert error? try [load "#(time! [])"]             ;; empty block
+		--assert error? try [load "#(time! [a])"]            ;; non-integer hours
+		--assert error? try [load "#(time! [1 a])"]          ;; non-integer minutes
+		--assert error? try [load "#(time! [1 -2])"]         ;; negative minutes
+		--assert error? try [load "#(time! [1 2 -3])"]       ;; negative seconds
+		--assert error? try [load "#(time! [1 2 a])"]        ;; bad seconds type
+		--assert error? try [load "#(time! [1 2 3 4])"]      ;; block too long
+===end-group===
+
 ===start-group=== "time"
 	--test-- "round time"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/162
