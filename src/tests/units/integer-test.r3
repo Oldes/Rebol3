@@ -427,4 +427,34 @@ Rebol [
 		--assert error? try [factorial 171]
 ===end-group===
 
+===start-group=== "Integer overflow boundaries"
+	max-i64: 9223372036854775807
+	min-i64: -9223372036854775807 - 1
+	--test-- "i64 add overflow"
+		--assert max-i64 = (max-i64 - 1 + 1)
+		--assert error? try [max-i64 + 1]
+		--assert error? try [min-i64 + -1]
+		--assert -1 = (max-i64 + min-i64)
+	--test-- "i64 sub overflow"
+		--assert min-i64 = (-9223372036854775807 - 1)
+		--assert error? try [min-i64 - 1]
+		--assert error? try [max-i64 - -1]
+		--assert error? try [0 - min-i64]
+		--assert max-i64 = (-1 - min-i64)
+	--test-- "i64 mul overflow"
+		--assert min-i64 = (min-i64 * 1)
+		--assert min-i64 = (1 * min-i64)
+		--assert error? try [min-i64 * -1]
+		--assert error? try [-1 * min-i64]
+		--assert error? try [min-i64 * 2]
+		--assert min-i64 = (4294967296 * -2147483648)
+		--assert min-i64 = (-4294967296 * 2147483648)
+		--assert error? try [4294967296 * 2147483648]
+		--assert error? try [-4294967296 * -2147483648]
+		--assert 9223372030926249001 = (3037000499 * 3037000499)
+		--assert error? try [3037000500 * 3037000500]
+		--assert error? try [-3037000500 * 3037000500]
+		--assert 0 = (min-i64 * 0)
+===end-group===
+
 ~~~end-file~~~

@@ -3,6 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2014 Atronix Engineering, Inc
+**  Copyright 2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,12 +25,15 @@
 **  Section: functional
 **  Author:  Shixin Zeng
 **  Notes: Based on original code in t-integer.c
+**         Functions are compiled only when sys-int-funcs.h requests
+**         them (no compiler builtin, or USE_GENERIC_INT_OVERFLOW).
 **
 ***********************************************************************/
 
 #include "reb-c.h"
 #include "sys-int-funcs.h"
 
+#ifdef REB_NEED_I32_ADD_OF
 REBOOL reb_i32_add_overflow(i32 x, i32 y, i32 *sum)
 {
 	i64 sum64 = (i64)x + (i64)y;
@@ -37,7 +41,9 @@ REBOOL reb_i32_add_overflow(i32 x, i32 y, i32 *sum)
 	*sum = (i32)sum64;
 	return FALSE;
 }
+#endif
 
+#ifdef REB_NEED_U32_ADD_OF
 REBOOL reb_u32_add_overflow(u32 x, u32 y, u32 *sum)
 {
 	u64 s = (u64)x + (u64)y;
@@ -45,7 +51,9 @@ REBOOL reb_u32_add_overflow(u32 x, u32 y, u32 *sum)
 	*sum = (u32)s;
 	return FALSE;
 }
+#endif
 
+#ifdef REB_NEED_I64_ADD_OF
 REBOOL reb_i64_add_overflow(i64 x, i64 y, i64 *sum)
 {
 	*sum = (REBU64)x + (REBU64)y; /* never overflow with unsigned integers*/
@@ -53,14 +61,18 @@ REBOOL reb_i64_add_overflow(i64 x, i64 y, i64 *sum)
 		&& ((x < 0) != (*sum < 0))) return TRUE;
 	return FALSE;
 }
+#endif
 
+#ifdef REB_NEED_U64_ADD_OF
 REBOOL reb_u64_add_overflow(u64 x, u64 y, u64 *sum)
 {
 	*sum = x + y;
 	if (*sum < x || *sum < y) return TRUE;
 	return FALSE;
 }
+#endif
 
+#ifdef REB_NEED_I32_SUB_OF
 REBOOL reb_i32_sub_overflow(i32 x, i32 y, i32 *diff)
 {
 	*diff = (i64)x - (i64)y;
@@ -68,7 +80,9 @@ REBOOL reb_i32_sub_overflow(i32 x, i32 y, i32 *diff)
 
 	return FALSE;
 }
+#endif
 
+#ifdef REB_NEED_I64_SUB_OF
 REBOOL reb_i64_sub_overflow(i64 x, i64 y, i64 *diff)
 {
 	*diff = (REBU64)x - (REBU64)y;
@@ -76,7 +90,9 @@ REBOOL reb_i64_sub_overflow(i64 x, i64 y, i64 *diff)
 
 	return FALSE;
 }
+#endif
 
+#ifdef REB_NEED_I32_MUL_OF
 REBOOL reb_i32_mul_overflow(i32 x, i32 y, i32 *prod)
 {
 	i64 p = (i64)x * (i64)y;
@@ -84,7 +100,9 @@ REBOOL reb_i32_mul_overflow(i32 x, i32 y, i32 *prod)
 	*prod = (i32)p;
 	return FALSE;
 }
+#endif
 
+#ifdef REB_NEED_U32_MUL_OF
 REBOOL reb_u32_mul_overflow(u32 x, u32 y, u32 *prod)
 {
 	u64 p = (u64)x * (u64)y;
@@ -92,7 +110,9 @@ REBOOL reb_u32_mul_overflow(u32 x, u32 y, u32 *prod)
 	*prod = (u32)p;
 	return FALSE;
 }
+#endif
 
+#ifdef REB_NEED_I64_MUL_OF
 REBOOL reb_i64_mul_overflow(i64 x, i64 y, i64 *prod)
 {
 	REBFLG sgn;
@@ -146,7 +166,9 @@ REBOOL reb_i64_mul_overflow(i64 x, i64 y, i64 *prod)
 	*prod = sgn? -(i64)p : p;
 	return FALSE;
 }
+#endif
 
+#ifdef REB_NEED_U64_MUL_OF
 REBOOL reb_u64_mul_overflow(u64 x, u64 y, u64 *prod)
 {
 	u64 x0, y0, x1, y1;
@@ -166,3 +188,4 @@ REBOOL reb_u64_mul_overflow(u64 x, u64 y, u64 *prod)
 
 	return REB_U64_ADD_OF(tmp << 32, x0 * y0, prod);
 }
+#endif
