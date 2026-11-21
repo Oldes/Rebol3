@@ -166,6 +166,31 @@
 
 /***********************************************************************
 **
+*/	static REBYTE Get_Func_Spec_Flags(REBSER *spec)
+/*
+**		Collect R2-style function attributes from a block placed
+**		before the first argument: [[throw] "doc" arg ...]
+**
+***********************************************************************/
+{
+	REBVAL *val;
+	REBVAL *attr;
+	REBYTE flags = 0;
+
+	for (val = BLK_HEAD(spec); NOT_END(val); val++) {
+		if (ANY_WORD(val)) break; // attributes only before the first arg
+		if (!IS_BLOCK(val)) continue;
+		for (attr = VAL_BLK_DATA(val); NOT_END(attr); attr++) {
+			if (IS_WORD(attr) && VAL_WORD_CANON(attr) == SYM_THROW)
+				SET_FLAG(flags, FUNC_THROW);
+			// other words are ignored (R2 compatibility)
+		}
+	}
+	return flags;
+}
+
+/***********************************************************************
+**
 */	void Make_Native(REBVAL *value, REBSER *spec, REBFUN func, REBINT type)
 /*
 ***********************************************************************/
@@ -213,6 +238,8 @@
 	else return FALSE;
 
 	VAL_SET(value, type);
+	if (type == REB_FUNCTION || type == REB_CLOSURE)
+		VAL_FUNC_FLAGS(value) = Get_Func_Spec_Flags(VAL_FUNC_SPEC(value));
 
 	if (type == REB_OP) {
 		// make sure that there are exactly 2 args
@@ -253,6 +280,7 @@
 		if (IS_BLOCK(spec)) {
 			VAL_FUNC_SPEC(value) = VAL_SERIES(spec);
 			VAL_FUNC_ARGS(value) = Check_Func_Spec(VAL_SERIES(spec));
+			VAL_FUNC_FLAGS(value) = Get_Func_Spec_Flags(VAL_SERIES(spec));
 		} else {
 			if (!IS_STAR(spec)) return FALSE;
 			VAL_FUNC_ARGS(value) = Copy_Block(VAL_FUNC_ARGS(value), 0);
@@ -438,7 +466,7 @@
 	result = Do_Blk(VAL_FUNC_BODY(func), 0);
 	ds = DS_RETURN;
 
-	if (IS_ERROR(result) && IS_RETURN(result)) {
+	if (IS_ERROR(result) && IS_RETURN(result) && !VAL_FUNC_GET_FLAG(func, FUNC_THROW)) {
 		// Value below is kept safe from GC because no-allocation is
 		// done between point of SET_THROW and here.
 		if (VAL_ERR_VALUE(result))
@@ -484,7 +512,7 @@
 	result = Do_Blk(body, 0); // GC-OK - also, result returned on DS stack
 	ds = DS_RETURN;
 
-	if (IS_ERROR(result) && IS_RETURN(result)) {
+	if (IS_ERROR(result) && IS_RETURN(result) && !VAL_FUNC_GET_FLAG(func, FUNC_THROW)) {
 		// Value below is kept safe from GC because no-allocation is
 		// done between point of SET_THROW and here.
 		if (VAL_ERR_VALUE(result))

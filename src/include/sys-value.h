@@ -46,9 +46,9 @@ typedef struct Reb_Header {
 	unsigned type:8;	// datatype
 	unsigned opts:8;	// special options
 	unsigned exts:8;	// extensions to datatype
-	unsigned resv:8;	// reserved for future
+	unsigned resv:8;	// function!/closure! attribute flags (FUNC_*), else reserved
 #else
-	unsigned resv:8;	// reserved for future
+	unsigned resv:8;	// function!/closure! attribute flags (FUNC_*), else reserved
 	unsigned exts:8;	// extensions to datatype
 	unsigned opts:8;	// special options
 	unsigned type:8;	// datatype
@@ -1094,6 +1094,15 @@ typedef struct Reb_Function {
 #define VAL_FUNC_BODY(v)	  ((v)->data.func.func.body)
 #define VAL_FUNC_ACT(v)       ((v)->data.func.func.act)
 #define VAL_FUNC_ARGC(v)	  SERIES_TAIL((v)->data.func.args)
+
+// Function attribute flags (R2-style spec block, e.g. [[throw] arg]).
+// Stored in the header's RESV byte (see Reb_Header) of function! and
+// closure! values only. VAL_SET clears them, so set after VAL_SET.
+enum {
+	FUNC_THROW = 0,	// RETURN/EXIT are not caught; they pass to the caller
+};
+#define VAL_FUNC_FLAGS(v)		((v)->flags.flags.resv)
+#define VAL_FUNC_GET_FLAG(v,n)	GET_FLAG(VAL_FUNC_FLAGS(v), n)
 
 typedef struct Reb_Path_Value {
 	REBVAL *value;	// modified

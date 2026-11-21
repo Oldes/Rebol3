@@ -97,6 +97,35 @@ Rebol [
 ===end-group===
 
 
+===start-group=== "[throw] function attribute"
+	--test-- "[throw] - RETURN passes through to the caller"
+		tl-loop: func [[throw] count [integer!] body [block!]][loop count body]
+		tl-caller: func [][tl-loop 5 [return "caller"] "not reached"]
+		--assert "caller" = tl-caller
+
+	--test-- "[throw] - EXIT passes through to the caller"
+		tl-n: 0
+		tl-caller2: func [][tl-loop 5 [tl-n: tl-n + 1 exit] tl-n: 100]
+		tl-caller2
+		--assert tl-n = 1
+
+	--test-- "[throw] - closure (USE-like mezzanine)"
+		tl-use: func [[throw] words [block!] body [block!]][
+			apply make closure! reduce [compose [[throw] (words)] copy/deep body] []
+		]
+		tl-f3: func [][tl-use [x] [x: 1 return x + 1] 0]
+		--assert 2 = tl-f3
+
+	--test-- "no [throw] - function still catches RETURN"
+		tl-g: func [b][do b]
+		tl-f4: func [][tl-g [return 1] 2]
+		--assert 2 = tl-f4
+
+	--test-- "[throw] - spec is kept"
+		--assert [[throw] a] = spec-of func [[throw] a][]
+===end-group===
+
+
 ===start-group=== "Apply"
 
 --test-- "apply :do [:func]"
