@@ -194,8 +194,6 @@ start: func [
 		load-boot-exts
 		sys/log/debug 'REBOL "Init mezz plus..."
 
-		write %xxxx mold boot-mezz
-
 		do bind-lib boot-mezz
 		boot-mezz: 'done
 
