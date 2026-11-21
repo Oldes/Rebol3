@@ -445,7 +445,7 @@ deci decimal_to_deci(REBDEC a);
 
 			case A_REMAINDER:
 				if (num == 0) Trap0(RE_ZERO_DIVIDE);
-				secs %= num;
+				secs %= num * SEC_SEC;
 				goto setTime;
 			}
 		}
