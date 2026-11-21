@@ -10,7 +10,7 @@ paths: [
 	%'!src/tests/**'
 	%.github/workflows/main.yml
 ]
-libs: [Blend2D]
+;libs: [Blend2D]
 build: [
 	windows: [
 		runs-on: 'windows-latest
@@ -37,10 +37,10 @@ build: [
 
 tests: [
 	%./src/tests/run-tests.r3
-	%./src/tests/test-extension-sqlite.r3
-	%./src/tests/test-extension-qoi.r3
-	%./src/tests/test-extension-triangulate.r3
-	%./src/tests/test-extension-blend2d.r3
+;	%./src/tests/test-extension-sqlite.r3
+;	%./src/tests/test-extension-qoi.r3
+;	%./src/tests/test-extension-triangulate.r3
+;	%./src/tests/test-extension-blend2d.r3
 ]
 no-test: [
 	%rebol3-base-windows-x86

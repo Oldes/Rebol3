@@ -42,10 +42,6 @@ jobs:
         echo "SISKIN_INSTALL=$GITHUB_WORKSPACE/install" >> $GITHUB_ENV
         echo "SISKIN_TEMP=$GITHUB_WORKSPACE/temp" >> $GITHUB_ENV
     
-    - name: "[BUILD] Blend2D static library x86"
-      run: ./siskin make/blend2d.nest cmake-blend2d-x86
-    - name: "[BUILD] Blend2D static library x64"
-      run: ./siskin make/blend2d.nest cmake-blend2d-x64
 
     - name: "[BUILD] Rebol/Bulk x86"
       run: ./siskin make/rebol3.nest -o ./ --msvc --arch x86 rebol3-bulk-windows-x86
@@ -54,14 +50,6 @@ jobs:
 
     - name: "[TEST] rebol3-bulk-windows-x64 ./src/tests/run-tests.r3"
       run: ./rebol3-bulk-windows-x64 -s ./src/tests/run-tests.r3
-    - name: "[TEST] rebol3-bulk-windows-x64 ./src/tests/test-extension-sqlite.r3"
-      run: ./rebol3-bulk-windows-x64 -s ./src/tests/test-extension-sqlite.r3
-    - name: "[TEST] rebol3-bulk-windows-x64 ./src/tests/test-extension-qoi.r3"
-      run: ./rebol3-bulk-windows-x64 -s ./src/tests/test-extension-qoi.r3
-    - name: "[TEST] rebol3-bulk-windows-x64 ./src/tests/test-extension-triangulate.r3"
-      run: ./rebol3-bulk-windows-x64 -s ./src/tests/test-extension-triangulate.r3
-    - name: "[TEST] rebol3-bulk-windows-x64 ./src/tests/test-extension-blend2d.r3"
-      run: ./rebol3-bulk-windows-x64 -s ./src/tests/test-extension-blend2d.r3
 
     - uses: actions/upload-artifact@v6
       with:
@@ -85,22 +73,12 @@ jobs:
     - name: "[INSTALL] For serial port test"
       run: sudo apt-get install -y socat
 
-    - name: "[BUILD] Blend2D static library x64"
-      run: ./siskin make/blend2d.nest cmake-blend2d-x64
 
     - name: "[BUILD] Rebol/Bulk x64"
       run: ./siskin make/rebol3.nest -o ./ --gzip --arch x64 rebol3-bulk-linux-x64
 
     - name: "[TEST] rebol3-bulk-linux-x64 ./src/tests/run-tests.r3"
       run: ./rebol3-bulk-linux-x64 -s ./src/tests/run-tests.r3
-    - name: "[TEST] rebol3-bulk-linux-x64 ./src/tests/test-extension-sqlite.r3"
-      run: ./rebol3-bulk-linux-x64 -s ./src/tests/test-extension-sqlite.r3
-    - name: "[TEST] rebol3-bulk-linux-x64 ./src/tests/test-extension-qoi.r3"
-      run: ./rebol3-bulk-linux-x64 -s ./src/tests/test-extension-qoi.r3
-    - name: "[TEST] rebol3-bulk-linux-x64 ./src/tests/test-extension-triangulate.r3"
-      run: ./rebol3-bulk-linux-x64 -s ./src/tests/test-extension-triangulate.r3
-    - name: "[TEST] rebol3-bulk-linux-x64 ./src/tests/test-extension-blend2d.r3"
-      run: ./rebol3-bulk-linux-x64 -s ./src/tests/test-extension-blend2d.r3
 
     - uses: actions/upload-artifact@v6
       with:
@@ -121,10 +99,6 @@ jobs:
         echo "SISKIN_INSTALL=$GITHUB_WORKSPACE/install" >> $GITHUB_ENV
         echo "SISKIN_TEMP=$GITHUB_WORKSPACE/temp" >> $GITHUB_ENV
     
-    - name: "[BUILD] Blend2D static library x64"
-      run: ./siskin make/blend2d.nest cmake-blend2d-x64
-    - name: "[BUILD] Blend2D static library arm64"
-      run: ./siskin make/blend2d.nest cmake-blend2d-arm64
 
     - name: "[BUILD] Rebol/Bulk x64"
       run: ./siskin make/rebol3.nest -o ./ --gzip --arch x64 rebol3-bulk-macos-x64
@@ -133,14 +107,6 @@ jobs:
 
     - name: "[TEST] rebol3-bulk-macos-x64 ./src/tests/run-tests.r3"
       run: ./rebol3-bulk-macos-x64 -s ./src/tests/run-tests.r3
-    - name: "[TEST] rebol3-bulk-macos-x64 ./src/tests/test-extension-sqlite.r3"
-      run: ./rebol3-bulk-macos-x64 -s ./src/tests/test-extension-sqlite.r3
-    - name: "[TEST] rebol3-bulk-macos-x64 ./src/tests/test-extension-qoi.r3"
-      run: ./rebol3-bulk-macos-x64 -s ./src/tests/test-extension-qoi.r3
-    - name: "[TEST] rebol3-bulk-macos-x64 ./src/tests/test-extension-triangulate.r3"
-      run: ./rebol3-bulk-macos-x64 -s ./src/tests/test-extension-triangulate.r3
-    - name: "[TEST] rebol3-bulk-macos-x64 ./src/tests/test-extension-blend2d.r3"
-      run: ./rebol3-bulk-macos-x64 -s ./src/tests/test-extension-blend2d.r3
 
     - uses: actions/upload-artifact@v6
       with:

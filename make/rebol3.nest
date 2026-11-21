@@ -1045,16 +1045,16 @@ include-rebol-bulk: [
 	;- native extensions
 	:include-ext-easing
 	:include-ext-matrix
-	:include-ext-speak
-	:include-ext-sqlite
-	:include-ext-miniaudio
-	:include-ext-triangulate
-	#if (any [Windows? MacOS?]) [
-		:include-ext-gui
-	]
-	#if (exists? expand-env %$SISKIN_INSTALL/$SISKIN_ARCH/include/blend2d) [
-		:include-ext-blend2d
-	]
+;	:include-ext-speak
+;	:include-ext-sqlite
+;	:include-ext-miniaudio
+;	:include-ext-triangulate
+;	#if (any [Windows? MacOS?]) [
+;		:include-ext-gui
+;	]
+;	#if (exists? expand-env %$SISKIN_INSTALL/$SISKIN_ARCH/include/blend2d) [
+;		:include-ext-blend2d
+;	]
 	;- for tests:
 	:include-ext-xtest
 	;- not recommanded:
