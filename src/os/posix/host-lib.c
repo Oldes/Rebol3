@@ -86,6 +86,22 @@ static void *Task_Ready;
 int pipe2(int pipefd[2], int flags); //to avoid "implicit-function-declaration" warning
 #endif
 
+#ifndef INCLUDE_CRYPTOGRAPHY
+#if defined(__linux__) && !defined(TO_WASM)
+#include <sys/syscall.h>  // SYS_getrandom
+long syscall(long number, ...); //to avoid "implicit-function-declaration" warning
+#endif
+#ifdef TO_WASM
+#include <sys/random.h>   // getentropy
+#endif
+#ifndef O_CLOEXEC
+#define O_CLOEXEC 0
+#endif
+#else
+extern void Crypt_Random_Bytes(REBYTE *dest, REBCNT length); // n-crypt.c
+#endif //INCLUDE_CRYPTOGRAPHY
+
+
 RL_LIB *RL; // Link back to reb-lib from embedded extensions (like for now: host-window, host-ext-test..)
 
 /***********************************************************************
@@ -1527,5 +1543,64 @@ error:
 	return 0;
 #else
 	return isatty(STDIN_FILENO);
+#endif
+}
+
+/***********************************************************************
+**
+*/	OS_API REBOOL OS_Random_Bytes(REBYTE *dest, REBCNT length)
+/*
+**		Fills the buffer with cryptographically secure random bytes
+**		from the OS entropy source. Returns FALSE on failure.
+**
+***********************************************************************/
+{
+#ifdef INCLUDE_CRYPTOGRAPHY
+	Crypt_Random_Bytes(dest, length);
+	return TRUE;
+#else
+#if defined(TO_MACOS) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
+	arc4random_buf(dest, length); // cannot fail
+	return TRUE;
+#elif defined(TO_WASM)
+	REBCNT n;
+	while (length > 0) {
+		n = length > 256 ? 256 : length; // getentropy limit
+		if (getentropy(dest, n) != 0) return FALSE;
+		dest += n;
+		length -= n;
+	}
+	return TRUE;
+#else
+	ssize_t n;
+	int fd;
+#ifdef SYS_getrandom
+	while (length > 0) {
+		n = syscall(SYS_getrandom, dest, length, 0);
+		if (n < 0) {
+			if (errno == EINTR) continue;
+			if (errno == ENOSYS) break; // old kernel, use /dev/urandom
+			return FALSE;
+		}
+		dest += n;
+		length -= (REBCNT)n;
+	}
+	if (length == 0) return TRUE;
+#endif
+	fd = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
+	if (fd < 0) return FALSE;
+	while (length > 0) {
+		n = read(fd, dest, length);
+		if (n < 0 && errno == EINTR) continue;
+		if (n <= 0) {
+			close(fd);
+			return FALSE;
+		}
+		dest += n;
+		length -= (REBCNT)n;
+	}
+	close(fd);
+	return TRUE;
+#endif
 #endif
 }

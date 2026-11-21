@@ -29,6 +29,23 @@
 
 #include "sys-core.h"
 
+/***********************************************************************
+**
+*/	void Random_Secure_Bytes(REBYTE *dest, REBCNT length)
+/*
+**		Fills the buffer with cryptographically secure random bytes.
+**		Uses CTR-DRBG (n-crypt.c) when built with cryptography,
+**		else the OS entropy source directly.
+**
+***********************************************************************/
+{
+#ifdef INCLUDE_CRYPTOGRAPHY
+	Crypt_Random_Bytes(dest, length);
+#else
+	if (!OS_Random_Bytes(dest, length)) Trap0(RE_FEATURE_NA);
+#endif
+}
+
 /*	This program by D E Knuth is in the public domain and freely copyable.
  *	It is explained in Seminumerical Algorithms, 3rd edition, Section 3.6
  *	(or in the errata to the 2nd edition --- see

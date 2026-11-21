@@ -72,6 +72,10 @@
 
 RL_LIB *RL; // Link back to reb-lib from embedded extensions (like for now: host-window, host-ext-test..)
 
+#ifdef INCLUDE_CRYPTOGRAPHY
+extern void Crypt_Random_Bytes(REBYTE *dest, REBCNT length); // n-ctypt.c
+#endif //INCLUDE_CRYPTOGRAPHY
+
 // Semaphore lock to sync sub-task launch:
 static void *Task_Ready;
 static void *Temp_Buffer;
@@ -1636,4 +1640,21 @@ static INT CALLBACK BrowseCallbackProc(HWND hwnd, UINT uMsg, LPARAM lParam, LPAR
 ***********************************************************************/
 {
 	return _isatty(_fileno(stdin));
+}
+
+/***********************************************************************
+**
+*/	OS_API REBOOL OS_Random_Bytes(REBYTE *dest, REBCNT length)
+/*
+**		Fills the buffer with cryptographically secure random bytes
+**		from the OS entropy source. Returns FALSE on failure.
+**
+***********************************************************************/
+{
+#ifdef INCLUDE_CRYPTOGRAPHY
+	Crypt_Random_Bytes(dest, length); // Using function from n-crypt.c
+	return TRUE;
+#else
+	return BCRYPT_SUCCESS(BCryptGenRandom(NULL, dest, length, BCRYPT_USE_SYSTEM_PREFERRED_RNG));
+#endif
 }

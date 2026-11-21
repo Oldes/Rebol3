@@ -51,7 +51,7 @@ static REBOOL Seed_Ctr_Drbg(void);
 
 /***********************************************************************
 **
-*/	void Random_Secure_Bytes(REBYTE *dest, REBCNT length)
+*/	void Crypt_Random_Bytes(REBYTE *dest, REBCNT length)
 /*
 **		Fills the buffer with cryptographically secure random bytes.
 **		Uses CTR-DRBG seeded from the OS entropy source, so it is
