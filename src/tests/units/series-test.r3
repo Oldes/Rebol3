@@ -544,6 +544,41 @@ Rebol [
 	--assert 2 == first first find/tail/case [#"A" [1] #"a" [2]] #"a"
 ===end-group===
 
+
+===start-group=== "FIND-ALL"
+	;@@ https://github.com/Oldes/Rebol3/issues/1896
+	--test-- "FIND-ALL passes RETURN to the caller"
+		fa-f1: func [/local s][
+			s: [1 2 1 3]
+			find-all s 1 [if 3 = index? s [return index? s]]
+			none
+		]
+		--assert 3 = fa-f1
+
+	--test-- "FIND-ALL passes EXIT to the caller"
+		fa-n: 0
+		fa-f2: func [/local s][
+			s: [1 2 1]
+			find-all s 1 [fa-n: fa-n + 1 exit]
+			fa-n: 100
+		]
+		fa-f2
+		--assert fa-n = 1
+
+	--test-- "FIND-ALL still works"
+		fa-s: [1 2 1 3 1]
+		fa-c: 0
+		find-all fa-s 1 [fa-c: fa-c + 1]
+		--assert did all [
+			fa-c = 3
+			head? fa-s
+			fa-s = [1 2 1 3 1]
+		]
+		find-all fa-s 1 [change fa-s 0]
+		--assert fa-s = [0 2 0 3 0]
+===end-group===
+
+
 ===start-group=== "PATH notation"
 	--test-- "issue-64"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/64

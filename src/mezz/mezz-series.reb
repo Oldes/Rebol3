@@ -770,6 +770,7 @@ combine: func [
 
 find-all: func [
 	"Find all occurrences of a value within a series (allows modification)."
+	[throw]
 	'series [word!] "Variable for block, string, or other series"
 	value
 	body [block!] "Evaluated for each occurrence"
