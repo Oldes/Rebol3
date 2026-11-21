@@ -931,8 +931,9 @@ static i64 Bincode_Fixed_Value(REBCNT cmd, REBVAL *arg) {
 								next = DS_POP; // volatile stack reference
 							}
 							if (!IS_VECTOR(next) || VAL_VEC_IS_STRUCT(next)) goto error;
-							if ((REBU64)VAL_LEN(next) * VECT_WIDE(j) > 0x7FFFFFFF) Trap1(RE_SIZE_LIMIT, next);
-							count += VAL_LEN(next) * VECT_WIDE(j);
+							len = VECT_WIDE(j); // element width (computed as 32-bit, so widened explicitly below)
+							if ((REBU64)VAL_LEN(next) * (REBU64)len > 0x7FFFFFFF) Trap1(RE_SIZE_LIMIT, next);
+							count += VAL_LEN(next) * len;
 							continue;
 						}
 						if (!IS_VECTOR(next)) goto error;
