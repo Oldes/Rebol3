@@ -265,21 +265,47 @@ Rebol [
 		--assert error? try [reflect 1:2:3 'spec]
 ===end-group===
 
-;===start-group=== "time protect"
-;	;@@ https://github.com/Oldes/Rebol-issues/issues/2416
-;	--test-- "time protect 1"
-;		t: now/time protect 't
-;		--assert error? e: try [t/hour: 0]
-;		--assert e/id = 'locked-word
-;	--test-- "time protect 2"
-;		protect/words o: object [t: now/time]
-;		--assert error? e: try [o/t/hour: 0]
-;		--assert e/id = 'locked-word
-;	--test-- "time protect 3"
-;		o: object [t: 1 protect/words o: object [t: now/time]]
-;		--assert protected? 'o/o/t
-;		--assert protected? 'o/o/t/hour        ;@@ <--- fails!
-;		--assert error? e: try [o/o/t/hour: 0] ;@@ <--- fails!
-;===end-group===
+
+===start-group=== "time! scanning"
+	--test-- "AM/PM"
+		--assert  1:00    = to time! "1:00AM"
+		--assert 13:00    = to time! "1:00PM"
+		--assert 13:00    = to time! "1:00pm"
+		--assert  0:30    = to time! "12:30AM"
+		--assert 12:30    = to time! "12:30PM"
+		--assert 13:02:03 = to time! "1:2:3PM"
+		--assert error? try [to time! "13:00PM"]       ;; hour > 12 with meridian
+	--test-- "MM:SS.DD mode"
+		--assert 0:01:30.5 = to time! "1:30.5"
+		--assert 0:01:30.5 = to time! "1:30,5"
+		--assert 0:01:30.5 = load "1:30.5"
+		--assert error? try [to time! "1:30.5AM"]      ;; no AM/PM in MM:SS mode
+	--test-- "HH:MM with zero fraction"
+		--assert 1:30 = to time! "1:30.0"               ;; part4 == 0 -> HH:MM mode
+	--test-- "invalid parts"
+		--assert error? try [to time! "99999999999:00"] ;; part1 > MAX_HOUR
+		--assert error? try [to time! "1:"]             ;; missing minutes
+		--assert error? try [to time! "1:-5"]           ;; negative minutes
+		--assert error? try [to time! "1:2:"]           ;; missing seconds
+		--assert error? try [to time! "1:2:-3"]         ;; negative seconds
+		--assert error? try [to time! "--1:23"]
+===end-group===
+
+===start-group=== "time protect"
+	;@@ https://github.com/Oldes/Rebol-issues/issues/2416
+	--test-- "time protect 1"
+		t: now/time protect 't
+		--assert error? e: try [t/hour: 0]
+		--assert e/id = 'locked-word
+	--test-- "time protect 2"
+		protect/words o: object [t: now/time]
+		--assert error? e: try [o/t/hour: 0]
+		--assert e/id = 'locked-word
+	--test-- "time protect 3"
+		o: object [t: 1 protect/words o: object [t: now/time]]
+		--assert protected? 'o/o/t
+		--assert protected? 'o/o/t/hour        ;@@ <--- fails!
+		--assert error? e: try [o/o/t/hour: 0] ;@@ <--- fails!
+===end-group===
 
 ~~~end-file~~~
