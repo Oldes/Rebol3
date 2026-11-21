@@ -729,5 +729,28 @@ Rebol [
 
 ===end-group===
 
+===start-group=== "Object's evaluation"
+	--test-- "OBJECT passes RETURN/EXIT to the caller"
+		obj-f1: does [object [return 1] 2]
+		obj-f2: does [context [x: 1 exit] 2]
+		--assert 1 = obj-f1
+		--assert unset? obj-f2
+
+	--test-- "OBJECT passes BREAK and THROW"
+		--assert 1 = loop 2 [object [break/return 1] 2]
+		--assert 3 = catch [object [throw 3] 4]
+
+	--test-- "OBJECT still returns the object"
+		--assert did all [
+			o: object [a: 1 b: a + 1]
+			object? o
+			o/b = 2
+		]
+		--assert did all [
+			o: context [a: 1]
+			o/a = 1
+		]
+===end-group===
+
 
 ~~~end-file~~~

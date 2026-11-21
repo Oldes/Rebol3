@@ -362,10 +362,14 @@ extern const REBYTE Str_Banner[];
 ***********************************************************************/
 {
 	REBVAL *spec = D_ARG(1);
+	REBVAL *result;
 
 	SET_OBJECT(ds, Make_Object(0, VAL_BLK(spec)));
 	Bind_Block(VAL_OBJ_FRAME(ds), VAL_BLK(spec), D_REF(2)?BIND_ONLY:BIND_DEEP); // not deep
-	Do_Blk(VAL_SERIES(spec), 0); // result ignored
+	result = Do_Blk(VAL_SERIES(spec), 0);
+	// Pass RETURN, EXIT, BREAK, THROW... to the caller (as MAKE OBJECT! does):
+	// (D_RET, not ds, as the stack may be expanded by the evaluation)
+	if (THROWN(result)) *D_RET = *result;
 	return R_RET;
 }
 
