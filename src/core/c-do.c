@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -99,13 +99,77 @@ static REBVAL *Func_Word(REBINT dsf)
 **
 ***********************************************************************/
 {
-	if (SERIES_REST(DS_Series) >= STACK_LIMIT) Trap_Stack();
-	DS_Series->tail = DSP+1;
-	if((amount + SERIES_REST(DS_Series)) >= STACK_LIMIT) {
-		amount = STACK_LIMIT - SERIES_REST(DS_Series) - 1;
-	}
-	Extend_Series(DS_Series, amount);
+	REBCNT rest = SERIES_REST(DS_Series);
+	REBCNT size;
+	REBSER *ns, swap;
+
+	if (rest >= STACK_LIMIT) Trap_Stack();
+
+	// Grow geometrically, but cap the actual allocation rather than the
+	// delta passed to Extend_Series (which can double and round it again).
+	size = rest > STACK_LIMIT / 2 ? STACK_LIMIT : rest * 2;
+	if (amount > size - rest)
+		size = amount > STACK_LIMIT - rest ? STACK_LIMIT : rest + amount;
+	ns = Make_Series(size, sizeof(REBVAL), FALSE);
+	COPY_MEM(ns->data, DS_Series->data, (DSP + 1) * sizeof(REBVAL));
+	ns->tail = DSP + 1;
+
+	// Preserve the series identity held by the root and other callers.
+	swap = *DS_Series;
+	*DS_Series = *ns;
+	*ns = swap;
+	Free_Series(ns);
+	Set_Root_Series(TASK_STACK, DS_Series, cb_cast("data stack"));
 	DS_Base = BLK_HEAD(DS_Series);
+#ifdef SHOW_EXPAND_STACK
+	Debug_Fmt(BOOT_STR(RS_STACK, 0), DSP, SERIES_REST(DS_Series));
+#endif
+}
+
+
+/***********************************************************************
+**
+*/	void Shrink_Stack()
+/*
+**		Shrink the data stack's buffer when it is mostly unused.
+**
+**		Note: the stack series does not use its tail. The live extent
+**		is DSP+1 values (indexes 0..DSP), so only those are preserved.
+**
+***********************************************************************/
+{
+	REBSER* ns;
+	REBSER swap;
+
+	// Only shrink if the stack is nearly empty and the buffer is big
+	// (at least double STACK_MIN, so it won't thrash). DSP < STACK_MIN
+	// also guarantees the live values fit in the smaller buffer:
+	if (DSP > STACK_MIN || SERIES_REST(DS_Series) < 2 * STACK_MIN) return;
+
+	// Make the small replacement and copy the live values (up to DSP).
+	// Make_Series zeroes the rest; tail and terminator are not used here:
+	ns = Make_Block(STACK_MIN);
+	// The live values are indexes 0..DSP (DSP+1 values, including the TOS).
+	// DSP < STACK_MIN is checked above, so they fit in the smaller buffer:
+	COPY_MEM(ns->data, BLK_HEAD(DS_Series), (DSP + 1) * sizeof(REBVAL));
+
+	// Swap the headers so DS_Series (the pointer everyone holds) keeps
+	// its identity but now owns the small buffer; ns gets the old one:
+	swap = *DS_Series;
+	*DS_Series = *ns;
+	*ns = swap;
+
+	// Frees the old big buffer and the spare header node. It also clears
+	// ns from GC_Infants and Prior_Expand:
+	Free_Series(ns);
+
+	// Relabel and re-set the root value (same series pointer as before):
+	Set_Root_Series(TASK_STACK, DS_Series, cb_cast("data stack")); // uses special GC
+
+	// The data pointer moved, so refresh the cached base.
+	// Callers must not hold raw REBVAL* into the old stack:
+	DS_Base = BLK_HEAD(DS_Series);
+
 #ifdef SHOW_EXPAND_STACK
 	Debug_Fmt(BOOT_STR(RS_STACK, 0), DSP, SERIES_REST(DS_Series));
 #endif
@@ -390,8 +454,20 @@ void Trace_Arg(REBINT num, REBVAL *arg, REBVAL *path)
 	}
 	// object/(expr) case:
 	else if (IS_PAREN(path)) {
-		// ?? GC protect stuff !!!!!! stack could expand!
-		pvs->select = Do_Blk(VAL_SERIES(path), 0);
+		// The evaluation may expand (move) the data stack, so rebase
+		// the pvs pointers which may point into it:
+		REBINT o_store  = DS_OFFSET(pvs->store);
+		REBINT o_value  = DS_OFFSET(pvs->value);
+		REBINT o_setval = DS_OFFSET(pvs->setval);
+		REBINT o_orig   = DS_OFFSET(pvs->orig);
+		
+		pvs->select = Do_Blk(VAL_SERIES(path), 0);     // may move DS_Base
+
+		DS_REBASE(pvs->store,  o_store);
+		DS_REBASE(pvs->value,  o_value);
+		DS_REBASE(pvs->setval, o_setval);
+		DS_REBASE(pvs->orig,   o_orig);
+
 	}
 	else // object/word and object/value case:
 		pvs->select = path;
@@ -404,20 +480,6 @@ void Trace_Arg(REBINT num, REBVAL *arg, REBVAL *path)
 	// .setval - non-zero for SET-PATH (set to zero after SET is done)
 	// .orig - original path for error messages
 
-#ifdef WIP
-
-	if (pvs->setfrm && IS_WORD(pvs->path-1)
-		&& (IS_DATE(pvs->value) || IS_TIME(pvs->value))
-		//&& pvs->setfrm->series
-	) {
-		REBCNT index = Find_Word_Index(pvs->setfrm, VAL_WORD_SYM(pvs->path-1), FALSE);
-		if (index > 0 && VAL_PROTECTED(FRM_WORD(pvs->setfrm, index))) {
-			SET_END(pvs->path);
-			VAL_TYPE(pvs->orig) = REB_PATH;
-			Trap1(RE_LOCKED_WORD, pvs->orig);
-		}
-	}
-#endif
 	switch (func(pvs)) {
 	case PE_OK:
 		break;
@@ -487,6 +549,11 @@ void Trace_Arg(REBINT num, REBVAL *arg, REBVAL *path)
 		if (IS_UNSET(pvs.value)) Trap1(RE_NO_VALUE, pvs.path);
 		if (pvs.setval) {
 			pvs.setfrm = IS_OBJECT(pvs.value) ? VAL_OBJ_FRAME(pvs.value) : VAL_WORD_FRAME(pvs.path);
+			// Setting a path like `d/year:` modifies the variable itself:
+			// https://github.com/Oldes/Rebol3/issues/2562
+			if (IS_PATH_SET_INPLACE(pvs.value) && VAL_WORD_INDEX(pvs.path) > 0
+				&& VAL_PROTECTED(FRM_WORD(VAL_WORD_FRAME(pvs.path), VAL_WORD_INDEX(pvs.path)))
+			) Trap1(RE_LOCKED_WORD, pvs.orig);
 		}
 	} else pvs.value = pvs.path; //Trap2(RE_INVALID_PATH, pvs.orig, pvs.path);
 
@@ -864,6 +931,12 @@ more_get_path:
 		Recycle(FALSE, FALSE);
 	}
 
+	// Check for datastack shrinking request:
+	if (GET_FLAG(sigs, SIG_SHRINK_STACK)) {
+		CLR_SIGNAL(SIG_SHRINK_STACK);
+		Shrink_Stack();
+	}
+
 #ifdef NOT_USED_INVESTIGATE
 	if (GET_FLAG(sigs, SIG_EVENT_PORT)) {  // !!! Why not used?
 		CLR_SIGNAL(SIG_EVENT_PORT);
@@ -901,6 +974,7 @@ more_get_path:
 	REBVAL *word = 0;
 	REBINT ftype;
 	REBCNT dsf;
+	REBCNT start = index; // start of expression (used as NEAR position of infix ops)
 
 	//CHECK_MEMORY(1);
 	CHECK_STACK(&value);
@@ -996,7 +1070,7 @@ eval_func2:
 		if (!word) word = ROOT_NONAME;
 		if (DSP <= 0 || index == 0) Trap1(RE_NO_OP_ARG, word);
 		ftype = VAL_GET_EXT(value) - REB_NATIVE;
-		dsf = Push_Func(TRUE, block, index, VAL_WORD_SYM(word), value); // TOS has first arg
+		dsf = Push_Func(TRUE, block, start, VAL_WORD_SYM(word), value); // TOS has first arg
 		DS_PUSH(DS_VALUE(dsf)); // Copy prior to first argument
 		goto eval_func;
 
@@ -1377,11 +1451,23 @@ eval_func2:
 **
 ***********************************************************************/
 {
-	REBVAL *value = VAL_BLK_DATA(block);
+	REBVAL *value;
 	REBINT start = DSP + 1;
-	
+	REBVAL blk_val, into_val;
+
+	// BLOCK and INTO may point into the data stack (native args), which
+	// moves when the stack expands; keep local copies.
+	blk_val = *block;
+	block = &blk_val;
+	if (into) {
+		into_val = *into;
+		into = &into_val;
+	}
+	value = VAL_BLK_DATA(block);
+
 	if (start + VAL_LEN(block) + 100 > SERIES_REST(DS_Series)) {
 		Expand_Stack(VAL_LEN(block));
+		if (start + VAL_LEN(block) + 100 > SERIES_REST(DS_Series)) Trap_Stack();
 	}
 
 	for (; NOT_END(value); value++) {
@@ -1401,11 +1487,16 @@ eval_func2:
 
 			// If result is a block, and not /only or a map value, insert its contents:
 			if (IS_BLOCK(DS_TOP) && !only && !IS_MAP(block)) {
-				// Append series to the stack:
-				SERIES_TAIL(DS_Series) = DSP; // overwrites TOP value
-				Append_Series(DS_Series, (REBYTE *)VAL_BLK_DATA(DS_TOP), VAL_BLK_LEN(DS_TOP));
-				DSP = SERIES_TAIL(DS_Series) - 1;
-				// Note: stack may have moved
+				// Splice block contents onto the stack (overwrites TOP value).
+				// Expand_Stack is used so DS_Base follows a moved stack.
+				REBCNT len = VAL_BLK_LEN(DS_TOP);
+				REBCNT need = len + VAL_LEN(block) + 100;
+				if ((REBCNT)DSP + need > SERIES_REST(DS_Series)) {
+					Expand_Stack(need);
+					if ((REBCNT)DSP + need > SERIES_REST(DS_Series)) Trap_Stack();
+				}
+				memcpy(DS_TOP, VAL_BLK_DATA(DS_TOP), len * sizeof(REBVAL));
+				DSP += (REBINT)len - 1;
 			}
 			else if (IS_UNSET(DS_TOP)) DS_DROP; // remove unset values
 		}
@@ -1469,6 +1560,7 @@ reapply:  // Go back here to start over with a new func
 		// Check for DO any-function
 		if (index < BLK_LEN(block)) {
 			index = Do_Next(block, index, 0);
+			func = DSF_FUNC(dsf); // stack could be expanded by the evaluation
 			val = DS_TOP;
 			if (IS_DO(func) && ANY_FUNC(val)) {
 				func = val;    // apply this func directly (volatile reference!)
@@ -1666,9 +1758,12 @@ reapply:  // Go back here to start over with a new func
 
 	for (; NOT_END(value); value++) {
 		if (IS_SET_WORD(value)) {
-			// Next line not needed, because SET words are ALWAYS in frame.
-			//if (VAL_WORD_INDEX(value) > 0 && VAL_WORD_FRAME(value) == frame)
-				DS_PUSH(value);
+			// Cascaded set-words are pushed one by one, so make sure there is room:
+			if ((DSP + 100) > (REBINT)SERIES_REST(DS_Series)) {
+				Expand_Stack(STACK_MIN);
+				temp = DS_VALUE(ssp); // the stack may have moved
+			}
+			DS_PUSH(value);
 		} else {
 			// Get value:
 			if (IS_WORD(value)) {
@@ -1736,9 +1831,12 @@ reapply:  // Go back here to start over with a new func
 
 	for (; NOT_END(value); value++) {
 		if (IS_SET_WORD(value)) {
-			// Next line not needed, because SET words are ALWAYS in frame.
-			//if (VAL_WORD_INDEX(value) > 0 && VAL_WORD_FRAME(value) == frame)
-				DS_PUSH(value);
+			// Cascaded set-words are pushed one by one, so make sure there is room:
+			if ((DSP + 100) > (REBINT)SERIES_REST(DS_Series)) {
+				Expand_Stack(STACK_MIN);
+				temp = DS_VALUE(ssp); // the stack may have moved
+			}
+			DS_PUSH(value);
 		} else {
 			// Get value:
 			*temp = *value;

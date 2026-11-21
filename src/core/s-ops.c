@@ -824,7 +824,7 @@ static REBYTE seed_str[SEED_LEN] = {
 {
 	REBSER *ser = BUF_EMIT; // GC protected (because it is emit buffer)
 	REBSER *str = VAL_SERIES(val);
-	REBCNT len = VAL_LEN(val);
+	REBCNT len = VAL_TAIL(val); // absolute end (idx is absolute too)
 	REBCNT idx = VAL_INDEX(val);
 	REBCNT start = idx;
 	REBSER *out;
@@ -837,7 +837,7 @@ static REBYTE seed_str[SEED_LEN] = {
 	while (idx < len) {
 		c = BIN_HEAD(str)[idx];
 		if (c == LF || c == CR) {
-			out = Copy_Bytes(BIN_SKIP(str, start), idx - start);
+			out = Copy_String(str, start, idx - start);
 			val = Append_Value(ser);
 			SET_STRING(val, out);
 			VAL_SET_LINE(val);

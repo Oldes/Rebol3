@@ -3,6 +3,7 @@ REBOL [
 	Title: "REBOL 3 Mezzanine: End of Mezz"
 	Rights: {
 		Copyright 2012 REBOL Technologies
+		Copyright 2012-2026 Rebol Open Source Contributors
 		REBOL is a trademark of REBOL Technologies
 	}
 	License: {
@@ -22,10 +23,7 @@ func: funco [
 	make function! copy/deep reduce [spec body] ; (now it deep copies)
 ]
 
-;- some shortcuts (aliases)
 ~: system/options/data
-codecs: :system/codecs 
-keys-of: :words-of ; as it sounds better when used with some objects
 
 ;; boot (path to the exe) may be none if not resolved!
 if system/options/boot [

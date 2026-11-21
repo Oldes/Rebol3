@@ -3,6 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
+**  Copyright 2021-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,7 +22,7 @@
 **
 **  Summary: Network device definitions
 **  Module:  reb-net.h
-**  Author:  Carl Sassenrath
+**  Author:  Carl Sassenrath, Oldes
 **  Notes:
 **
 ***********************************************************************/
@@ -46,3 +47,16 @@ enum {
 };
 
 #define IPA(a,b,c,d) (a<<24 | b<<16 | c<<8 | d)
+
+// Local network interface (result of the DNS device RDC_QUERY):
+typedef struct rebol_net_interface {
+	u32  ip;				    // address (network byte order)
+	u32  netmask;			    // network byte order (0 if not known)
+	u32  flags;				    // RNIF_* bits
+	char name[128];			    // UTF-8, null terminated
+} REBNIF;
+
+enum {
+	RNIF_UP,				    // interface is up
+	RNIF_LOOPBACK,			    // loopback interface
+};

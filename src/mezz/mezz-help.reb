@@ -151,7 +151,6 @@ import (module [
 			typeset?      :val [ ajoin [#"[" val #"]"] ]
 			port?         :val [ reduce [val/spec/title val/spec/ref] ]
 			image?        :val [ mold/part/all/flat val max-desc-width]
-			gob?          :val [ return reform ["offset:" val/offset "size:" val/size] ]
 			vector?       :val [ reform ["length:" length? val mold/part/flat val max-desc-width] ]
 			any [logic? :val none? :val unset? :val] [ form val ]
 			true [:val]
@@ -212,10 +211,8 @@ import (module [
 			if all [
 				user?   ;; if we are using user's context (system/contexts/user)
 				match   ;; with a pattern or a datatype
-				any [   ;; don't show results
-					word = 'lib-local ;; for internal `lib-local` value (as it would always match)
-					strict-equal? :val select system/contexts/lib word ;; or if the same value is in the library context (already reported)
-				]
+				;; don't show results if the same value is in the library context (already reported)
+				strict-equal? :val select system/contexts/lib word
 			][ continue ]
 
 			;; construct in multiple steps to compensate padding with long names
@@ -261,7 +258,7 @@ import (module [
 		/doc "Open web browser to related documentation"
 		/into "Help text will be inserted into provided string instead of printed"
 			string [string!] "Returned series will be past the insertion"
-		/local value spec args refs rets type ret desc desc-ext arg def des ref str tmp ret-desc
+		/local value spec args refs rets type ret desc desc-ext arg def des ref str tmp ret-desc attrs
 	][
 		if all [
 			doc
@@ -270,7 +267,9 @@ import (module [
 		][
 			browse join https://rebol.tech/docs/functions.html# word
 		]
-		cols: query system/ports/output 'window-cols
+		;; The reported width may be zero in non-interactive consoles (e.g. CI),
+		;; so enforce a sane minimum terminal width.
+		cols: max 76 query system/ports/output 'window-cols
 		max-desc-width: cols - 35
 		buffer: any [string  clear ""]
 		catch [
@@ -398,11 +397,12 @@ import (module [
 					refs: none
 					rets: ret-desc: none
 					type: type? :value
-					
+					attrs: copy []
 					clear find spec /local
 					parse spec [
-						any block!
+						any [set tmp block! (append attrs tmp)]   ; R2-style attributes, e.g. [throw]
 						set desc string! copy desc-ext any string!
+						any [set tmp block! (append attrs tmp)]   ; may also follow the description
 						any [
 							set arg [word! | lit-word! | get-word!] 
 							set def opt block!
@@ -434,6 +434,18 @@ import (module [
 					]
 					output ["^/     " uppercase form word " is " a-an form :type " value."]
 
+					unless empty? attrs [
+						out-title/line "ATTRIBUTES"
+						foreach attr attrs [
+							output [
+								"^/     " ansi/bright-green pad mold attr 14 "^[[m"
+								select [
+									catch "Errors are reported at the call site."
+									throw "RETURN and EXIT pass through to the caller."
+								] attr
+							]
+						]
+					]
 					unless empty? args [
 						out-title/line "ARGUMENTS"
 						foreach [arg def des] args [

@@ -53,6 +53,17 @@ C79E915C3277361FBFA587C6DC06FEDE0B7E57FEC0B68F96B3AD651D54264357
 
 	;- This secret can be used in symmetric encryption algorithms like AES
 
+--test-- "DH refinements"
+	;- exactly one of /public or /secret must be used
+	--assert error? try [dh k-Boban]
+	--assert error? try [dh/public/secret k-Boban pub-Alice]
+
+--test-- "DH secret with short or invalid peer's key"
+	;- peer's key shorter than P is valid (here G itself, so the secret is G^X = own public key)
+	--assert (dh/public k-Alice) = dh/secret k-Alice #{02}
+	;- empty peer's key is invalid (0 is out of range)
+	--assert none? dh/secret k-Alice #{}
+
 --test-- "DH keys release"
 
 	;- Once done with the exchange, the DH key must be released!
@@ -98,7 +109,11 @@ foreach ecurve system/catalog/elliptic-curves [
 		--assert none? ecdh/public k-Alice
 
 		;- re-initialization...
-		--assert handle? ecdh/init k-Alice ecurve ;- using existing key for a new init
+		;- /init always makes a new key, so its result must be used...
+		--assert handle? new-Alice: ecdh/init k-Alice ecurve
+		;- ...while the released key stays unusable.
+		--assert none? ecdh/public k-Alice
+		k-Alice: new-Alice
 		--assert binary? pub-Alice: ecdh/public k-Alice
 		--assert binary? secret-Alice: ecdh/secret k-Alice pub-Boban
 		--assert binary? secret-Boban: ecdh/secret k-Boban pub-Alice
@@ -111,6 +126,8 @@ foreach ecurve system/catalog/elliptic-curves [
 
 		;- Alice generates her key-pair
 		k-Alice: ecdh/init none ecurve
+		;- exports her public key (before signing!)
+		pub-Alice: ecdh/public k-Alice
 		;- wants to sign some data:
 		data: {Ladies and Gentlemen of the class of '99: If I could offer you only one tip for the future, sunscreen would be it.}
 		;- computes its hash:
@@ -128,10 +145,25 @@ foreach ecurve system/catalog/elliptic-curves [
 		;- can verify if it really works:
 		--assert ecdsa/verify k-Alice hash signature
 
+		;- signing must not regenerate the key pair
+		--assert pub-Alice = ecdh/public k-Alice
+
 		;- than Alice may send the data with signature, used curve and public key to Boban
-		pub-Alice: ecdh/public k-Alice
 		;- Boban can verify, that the data are really from Alice
 		--assert ecdsa/verify/curve pub-Alice hash signature ecurve
+		;- but the signature is not valid for any other key
+		k-Other: ecdh/init none ecurve
+		--assert false = ecdsa/verify k-Other hash signature
+		release k-Other
+		;- invalid signatures are reported as FALSE
+		--assert false = ecdsa/verify k-Alice checksum "other" 'sha256 signature
+		--assert false = ecdsa/verify k-Alice hash join signature #{00} ;; trailing data
+		--assert false = ecdsa/verify k-Alice hash #{0102}              ;; not ASN1
+		--assert false = ecdsa/verify k-Alice hash #{}
+		;- /sign and /verify cannot be used together
+		--assert error? try [ecdsa/sign/verify k-Alice hash signature]
+		;- raw public key cannot be used for signing
+		--assert error? try [ecdsa/sign/curve pub-Alice hash ecurve]
 
 		;@@ https://github.com/Oldes/Rebol-issues/issues/2642
 		--assert all [
@@ -141,6 +173,10 @@ foreach ecurve system/catalog/elliptic-curves [
 		]
 
 ]
+
+--test-- "ECDH init with invalid curve"
+	--assert error? try [ecdh/init none 'foo]
+	--assert error? try [ecdh/init none 'sha256]
 
 
 

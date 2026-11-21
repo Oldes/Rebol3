@@ -163,6 +163,7 @@ dir-tree: func [
 			exit
 		]
 		set [directory value] split-path directory
+		if empty? value [directory: %"" value: %/]   ;; root dir case
 		unless system/options/no-color [
 			prin system/options/ansi/red
 		]

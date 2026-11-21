@@ -216,6 +216,23 @@ Rebol [
 		--assert all [error? e: try [system/catalog/errors: none] e/id = 'locked-word]
 		--assert all [error? e: try [system/catalog/errors/Math: none] e/id = 'locked-word]
 
+	--test-- "find/compare different errors"
+		e1: try [1 / 0]
+		e2: try [no-such-word-xyz]
+		--assert none? find reduce [e1] e2
+		--assert same? e1 first find reduce [e2 e1] e1
+
+	--test-- "error near with infix operators"
+		;@@ https://github.com/Oldes/Rebol3/issues/252
+		--assert all [error? e: try [1 / 0]      e/near = [1 / 0]]
+		--assert all [error? e: try [1 + 2 / 0]  e/near = [1 + 2 / 0]]
+		--assert all [error? e: try [abs 1 / 0]  e/near = [1 / 0]]
+		--assert all [error? e: try [a: 1 / 0]   e/near = [1 / 0]]
+
+	--test-- "compare errors"
+		;@@ https://github.com/Oldes/Rebol3/issues/1320
+		--assert not equal? (try [1 / 0]) (try [2 / 0])
+
 ===end-group===
 
 

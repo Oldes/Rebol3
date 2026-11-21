@@ -31,7 +31,7 @@
 #include <stdio.h>
 #include "sys-core.h"
 
-
+#ifdef DEBUG
 /***********************************************************************
 **
 */	void Dump_Series_Fmt(REBSER *series, const char *memo)
@@ -416,3 +416,5 @@ xx*/	void Dump_Bind_Table()
 	Print("%s %d %x", "test", 1234, 1234);
 	getchar();
 #endif
+
+#endif //DEBUG

@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -110,6 +110,10 @@
 	if (D_REF(1))
 		GC_Active = FALSE;
 
+	if (D_REF(7)) { // stack
+		SET_SIGNAL(SIG_SHRINK_STACK);
+	}
+
 	DS_Ret_Int(released_bytes);
 	return R_RET;
 }
@@ -118,12 +122,19 @@
 **
 */	REBNATIVE(release)
 /*
+**		Releases the resources of a context handle now.
+**
+**		Other values may still refer to the context, so it must stay
+**		allocated (flagged as released) until the GC finds it unreferenced.
+**		Free_Hob would return it to the pool at once, and the next handle
+**		made would get it - so an old value would name an unrelated handle.
+**
 ***********************************************************************/
 {
 	REBVAL *val = D_ARG(1);
 
 	if (IS_CONTEXT_HANDLE(val)) {
-		Free_Hob(VAL_HANDLE_CTX(val));
+		Release_Hob(VAL_HANDLE_CTX(val));
 		return R_TRUE;
 	}
 	return R_FALSE;
@@ -194,7 +205,9 @@
 
 	if (D_REF(5)) {
 		REBVAL *pool_id = D_ARG(6);
+#ifdef DEBUG
 		Dump_Series_In_Pool(VAL_INT32(pool_id));
+#endif
 		return R_NONE;
 	}
 
@@ -426,11 +439,15 @@ err:
 /*
 ***********************************************************************/
 {
+#ifdef DEBUG
 	Dump_Stack(0, 0);
 	return R_UNSET;
 
 	Dump_All(sizeof(REBVAL));
 	return R_RET;
+#else
+	return R_UNSET;
+#endif
 }
 
 

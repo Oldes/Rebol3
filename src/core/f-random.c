@@ -3,6 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -127,24 +128,36 @@ static REBI64 ran_arr_cycle(void)
 **
 */	REBI64 Random_Int(REBFLG secure)
 /*
-**		Return random integer. Secure uses SHA1 for better safety.
+**		Return random integer.
+**		Non-secure: 62-bit value from the seedable PRNG (RANDOM/SEED).
+**		Secure: full 64-bit value from the CSPRNG (not affected by
+**		RANDOM/SEED and not advancing the PRNG state).
 **
 ***********************************************************************/
 {
 	REBI64 tmp;
-	tmp = ran_arr_next();
 
 	if (secure) {
-		REBYTE srcbuf[20], dstbuf[20];
-
-		memcpy(srcbuf, (REBYTE*)&tmp, sizeof(tmp));
-		memset(srcbuf + sizeof(tmp), *(REBYTE*)&tmp, 20 - sizeof(tmp));
-
-		SHA1(srcbuf, 20, dstbuf);
-		memcpy((REBYTE*)&tmp, dstbuf, sizeof(tmp));
+		Random_Secure_Bytes((REBYTE*)&tmp, sizeof(tmp));
+		return tmp;
 	}
+	return ran_arr_next();
+}
 
-	return tmp;
+/***********************************************************************
+**
+*/	static REBU64 Random_U64(REBFLG secure)
+/*
+**		Return 64 random bits. The non-secure PRNG produces only 62 bits,
+**		so two outputs are combined.
+**
+***********************************************************************/
+{
+	REBU64 a, b;
+	if (secure) return (REBU64)Random_Int(TRUE);
+	a = (REBU64)ran_arr_next();
+	b = (REBU64)ran_arr_next();
+	return (a << 2) | (b & 3);
 }
 
 //#define MAX_U64 ((REBU64)(REBI64)-1) //defined in reb-c.h
@@ -156,12 +169,18 @@ static REBI64 ran_arr_cycle(void)
 {
 	REBU64 s, m, u;
 	if (r == 0) return 0;
-	s = (r < 0) ? -r : r;
-	if (!secure && s > MM) Trap0(RE_OVERFLOW);
-	m = secure ? MAX_U64 - (MAX_U64 - s + 1) % s : MM - MM % s - 1; /* rejection limit */
-	do u = Random_Int(secure); while (u > m); /* get a random below the limit */
+	/* |r| in unsigned arithmetic, so it is valid also for the minimal integer */
+	s = (r < 0) ? (REBU64)0 - (REBU64)r : (REBU64)r;
+	if (!secure && s <= (REBU64)MM) {
+		/* 62-bit path (keeps sequences produced after RANDOM/SEED unchanged) */
+		m = (REBU64)MM - (REBU64)MM % s - 1;      /* rejection limit */
+		do u = (REBU64)ran_arr_next(); while (u > m);
+	} else {
+		m = MAX_U64 - (MAX_U64 - s + 1) % s;      /* rejection limit */
+		do u = Random_U64(secure); while (u > m);
+	}
 	u = u % s + 1;
-	return (r > 0) ? u : - (REBI64)u;
+	return (r > 0) ? (REBI64)u : (REBI64)((REBU64)0 - u);
 }
 
 /***********************************************************************
@@ -182,30 +201,19 @@ static REBI64 ran_arr_cycle(void)
 **
 */	void Random_Bytes(REBYTE* dest, REBCNT length, REBOOL	no_zeros)
 /*
-**		Fills destination buffer with random bytes.
+**		Fills destination buffer with secure random bytes.
 **
 ***********************************************************************/
 {
-	REBI64 rnd;
-	REBCNT k = length / 8;
-	REBCNT r = length % 8;
-	REBYTE *cp = dest;
 	REBCNT i;
 
-	for (i = 0; i < k; i++) {
-		rnd = Random_Int(TRUE);
-		memcpy(cp, (REBYTE*)&rnd, 8);
-		cp += 8;
-	}
-	if (r > 0) {
-		rnd = Random_Int(TRUE);
-		memcpy(cp, (REBYTE*)&rnd, r);
-	}
-	if(no_zeros) {
-		// make result without null bytes
+	Random_Secure_Bytes(dest, length);
+
+	if (no_zeros) {
+		// make result without null bytes (redraw keeps it uniform in 1..255)
 		for (i = 0; i < length; i++) {
-			while (dest[i] == 0) 
-				dest[i] = (u8)(rand());
+			while (dest[i] == 0)
+				Random_Secure_Bytes(dest + i, 1);
 		}
 	}
 }

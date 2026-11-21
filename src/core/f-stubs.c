@@ -595,7 +595,7 @@
 {
 	if (VAL_INDEX(value) >= VAL_TAIL(value)) return 0;
 	if (IS_UTF8_STRING(value)) {
-		return Length_As_UTF8_Code_Points(VAL_BIN_DATA(value));
+		return UTF8_Length(VAL_BIN_DATA(value), VAL_TAIL(value) - VAL_INDEX(value));
 	}
 	return VAL_TAIL(value) - VAL_INDEX(value);
 }
@@ -726,7 +726,7 @@
 	}
 	else {
 		if (is_ser && VAL_TYPE(sval) == VAL_TYPE(lval) && VAL_SERIES(sval) == VAL_SERIES(lval))
-			len = (REBINT)VAL_INDEX(lval) - (REBINT)VAL_INDEX(sval);
+			len = (REBINT)Val_Snapped_Index(lval) - (REBINT)VAL_INDEX(sval);
 		else
 			Trap1(RE_INVALID_PART, lval);
 
@@ -802,10 +802,12 @@
 			return 0; // silent compiler's warning
 		}
 		if (IS_UTF8_STRING(val)) {
-			len = (REBINT)VAL_INDEX(lval) - (REBINT)VAL_INDEX(val);
+			REBINT idx = (REBINT)Val_Snapped_Index(lval);
+			if (idx > (REBINT)VAL_TAIL(val)) idx = (REBINT)VAL_TAIL(val);
+			len = idx - (REBINT)VAL_INDEX(val);
 			if (len < 0) {
 				len = -len;
-				VAL_INDEX(val) = (REBINT)VAL_INDEX(lval);
+				VAL_INDEX(val) = idx;
 			}
 			return len;
 		}

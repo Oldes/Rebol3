@@ -384,6 +384,27 @@ Rebol [
 		f: 0
 		loop count [if (random a) <= b [f: f + 1]]
 		--assert (b / a) = round/to (f / count) 0.1
+
+	--test-- "random max integer"
+		--assert positive? random 0#7FFFFFFFFFFFFFFF
+		--assert positive? random/secure 0#7FFFFFFFFFFFFFFF
+	--test-- "random min integer"
+		--assert negative? random 0#8000000000000000
+		--assert negative? random/secure 0#8000000000000000
+	--test-- "random -1 (0#FFFFFFFFFFFFFFFF)"
+		--assert -1 = random 0#FFFFFFFFFFFFFFFF
+	--test-- "random above 62-bit range produces high values"
+		--assert loop 100 [if (random 0#7FFFFFFFFFFFFFFF) > 0#4000000000000000 [break/return true] false]
+	--test-- "random just above 62-bit stays in range"
+		--assert loop 1000 [
+			x: random 0#4000000000000001
+			if any [x < 1 x > 0#4000000000000001] [break/return false]
+			true
+		]
+	--test-- "random large range is reproducible with seed"
+		random/seed 1 a: random 0#7FFFFFFFFFFFFFFF
+		random/seed 1 b: random 0#7FFFFFFFFFFFFFFF
+		--assert a = b
 ===end-group===
 
 

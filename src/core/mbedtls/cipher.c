@@ -14,6 +14,7 @@
 #if defined(MBEDTLS_CIPHER_C)
 
 #include "mbedtls/cipher.h"
+#include "cipher_invasive.h"
 #include "cipher_wrap.h"
 #include "mbedtls/platform_util.h"
 #include "mbedtls/error.h"
@@ -318,7 +319,8 @@ int mbedtls_cipher_setkey(mbedtls_cipher_context_t *ctx,
 #endif
 
 #if defined(MBEDTLS_USE_PSA_CRYPTO) && !defined(MBEDTLS_DEPRECATED_REMOVED)
-    if (ctx->psa_enabled == 1) {
+    if (MBEDTLS_CT_SPEC_RISKY_BOOL(ctx->psa_enabled)) {
+        MBEDTLS_CT_NULLIFY_IF_SPECULATING(ctx, ctx->psa_enabled);
         mbedtls_cipher_context_psa * const cipher_psa =
             (mbedtls_cipher_context_psa *) ctx->cipher_ctx;
 
@@ -444,7 +446,11 @@ int mbedtls_cipher_set_iv(mbedtls_cipher_context_t *ctx,
     }
 
 #if defined(MBEDTLS_CHACHA20_C)
-    if (((mbedtls_cipher_type_t) ctx->cipher_info->type) == MBEDTLS_CIPHER_CHACHA20) {
+    if (MBEDTLS_CT_SPEC_RISKY_BOOL(ctx->cipher_info->type ==
+                                   MBEDTLS_CIPHER_CHACHA20)) {
+        MBEDTLS_CT_NULLIFY_IF_SPECULATING_EQ(ctx,
+                                             ctx->cipher_info->type,
+                                             MBEDTLS_CIPHER_CHACHA20);
         /* Even though the actual_iv_size is overwritten with a correct value
          * of 12 from the cipher info, return an error to indicate that
          * the input iv_len is wrong. */
@@ -467,7 +473,11 @@ int mbedtls_cipher_set_iv(mbedtls_cipher_context_t *ctx,
 #endif
 
 #if defined(MBEDTLS_GCM_C)
-    if (MBEDTLS_MODE_GCM == ((mbedtls_cipher_mode_t) ctx->cipher_info->mode)) {
+    if (MBEDTLS_CT_SPEC_RISKY_BOOL(MBEDTLS_MODE_GCM ==
+                                   ctx->cipher_info->mode)) {
+        MBEDTLS_CT_NULLIFY_IF_SPECULATING_EQ(ctx,
+                                             MBEDTLS_MODE_GCM,
+                                             ctx->cipher_info->mode);
         return mbedtls_gcm_starts((mbedtls_gcm_context *) ctx->cipher_ctx,
                                   ctx->operation,
                                   iv, iv_len);
@@ -475,7 +485,11 @@ int mbedtls_cipher_set_iv(mbedtls_cipher_context_t *ctx,
 #endif
 
 #if defined(MBEDTLS_CCM_C)
-    if (MBEDTLS_MODE_CCM_STAR_NO_TAG == ((mbedtls_cipher_mode_t) ctx->cipher_info->mode)) {
+    if (MBEDTLS_CT_SPEC_RISKY_BOOL(MBEDTLS_MODE_CCM_STAR_NO_TAG ==
+                                   ctx->cipher_info->mode)) {
+        MBEDTLS_CT_NULLIFY_IF_SPECULATING_EQ(ctx,
+                                             MBEDTLS_MODE_CCM_STAR_NO_TAG,
+                                             ctx->cipher_info->mode);
         int set_lengths_result;
         int ccm_star_mode;
 
@@ -545,14 +559,22 @@ int mbedtls_cipher_update_ad(mbedtls_cipher_context_t *ctx,
 #endif /* MBEDTLS_USE_PSA_CRYPTO && !MBEDTLS_DEPRECATED_REMOVED */
 
 #if defined(MBEDTLS_GCM_C)
-    if (MBEDTLS_MODE_GCM == ((mbedtls_cipher_mode_t) ctx->cipher_info->mode)) {
+    if (MBEDTLS_CT_SPEC_RISKY_BOOL(MBEDTLS_MODE_GCM ==
+                                   ctx->cipher_info->mode)) {
+        MBEDTLS_CT_NULLIFY_IF_SPECULATING_EQ(ctx,
+                                             MBEDTLS_MODE_GCM,
+                                             ctx->cipher_info->mode);
         return mbedtls_gcm_update_ad((mbedtls_gcm_context *) ctx->cipher_ctx,
                                      ad, ad_len);
     }
 #endif
 
 #if defined(MBEDTLS_CHACHAPOLY_C)
-    if (MBEDTLS_CIPHER_CHACHA20_POLY1305 == ((mbedtls_cipher_type_t) ctx->cipher_info->type)) {
+    if (MBEDTLS_CT_SPEC_RISKY_BOOL(MBEDTLS_CIPHER_CHACHA20_POLY1305 ==
+                                   ctx->cipher_info->type)) {
+        MBEDTLS_CT_NULLIFY_IF_SPECULATING_EQ(ctx,
+                                             MBEDTLS_CIPHER_CHACHA20_POLY1305,
+                                             ctx->cipher_info->type);
         int result;
         mbedtls_chachapoly_mode_t mode;
 
@@ -618,7 +640,11 @@ int mbedtls_cipher_update(mbedtls_cipher_context_t *ctx, const unsigned char *in
     }
 
 #if defined(MBEDTLS_GCM_C)
-    if (((mbedtls_cipher_mode_t) ctx->cipher_info->mode) == MBEDTLS_MODE_GCM) {
+    if (MBEDTLS_CT_SPEC_RISKY_BOOL(MBEDTLS_MODE_GCM ==
+                                   ctx->cipher_info->mode)) {
+        MBEDTLS_CT_NULLIFY_IF_SPECULATING_EQ(ctx,
+                                             MBEDTLS_MODE_GCM,
+                                             ctx->cipher_info->mode);
         return mbedtls_gcm_update((mbedtls_gcm_context *) ctx->cipher_ctx,
                                   input, ilen,
                                   output, ilen, olen);
@@ -626,7 +652,11 @@ int mbedtls_cipher_update(mbedtls_cipher_context_t *ctx, const unsigned char *in
 #endif
 
 #if defined(MBEDTLS_CCM_C)
-    if (((mbedtls_cipher_mode_t) ctx->cipher_info->mode) == MBEDTLS_MODE_CCM_STAR_NO_TAG) {
+    if (MBEDTLS_CT_SPEC_RISKY_BOOL(MBEDTLS_MODE_CCM_STAR_NO_TAG ==
+                                   ctx->cipher_info->mode)) {
+        MBEDTLS_CT_NULLIFY_IF_SPECULATING_EQ(ctx,
+                                             MBEDTLS_MODE_CCM_STAR_NO_TAG,
+                                             ctx->cipher_info->mode);
         return mbedtls_ccm_update((mbedtls_ccm_context *) ctx->cipher_ctx,
                                   input, ilen,
                                   output, ilen, olen);
@@ -634,11 +664,18 @@ int mbedtls_cipher_update(mbedtls_cipher_context_t *ctx, const unsigned char *in
 #endif
 
 #if defined(MBEDTLS_CHACHAPOLY_C)
-    if (((mbedtls_cipher_type_t) ctx->cipher_info->type) == MBEDTLS_CIPHER_CHACHA20_POLY1305) {
+    if (MBEDTLS_CT_SPEC_RISKY_BOOL(MBEDTLS_CIPHER_CHACHA20_POLY1305 ==
+                                   ctx->cipher_info->type)) {
+        MBEDTLS_CT_NULLIFY_IF_SPECULATING_EQ(ctx,
+                                             MBEDTLS_CIPHER_CHACHA20_POLY1305,
+                                             ctx->cipher_info->type);
         *olen = ilen;
         return mbedtls_chachapoly_update((mbedtls_chachapoly_context *) ctx->cipher_ctx,
                                          ilen, input, output);
     }
+    MBEDTLS_CT_NULLIFY_IF_SPECULATING_NE(ctx,
+                                         MBEDTLS_CIPHER_CHACHA20_POLY1305,
+                                         ctx->cipher_info->type);
 #endif
 
     if (input == output &&
@@ -838,8 +875,15 @@ static void add_pkcs_padding(unsigned char *output, size_t output_len,
     }
 }
 
-static int get_pkcs_padding(unsigned char *input, size_t input_len,
-                            size_t *data_len)
+/*
+ * Get the length of the PKCS7 padding.
+ *
+ * Note: input_len must be the block size of the cipher.
+ */
+MBEDTLS_STATIC_TESTABLE int mbedtls_get_pkcs_padding(unsigned char *input,
+                                                     size_t input_len,
+                                                     size_t *data_len,
+                                                     size_t *invalid_padding)
 {
     size_t i, pad_idx;
     unsigned char padding_len;
@@ -849,10 +893,6 @@ static int get_pkcs_padding(unsigned char *input, size_t input_len,
     }
 
     padding_len = input[input_len - 1];
-    if (padding_len == 0 || padding_len > input_len) {
-        return MBEDTLS_ERR_CIPHER_INVALID_PADDING;
-    }
-    *data_len = input_len - padding_len;
 
     mbedtls_ct_condition_t bad = mbedtls_ct_uint_gt(padding_len, input_len);
     bad = mbedtls_ct_bool_or(bad, mbedtls_ct_uint_eq(padding_len, 0));
@@ -866,7 +906,11 @@ static int get_pkcs_padding(unsigned char *input, size_t input_len,
         bad = mbedtls_ct_bool_or(bad, mbedtls_ct_bool_and(in_padding, different));
     }
 
-    return mbedtls_ct_error_if_else_0(bad, MBEDTLS_ERR_CIPHER_INVALID_PADDING);
+    /* If the padding is invalid, set the output length to 0 */
+    *data_len = mbedtls_ct_if(bad, 0, input_len - padding_len);
+
+    *invalid_padding = mbedtls_ct_size_if_else_0(bad, SIZE_MAX);
+    return 0;
 }
 #endif /* MBEDTLS_CIPHER_PADDING_PKCS7 */
 
@@ -887,7 +931,7 @@ static void add_one_and_zeros_padding(unsigned char *output,
 }
 
 static int get_one_and_zeros_padding(unsigned char *input, size_t input_len,
-                                     size_t *data_len)
+                                     size_t *data_len, size_t *invalid_padding)
 {
     if (NULL == input || NULL == data_len) {
         return MBEDTLS_ERR_CIPHER_BAD_INPUT_DATA;
@@ -910,7 +954,8 @@ static int get_one_and_zeros_padding(unsigned char *input, size_t input_len,
         in_padding = mbedtls_ct_bool_and(in_padding, mbedtls_ct_bool_not(is_nonzero));
     }
 
-    return mbedtls_ct_error_if_else_0(bad, MBEDTLS_ERR_CIPHER_INVALID_PADDING);
+    *invalid_padding = mbedtls_ct_size_if_else_0(bad, SIZE_MAX);
+    return 0;
 }
 #endif /* MBEDTLS_CIPHER_PADDING_ONE_AND_ZEROS */
 
@@ -931,7 +976,7 @@ static void add_zeros_and_len_padding(unsigned char *output,
 }
 
 static int get_zeros_and_len_padding(unsigned char *input, size_t input_len,
-                                     size_t *data_len)
+                                     size_t *data_len, size_t *invalid_padding)
 {
     size_t i, pad_idx;
     unsigned char padding_len;
@@ -957,7 +1002,8 @@ static int get_zeros_and_len_padding(unsigned char *input, size_t input_len,
         bad = mbedtls_ct_bool_or(bad, nonzero_pad_byte);
     }
 
-    return mbedtls_ct_error_if_else_0(bad, MBEDTLS_ERR_CIPHER_INVALID_PADDING);
+    *invalid_padding = mbedtls_ct_size_if_else_0(bad, SIZE_MAX);
+    return 0;
 }
 #endif /* MBEDTLS_CIPHER_PADDING_ZEROS_AND_LEN */
 
@@ -972,7 +1018,7 @@ static void add_zeros_padding(unsigned char *output,
 }
 
 static int get_zeros_padding(unsigned char *input, size_t input_len,
-                             size_t *data_len)
+                             size_t *data_len, size_t *invalid_padding)
 {
     size_t i;
     mbedtls_ct_condition_t done = MBEDTLS_CT_FALSE, prev_done;
@@ -988,6 +1034,7 @@ static int get_zeros_padding(unsigned char *input, size_t input_len,
         *data_len = mbedtls_ct_size_if(mbedtls_ct_bool_ne(done, prev_done), i, *data_len);
     }
 
+    *invalid_padding = 0;
     return 0;
 }
 #endif /* MBEDTLS_CIPHER_PADDING_ZEROS */
@@ -999,20 +1046,21 @@ static int get_zeros_padding(unsigned char *input, size_t input_len,
  * but a trivial get_padding function
  */
 static int get_no_padding(unsigned char *input, size_t input_len,
-                          size_t *data_len)
+                          size_t *data_len, size_t *invalid_padding)
 {
     if (NULL == input || NULL == data_len) {
         return MBEDTLS_ERR_CIPHER_BAD_INPUT_DATA;
     }
 
     *data_len = input_len;
-
+    *invalid_padding = 0;
     return 0;
 }
 #endif /* MBEDTLS_CIPHER_MODE_WITH_PADDING */
 
-int mbedtls_cipher_finish(mbedtls_cipher_context_t *ctx,
-                          unsigned char *output, size_t *olen)
+int mbedtls_cipher_finish_padded(mbedtls_cipher_context_t *ctx,
+                                 unsigned char *output, size_t *olen,
+                                 size_t *invalid_padding)
 {
     if (ctx->cipher_info == NULL) {
         return MBEDTLS_ERR_CIPHER_BAD_INPUT_DATA;
@@ -1028,6 +1076,7 @@ int mbedtls_cipher_finish(mbedtls_cipher_context_t *ctx,
 #endif /* MBEDTLS_USE_PSA_CRYPTO && !MBEDTLS_DEPRECATED_REMOVED */
 
     *olen = 0;
+    *invalid_padding = 0;
 
 #if defined(MBEDTLS_CIPHER_MODE_WITH_PADDING)
     /* CBC mode requires padding so we make sure a call to
@@ -1104,7 +1153,7 @@ int mbedtls_cipher_finish(mbedtls_cipher_context_t *ctx,
         /* Set output size for decryption */
         if (MBEDTLS_DECRYPT == ctx->operation) {
             return ctx->get_padding(output, mbedtls_cipher_get_block_size(ctx),
-                                    olen);
+                                    olen, invalid_padding);
         }
 
         /* Set output size for encryption */
@@ -1116,6 +1165,19 @@ int mbedtls_cipher_finish(mbedtls_cipher_context_t *ctx,
 #endif /* MBEDTLS_CIPHER_MODE_CBC */
 
     return MBEDTLS_ERR_CIPHER_FEATURE_UNAVAILABLE;
+}
+
+int mbedtls_cipher_finish(mbedtls_cipher_context_t *ctx,
+                          unsigned char *output, size_t *olen)
+{
+    size_t invalid_padding = 0;
+    int ret = mbedtls_cipher_finish_padded(ctx, output, olen,
+                                           &invalid_padding);
+    if (ret == 0) {
+        ret = mbedtls_ct_error_if_else_0(invalid_padding,
+                                         MBEDTLS_ERR_CIPHER_INVALID_PADDING);
+    }
+    return ret;
 }
 
 #if defined(MBEDTLS_CIPHER_MODE_WITH_PADDING)
@@ -1144,7 +1206,7 @@ int mbedtls_cipher_set_padding_mode(mbedtls_cipher_context_t *ctx,
 #if defined(MBEDTLS_CIPHER_PADDING_PKCS7)
         case MBEDTLS_PADDING_PKCS7:
             ctx->add_padding = add_pkcs_padding;
-            ctx->get_padding = get_pkcs_padding;
+            ctx->get_padding = mbedtls_get_pkcs_padding;
             break;
 #endif
 #if defined(MBEDTLS_CIPHER_PADDING_ONE_AND_ZEROS)
@@ -1315,7 +1377,8 @@ int mbedtls_cipher_crypt(mbedtls_cipher_context_t *ctx,
     size_t finish_olen;
 
 #if defined(MBEDTLS_USE_PSA_CRYPTO) && !defined(MBEDTLS_DEPRECATED_REMOVED)
-    if (ctx->psa_enabled == 1) {
+    if (MBEDTLS_CT_SPEC_RISKY_BOOL(ctx->psa_enabled)) {
+        MBEDTLS_CT_NULLIFY_IF_SPECULATING(ctx, ctx->psa_enabled);
         /* As in the non-PSA case, we don't check that
          * a key has been set. If not, the key slot will
          * still be in its default state of 0, which is
@@ -1387,14 +1450,17 @@ int mbedtls_cipher_crypt(mbedtls_cipher_context_t *ctx,
         return ret;
     }
 
-    if ((ret = mbedtls_cipher_finish(ctx, output + *olen,
-                                     &finish_olen)) != 0) {
+    size_t invalid_padding = 0;
+    if ((ret = mbedtls_cipher_finish_padded(ctx, output + *olen,
+                                            &finish_olen,
+                                            &invalid_padding)) != 0) {
         return ret;
     }
-
     *olen += finish_olen;
 
-    return 0;
+    ret = mbedtls_ct_error_if_else_0(invalid_padding,
+                                     MBEDTLS_ERR_CIPHER_INVALID_PADDING);
+    return ret;
 }
 
 #if defined(MBEDTLS_CIPHER_MODE_AEAD)
@@ -1410,7 +1476,8 @@ static int mbedtls_cipher_aead_encrypt(mbedtls_cipher_context_t *ctx,
                                        unsigned char *tag, size_t tag_len)
 {
 #if defined(MBEDTLS_USE_PSA_CRYPTO) && !defined(MBEDTLS_DEPRECATED_REMOVED)
-    if (ctx->psa_enabled == 1) {
+    if (MBEDTLS_CT_SPEC_RISKY_BOOL(ctx->psa_enabled)) {
+        MBEDTLS_CT_NULLIFY_IF_SPECULATING(ctx, ctx->psa_enabled);
         /* As in the non-PSA case, we don't check that
          * a key has been set. If not, the key slot will
          * still be in its default state of 0, which is
@@ -1487,7 +1554,8 @@ static int mbedtls_cipher_aead_decrypt(mbedtls_cipher_context_t *ctx,
                                        const unsigned char *tag, size_t tag_len)
 {
 #if defined(MBEDTLS_USE_PSA_CRYPTO) && !defined(MBEDTLS_DEPRECATED_REMOVED)
-    if (ctx->psa_enabled == 1) {
+    if (MBEDTLS_CT_SPEC_RISKY_BOOL(ctx->psa_enabled)) {
+        MBEDTLS_CT_NULLIFY_IF_SPECULATING(ctx, ctx->psa_enabled);
         /* As in the non-PSA case, we don't check that
          * a key has been set. If not, the key slot will
          * still be in its default state of 0, which is
@@ -1579,6 +1647,24 @@ static int mbedtls_cipher_aead_decrypt(mbedtls_cipher_context_t *ctx,
 #endif /* MBEDTLS_CIPHER_MODE_AEAD */
 
 #if defined(MBEDTLS_CIPHER_MODE_AEAD) || defined(MBEDTLS_NIST_KW_C)
+#if defined(MBEDTLS_NIST_KW_C)
+static int mbedtls_cipher_context_is_kw(const mbedtls_cipher_context_t *ctx)
+{
+#if defined(MBEDTLS_USE_PSA_CRYPTO) && !defined(MBEDTLS_DEPRECATED_REMOVED)
+    if (ctx->psa_enabled) {
+        return 0;
+    }
+#endif
+    switch (ctx->cipher_info->mode) {
+        case MBEDTLS_MODE_KW:
+        case MBEDTLS_MODE_KWP:
+            return 1;
+        default:
+            return 0;
+    }
+}
+#endif /* MBEDTLS_NIST_KW_C */
+
 /*
  * Packet-oriented encryption for AEAD/NIST_KW: public function.
  */
@@ -1590,15 +1676,20 @@ int mbedtls_cipher_auth_encrypt_ext(mbedtls_cipher_context_t *ctx,
                                     size_t *olen, size_t tag_len)
 {
 #if defined(MBEDTLS_NIST_KW_C)
-    if (
-#if defined(MBEDTLS_USE_PSA_CRYPTO) && !defined(MBEDTLS_DEPRECATED_REMOVED)
-        ctx->psa_enabled == 0 &&
-#endif
-        (MBEDTLS_MODE_KW == ((mbedtls_cipher_mode_t) ctx->cipher_info->mode) ||
-         MBEDTLS_MODE_KWP == ((mbedtls_cipher_mode_t) ctx->cipher_info->mode))) {
+    if (mbedtls_cipher_context_is_kw(ctx)) {
         mbedtls_nist_kw_mode_t mode =
             (MBEDTLS_MODE_KW == ((mbedtls_cipher_mode_t) ctx->cipher_info->mode)) ?
             MBEDTLS_KW_MODE_KW : MBEDTLS_KW_MODE_KWP;
+        if (MBEDTLS_CT_SPEC_RISKY_BOOL(mode == MBEDTLS_KW_MODE_KW)) {
+            MBEDTLS_CT_NULLIFY_IF_SPECULATING_EQ(ctx,
+                                                 ctx->cipher_info->mode,
+                                                 MBEDTLS_MODE_KW);
+        }
+        if (MBEDTLS_CT_SPEC_RISKY_BOOL(mode == MBEDTLS_KW_MODE_KWP)) {
+            MBEDTLS_CT_NULLIFY_IF_SPECULATING_EQ(ctx,
+                                                 ctx->cipher_info->mode,
+                                                 MBEDTLS_MODE_KWP);
+        }
 
         /* There is no iv, tag or ad associated with KW and KWP,
          * so these length should be 0 as documented. */
@@ -1641,15 +1732,20 @@ int mbedtls_cipher_auth_decrypt_ext(mbedtls_cipher_context_t *ctx,
                                     size_t *olen, size_t tag_len)
 {
 #if defined(MBEDTLS_NIST_KW_C)
-    if (
-#if defined(MBEDTLS_USE_PSA_CRYPTO) && !defined(MBEDTLS_DEPRECATED_REMOVED)
-        ctx->psa_enabled == 0 &&
-#endif
-        (MBEDTLS_MODE_KW == ((mbedtls_cipher_mode_t) ctx->cipher_info->mode) ||
-         MBEDTLS_MODE_KWP == ((mbedtls_cipher_mode_t) ctx->cipher_info->mode))) {
+    if (mbedtls_cipher_context_is_kw(ctx)) {
         mbedtls_nist_kw_mode_t mode =
             (MBEDTLS_MODE_KW == ((mbedtls_cipher_mode_t) ctx->cipher_info->mode)) ?
             MBEDTLS_KW_MODE_KW : MBEDTLS_KW_MODE_KWP;
+        if (MBEDTLS_CT_SPEC_RISKY_BOOL(mode == MBEDTLS_KW_MODE_KW)) {
+            MBEDTLS_CT_NULLIFY_IF_SPECULATING_EQ(ctx,
+                                                 ctx->cipher_info->mode,
+                                                 MBEDTLS_MODE_KW);
+        }
+        if (MBEDTLS_CT_SPEC_RISKY_BOOL(mode == MBEDTLS_KW_MODE_KWP)) {
+            MBEDTLS_CT_NULLIFY_IF_SPECULATING_EQ(ctx,
+                                                 ctx->cipher_info->mode,
+                                                 MBEDTLS_MODE_KWP);
+        }
 
         /* There is no iv, tag or ad associated with KW and KWP,
          * so these length should be 0 as documented. */

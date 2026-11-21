@@ -12,13 +12,6 @@ REBOL [
 	}
 ]
 
-empty?: make :tail? [
-	[
-		{Returns TRUE if empty or NONE, or for series if index is at or beyond its tail.}
-		series [series! object! gob! port! bitset! typeset! map! none!]
-	]
-]
-
 offset?: func [
 	"Returns the offset between two series positions."
 	series1 [series!]
@@ -37,7 +30,7 @@ offset?: func [
 
 last?: single?: func [
 	"Returns TRUE if the series length is 1."
-	series [series! port! map! tuple! bitset! object! gob! any-word!]
+	series [series! port! map! tuple! bitset! object! any-word!]
 ][
 	1 = length? series
 ]
@@ -295,7 +288,7 @@ reword: func [
 
 move: func [
 	"Move a value or span of values in a series."
-	source [series! gob!] "Source series (modified)"
+	source [series!] "Source series (modified)"
 	offset [integer!] "Offset to move by, or index to move to"
 	/part "Move part of a series"
 	length [integer!] "The length of the part to move"
@@ -396,12 +389,13 @@ supplement: func [
 
 collect: func [
 	"Evaluates a block, storing values via KEEP function, and returns block of collected values."
+	[throw]
 	body [block!] "Block to evaluate"
 	/into "Insert into a buffer instead (returns position after insert)"
 	output [series!] "The buffer series (modified)"
 ][
 	unless output [output: make block! 16]
-	do func [keep] body func [value [any-type!] /only] [
+	do func [[throw] keep] body func [value [any-type!] /only] [
 		output: insert/:only output :value
 		:value
 	]
@@ -776,6 +770,7 @@ combine: func [
 
 find-all: func [
 	"Find all occurrences of a value within a series (allows modification)."
+	[throw]
 	'series [word!] "Variable for block, string, or other series"
 	value
 	body [block!] "Evaluated for each occurrence"

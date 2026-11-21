@@ -36,7 +36,9 @@ enum loop_each_mode {
 	LM_FOR = 0,
 	LM_REMOVE,
 	LM_REMOVE_COUNT,
-	LM_MAP
+	LM_MAP,
+	LM_KEEP,
+	LM_KEEP_COUNT
 };
 
 /***********************************************************************
@@ -244,6 +246,8 @@ enum loop_each_mode {
 	REBINT idx;
 	REBINT inc = 1;
 	REBCNT type;
+	REBINT o_var;
+	REBVAL *res;
 
 	var = Get_Var(D_ARG(1));
 	if (IS_NONE(var)) return R_NONE;
@@ -276,14 +280,16 @@ enum loop_each_mode {
 				VAL_INDEX(var) = idx;
 			}
 			//----------------------------------------------------
-			ds = Do_Blk(body, bodi); // (may move stack)
-			if (THROWN(ds)) {	// Break, throw, continue, error.
-				if (Check_Error(ds) >= 0) {
+			o_var = DS_OFFSET(var);
+			res = Do_Blk(body, bodi); // may move the data stack
+			DS_REBASE(var, o_var);
+			if (THROWN(res)) {	// Break, throw, continue, error.
+				if (Check_Error(res) >= 0) {
 					*DS_RETURN = *DS_NEXT; // use thrown result as a return
-					return R_RET; // does not resets series position
+					return R_RET; // does not reset series position
 				}
 			}
-			*DS_RETURN = *ds;
+			*DS_RETURN = *res;
 			// Evaluation may swap the var series...
 			if (VAL_TYPE(var) != type) Trap_Arg(var);
 			//----------------------------------------------------
@@ -306,14 +312,16 @@ cont_utf8:
 				VAL_INDEX(var) = idx;
 			}
 			//----------------------------------------------------
-			ds = Do_Blk(body, bodi); // (may move stack)
-			if (THROWN(ds)) {	// Break, throw, continue, error.
-				if (Check_Error(ds) >= 0) {
+			o_var = DS_OFFSET(var);
+			res = Do_Blk(body, bodi); // may move the data stack
+			DS_REBASE(var, o_var);
+			if (THROWN(res)) {	// Break, throw, continue, error.
+				if (Check_Error(res) >= 0) {
 					*DS_RETURN = *DS_NEXT; // use thrown result as a return
-					return R_RET; // does not resets series position
+					return R_RET; // does not reset series position
 				}
 			}
-			*DS_RETURN = *ds;
+			*DS_RETURN = *res;
 			// Evaluation may swap the var series...
 			if (VAL_TYPE(var) != type) Trap_Arg(var);
 			//----------------------------------------------------
@@ -338,6 +346,8 @@ cont_utf8:
 **			1: remove-each
 **			2: remove-each/count
 **			3: map-each
+**			4: keep-each
+**			5: keep-each/count
 **
 ***********************************************************************/
 {
@@ -358,9 +368,10 @@ cont_utf8:
 	REBCNT i;
 	REBCNT j;
 	REBOOL return_count = FALSE;
+	REBOOL keep = FALSE;	// keep-each: inverted remove-each condition
 	REBLEN removed_uni = 0;
 
-	ASSERT2(mode >= 0 && mode < 4, RP_MISC);
+	ASSERT2(mode >= 0 && mode <= LM_KEEP_COUNT, RP_MISC);
 
 	// The body may expand (move) the data stack, so do not keep
 	// a pointer to the series argument; use a local copy.
@@ -383,6 +394,11 @@ cont_utf8:
 	else if (mode == LM_REMOVE_COUNT) {
 		mode = LM_REMOVE;
 		return_count = TRUE;
+	}
+	else if (mode >= LM_KEEP) {
+		return_count = (mode == LM_KEEP_COUNT);
+		mode = LM_REMOVE;
+		keep = TRUE;
 	}
 
 	// Get series info:
@@ -460,7 +476,7 @@ cont_utf8:
 					}
 
 					else if (IS_VECTOR(value)) {
-						Get_Vector_Value(vars, series, index);
+						Get_Vector_Value(vars, value, index);
 					}
 
 					else if (IS_MAP(value)) {
@@ -527,11 +543,14 @@ cont_utf8:
 
 		if (THROWN(ds)) {
 			if ((err = Check_Error(ds)) != NOT_FOUND) {
+				if (err == 0) err = 3; // RETURN, EXIT, THROW...: pass it to the caller
 				index = rindex;
 				break;
 			}
-			// else CONTINUE:
-			if (mode == LM_REMOVE) SET_FALSE(ds); // keep the value (for mode == LM_REMOVE)
+			// else CONTINUE: keep the value
+			if (mode == LM_REMOVE) {
+				if (keep) SET_TRUE(ds); else SET_FALSE(ds);
+			}
 		} else {
 			err = 0; // prevent later test against uninitialized value
 		}
@@ -540,8 +559,9 @@ cont_utf8:
 			//if (ANY_OBJECT(value)) Trap_Types(words, REB_BLOCK, VAL_TYPE(value)); //check not needed
 
 			// If FALSE return, copy values to the write location:
-			if (mode == LM_REMOVE) {  // remove-each
-				if (IS_FALSE(ds)) {
+			if (mode == LM_REMOVE) {  // remove-each / keep-each
+				if (keep ? !IS_FALSE(ds) : IS_FALSE(ds)) {
+					// keep: copy values to the write location
 					REBCNT wide = SERIES_WIDE(series);
 					// memory areas may overlap, so use memmove and not memcpy!
 					memmove(series->data + (windex * wide), series->data + (rindex * wide), (index - rindex) * wide);
@@ -562,7 +582,7 @@ skip_hidden: ;
 	if (mode == LM_REMOVE) {
 		// Remove hole (updates tail):
 		if (windex < index) Remove_Series(series, windex, index - windex);
-		if (err == 2) return R_TOS1;  // If BREAK/RETURN
+		if (err >= 2) return R_TOS1;  // BREAK/RETURN value, or RETURN/EXIT/THROW unwind
 		if (return_count) {
 			if (IS_UTF8_SERIES(series)) {
 				SET_INTEGER(DS_RETURN, removed_uni);
@@ -576,8 +596,8 @@ skip_hidden: ;
 		return R_ARG2;
 	}
 
-	// If map-each and not BREAK/RETURN:
-	if (mode == LM_MAP && err != 2) return R_RET;
+	// If map-each and not BREAK/RETURN or other unwind:
+	if (mode == LM_MAP && err < 2) return R_RET;
 
 	return R_TOS1; // foreach
 }
@@ -696,6 +716,21 @@ skip_hidden: ;
 ***********************************************************************/
 {
 	return Loop_Each(ds, D_REF(4) ? LM_REMOVE_COUNT : LM_REMOVE);
+}
+
+
+/***********************************************************************
+**
+*/	REBNATIVE(keep_each)
+/*
+**		'word [get-word! word! block!] {Word or block of words}
+**		data [series!] {The series to traverse}
+**		body [block!] {Block to evaluate each time}
+**		/count
+**
+***********************************************************************/
+{
+	return Loop_Each(ds, D_REF(4) ? LM_KEEP_COUNT : LM_KEEP);
 }
 
 

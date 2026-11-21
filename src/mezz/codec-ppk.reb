@@ -85,13 +85,13 @@ register-codec [
 			]
 
 			macdata: either vers = 1 [ pri ][
-				select binary/write 800 [
+				binary/write/read 800 [
 					UI32BYTES :type
 					UI32BYTES :encr
 					UI32BYTES :comm
 					UI32BYTES :pub
 					UI32BYTES :pri
-				] 'buffer
+				] 'bytes
 			]
 			mackey: checksum join "putty-private-key-file-mac-key" any [pass ""] 'sha1
 			if pass [forall pass [pass/1: random 255]]

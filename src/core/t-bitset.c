@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2021-2025 Rebol Open Source Contributors
+**  Copyright 2021-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -140,8 +140,9 @@
 //	case REB_ISSUE:
 		if (IS_UTF8_STRING(val)) {
 			REBU32 chr;
-			REBCNT sz = VAL_LEN(val);
-			const REBYTE *bp = VAL_BIN_DATA(val);
+			n = Val_Snapped_Index(val);
+			REBCNT sz = (n < VAL_TAIL(val)) ? VAL_TAIL(val) - n : 0;
+			const REBYTE *bp = VAL_BIN_SKIP(val, n);
 			while (sz > 0) {
 				chr = UTF8_Decode_Codepoint(&bp, &sz);
 				if (chr > maxi) maxi = chr;
@@ -237,6 +238,33 @@ retry:
 }
 
 
+static REBFLG Check_Bit_Str(REBSER *bset, REBVAL *val, REBFLG uncased, REBFLG any)
+{
+	// Returns TRUE when any (or all) chars of the string are in the bitset.
+	REBCNT n    = Val_Snapped_Index(val);
+	REBCNT tail = VAL_TAIL(val);
+	const REBYTE *bp = VAL_BIN(val);
+	REBFLG found;
+
+	if (n < tail) {
+		if (ANY_STR(val) && IS_UTF8_SERIES(VAL_SERIES(val))) {
+			REBCNT sz = tail - n;
+			bp += n;
+			while (sz > 0) {
+				found = Check_Bit(bset, UTF8_Decode_Codepoint(&bp, &sz), uncased);
+				if (any ? found : !found) return any ? TRUE : FALSE;
+			}
+		}
+		else {
+			for (; n < tail; n++) {
+				found = Check_Bit(bset, bp[n], uncased);
+				if (any ? found : !found) return any ? TRUE : FALSE;
+			}
+		}
+	}
+	return any ? FALSE : TRUE;
+}
+
 /***********************************************************************
 **
 */	REBFLG Check_Bit_Str_Any(REBSER *bset, REBVAL *val, REBFLG uncased)
@@ -246,19 +274,7 @@ retry:
 **
 ***********************************************************************/
 {
-	REBCNT n = VAL_INDEX(val);
-
-	if (VAL_BYTE_SIZE(val)) {
-		REBYTE *bp = VAL_BIN(val);
-		for (; n < VAL_TAIL(val); n++)
-			if (Check_Bit(bset, bp[n], uncased)) return TRUE;
-	}
-	else {
-		REBUNI *up = VAL_UNI(val);
-		for (; n < VAL_TAIL(val); n++)
-			if (Check_Bit(bset, up[n], uncased)) return TRUE;
-	}
-	return FALSE;
+	return Check_Bit_Str(bset, val, uncased, TRUE);
 }
 
 /***********************************************************************
@@ -270,19 +286,7 @@ retry:
 **
 ***********************************************************************/
 {
-	REBCNT n = VAL_INDEX(val);
-
-	if (VAL_BYTE_SIZE(val)) {
-		REBYTE *bp = VAL_BIN(val);
-		for (; n < VAL_TAIL(val); n++)
-			if (!Check_Bit(bset, bp[n], uncased)) return FALSE;
-	}
-	else {
-		REBUNI *up = VAL_UNI(val);
-		for (; n < VAL_TAIL(val); n++)
-			if (!Check_Bit(bset, up[n], uncased)) return FALSE;
-	}
-	return TRUE;
+	return Check_Bit_Str(bset, val, uncased, FALSE);
 }
 
 
@@ -319,14 +323,15 @@ retry:
 /*
 ***********************************************************************/
 {
-	REBCNT index = VAL_INDEX(val);
-	REBCNT sz=VAL_LEN(val);
+	REBCNT index = Val_Snapped_Index(val);
+	REBCNT tail  = VAL_TAIL(val);
+	REBCNT sz    = (index < tail) ? tail - index : 0;
 	REBU32 chr;
 
 	if(IS_PROTECT_SERIES(bset)) Trap0(RE_PROTECTED);
 
 	if (IS_UTF8_STRING(val)) {
-		const REBYTE *bp = VAL_BIN_DATA(val);
+		const REBYTE *bp = VAL_BIN_SKIP(val, index);
 		while (sz > 0) {
 			chr = UTF8_Decode_Codepoint(&bp, &sz);
 			Set_Bit(bset, chr, set);
@@ -334,7 +339,7 @@ retry:
 	}
 	else {
 		REBYTE *bp = VAL_BIN(val);
-		for (; index < VAL_TAIL(val); index++)
+		for (; index < tail; index++)
 			Set_Bit(bset, bp[index], set);
 	}
 }
@@ -681,7 +686,9 @@ scan_bits:
 	case A_MAKE:
 	case A_TO:
 		if (IS_BITSET(arg)) {
-			VAL_SERIES(arg) = Copy_Series_Value(arg);
+			ser = Copy_Series_Value(arg);
+			BITS_NOT(ser) = BITS_NOT(VAL_SERIES(arg));
+			VAL_SERIES(arg) = ser;
 			return R_ARG2;
 		}
 		// Determine size of bitset. Returns -1 for errors.
@@ -728,7 +735,9 @@ set_bits:
 		Trap_Arg(D_ARG(3));
 
 	case A_COPY:
-		VAL_SERIES(value) = Copy_Series_Value(value);
+		ser = Copy_Series_Value(value);
+		BITS_NOT(ser) = BITS_NOT(VAL_SERIES(value));
+		VAL_SERIES(value) = ser;
 		break;
 
 	case A_LENGTHQ:

@@ -46,9 +46,9 @@ typedef struct Reb_Header {
 	unsigned type:8;	// datatype
 	unsigned opts:8;	// special options
 	unsigned exts:8;	// extensions to datatype
-	unsigned resv:8;	// reserved for future
+	unsigned resv:8;	// function!/closure! attribute flags (FUNC_*), else reserved
 #else
-	unsigned resv:8;	// reserved for future
+	unsigned resv:8;	// function!/closure! attribute flags (FUNC_*), else reserved
 	unsigned exts:8;	// extensions to datatype
 	unsigned opts:8;	// special options
 	unsigned type:8;	// datatype
@@ -79,6 +79,7 @@ enum {
 	OPTS_UNWORD,	// Not a normal word
 	OPTS_TEMP,		// Temporary flag - variety of uses
 	OPTS_HIDE,		// Hide the word
+	OPTS_PERM,		// Word lock is permanent (protect/lock)
 };
 
 #define VAL_OPTS(v)			((v)->flags.flags.opts)
@@ -92,6 +93,7 @@ enum {
 
 #define VAL_PROTECTED(v)	VAL_GET_OPT((v), OPTS_LOCK)
 #define VAL_HIDDEN(v)	    VAL_GET_OPT((v), OPTS_HIDE)
+#define VAL_PERMANENT(v)	VAL_GET_OPT((v), OPTS_PERM)
 
 // Used for datatype-dependent data (e.g. op! stores action!)
 #define VAL_GET_EXT(v)		((v)->flags.flags.exts)
@@ -99,6 +101,9 @@ enum {
 
 #define	IS_SET(v)			(VAL_TYPE(v) > REB_UNSET)
 #define IS_SCALAR(v)		(VAL_TYPE(v) <= REB_DATE)
+// Values which are modified in place by setting a path (like: date/year: 2000),
+// so the variable holding them is modified too:
+#define IS_PATH_SET_INPLACE(v) (IS_DATE(v) || IS_TIME(v) || IS_PAIR(v) || IS_TUPLE(v) || IS_LOGIC(v) || IS_EVENT(v))
 
 // When key is removed from map, it has OPTS_HIDE flag
 #define VAL_MAP_REMOVED(val) (VAL_GET_OPT(val, OPTS_HIDE)) 
@@ -314,6 +319,7 @@ typedef struct rebol_xy_int {
 #define	VAL_EVENT_TIME(v)	((v)->data.event.time)
 #define	VAL_EVENT_REQ(v)	((v)->data.event.req)
 #define	VAL_EVENT_SER(v)	((v)->data.event.ser)
+#define	VAL_EVENT_HOB(v)	((v)->data.event.hob)
 
 #define IS_EVENT_MODEL(v,f)	(VAL_EVENT_MODEL(v) == (f))
 
@@ -338,47 +344,6 @@ typedef struct rebol_xy_int {
 									(VAL_EVENT_INFO(v)=(((t)&0xff)|(((k)&0xff)<<8)|\
 									(((c)&0xff)<<16)|(((w)&0xff)<<24))))
 #endif
-
-/***********************************************************************
-**
-**	VECTOR
-**
-***********************************************************************/
-
-#define	SET_VECTOR(v,s) VAL_SERIES(v)=(s), VAL_INDEX(v)=0, VAL_SET(v, REB_VECTOR)
-
-// Encoding Format:
-//		stored in series->size for now
-//		[d d d d   d d d d   0 0 0 0   t s b b]
-
-// Encoding identifiers:
-enum {
-	VTSI08 = 0,
-	VTSI16,
-	VTSI32,
-	VTSI64,
-
-	VTUI08,
-	VTUI16,
-	VTUI32,
-	VTUI64,
-
-	VTSF08,		// not used
-	VTSF16,		// not used
-	VTSF32,
-	VTSF64,
-	VT_MAX,
-};
-
-static REBCNT bit_sizes[4] = { 8, 16, 32, 64 };
-static REBCNT byte_sizes[4] = { 1, 2, 4, 8 };
-
-#define VECT_TYPE(s) ((s)->size & 0xff)
-#define VECT_BIT_SIZE(bits) (bit_sizes[bits & 3])
-#define VECT_BYTE_SIZE(bits) (byte_sizes[bits & 3])
-#define VAL_VEC_WIDTH(v) VECT_BYTE_SIZE(VECT_TYPE(VAL_SERIES(v)))
-
-
 
 /***********************************************************************
 **
@@ -417,6 +382,7 @@ static REBCNT byte_sizes[4] = { 1, 2, 4, 8 };
 #define	SERIES_FLAGS(s)	 ((s)->flags)
 #define	SERIES_WIDE(s)	 (((s)->sizes) & 0xff)
 #define SERIES_DATA(s)   ((s)->data)
+#define SERIES_TEXT(s)   ((char*)SERIES_DATA(s))
 #define	SERIES_SKIP(s,i) (SERIES_DATA(s) + (SERIES_WIDE(s) * (i)))
 
 #define END_FLAG 0x80000000  // Indicates end of block as an index (from DO_NEXT)
@@ -466,6 +432,9 @@ static REBCNT byte_sizes[4] = { 1, 2, 4, 8 };
 #define	AT_TAIL	((REBCNT)(~0))	// Extend series at tail
 
 // Is it a byte-sized series? (this works because no other odd size allowed)
+#ifdef BYTE_SIZE // macOS SDK used the same name
+#undef BYTE_SIZE
+#endif
 #define BYTE_SIZE(s) (SERIES_SIZES(s) & 1)
 #define VAL_BYTE_SIZE(v) (BYTE_SIZE(VAL_SERIES(v)))
 #define VAL_STR_IS_ASCII(v) (VAL_BYTE_SIZE(v) && Is_ASCII(VAL_BIN_DATA(v), VAL_LEN(v)))
@@ -482,6 +451,10 @@ enum {
 	SER_MON  = 1<<7,	// Monitoring
 	SER_INT  = 1<<8,	// Series data is internal (loop frames) and should not be accessed by users
 	SER_UTF8 = 1<<9,	// Series contains not only ASCII characters
+	SER_SLICE= 1<<10,	// Series is sliced (side link contains the original)
+	SER_SIZEP= 1<<11,   // Series is protected from length modification only (e.g. sliced series)
+	SER_HASH = 1<<12,   // Block series has a hash table of its values in the series link (hash!)
+	SER_SHARE= 1<<13,   // Frame word list is (or was) used by more frames (copy it before modification)
 };
 
 #define SERIES_SET_FLAG(s, f) (SERIES_FLAGS(s) |=  (f))
@@ -507,8 +480,23 @@ enum {
 #define UTF8_SERIES(s)       SERIES_SET_FLAG(s, SER_UTF8)
 #define IS_UTF8_SERIES(s)    SERIES_GET_FLAG(s, SER_UTF8)
 #define IS_UTF8_STRING(v)    SERIES_GET_FLAG(VAL_SERIES(v), SER_UTF8)
+#define SLICE_SERIES(s)      SERIES_SET_FLAG(s, SER_EXT|SER_SLICE|SER_SIZEP)
+#define IS_SLICE_SERIES(s)   SERIES_GET_FLAG(s, SER_SLICE)
+#define IS_FIXED_SIZE(s)     SERIES_GET_FLAG(s, SER_LOCK|SER_SIZEP)
+#define IS_FIXED_SIZE_VALUE(v) SERIES_GET_FLAG(VAL_SERIES(v), SER_LOCK|SER_SIZEP)
+#define SHARE_SERIES(s)      SERIES_SET_FLAG(s, SER_SHARE)
+#define IS_SHARED_SERIES(s)  SERIES_GET_FLAG(s, SER_SHARE)
+#define IS_HASH_SERIES(s)    SERIES_GET_FLAG(s, SER_HASH)
+#define SET_HASH_SERIES(s,h) ((s)->series = (h), SERIES_SET_FLAG(s, SER_HASH))
+// Drops the hash table of a modified series (it is rebuilt when needed again)
+#define DROP_SERIES_HASH(s)  do { if (IS_HASH_SERIES(s)) { SERIES_CLR_FLAG(s, SER_HASH); (s)->series = NULL; } } while (0)
+// Number of block values already added to the hash table (stored in the table's size field)
+#define HASH_COUNT(hser)     ((hser)->size)
+// Number of live (not removed) entries of a map (stored in its hash table's size field)
+#define MAP_LIVE_COUNT(hser) ((hser)->size)
 
 #define TRAP_PROTECT(s) if (IS_PROTECT_SERIES(s)) Trap0(RE_PROTECTED)
+#define TRAP_FIXED_SIZE(s) if (IS_FIXED_SIZE(s)) Trap0(RE_FIXED_SIZED_SERIES)
 
 #ifdef SERIES_LABELS
 #define LABEL_SERIES(s,l) s->label = (l)
@@ -548,10 +536,6 @@ enum {
 **
 ***********************************************************************/
 
-#pragma pack()
-#include "reb-gob.h"
-#pragma pack(4)
-
 typedef struct Reb_Series_Ref
 {
 	REBSER	*series;
@@ -560,6 +544,7 @@ typedef struct Reb_Series_Ref
 		REBSER	*side;		// lookaside block for lists/hashes/images
 		REBINT  back;		// (Used in DO for stack back linking)
 //		REBFRM	*frame;		// (may also be used as frame for binding blocks)
+		REBFLG  vtype;      // vector! type encoding
 	} link;
 } REBSRI;
 
@@ -659,6 +644,86 @@ typedef struct Reb_Series_Ref
 			if (MOLD_OVER_LIMIT(mold)) return;                \
 			if (MOLD_REST(mold) < len) len = MOLD_REST(mold); \
 		}
+
+/***********************************************************************
+**
+**	VECTOR
+**
+***********************************************************************/
+
+// Encoding identifiers:
+enum {
+	VTSI08, VTSI16, VTSI32, VTSI64,
+	VTUI08, VTUI16, VTUI32, VTUI64,
+	VTSF08, VTSF16, VTSF32, VTSF64, // VTSF08 and VTSF16 not used!
+	VT_MAX,
+};
+
+// Elements are structs - their size is not encoded in the type identifier!
+#define VTSTRUCT  VT_MAX
+
+#define VECT_BB_MASK    0x00000003  // bits 1..0   -- bit-width code (0-3)
+#define VECT_SIGN_MASK  0x00000004  // bit  2      -- signed flag
+#define VECT_TYPE_MASK  0x00000008  // bit  3      -- float flag
+
+#define VECT_BB_SHIFT    0
+#define VECT_SIGN_SHIFT  2
+#define VECT_TYPE_SHIFT  3
+
+// Encode vector element type from components
+#define VECT_MAKE_TYPE(bb, sign, isfloat) \
+    ( (isfloat) ? (VTSF08 + (bb)) \
+    : (sign)    ? (VTSI08 + (bb)) \
+    :             (VTUI08 + (bb)) )
+
+#define VECT_INFO_TYPE_MASK   0x000000FF
+#define VECT_INFO_ROWS_SHIFT  8
+#define VECT_INFO_ROWS_MAX   (0xFFFFFFFFu >> VECT_INFO_ROWS_SHIFT) // 0x00FFFFFF = 16777215
+
+#define VAL_VEC_INFO(v)   ((v)->data.series.link.vtype)           // raw packed field
+#define VAL_VEC_TYPE(v)   (VAL_VEC_INFO(v) & VECT_INFO_TYPE_MASK) // one of VTSI08..VTSF64
+#define VAL_VEC_ROWS(v)   ((REBCNT)VAL_VEC_INFO(v) >> VECT_INFO_ROWS_SHIFT)
+#define VAL_VEC_SET_ROWS(v,r) \
+	(VAL_VEC_INFO(v) = (VAL_VEC_INFO(v) & VECT_INFO_TYPE_MASK) | ((REBCNT)(r) << VECT_INFO_ROWS_SHIFT))
+#define VAL_VEC_COLS(v) \
+	(VAL_VEC_ROWS(v) ? VAL_TAIL(v) / VAL_VEC_ROWS(v) : 0)
+
+// Derive width from the low 2 bits of the enum value
+#define VECT_BITS(vtype) (8 << (vtype & 3))
+#define VECT_WIDE(vtype) (1 << (vtype & 3))
+// Sign: unsigned identifiers start at VTUI08=4, so bit 2 is the sign flag
+#define VECT_SIGN(vtype) ((vtype & 4) == 0) // 0=signed, 1=unsigned
+// Float: float identifiers start at VTSF08=8, so bit 3 is the float flag
+#define VECT_DECI(vtype) ((vtype & 8) != 0)
+#define VECT_DIMS(vtype) 1 // TODO!
+
+// Struct elements have an arbitrary size which cannot be derived from the type
+// identifier, so it is kept as the series width - and that one is 8 bits only!
+#define VECT_IS_STRUCT(vtype)  ((vtype) == VTSTRUCT)
+#define VECT_STRUCT_MAX_SIZE   255
+
+#define VAL_VEC_IS_STRUCT(v) VECT_IS_STRUCT(VAL_VEC_TYPE(v))
+// A vector of structs keeps the element's field list in the series link, just
+// like a struct's data series does, so that an element may be used as a struct
+// view. Both the fields and the specification are protected from the GC when
+// the struct is prepared, so there is nothing to mark here.
+#define VAL_VEC_STRUCT(v) (VAL_SERIES(v)->series)
+
+#define VAL_VEC_BITS(v)  (VECT_BITS(VAL_VEC_INFO(v)))
+#define VAL_VEC_WIDE(v)  (VAL_VEC_IS_STRUCT(v) ? SERIES_WIDE(VAL_SERIES(v)) : VECT_WIDE(VAL_VEC_INFO(v)))
+#define VAL_VEC_SIGN(v)  (VECT_SIGN(VAL_VEC_INFO(v)))  
+#define VAL_VEC_DECI(v)  (VECT_DECI(VAL_VEC_INFO(v)))  
+
+#define VAL_VEC_TAIL(v)  VAL_TAIL(v)
+#define VAL_VEC_HEAD(v)  (VAL_BIN_HEAD(v))
+#define VAL_VEC_DATA(v)  (VAL_BIN_HEAD(v) + VAL_INDEX(v) * VAL_VEC_WIDE(v))
+
+#define SET_VECTOR(v,s,t) \
+	VAL_SERIES(v)=(s), \
+	VAL_VEC_INFO(v) = ((t) & VECT_INFO_TYPE_MASK) | (1 << VECT_INFO_ROWS_SHIFT), \
+	VAL_INDEX(v)=0, \
+	VAL_SET(v, REB_VECTOR)
+
 
 /***********************************************************************
 **
@@ -787,12 +852,12 @@ typedef struct Reb_Side {		// lookaside series
 	REBCNT	past;		// prior element
 } REBLAB;
 
-#define LIST_HEAD(s)	((REBLAB *)((s)->data))
-#define LIST_SKIP(s,n)	(((REBLAB *)((s)->data))+(n))
-
-#define	VAL_LIST(v)		LIST_HEAD(VAL_SERIES_SIDE(v))
-
-#define	SET_LIST(v,s,l)	VAL_SERIES(v)=(s), VAL_INDEX(v)=0, VAL_SER_LIST(v)=(l), VAL_SET(v, REB_LIST)
+//#define LIST_HEAD(s)	((REBLAB *)((s)->data))
+//#define LIST_SKIP(s,n)	(((REBLAB *)((s)->data))+(n))
+//
+//#define	VAL_LIST(v)		LIST_HEAD(VAL_SERIES_SIDE(v))
+//
+//#define	SET_LIST(v,s,l)	VAL_SERIES(v)=(s), VAL_INDEX(v)=0, VAL_SER_LIST(v)=(l), VAL_SET(v, REB_LIST)
 
 
 /***********************************************************************
@@ -931,7 +996,7 @@ typedef struct Reb_Object {
 #define VAL_OBJ_WORDS(v)	FRM_WORD_SERIES((v)->data.object.frame)
 #define VAL_OBJ_WORD(v,n)	BLK_SKIP(VAL_OBJ_WORDS(v), (n))
 //#define VAL_OBJ_SPEC(v)		((v)->data.object.spec)
-#define	CLONE_OBJECT(c)		Copy_Series(c)
+#define	CLONE_OBJECT(c)		Clone_Frame(c)
 
 #define	VAL_MOD_FRAME(v)	((v)->data.object.frame)
 #define VAL_MOD_BODY(v)		((v)->data.object.body)
@@ -990,23 +1055,6 @@ typedef struct Reb_Error {
 
 /***********************************************************************
 **
-**	GOBS - Graphic Objects
-**
-***********************************************************************/
-
-typedef struct Reb_Gob {
-	REBGOB *gob;
-	REBCNT index;
-} REBGBO;
-
-#define	VAL_GOB(v)			((v)->data.gob.gob)
-#define	VAL_GOB_INDEX(v)	((v)->data.gob.index)
-#define SET_GOB(v,g)		VAL_SET(v, REB_GOB), VAL_GOB(v)=g, VAL_GOB_INDEX(v)=0
-
-typedef struct rebol_compositor_ctx REBCMP; // Rebol compositor context
-
-/***********************************************************************
-**
 **	FUNCTIONS - Natives, actions, operators, and user functions
 **
 ***********************************************************************/
@@ -1047,6 +1095,16 @@ typedef struct Reb_Function {
 #define VAL_FUNC_ACT(v)       ((v)->data.func.func.act)
 #define VAL_FUNC_ARGC(v)	  SERIES_TAIL((v)->data.func.args)
 
+// Function attribute flags (R2-style spec block, e.g. [[throw] arg]).
+// Stored in the header's RESV byte (see Reb_Header) of function! and
+// closure! values only. VAL_SET clears them, so set after VAL_SET.
+enum {
+	FUNC_THROW = 0,	// RETURN/EXIT are not caught; they pass to the caller
+	FUNC_CATCH,		// errors escaping the function are reported at its call site
+};
+#define VAL_FUNC_FLAGS(v)		((v)->flags.flags.resv)
+#define VAL_FUNC_GET_FLAG(v,n)	GET_FLAG(VAL_FUNC_FLAGS(v), n)
+
 typedef struct Reb_Path_Value {
 	REBVAL *value;	// modified
 	REBVAL *select;	// modified
@@ -1056,6 +1114,10 @@ typedef struct Reb_Path_Value {
 	REBVAL *setval;	// static
 	REBVAL *orig;	// static
 } REBPVS;
+
+// Sets `ret` for the field named by `word` (always a word!) and returns TRUE,
+// or returns FALSE for an unknown field. `ctx` is passed through untouched.
+typedef REBOOL (*REB_QUERY_FN)(REBVAL *value, REBVAL *word, REBVAL *ret, void *ctx);
 
 enum Path_Eval_Result {
 	PE_OK,
@@ -1109,6 +1171,7 @@ enum Handle_Flags {
 	HANDLE_CONTEXT_MARKED = 1 << 3,  // used in handle's context (HOB)
 	HANDLE_CONTEXT_USED   = 1 << 4,  // --//--
 	HANDLE_CONTEXT_LOCKED = 1 << 5,  // so Rebol will not GC the handle if C side still depends on it
+	HANDLE_CONTEXT_RELEASED = 1 << 6, // released explicitly; the HOB stays allocated until GC finds it unreferenced
 };
 
 /***********************************************************************
@@ -1183,6 +1246,11 @@ typedef struct Reb_Handle {
 #define IS_USED_HOB(h)         ((h)->flags &   HANDLE_CONTEXT_USED)   // used to detect if handle's context is still valid
 #define     USE_HOB(h)         ((h)->flags |=  HANDLE_CONTEXT_USED | HANDLE_CONTEXT_MARKED)
 #define   UNUSE_HOB(h)         ((h)->flags &= ~HANDLE_CONTEXT_USED)
+// A released HOB is no longer valid (not USED), but it is not returned to the
+// pool while any value may still refer to it - otherwise the next new handle
+// would get the same address and the stale value would see it as its own.
+#define IS_RELEASED_HOB(h)     ((h)->flags &   HANDLE_CONTEXT_RELEASED)
+#define IS_ALLOCATED_HOB(h)    ((h)->flags &  (HANDLE_CONTEXT_USED | HANDLE_CONTEXT_RELEASED))
 #define IS_MARK_HOB(h)         ((h)->flags &  (HANDLE_CONTEXT_MARKED | HANDLE_CONTEXT_LOCKED)) // GC marks still used handles, so these are not released
 #define    MARK_HOB(h)         ((h)->flags |=  HANDLE_CONTEXT_MARKED)
 #define  UNMARK_HOB(h)         ((h)->flags &= ~HANDLE_CONTEXT_MARKED)
@@ -1302,11 +1370,11 @@ typedef struct Reb_Struct_Info {
 #define STRUCT_NEEDS_MARK(s) ((STRUCT_FLAGS(s) & 1) != 0)
 #define STRUCT_PROTECTED(s)  ((STRUCT_FLAGS(s) & 2) != 0)
 
-#define VAL_STRUCT(v)        (v->data.structure)
-#define VAL_STRUCT_SPEC(v)   (v->data.structure.spec)
-#define VAL_STRUCT_OFFSET(v) (v->data.structure.offset)
+#define VAL_STRUCT(v)        ((v)->data.structure)
+#define VAL_STRUCT_SPEC(v)   ((v)->data.structure.spec)
+#define VAL_STRUCT_OFFSET(v) ((v)->data.structure.offset)
 #define VAL_STRUCT_FIELDS(v) (VAL_STRUCT_SPEC(v)->series)
-#define VAL_STRUCT_DATA(v)   (v->data.structure.data)
+#define VAL_STRUCT_DATA(v)   ((v)->data.structure.data)
 #define VAL_STRUCT_DATA_BIN(v) (BIN_SKIP(VAL_STRUCT_DATA(v), v->data.structure.offset))
 #define VAL_STRUCT_INFO(v)   ((REBSTI *)BLK_HEAD(VAL_STRUCT_FIELDS(v)))
 #define VAL_STRUCT_SIZE(v)   (((REBSTI *)BLK_HEAD(VAL_STRUCT_FIELDS(v)))->size)
@@ -1335,6 +1403,7 @@ typedef struct Reb_Struct_Info {
 
 // Accessors for a bare field list series (the GC has no REBSTU to use)
 #define FIELDS_INFO(ser)        ((REBSTI *)BLK_HEAD(ser))
+#define FIELDS_SPEC(ser)        ((ser)->series) // back-pointer to the spec block
 #define FIELDS_NEED_MARK(ser)   ((FIELDS_INFO(ser)->flags & STRUCT_FLAG_MARK) != 0)
 
 // Rebol values stored in a struct are accessed in place, so the fields
@@ -1372,7 +1441,6 @@ typedef struct Reb_All {
 } REBALL;
 
 #define VAL_ALL_BITS(v) ((v)->data.all.bits)
-
 
 /***********************************************************************
 **
@@ -1413,7 +1481,6 @@ typedef struct Reb_All {
 		REBLIB  library;
 		REBROT  routine;
 		REBSTU  structure;
-		REBGBO	gob;
 		REBUDT  utype;
 		REBDCI  deci;
 		REBHAN  handle;
@@ -1421,7 +1488,7 @@ typedef struct Reb_All {
 	} data;
 };
 
-#define ANY_SERIES(v)		(VAL_TYPE(v) >= REB_BINARY && VAL_TYPE(v) <= REB_LIT_PATH)
+#define ANY_SERIES(v)		(VAL_TYPE(v) >= REB_BINARY && VAL_TYPE(v) <= REB_HASH)
 #define ANY_STR(v)			(VAL_TYPE(v) >= REB_STRING && VAL_TYPE(v) <= REB_TAG)
 #define ANY_BINSTR(v)		(VAL_TYPE(v) >= REB_BINARY && VAL_TYPE(v) <= REB_TAG)
 #define ANY_BLOCK(v)		(VAL_TYPE(v) >= REB_BLOCK  && VAL_TYPE(v) <= REB_HASH)
@@ -1434,10 +1501,9 @@ typedef struct Reb_All {
 #define ANY_NUMBER(v)	    (VAL_TYPE(v) >= REB_INTEGER && VAL_TYPE(v) <= REB_MONEY)
 #define ANY_SCALAR(v)	    (VAL_TYPE(v) >= REB_UNSET  && VAL_TYPE(v) <= REB_DATE)
 
-#define ANY_BLOCK_TYPE(t)   (t >= REB_BLOCK   && t <= REB_LIT_PATH)
+#define ANY_BLOCK_TYPE(t)   (t >= REB_BLOCK   && t <= REB_HASH)
 #define ANY_STR_TYPE(t)     (t >= REB_STRING  && t <= REB_TAG)
 
 #pragma pack()
 
 #endif // value.h
-

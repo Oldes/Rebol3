@@ -89,6 +89,15 @@
 
 #define CHECK_BIND_TABLE
 
+// Bind table mark of a hidden word (see Bind_Block)
+#define BIND_HIDDEN ((REBCNT)(-2))
+
+// Word lists longer than this get a hash index for word lookup.
+// The index is kept in the word list's `series` field (like map's hashes)
+// and the hash series' `size` field holds the number of words indexed.
+#define WORDS_HASH_MIN 64
+#define HASHED_WORDS(hser) ((hser)->size)
+
 /***********************************************************************
 **
 */	void Check_Bind_Table(void)
@@ -137,12 +146,58 @@
 	return frame;
 }
 
+/***********************************************************************
+**
+*/  REBSER *Clone_Frame(REBSER *frame)
+/*
+**      Make a shallow copy of a frame. The copy uses the same word
+**      list, so it is marked as shared.
+**
+***********************************************************************/
+{
+	SHARE_SERIES(FRM_WORD_SERIES(frame));
+	return Copy_Series(frame);
+}
+
+
+/***********************************************************************
+**
+*/  void Unshare_Frame_Words(REBSER *frame)
+/*
+**      Give the frame its own copy of the word list, if the list is
+**      (or may be) used by other frames too. Must be called before any
+**      modification of the words (protection flags, new words), else
+**      the modification would be visible in all frames using the list.
+**      https://github.com/Oldes/Rebol3/issues/1333
+**
+**      The original list keeps the shared flag, because it is not known
+**      how many other frames still use it.
+**
+***********************************************************************/
+{
+	REBSER *words = FRM_WORD_SERIES(frame);
+	REBSER *hser;
+
+	if (!words || !IS_SHARED_SERIES(words)) return;
+
+	hser = words->series; // word index (see Find_Word_Index)
+	FRM_WORD_SERIES(frame) = Copy_Series(words);
+	words = FRM_WORD_SERIES(frame);
+	BARE_SERIES(words);
+	SERIES_CLR_FLAG(words, SER_SHARE);
+	if (hser) {
+		// Same words at the same positions, so the index stays valid.
+		words->series = Copy_Series(hser);
+		HASHED_WORDS(words->series) = HASHED_WORDS(hser);
+	}
+}
+
 
 /***********************************************************************
 **
 */  void Expand_Frame(REBSER *frame, REBCNT delta, REBCNT copy)
 /*
-**      Expand a frame. Copy words if flagged.
+**      Expand a frame. Copy words if flagged or if they are shared.
 **
 ***********************************************************************/
 {
@@ -152,9 +207,17 @@
 	BLK_TERM(frame);
 
 	// Expand or copy WORDS block:
-	if (copy) {
+	if (copy || IS_SHARED_SERIES(words)) {
+		REBSER *hser = words->series; // word index (see Find_Word_Index)
 		FRM_WORD_SERIES(frame) = Copy_Expand_Block(words, delta);
 		BARE_SERIES(FRM_WORD_SERIES(frame));
+		if (hser) {
+			// The copy has the same words at the same positions, so the index
+			// stays valid. It must be copied, as the lists may differ from now on.
+			words = FRM_WORD_SERIES(frame);
+			words->series = Copy_Series(hser);
+			HASHED_WORDS(words->series) = HASHED_WORDS(hser);
+		}
 	} else {
 		Extend_Series(words, delta);
 		BLK_TERM(words);
@@ -178,8 +241,13 @@
 **
 ***********************************************************************/
 {
-	REBSER *words = FRM_WORD_SERIES(frame);
+	REBSER *words;
 	REBVAL *value;
+
+	// The word list may be used by other frames (prototype, copies...),
+	// which must not get the new word: https://github.com/Oldes/Rebol3/issues/1333
+	Unshare_Frame_Words(frame);
+	words = FRM_WORD_SERIES(frame);
 
 	// Add to word list:
 	EXPAND_SERIES_TAIL(words, 1);
@@ -480,9 +548,16 @@
 	PG_Reb_Stats->Objects++;
 
 	if (!block || IS_END(block)) {
-		object = parent ? Copy_Block_Values(parent, 0, SERIES_TAIL(parent), TS_CLONE) : Make_Frame(0);
+		if (parent) {
+			// The new object uses the parent's word list:
+			SHARE_SERIES(FRM_WORD_SERIES(parent));
+			object = Copy_Block_Values(parent, 0, SERIES_TAIL(parent), TS_CLONE);
+		}
+		else object = Make_Frame(0);
 	} else {
 		words = Collect_Frame(BIND_ONLY, parent, block); // GC safe
+		// When there are no new words, the parent's word list is reused:
+		if (parent && words == FRM_WORD_SERIES(parent)) SHARE_SERIES(words);
 		object = Create_Frame(words, 0); // GC safe
 		if (parent) {
 #ifdef DEBUG
@@ -800,7 +875,7 @@
 
 /***********************************************************************
 **
-*/  static void Bind_Block_Words(REBSER *frame, REBVAL *value, REBCNT mode)
+*/  static REBVAL *Bind_Block_Words(REBSER *frame, REBVAL *value, REBCNT mode)
 /*
 **      Inner loop of bind block. Modes are:
 **
@@ -813,18 +888,28 @@
 **      bind prior instances of the word before the set-word. That is
 **      forward references are not allowed.
 **
+**      Hidden words are neither bound, nor added again.
+**      Words are not added to a protected frame. The first such word
+**      is returned (else NULL), so the caller can throw an error once
+**      the binding table is released.
+**
 ***********************************************************************/
 {
 	REBINT *binds = WORDS_HEAD(Bind_Table); // GC safe to do here
 	REBCNT n;
 	REBFLG selfish = !IS_SELFLESS(frame);
 	REBVAL *val;
+	REBVAL *rejected = NULL;
+	REBVAL *tmp;
 
 	for (; NOT_END(value); value++) {
 		if (ANY_WORD(value)) {
 			//Print("Word: %s", Get_Sym_Name(VAL_WORD_CANON(value)));
 			// Is the word found in this frame?
 			if (NZ(n = binds[VAL_WORD_CANON(value)])) {
+				// Hidden word: not visible, but it must not be added again
+				// https://github.com/Oldes/Rebol3/issues/1374
+				if (n == BIND_HIDDEN) continue;
 				if (n == NO_RESULT) n = 0; // SELF word
 				ASSERT1(n < SERIES_TAIL(frame), RP_BIND_BOUNDS);
 				// Word is in frame, bind it:
@@ -838,6 +923,11 @@
 			else {
 				// Word is not in frame. Add it if option is specified:
 				if ((mode & BIND_ALL) || ((mode & BIND_SET) && (IS_SET_WORD(value)))) {
+					// https://github.com/Oldes/Rebol3/issues/1957
+					if (IS_PROTECT_SERIES(frame)) {
+						if (!rejected) rejected = value;
+						continue;
+					}
 					Append_Frame(frame, value, 0);
 					binds[VAL_WORD_CANON(value)] = VAL_WORD_INDEX(value);
 				}
@@ -846,17 +936,20 @@
 		else if ((ANY_BLOCK_OR_MAP(value)) && (mode & BIND_DEEP)) {
 			// Recursion check: (variation of: Find_Same_Block(MOLD_LOOP, value))
 			for (val = BLK_HEAD(MOLD_LOOP); NOT_END(val); val++) {
-				if (VAL_SERIES(val) == VAL_SERIES(value)) return;
+				if (VAL_SERIES(val) == VAL_SERIES(value)) return rejected;
 			}
 			val = Append_Value(MOLD_LOOP);
 			Set_Block(val, VAL_SERIES(value));
-			Bind_Block_Words(frame, VAL_BLK_DATA(value), mode);
+			tmp = Bind_Block_Words(frame, VAL_BLK_DATA(value), mode);
+			if (!rejected) rejected = tmp;
 			Remove_Last(MOLD_LOOP);
 		}
-		else if ((IS_FUNCTION(value) || IS_CLOSURE(value)) && (mode & BIND_FUNC))
-			Bind_Block_Words(frame, BLK_HEAD(VAL_FUNC_BODY(value)), mode);
+		else if ((IS_FUNCTION(value) || IS_CLOSURE(value)) && (mode & BIND_FUNC)) {
+			tmp = Bind_Block_Words(frame, BLK_HEAD(VAL_FUNC_BODY(value)), mode);
+			if (!rejected) rejected = tmp;
+		}
 	}
-	
+	return rejected;
 }
 
 
@@ -875,6 +968,7 @@
 ***********************************************************************/
 {
 	REBVAL *words;
+	REBVAL *rejected;
 	REBCNT index;
 	REBINT *binds = WORDS_HEAD(Bind_Table); // GC safe to do here
 
@@ -891,15 +985,20 @@
 		words = FRM_WORD(frame, index);
 		if (!VAL_GET_OPT(words, OPTS_HIDE))
 			binds[VAL_BIND_CANON(words)] = index;
+		else if (!binds[VAL_BIND_CANON(words)])
+			binds[VAL_BIND_CANON(words)] = (REBINT)BIND_HIDDEN;
 	}
 
-	Bind_Block_Words(frame, block, mode);
+	rejected = Bind_Block_Words(frame, block, mode);
 
 	// Reset binding table:
 	for (words = FRM_WORDS(frame)+1; NOT_END(words); words++)
 		binds[VAL_BIND_CANON(words)] = 0;
 
 	CHECK_BIND_TABLE;
+
+	// A word could not be added to a protected frame:
+	if (rejected) Trap0(RE_PROTECTED);
 }
 
 
@@ -1087,26 +1186,97 @@
 
 /***********************************************************************
 **
+*/  static REBSER *Hash_Word_List(REBSER *wser)
+/*
+**      Return the hash index of a frame word list (canon symbol -> word
+**      index), creating or updating it as needed. Word lists only grow
+**      at the tail, so only the words added since the last call are
+**      hashed. The index is rebuilt when it would get too dense, or
+**      when the list got shorter (should not happen).
+**
+***********************************************************************/
+{
+	REBSER *hser = wser->series;
+	REBCNT len = SERIES_TAIL(wser);
+	REBCNT *hashes;
+	REBCNT size, n, i, h = 0, canon;
+
+	if (!hser || HASHED_WORDS(hser) > len || len > hser->tail / 2) {
+		hser = Make_Hash_Array(len); // size is a prime >= 2 * len
+		HASHED_WORDS(hser) = 1;      // slot 0 (SELF) is not indexed
+		wser->series = hser;
+	}
+	hashes = (REBCNT *)hser->data;
+	size = hser->tail;
+	for (n = HASHED_WORDS(hser); n < len; n++) {
+		canon = VAL_BIND_CANON(BLK_SKIP(wser, n));
+		for (i = 0; i < size; i++) {
+			h = Hash_Probe(canon, i, size);
+			if (!hashes[h]) break;
+		}
+		hashes[h] = n;
+	}
+	HASHED_WORDS(hser) = len;
+	return hser;
+}
+
+
+/***********************************************************************
+**
 */  REBCNT Find_Word_Index(REBSER *frame, REBCNT sym, REBFLG always)
 /*
 **      Search a frame looking for the given word symbol.
 **      Return the frame index for a word. Locate it by matching
 **      the canon word identifiers. Return 0 if not found.
 **
+**      Long word lists use a hash index (see Hash_Word_List).
+**
+**      For short lists, the first pass compares only symbols (no word
+**      table access), which finds words looked up with the same
+**      spelling as they were defined. The second pass compares canon
+**      symbols.
+**
 ***********************************************************************/
 {
-	REBCNT len = SERIES_TAIL(FRM_WORD_SERIES(frame));
-	REBVAL *word = FRM_WORDS(frame) + 1;
+	REBSER *wser = FRM_WORD_SERIES(frame);
+	REBCNT len = SERIES_TAIL(wser);
+	REBVAL *words;
+	REBVAL *word;
 	REBCNT n;
 	REBCNT s;
 
-	s = SYMBOL_TO_CANON(sym); // always compare to CANON sym
+	if (len > WORDS_HASH_MIN) {
+		REBSER *hser = Hash_Word_List(wser);
+		REBCNT *hashes = (REBCNT *)hser->data;
+		REBCNT size = hser->tail;
+		REBCNT i;
 
-	for (n = 1; n < len; n++, word++)
-		if (sym == VAL_BIND_SYM(word) || s == VAL_BIND_CANON(word))
-			return (!always && VAL_GET_OPT(word, OPTS_HIDE)) ? 0 : n;
+		words = BLK_HEAD(wser);
+		s = SYMBOL_TO_CANON(sym);
+		for (i = 0; i < size; i++) {
+			n = hashes[Hash_Probe(s, i, size)];
+			if (!n) return 0;
+			word = words + n;
+			if (sym == VAL_BIND_SYM(word) || s == VAL_BIND_CANON(word)) goto found;
+		}
+		return 0;
+	}
+
+	words = BLK_HEAD(wser);
+
+	// Fast pass: exact symbol match
+	for (n = 1, word = words + 1; n < len; n++, word++)
+		if (sym == VAL_BIND_SYM(word)) goto found;
+
+	// Slow pass: canonical (case insensitive) match
+	s = SYMBOL_TO_CANON(sym);
+	for (n = 1, word = words + 1; n < len; n++, word++)
+		if (s == VAL_BIND_CANON(word)) goto found;
 
 	return 0;
+
+found:
+	return (!always && VAL_GET_OPT(word, OPTS_HIDE)) ? 0 : n;
 }
 
 
@@ -1298,6 +1468,79 @@
 		item = DS_TOP;
 	}
 	return item;
+}
+
+
+/***********************************************************************
+**
+*/	void Query_Fields(REBVAL *value, REBVAL *field, REBVAL *spec, REB_QUERY_FN query_field, void *ctx, REBVAL *ret)
+/*
+**		Shared QUERY/REFLECT for datatypes with an info object
+**		in system/standard (`info` is its STD_*_INFO index).
+**
+**		field:
+**			word!   - one field (or `words`, `spec`)
+**			block!  - [year :month] -> [year: 2026 10]
+**			          (get-words return only the value; the block itself is not modified)
+**			none!   - names of all fields
+**			other   - (object!) object with all fields filled
+**
+***********************************************************************/
+{
+	REBVAL *word, *out;
+	REBVAL tmp;
+	REBSER *ser;
+	REBCNT n;
+
+	if (!IS_OBJECT(spec)) Trap_Arg(spec);
+
+	if (IS_WORD(field)) {
+		switch (VAL_WORD_CANON(field)) {
+		case SYM_WORDS:
+			Set_Block(ret, Get_Object_Words(spec));
+			return;
+		case SYM_SPEC:
+			*ret = *value;
+			return;
+		}
+		if (!query_field(value, field, ret, ctx))
+			Trap_Reflect(VAL_TYPE(value), field);
+	}
+	else if (IS_BLOCK(field)) {
+		ser = Make_Block(2 * VAL_BLK_LEN(field));
+		SAVE_SERIES(ser); // fields may allocate (e.g. vector median)
+		for (word = VAL_BLK_DATA(field); NOT_END(word); word++) {
+			if (!ANY_WORD(word)) Trap1(RE_INVALID_ARG, word);
+			if (!IS_GET_WORD(word)) {
+				out = Append_Value(ser);
+				*out = *word;
+				VAL_TYPE(out) = REB_SET_WORD;
+				VAL_SET_LINE(out);
+			}
+			tmp = *word;
+			VAL_TYPE(&tmp) = REB_WORD;
+			out = Append_Value(ser);
+			if (!query_field(value, &tmp, out, ctx))
+				Trap1(RE_INVALID_ARG, word);
+		}
+		UNSAVE_SERIES(ser);
+		Set_Series(REB_BLOCK, ret, ser);
+	}
+	else if (IS_NONE(field)) {
+		Set_Block(ret, Get_Object_Words(spec));
+	}
+	else {
+		ser = CLONE_OBJECT(VAL_OBJ_FRAME(spec));
+		SAVE_SERIES(ser);
+		word = BLK_HEAD(VAL_OBJ_WORDS(spec));
+		for (n = 0; NOT_END(word); word++, n++) {
+			tmp = *word;
+			VAL_TYPE(&tmp) = REB_WORD;
+			query_field(value, &tmp, OFV(ser, n), ctx);
+		}
+		UNSAVE_SERIES(ser);
+		SET_OBJECT(ret, ser);
+	}
 }
 
 

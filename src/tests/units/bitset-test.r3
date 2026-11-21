@@ -332,6 +332,22 @@ Rebol [
 		--assert find ABC ["AB" "CB"]
 		--assert not find ABC ["AB" "CBX"]
 
+	--test-- "bitset check with UTF-8 string"
+		bs: charset "aš🙂"
+		--assert find bs "š"
+		--assert find bs "🙂a"
+		--assert not find bs "šx"
+		--assert find/any bs "xš"
+		--assert not find/any bs "xy"
+		--assert pick bs "🙂"
+		;; must not match single bytes of a multi-byte char
+		--assert not find/any (charset "^(C5)") "š"
+	--test-- "bitset with string having invalidated index"
+		swap s1: "🙂b" s2: next s1 ;; s2 index is now inside of the 🙂 sequence
+		--assert find (charset "🙂") s2
+		--assert (charset "🙂") == make bitset! s2
+		--assert find (append make bitset! 0 s2) #"🙂"
+
 ===end-group===
 
 
@@ -404,6 +420,15 @@ Rebol [
 		--assert not strict-equal? b complement b
 		--assert not same? b complement b
 
+	--test-- "copy of complemented bitset"
+		bs: complement charset "a"
+		--assert complement? copy bs
+		--assert bs == copy bs
+		--assert not find copy bs #"a"
+		--assert find copy bs #"b"
+		--assert complement? make bitset! bs
+		--assert not complement? copy charset "a"
+		--assert complement? first copy/deep reduce [complement charset "a"]
 ===end-group===
 
 ===start-group=== "bitset issues"

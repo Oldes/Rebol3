@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,6 +34,11 @@
 
 #define MAX_WAIT_MS 64 // Maximum millsec to sleep
 
+// Number of requests in a native port state. The first one is the main
+// request (all code and extensions use it as THE port's REBREQ). The second
+// one is used by net ports for WRITE, so it may pend while a READ pends.
+#define PORT_STATE_REQS 2
+
 /***********************************************************************
 **
 */	REBVAL *Make_Port(REBVAL *spec)
@@ -44,9 +49,11 @@
 ***********************************************************************/
 {
 	REBVAL *value;
+	REBVAL spec_value = *spec;
 
-	value = Do_Sys_Func(SYS_CTX_MAKE_PORT_P, spec, 0); // volatile
-	if (IS_NONE(value)) Trap1(RE_INVALID_SPEC, spec);
+	// The system function may move the data stack containing spec.
+	value = Do_Sys_Func(SYS_CTX_MAKE_PORT_P, &spec_value, 0); // volatile
+	if (IS_NONE(value)) Trap1(RE_INVALID_SPEC, &spec_value);
 
 	return value;
 }
@@ -62,14 +69,16 @@
 ***********************************************************************/
 {
 	REBREQ *req;
+	REBCNT n;
 	REBVAL *state = BLK_SKIP(port, STD_PORT_STATE);
 	REBCNT type = SYM_PORT_STATEX; //TODO: make it per-device type instead one state type for all devices
 
-	// Validate if handle has correct type and is for the expected device
-	if (IS_HANDLE(state) && VAL_HANDLE_TYPE(state) == type) {
-		req = (REBREQ *)VAL_HANDLE_CONTEXT_DATA(state);
-		if (req->device == device) return state;
-	}
+	// Validate if handle has correct type and is for the expected device.
+	// A released state (of a closed port) has no data and must not be used.
+	if (IS_HANDLE(state) && IS_VALID_CONTEXT_HANDLE(state, type)) {
+ 		req = (REBREQ *)VAL_HANDLE_CONTEXT_DATA(state);
+ 		if (req->device == device) return state;
+ 	}
 	// If state is not a handle of the request type, create it:
 	MAKE_HANDLE(state, type);
 	if (!VAL_HANDLE_CTX(state)) {
@@ -77,8 +86,10 @@
 		return NULL;
 	}
 	req = (REBREQ *)VAL_HANDLE_CONTEXT_DATA(state);
-	req->port = port;
-	req->device = device;
+	for (n = 0; n < PORT_STATE_REQS; n++) {
+		req[n].port = port;
+		req[n].device = device;
+	}
 
 	return state;
 }
@@ -89,18 +100,26 @@
 */	REBFLG Pending_Port(REBVAL *port)
 /*
 **		Return TRUE if port value is pending a signal.
-**		Not valid for all ports - requires request struct!!!
+**		Only ports holding a device request (SYM_PORT_STATEX handle)
+**		can report that they are not pending. Other ports (including
+**		ports with other handle types, like timers) are always pending.
 **
 ***********************************************************************/
 {
 	REBVAL *state;
 	REBREQ *req;
+	REBCNT n;
 
 	if (IS_PORT(port)) {
 		state = BLK_SKIP(VAL_PORT(port), STD_PORT_STATE);
-		if (IS_HANDLE(state)) {
+		if (IS_HANDLE(state) && VAL_HANDLE_TYPE(state) == SYM_PORT_STATEX) {
+			// A released state has no requests, so nothing is pending.
+			if (!IS_USED_HOB(VAL_HANDLE_CTX(state))) return FALSE;
 			req = (REBREQ*)VAL_HANDLE_CONTEXT_DATA(state);
-			if (!GET_FLAG(req->flags, RRF_PENDING)) return FALSE;
+			for (n = 0; n < PORT_STATE_REQS; n++) {
+				if (GET_FLAG(req[n].flags, RRF_PENDING)) return TRUE;
+			}
+			return FALSE;
 		}
 	}
 	return TRUE;
@@ -176,8 +195,12 @@
 	REBCNT time;
 	REBINT result;
 	REBCNT wt = 1;
-	REBCNT res = (timeout >= 1000) ? 0 : 16;  // OS dependent?
+	// Minimal time worth sleeping (shorter waits are spun). It used to be
+	// 16ms (Windows timer tick), but OS_Wait now sleeps precisely (~1ms)
+	// on all platforms, and spinning made short timer intervals busy loops.
+	REBCNT res = (timeout >= 1000) ? 0 : 1;
 	REBINT old_time = -1;
+	REBCNT next_timer;
 
 	while (wt) {
 		if (GET_SIGNAL(SIG_ESCAPE)) {
@@ -185,6 +208,9 @@
 			Out_Str(cb_cast("[ESC]"), 1, TRUE);
 			Halt_Code(RE_HALT, 0); // Throws!
 		}
+
+		// Queue events of timers which are due:
+		next_timer = Check_Timers();
 
 		// Process any waiting events:
 		if ((result = Awake_System(ports, only)) > 0) return TRUE;
@@ -195,6 +221,9 @@
 			wt *= 2;
 			if (wt > MAX_WAIT_MS) wt = MAX_WAIT_MS;
 		}
+
+		// Do not sleep past the next timer (but keep the loop running):
+		if (next_timer < wt) wt = next_timer ? next_timer : 1;
 
 		if (timeout != ALL_BITS) {
 			// Figure out how long that (and OS_WAIT) took:
@@ -292,12 +321,13 @@ xx*/	REBINT Wait_Device(REBREQ *req, REBCNT timeout)
 		val = BLK_SKIP(ports, n);
 		if (IS_PORT(val)) {
 			ASSERT(VAL_TAIL(waked) != 0, RP_IO_ERROR);
-			if (VAL_TAIL(waked) == Find_Block_Simple(VAL_SERIES(waked), 0, val)) {//not found
-				Remove_Series(ports, n, 1);
+			if (VAL_TAIL(waked) != Find_Block_Simple(VAL_SERIES(waked), 0, val)) {
+				n++; // waked port; keep it
 				continue;
 			}
 		}
-		n++;
+		// remove not waked ports and any non-port values (timeout, none...)
+		Remove_Series(ports, n, 1);
 	}
 	//clear waked list
 	RESET_SERIES(VAL_SERIES(waked));
@@ -399,6 +429,27 @@ xx*/	REBINT Wait_Device(REBREQ *req, REBCNT timeout)
 
 /***********************************************************************
 **
+*/	REBFLG Is_Port_Frame(REBSER *port)
+/*
+**		TRUE when the series can be used as a port frame - that is, when
+**		it holds values and the fixed STD_PORT_* indices are in range.
+**
+**		Split out of Validate_Port_Value so that callers which must not
+**		throw (RL_Port_State) can ask the same question.
+**
+***********************************************************************/
+{
+	return (
+		port != 0
+		&& IS_BLOCK_SERIES(port)               // values, not bytes
+		&& SERIES_TAIL(port) == STD_PORT_MAX   // every STD_PORT_* in range
+		&& IS_OBJECT(OFV(port, STD_PORT_SPEC))
+	);
+}
+
+
+/***********************************************************************
+**
 */	REBSER *Validate_Port_Value(REBVAL *value)
 /*
 **		Because port actors are exposed to the user level, we must
@@ -407,17 +458,9 @@ xx*/	REBINT Wait_Device(REBREQ *req, REBCNT timeout)
 **
 ***********************************************************************/
 {
-	REBSER *port = VAL_PORT(value);
-	if (
-		VAL_TYPE(value) != REB_PORT
-		|| SERIES_TAIL(port) > STD_PORT_MAX
-//		|| SERIES_WIDE(port) != sizeof(REBVAL)
-//		|| !IS_FRAME(BLK_HEAD(port))
-		|| !IS_OBJECT(OFV(port, STD_PORT_SPEC))
-		)
-		Trap0(RE_INVALID_PORT);
-	// else..
-	return port;
+	if (VAL_TYPE(value) != REB_PORT) Trap0(RE_INVALID_PORT);
+	if (!Is_Port_Frame(VAL_PORT(value))) Trap0(RE_INVALID_PORT);
+	return VAL_PORT(value);
 }
 
 /***********************************************************************
@@ -442,11 +485,22 @@ FORCE_INLINE
 **
 */	void Release_Port_State(REBSER *port)
 /*
-**		Release the request handle early, without waiting for GC
+**		Release the request handle early, without waiting for GC.
+**
+**		The port's state value still refers to the handle, so the handle
+**		is only marked as released (its node cannot be given to another
+**		handle until the GC finds it unreferenced). Using Free_Hob here
+**		would let a closed port share the state of a port opened later!
 **
 ***********************************************************************/
 {
-	Free_Hob(VAL_HANDLE_CTX(OFV(port, STD_PORT_STATE)));
+	REBVAL *state = OFV(port, STD_PORT_STATE);
+
+	if (!IS_HANDLE(state) || !IS_VALID_CONTEXT_HANDLE(state, SYM_PORT_STATEX)) return;
+
+ 	// Queued events of this port would refer to the released request!
+	Remove_Device_Events((REBREQ *)VAL_HANDLE_CONTEXT_DATA(state), PORT_STATE_REQS);
+	Release_Hob(VAL_HANDLE_CTX(state));
 }
 
 
@@ -585,7 +639,7 @@ SCHEME_ACTIONS *Scheme_Actions;	// Initial Global (not threaded)
 ***********************************************************************/
 {
 	// Register a handle used to hold native port states
-	Register_Handle(SYM_PORT_STATEX, sizeof(REBREQ), NULL);
+	Register_Handle(SYM_PORT_STATEX, PORT_STATE_REQS * sizeof(REBREQ), NULL);
 
 	Scheme_Actions = Make_Clear_Mem(sizeof(SCHEME_ACTIONS), MAX_SCHEMES);
 
@@ -593,6 +647,7 @@ SCHEME_ACTIONS *Scheme_Actions;	// Initial Global (not threaded)
 	Init_File_Scheme();
 	Init_Dir_Scheme();
 	Init_Event_Scheme();
+	Init_Timer_Scheme();
 	Init_TCP_Scheme();
 	Init_UDP_Scheme();
 	Init_DNS_Scheme();

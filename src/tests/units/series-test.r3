@@ -544,6 +544,41 @@ Rebol [
 	--assert 2 == first first find/tail/case [#"A" [1] #"a" [2]] #"a"
 ===end-group===
 
+
+===start-group=== "FIND-ALL"
+	;@@ https://github.com/Oldes/Rebol3/issues/1896
+	--test-- "FIND-ALL passes RETURN to the caller"
+		fa-f1: func [/local s][
+			s: [1 2 1 3]
+			find-all s 1 [if 3 = index? s [return index? s]]
+			none
+		]
+		--assert 3 = fa-f1
+
+	--test-- "FIND-ALL passes EXIT to the caller"
+		fa-n: 0
+		fa-f2: func [/local s][
+			s: [1 2 1]
+			find-all s 1 [fa-n: fa-n + 1 exit]
+			fa-n: 100
+		]
+		fa-f2
+		--assert fa-n = 1
+
+	--test-- "FIND-ALL still works"
+		fa-s: [1 2 1 3 1]
+		fa-c: 0
+		find-all fa-s 1 [fa-c: fa-c + 1]
+		--assert did all [
+			fa-c = 3
+			head? fa-s
+			fa-s = [1 2 1 3 1]
+		]
+		find-all fa-s 1 [change fa-s 0]
+		--assert fa-s = [0 2 0 3 0]
+===end-group===
+
+
 ===start-group=== "PATH notation"
 	--test-- "issue-64"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/64
@@ -1822,6 +1857,24 @@ Rebol [
 		error? e: try [sort/skip/compare/all db 2 func [a b] [reverse b   a/2 < b/2]]
 		e/id = 'protected
 	]
+
+	;; comparator error inside merge must not leak the stable sort buffer
+	b: append collect [repeat i 50 [keep i + 50]] collect [repeat i 50 [keep i]]
+	n: 0
+	--assert all [
+		error? e: try [
+			sort/compare b func [a b] [
+				n: n + 1
+				if n > 110 [1 / 0]
+				a < b
+			]
+		]
+		e/id = 'zero-divide
+		n = 111
+	]
+	--assert 100 = length? b
+	--assert (sort copy b) = sort/compare copy b func [a b] [a < b]
+
 --test-- "SORT/compare block! (#2707)"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2707
 	blk: clear []
@@ -2024,6 +2077,16 @@ try/with [
 		[Bob 25 Carol 30 Alice 30] == sort/unstable/skip/compare [Carol 30 Bob 25 Alice 30] 2 2
 	]
 
+	;; unstable sort (Adaptive Symmetry Partition Sort) correctness
+	b: collect [repeat i 10000 [keep (i * 7919) // 1013]]   ; many duplicates
+	--assert (sort copy b) = sort/unstable copy b
+	b: collect [repeat i 1000 [keep i]]                     ; ascending run
+	--assert b = sort/unstable copy b
+	b: collect [repeat i 1000 [keep 1001 - i]]              ; descending run
+	--assert (sort copy b) = sort/unstable copy b
+	b: collect [repeat i 500 [keep (i * 37) // 101 keep i]] ; records
+	--assert (sort/skip copy b 2) = sort/skip/unstable copy b 2
+
 
 --test-- "SORT vectors"
 	--assert #(uint8! [1 2 3 3 3 4 4 5 7]) == sort #(uint8! [1 4 3 2 3 5 7 4 3])
@@ -2091,10 +2154,29 @@ try/with [
 		--assert all [
 			"b🙂" == swap s1: "🙂b" next s1
 		]
-	--test-- "swap invalidating index (known issue)"
+	--test-- "swap invalidating index"
 		--assert all [
 			"b🙂" == swap s1: "🙂b" s2: next s1
-			"🙂" == length? s2 ;@@ Known issue!!! The index is not valid anymore.
+			1 == length? s2
+			2 == index? s2
+			#"🙂" == pick s2 1
+			"🙂" == copy s2
+		]
+	--test-- "poke invalidating index"
+		;; the index stays valid, but not on the same character!
+		--assert all [
+			s2: next s1: "ab"
+			#"🙂" == poke s1 1 #"🙂"
+			2 == length? s2
+			"🙂b" == copy s2
+		]
+	--test-- "comparing string with invalidated index"
+		--assert all [
+			"b🙂" == swap s1: "🙂b" s2: next s1
+			"🙂" == s2
+			"🙂" =  s2
+			s2 == next s1
+			(reduce [s2]) = ["🙂"]
 		]
 	--test-- "swap binary"
 		--assert all [
@@ -2338,8 +2420,45 @@ try/with [
 	--assert s = [2 3 4]
 	--assert 'x = remove-each/count n s: [1 2 3 4] [if n = 2 [break/return 'x] true]
 	--assert s = [2 3 4]
+
+--test-- "REMOVE-EACH passes RETURN and THROW"
+	re-f: does [remove-each x [1 2] [return 1] 2]
+	--assert 1 = re-f
+	--assert 3 = catch [remove-each x [1 2] [throw 3] 4]
+	--assert 5 = remove-each x [1 2] [break/return 5]
+	--assert [1 2] = remove-each x [1 2] [break]
+
+--test-- "MAP-EACH passes RETURN and THROW"
+	me-f: does [map-each x [1 2] [return 1] 2]
+	--assert 1 = me-f
+	--assert 3 = catch [map-each x [1 2] [throw 3] 4]
+	--assert 5 = map-each x [1 2] [break/return 5]
 ===end-group===
 
+
+===start-group===  "KEEP-EACH"
+;@@ https://github.com/Oldes/Rebol3/issues/2886
+--test-- "KEEP-EACH"
+	--assert did all [
+		[2 4] = keep-each x b: [1 2 3 4] [even? x]
+		b = [2 4]
+	]
+	--assert [1 2 5 6] = keep-each [a b] [1 2 3 4 5 6] [a <> 3]
+	--assert "ace" = keep-each c "abcde" [find "ace" c]
+	--assert "ěč" = keep-each c "ěščř" [find "ěč" c]
+
+--test-- "KEEP-EACH/count"
+	--assert 2 = keep-each/count x [1 2 3 4] [even? x]
+	--assert 2 = keep-each/count c "ěščř" [find "ěč" c]
+
+--test-- "KEEP-EACH with CONTINUE and BREAK"
+	--assert [1 2] = keep-each x [1 2 3] [if x = 2 [continue] x <> 3]
+	--assert [2 3 4] = keep-each x [1 2 3 4] [if x = 3 [break] x > 1]
+
+--test-- "KEEP-EACH passes RETURN"
+	ke-f: does [keep-each x [1 2] [return 1] 2]
+	--assert 1 = ke-f
+===end-group===
 
 ===start-group=== "CONTINUE in loops"
 ;@@ https://github.com/Oldes/Rebol-issues/issues/2663
@@ -2387,25 +2506,25 @@ try/with [
 
 ; additional tests which also contain CRLF
 --test-- "issue-2186 read UCS16-LE"
-	bin: read %units/files/issue-2186-UTF16-LE.txt
+	bin: read %files/issue-2186-UTF16-LE.txt
 	--assert all [
 		string? try [str: to-string bin]
 		8206283 = checksum str 'crc24
 	]
 --test-- "issue-2186 read UCS16-BE"
-	bin: read %units/files/issue-2186-UTF16-BE.txt
+	bin: read %files/issue-2186-UTF16-BE.txt
 	--assert all [
 		string? try [str: to-string bin]
 		8206283 = checksum str 'crc24
 	]
 --test-- "issue-2186 read UCS32-LE"
-	bin: read %units/files/issue-2186-UTF32-LE.txt
+	bin: read %files/issue-2186-UTF32-LE.txt
 	--assert all [
 		string? try [str: to-string bin]
 		8206283 = checksum str 'crc24
 	]
 --test-- "issue-2186 read UCS32-BE"
-	bin: read %units/files/issue-2186-UTF32-BE.txt
+	bin: read %files/issue-2186-UTF32-BE.txt
 	--assert all [
 		string? try [str: to-string bin]
 		8206283 = checksum str 'crc24
@@ -2413,22 +2532,22 @@ try/with [
 ;- read/string converts CRLF to LF, so the checksum is different
 --test-- "issue-2186 read/string UCS16-LE"
 	--assert all [
-		string? try [str: read/string %units/files/issue-2186-UTF16-LE.txt]
+		string? try [str: read/string %files/issue-2186-UTF16-LE.txt]
 		5408699 = checksum str 'crc24
 	]
 --test-- "issue-2186 read/string UCS16-BE"
 	--assert all [
-		string? try [str: read/string %units/files/issue-2186-UTF16-BE.txt]
+		string? try [str: read/string %files/issue-2186-UTF16-BE.txt]
 		5408699 = checksum str 'crc24
 	]
 --test-- "issue-2186 read/string UCS32-LE"
 	--assert all [
-		string? try [str: read/string %units/files/issue-2186-UTF32-LE.txt]
+		string? try [str: read/string %files/issue-2186-UTF32-LE.txt]
 		5408699 = checksum str 'crc24
 	]
 --test-- "issue-2186 read/string UCS32-BE"
 	--assert all [
-		string? try [str: read/string %units/files/issue-2186-UTF32-BE.txt]
+		string? try [str: read/string %files/issue-2186-UTF32-BE.txt]
 		5408699 = checksum str 'crc24
 	]
 
@@ -2450,10 +2569,10 @@ try/with [
 	--assert "^(FFFD)" = to-string #{EFBFBD}
 
 	;- using quickbrown.bin instead of quickbrown.txt beacause GIT modifies CRLF to LF on posix
-	--assert none? invalid-utf? bin: read %units/files/quickbrown.bin
+	--assert none? invalid-utf? bin: read %files/quickbrown.bin
 	--assert  1872109 = checksum str: to-string bin 'crc24 ; does not normalize CRLF
 	--assert 16295532 = checksum deline str 'crc24
-	--assert 16295532 = checksum read/string %units/files/quickbrown.bin 'crc24 ;converts CRLF to LF
+	--assert 16295532 = checksum read/string %files/quickbrown.bin 'crc24 ;converts CRLF to LF
 
 --test-- "invalid utf16"
 	--assert try ["á🙂" == to-string #{FEFF00E1D83DDE42}]
@@ -3061,6 +3180,11 @@ try/with [
 ===start-group=== "SPLIT-LINES"
 --test-- "split-lines string!"
 	--assert ["a" "b" "c"]  = split-lines "a^/b^M^/c"
+--test-- "split-lines with non-head index"
+	--assert ["b" "cd"] = split-lines next "ab^/cd"
+	--assert ["b" "c"]  = split-lines next "ab^M^/c^/"
+	--assert ["Ψ" "x"]  = split-lines next "aΨ^/x"
+	--assert []         = split-lines tail "ab^/cd"
 ===end-group===
 
 
@@ -3408,7 +3532,29 @@ try/with [
 	;@@ https://github.com/Oldes/Rebol-issues/issues/880
 	--assert unset? first collect [keep #(unset)]
 	--assert unset? first head insert copy [] #(unset)
+--test-- "COLLECT passes RETURN to the caller"
+	col-f1: func [][collect [keep 1 return 2] 3]
+	--assert 2 = col-f1
 
+--test-- "COLLECT passes EXIT to the caller"
+	col-n: 0
+	col-f2: func [][collect [col-n: 1 exit] col-n: 100]
+	col-f2
+	--assert col-n = 1
+
+--test-- "COLLECT/into with RETURN"
+	col-out: copy []
+	col-f3: func [][collect/into [keep 1 return col-out] col-out]
+	--assert [1] = col-f3
+
+--test-- "COLLECT still collects"
+	--assert [1 2 3] = collect [repeat i 3 [keep i]]
+	--assert [[1]] = collect [keep/only [1]]
+	--assert did all [
+		col-out: collect/into [keep 1] s: copy []
+		tail? col-out
+		s = [1]
+	]
 ===end-group===
 
 ===start-group=== "MOVE"
@@ -3485,5 +3631,8 @@ try/with [
 	--assert 17.5 = average #(uint8! [10 25])  
 
 ===end-group===
+
+
+;@@ HASH! datatype has tests in the hash-test.r3 file!
 
 ~~~end-file~~~

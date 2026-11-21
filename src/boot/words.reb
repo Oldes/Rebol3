@@ -100,6 +100,8 @@ values
 types
 title
 
+exports ; module's header field (not in the standard header)
+
 x
 y
 +
@@ -172,6 +174,7 @@ limit
 case
 no-case
 accept
+capture
 break
 ; match words:
 skip
@@ -247,32 +250,6 @@ dns
 tcp
 udp
 clipboard
-
-; Gobs:
-gob
-offset
-size
-pane
-parent
-image
-draw
-text
-effect
-color
-flags
-rgb
-alpha
-data
-resize
-no-title
-no-border
-dropable
-transparent
-popup
-modal
-on-top
-hidden
-owner
 
 *port-modes*     ;@@ modes are defined in modes.r file and these
 *console-modes*  ;@@ placeholders are replaced here by make-boot.r script
@@ -393,3 +370,9 @@ port-state!
 population-deviation
 sample-deviation
 sample-variance
+element-type
+
+vector-be
+vector-le
+unixtime-le
+buffer-write

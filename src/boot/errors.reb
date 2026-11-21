@@ -44,6 +44,8 @@ Syntax: [
 	malconstruct:       [{invalid construction spec:} :arg1]
 	bad-char:           [{invalid character in:} :arg1]
 	needs:              [{this script needs} :arg1 :arg2 {or better to run correctly}]
+	recursive-needs:    [{module needs itself:} :arg1]
+	bad-compress:       [{script decompression failed:} :arg1]
 ]
 
 Script: [
@@ -135,6 +137,17 @@ Script: [
 
 	vector-not-compatible: [{Vectors not compatible for operation}]
 	type-mismatch:         [{type mismatch:} :arg2 {must be same type as} :arg1]
+
+	fixed-sized-series:    {cannot change the length of a fixed-size series}
+
+	bad-event-type:        [{incompatible event type:} :arg1 {- the event is} :arg2]
+	no-event-key:          [{not a valid event key:} :arg1]
+	recursive-value:       [{cannot use construction syntax for} :arg1 {which contains itself}]
+	newer-module:          [{module} :arg1 {is already imported in a newer version:} :arg2]
+	module-stopped:        [{module} :arg1 {stopped its initialization using} :arg2]
+	not-exported:          [{module} :arg1 {does not export:} :arg2]
+	private-script:        [{cannot import a private script:} :arg1]
+	protect-local:         [{cannot protect or hide a function local:} :arg1]
 ]
 
 Math: [
@@ -196,6 +209,7 @@ Access: [
 	no-extension:       [{cannot open extension:} :arg1 {reason:} :arg2]
 	bad-extension:      [{invalid extension format:} :arg1]
 	extension-init:     [{extension cannot be initialized (check version):} :arg1]
+	extension-abi:      [{extension} :arg1 {built for ABI} :arg2 {while this Rebol needs} :arg3]
 
 	call-fail:          [{external process failed:} :arg1]
 

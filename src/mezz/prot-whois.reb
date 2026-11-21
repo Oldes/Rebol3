@@ -3,6 +3,9 @@ Rebol [
 	author: "Oldes"
 	version: 0.0.1
 	file: %prot-whois.r
+	name: whois
+	type: module
+	options: [delay]
 	date: 30-Apr-2019
 	purpose: {
 		Low level WHOIS protocol implementation, which may be used to write

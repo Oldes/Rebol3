@@ -56,7 +56,6 @@ struct rebol_value {
 		REBDEC	decimal;
 		REBPAR	pair;
 		REBTUP	tuple;
-		REBGOB	*gob;
 		REBWRD	word;
 		REBSRI	series;
 	} data;

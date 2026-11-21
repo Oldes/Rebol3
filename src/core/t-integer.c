@@ -302,7 +302,10 @@
 			bp = Qualify_String(val, MAX_INT_LEN, &len, FALSE);
 			if (memchr(bp, '.', len)) {
 				if (Scan_Decimal(bp, len, DS_RETURN, TRUE)) {
-					num = (REBINT)VAL_DECIMAL(DS_RETURN);
+					REBDEC dec = VAL_DECIMAL(DS_RETURN);
+					if (dec < MIN_D64 || dec >= MAX_D64 || isnan(dec))
+						Trap0(RE_OVERFLOW);
+					num = (REBI64)dec;
 					break;
 				}
 			}

@@ -111,6 +111,106 @@ mixin?: func [
 	]
 ]
 
+protect-header: func [
+	"Protects header fields of a registered module, which are used by the module system."
+
+	header [object!]
+	"Header of the module (the real one, not a copy)"
+
+	/local word
+][
+	; Without it, anybody could for example rename a registered module,
+	; change its version, checksum or exports. Other fields are left as is.
+
+	foreach name [name type version options checksum exports needs] [
+		if word: in header name [
+			protect/deep word
+		]
+	]
+
+	header
+]
+
+import-pairs: function [
+	"Validates a list of a module's exports to import; returns [alias export-word ...]."
+
+	module [module!]
+
+	words [block!]
+	"Exported words; `new-name: word` imports an export under a new name"
+][
+	exports: any [
+		query module 'exports
+		[]
+	]
+
+	result: make block! 2 * length? words
+
+	alias: _
+	; (local, it is set only in the parse rule)
+
+	unless parse words [
+		any [
+			mark:
+			set alias opt set-word!
+			set word [word! | lit-word!]
+			(
+				unless find exports word: to word! word [
+					cause-error 'script 'not-exported reduce [
+						any [
+							query module 'name
+							'unnamed
+						]
+						word
+					]
+				]
+
+				repend result [
+					either alias [to word! alias][word]
+					word
+				]
+			)
+		]
+	][
+		cause-error 'script 'invalid-arg mark
+	]
+
+	result
+]
+
+import-words: function [
+	"Sets words of the target context to values of the source context."
+
+	target [object! module!]
+
+	source [object! module!]
+
+	pairs [block!]
+	"[target-word source-word ...] (as returned by IMPORT-PAIRS)"
+
+	/extend
+	"Add words, which the target does not have yet"
+][
+	; Like RESOLVE (/extend), but words may be renamed.
+	; Words, which already have a value in the target, are not changed.
+
+	foreach [alias word] pairs [
+		unless any [
+			in target alias
+			not extend
+		][
+			append target alias
+		]
+
+		if all [
+			alias: in target alias
+			unset? get/any alias
+		][
+			set/any alias get/any in source word
+		]
+	]
+]
+
 load-header: function/with [
 	"Loads script header object and body binary (not loaded)."
 
@@ -138,14 +238,14 @@ load-header: function/with [
 	; header 'checksum is compared to the checksum of the decompressed binary.
 	;
 	; Normally, returns the header object, the body text (as binary), and the
-	; the end of the script or script-in-a-block. The end position can be used
-	; to determine where to stop decoding the body text. After the end is the
+	; the end of the script or script-in-a-block. After the end is the
 	; rest of the binary data, which can contain anything you like. This can
 	; support multiple scripts in the same binary data, multi-scripts.
 	;
-	; If not /only and the script is embedded in a block and not compressed
-	; then the body text will be a decoded block instead of binary, to avoid
-	; the overhead of decoding the body twice.
+	; If not /only, the body text is complete: it is either decompressed, or
+	; copied up to the end position, so there is nothing more to cut from it.
+	; With /only the body is just a position in the source and the end position
+	; must be used to determine where to stop decoding it.
 	;
 	; Syntax errors are returned as words:
 	;    no-header
@@ -216,6 +316,11 @@ load-header: function/with [
 			]
 		][
 			return 'bad-header
+		]
+
+		lit-word? :header/name [
+			;; accept also `name: 'foo` (the header is not evaluated)
+			header/name: to word! header/name
 		]
 
 		word? :header/options [
@@ -348,7 +453,7 @@ load-header: function/with [
 				find header/options 'compress [
 					; script encoded only
 
-					if error? body: try [
+					if error? mark: try [
 						decompress first body 'zlib
 					][
 						return 'bad-compress
@@ -356,7 +461,7 @@ load-header: function/with [
 
 					if all [
 						hash
-						hash != checksum next remaining 'sha1
+						hash != checksum mark 'sha1
 					][
 						return 'bad-checksum
 					]
@@ -371,7 +476,16 @@ load-header: function/with [
 			]
 		]
 
-		; assert/type [body [block! binary!]] _
+		not find header/options 'compress [
+			; body is still a part of the source, so cut it at the script's end
+			; (a decompressed body is a new binary, which is already complete)
+
+			unless tail? remaining [
+				mark: copy/part mark remaining
+			]
+		]
+
+		; assert/type [mark binary!] _
 	]
 
 	; assert/type [header object! mark [binary! block!] remaining binary!]
@@ -518,8 +632,10 @@ load-boot-exts: function [
 			; no extension dispatcher (call) has been provided.
 			;
 			header/name [
-				repend system/modules [
-					header/name module
+				put system/modules header/name module
+
+				if module? module [
+					protect-header header
 				]
 			]
 		]
@@ -531,10 +647,9 @@ load-boot-exts: function [
 
 			empty? header/exports _
 
-			find header/options 'private [
-				resolve/extend/only system/contexts/user module header/exports
-				; full export to user
-			]
+			find header/options 'private _
+			; The user context does not exist yet (it is lib during the boot),
+			; so the exports are resolved later, when it is made (in START).
 
 			'else [
 				export-words module header/exports
@@ -694,10 +809,6 @@ load: function [
 			if word? script [
 				cause-error 'syntax script source
 			]
-
-			unless tail? remaining [
-				body: copy/part body remaining
-			]
 		]
 
 		; BODY is binary or block, SCRIPT is object or none
@@ -744,7 +855,7 @@ do-needs: function [
 	needs [block! object! tuple! none!]
 	"Needs block, header or version"
 
-	/no-share
+	/isolate
 	"Force module to use its own non-shared global namespace"
 
 	/no-lib
@@ -815,13 +926,19 @@ do-needs: function [
 		]
 	]
 
-	; Parse the needs dialect [source |version| |checksum-hash|]
+	; Parse the needs dialect [|var:| source |version| |checksum-hash| |[words]|]
+	; The optional set-word is a variable, which gets the imported module
+	; (in the user context, or locally in a module, which is being made).
+	; The optional block of words selects, which of the module's exports
+	; are imported (an empty block imports none of them).
 	;
 	modules: make block! length? needs
 
+	var:
 	name:
 	version:
-	hash: _
+	hash:
+	words: _
 
 	unless parse needs [
 		mark:
@@ -835,13 +952,15 @@ do-needs: function [
 		any [
 			mark:
 
+			set var opt set-word!
 			set name [word! | file! | url!]
 			set version opt tuple!
 			set hash opt binary!
+			set words opt block!
 
 			(
 				repend modules [
-					name version hash
+					var name version hash words
 				]
 			)
 		]
@@ -862,7 +981,22 @@ do-needs: function [
 
 	; Import the modules:
 	;
-	modules: map-each [name version hash] modules [
+	; Contexts, where variables of the modules are set, when not making a module
+	;
+	unless no-user [
+		targets: reduce [
+			system/contexts/user
+		]
+
+		if all [
+			object? console: attempt [system/console/current/console-ctx]
+			not same? console system/contexts/user
+		][
+			append targets console
+		]
+	]
+
+	modules: map-each [var name version hash words] modules [
 		; Import the module
 
 		module: apply :import [
@@ -871,18 +1005,54 @@ do-needs: function [
 			version
 			did hash
 			hash
-			no-share
+			isolate
 			no-lib
 			no-user
+			did words
+			words
 		]
 
 		; Collect any mixins into the object (if we are doing that)
 		;
-		if all [
-			mixins
-			mixin? module
-		][
-			resolve/extend/only mixins module select spec-of module 'exports
+		if mixins [
+			case [
+				mixin? module [
+					either words [
+						import-words/extend mixins module import-pairs module words
+						; only the selected exports (may be renamed)
+					][
+						resolve/extend/only mixins module query module 'exports
+					]
+				]
+
+				words [
+					; The module's exports are in lib, where the code is bound,
+					; but a renamed export must be provided as a mixin.
+
+					foreach [alias word] import-pairs module words [
+						if alias <> word [
+							import-words/extend mixins module reduce [alias word]
+						]
+					]
+				]
+			]
+		]
+
+		; Set the variable to the module (if requested)
+		;
+		if var [
+			case [
+				mixins [
+					put mixins to word! var module
+					; local in the module, which is being made
+				]
+
+				targets [
+					foreach target targets [
+						put target to word! var module
+					]
+				]
+			]
 		]
 
 		module
@@ -901,11 +1071,11 @@ do-needs: function [
 	]
 ]
 
-load-module: function [
+load-module: function/with [
 	"Loads a module (from a file, URL, binary, etc.) and inserts it into the system module list."
 
-	source [word! file! url! string! binary! module! block!]
-	"Source or block of sources"
+	source [word! file! url! string! binary! module!]
+	"Source of the module (use IMPORT with a block to load more modules)"
 
 	/version
 
@@ -917,7 +1087,7 @@ load-module: function [
 	hash [binary!]
 	"Match SHA1 checksum (must be set in header)"
 
-	/no-share
+	/isolate
 	"Force module to use its own non-shared global namespace"
 
 	/no-lib
@@ -942,12 +1112,16 @@ load-module: function [
 	; The checksum applies to the uncompressed binary source of the body, and
 	; is calculated in LOAD-HEADER if the 'checksum header field is set.
 	; A copy of the checksum is saved in the system modules list for security.
-	; /no-share and /delay are ignored for module! source because it's too late.
+	; /isolate and /delay are ignored for module! source because it's too late.
 	; A name is required for all imported modules, delayed or not; /as can be
 	; specified for unnamed modules. If you don't want to name it, don't import.
 	; If source is a module that is loaded already, /as name is an error.
 	;
 	; Returns block of name, and either built module or none if delayed.
+	; When the source is binary (or string), the block contains also the end
+	; of the module's script in the (binary) source. After the end may be
+	; another script, so more modules may be loaded from the same source.
+	; (for a file or url it is the end in its content; for others it is none)
 	; Returns none if source is word and no module of that name is loaded.
 	; Returns none if source is file/url and read or load-extension fails.
 	; sys/log/info 'REBOL ["load-module:" source]
@@ -1021,9 +1195,31 @@ load-module: function [
 				]
 			]
 
+			; Module, which was already loaded from this location, is reused,
+			; unless it has a name, which is now used by another module (when it
+			; was replaced by its newer version), or unless it should be renamed.
+			;
+			if all [
+				module? cached: select system/modules source
+				any [
+					not as
+					name = query cached 'name
+				]
+				any [
+					not word? cached-name: query cached 'name
+					none? registered: select system/modules cached-name
+					same? cached registered
+				]
+			][
+				module: cached
+			]
+
 			detected-type: file-type? source
 
 			case [
+				module? :module _
+				; nothing to read
+
 				not detected-type [
 					; @@what's the value in eliding errors reading source here?
 					;
@@ -1110,70 +1306,13 @@ load-module: function [
 				if all [
 					not version
 					not check
-					equal? module existing
+					same? module existing
+					; (a different module value of the same content
+					; is resolved later, according its version)
 				][
 					return reduce [
 						module-header/name existing
 					]
-				]
-			]
-		]
-
-		block? source [
-			if any [
-				version
-				check
-				as
-			][
-				cause-error 'script 'bad-refines _
-			]
-
-			module-content: make block! length? source
-
-			unless parse source [
-				any [
-					mark:
-					set name opt set-word!
-
-					set module [
-						word! | module! | file! | url! | string! | binary!
-					]
-
-					set needs opt tuple!
-
-					set hash opt binary!
-					; ambiguous
-
-					(
-						repend module-content [
-							module
-							needs
-							hash
-							if name [
-								to word! name
-							]
-						]
-					)
-				]
-			][
-				cause-error 'script 'invalid-arg mark
-			]
-
-			; this was MAP-EACH [...] SOURCE
-			;
-			return map-each [module needs hash name] module-content [
-				apply :load-module [
-					module
-					did needs
-					needs
-					did hash
-					hash
-					no-share
-					no-lib
-					import
-					did name
-					name
-					delay
 				]
 			]
 		]
@@ -1184,7 +1323,7 @@ load-module: function [
 			; Get info from preloaded or delayed modules
 
 			delay:
-			no-share: _
+			isolate: _
 
 			module-header: spec-of module
 
@@ -1197,6 +1336,13 @@ load-module: function [
 			; module/block module used later for override testing
 
 			set/any [module-header: module-code:] module
+		]
+
+		module-header [
+			; Preloaded or delayed module: use the checksum saved in its header,
+			; else /check would fail even for the correct checksum.
+
+			module-hash: select module-header 'checksum
 		]
 
 		url? module [
@@ -1217,6 +1363,11 @@ load-module: function [
 					cause-error 'syntax module-header source
 				]
 
+				'private = module-header/type [
+					; A private script is only evaluated using DO
+					cause-error 'script 'private-script source
+				]
+
 				import _
 				; /import overrides 'delay option
 
@@ -1225,16 +1376,12 @@ load-module: function [
 				]
 			]
 
-			unless tail? remaining [
-				module-code: copy/part module-code remaining
-			]
-
 			if module-header/checksum [
 				module-hash: copy module-header/checksum
 			]
 		]
 
-		no-share [
+		isolate [
 			module-header/options: append any [
 				module-header/options
 				make block! 1
@@ -1333,6 +1480,20 @@ load-module: function [
 					; pos: _
 					; just override, don't replace
 
+					if all [
+						module? source
+						existing-version > module-version
+					][
+						; The given module value would be silently replaced
+						; by the newer one, which is most likely not expected.
+						; (it still may be imported using /no-lib)
+
+						cause-error 'script 'newer-module reduce [
+							name
+							existing-version
+						]
+					]
+
 					if existing-version >= module-version [
 						; it's at least as new, use it instead
 
@@ -1409,7 +1570,7 @@ load-module: function [
 			]
 		][
 			return reduce [
-				name module
+				name module remaining
 			]
 		]
 
@@ -1432,7 +1593,7 @@ load-module: function [
 
 			case/all [
 				find module-header/options 'isolate [
-					no-share: yes
+					isolate: yes
 					; in case of delay
 				]
 
@@ -1445,7 +1606,7 @@ load-module: function [
 					; in case of delayed rename
 
 					if all [
-						no-share
+						isolate
 						not find module-header/options 'isolate
 					][
 						module-header/options: append any [
@@ -1465,14 +1626,97 @@ load-module: function [
 				module-code block!
 			]
 
-			module: reduce [
-				module-header
-				module-code
-				do-needs/no-user module-header
+			; Remember what is being made, so a module, which needs itself
+			; (directly or through the other modules), is detected.
+			;
+			key: any [
+				name
+				; unnamed modules are recognized by their location
+
+				all [
+					any [
+						file? source
+						url? source
+					]
+					source
+				]
 			]
 
-			module: catch/quit [
-				make module! module
+			if key [
+				if find/only loading key [
+					cause-error 'syntax 'recursive-needs key
+				]
+
+				append/only loading key
+			]
+
+			; The module's code is evaluated like DO evaluates a script:
+			; in the directory of its file (so its NEEDS are relative to it)
+			; and with its own SYSTEM/SCRIPT (to know its header and path).
+			;
+			saved-script: system/script
+			saved-path: _
+
+			if all [
+				file? source
+				dir-end: find/last/tail source slash
+			][
+				saved-path: what-dir
+				change-dir copy/part source dir-end
+			]
+
+			system/script: make system/standard/script compose [
+				title: (select module-header 'title)
+				header: (module-header)
+				parent: (saved-script)
+				path: (what-dir)
+				args: _
+			]
+
+			error: try [
+				module: reduce [
+					module-header
+					module-code
+					do-needs/no-user module-header
+				]
+
+				system/state/quit?: false
+
+				set/any 'module catch/quit [
+					make module! module
+				]
+
+				unless module? :module [
+					; The module's code used QUIT or HALT, so the module
+					; was not finished and it cannot be used.
+
+					how: either system/state/quit? ['quit]['halt]
+
+					system/state/quit?: false
+					; it is now an error, so it must not quit the console
+
+					cause-error 'script 'module-stopped reduce [
+						any [key 'unnamed]
+						how
+					]
+				]
+
+				_
+			]
+
+			system/script: saved-script
+
+			if saved-path [
+				change-dir saved-path
+			]
+
+			if key [
+				remove find/only loading key
+			]
+
+			if error? error [
+				do error
+				; pass the error on, when the list is clean again
 			]
 		]
 
@@ -1480,21 +1724,58 @@ load-module: function [
 			not no-lib
 			override?
 		][
-			repend system/modules [
-				name module
+			put system/modules name module
+
+			if module? module [
+				protect-header module-header
 			]
 
 			case/all [
 				all [
 					module? module
 					not mixin? module-header
-					block? select module-header 'exports
+					block? words: select module-header 'exports
 				][
-					resolve/extend/only lib module module-header/exports
-					; no-op if empty
+					; When the module replaces its older version, replace also
+					; values, which the older version exported into the lib.
+					; (words, which lib has from somewhere else, are not touched)
+					;
+					if all [
+						module? :existing
+						not same? module existing
+						block? old-words: query existing 'exports
+					][
+						foreach word words [
+							if all [
+								find old-words word
+								old-word: in existing word
+								lib-word: in lib word
+								same? get/any old-word get/any lib-word
+							][
+								set/any lib-word get/any in module word
+							]
+						]
+					]
+
+					resolve/extend/only lib module words ; no-op if empty
+					;; extend also the REPL context, if exists
+					try [
+						resolve/extend/only/all system/console/current/console-ctx module words
+					]
 				]
 			]
 		]
+	]
+
+	if all [
+		module? module
+		any [
+			file? source
+			url? source
+		]
+	][
+		put system/modules source module
+		; so the module is not loaded again from the same location
 	]
 
 	reduce [
@@ -1503,33 +1784,38 @@ load-module: function [
 		if module? module [
 			module
 		]
+
+		remaining
+		; end of the script in the source (none for a word or module source)
 	]
+][
+	loading: make block! 8
+	; names (or locations) of modules, which are just being made
 ]
 
 locate-extension: function [
 	name [word!]
 ][
 	modules: system/options/modules
+	arch:    system/build/arch
+	abi: ajoin ["abi" system/build/extension-abi] ;; e.g. "abi2"
 
 	foreach test [
+		[modules name #"-" abi #"-" arch %.rebx]
+		[modules name #"-" abi %.rebx]
+
+		;; unqualified names are pre-ABI-marker builds; still tried, so a
+		;; user with a single generation installed needs no renaming - a
+		;; genuinely incompatible one is rejected by RX_Abi at load time
+		[modules name #"-" arch %.rebx]
 		[modules name %.rebx]
-		[modules name #"-" system/build/arch %.rebx]
 
-		; not sure, if keep the folowing ones too.. it simplifies CI testing
-		; they should be probably removed, when all used CI tests will be modified
-		;
-		[modules name #"-" system/build/os #"-" system/build/arch %.rebx]
-		[modules name #"-" system/build/sys #"-" system/build/arch %.rebx]
+		[modules name #"-" system/build/os  #"-" arch %.rebx]
+		[modules name #"-" system/build/sys #"-" arch %.rebx]
 	][
-		if exists? file: as file! ajoin test [
-			return file
-		]
-
-		sys/log/debug 'REBOL [
-			"Not found extension file:" file
-		]
+		if exists? file: as file! ajoin test [return file]
+		sys/log/debug 'REBOL ["Not found extension file:" file]
 	]
-
 	_
 ]
 
@@ -1622,7 +1908,7 @@ import: function [
 	hash [binary!]
 	"Match checksum (must be set in header)"
 
-	/no-share
+	/isolate
 	"Force module to use its own non-shared global namespace"
 
 	/no-lib
@@ -1630,6 +1916,12 @@ import: function [
 
 	/no-user
 	"Don't export to the user context"
+
+	/only
+	"Import only some of the module's exports"
+
+	words [block!]
+	"Exported words to import (an empty block imports none)"
 
 	; See also: sys/make-module*, sys/load-module, sys/do-needs
 ][
@@ -1643,12 +1935,14 @@ import: function [
 		assert [
 			not version
 			not check
+			not only
 			; these can only apply to one module
+			; (in the needs block, use a block of words after the module)
 		]
 
 		return apply :do-needs [
 			source
-			no-share
+			isolate
 			no-lib
 			no-user
 			/block
@@ -1667,7 +1961,7 @@ import: function [
 		needs
 		check
 		hash
-		no-share
+		isolate
 		no-lib
 		/import
 	]
@@ -1687,7 +1981,7 @@ import: function [
 				needs
 				check
 				hash
-				no-share
+				isolate
 				no-lib
 				/import
 				/as
@@ -1715,7 +2009,7 @@ import: function [
 						needs
 						check
 						hash
-						no-share
+						isolate
 						no-lib
 						/import
 						/as
@@ -1744,45 +2038,155 @@ import: function [
 		]
 	]
 
-	; Do any imports to the user context that are necessary.
-	; The lib imports were handled earlier by LOAD-MODULE.
-
-	case [
-		; Do nothing if /no-user or no exports.
-		;
-		no-user _
-
-		not block? exports: select header: spec-of module 'exports _
-
-		empty? exports _
-
-		; If it's a private module (mixin), we must add *all* of its exports to user.
-		;
-		any [
-			no-lib
-
-			find select header 'options 'private
-			; /no-lib causes private
-		][
-			resolve/extend/only system/contexts/user module exports
-		]
-
-		; Unless /no-lib its exports are in lib already, so just import what we need.
-		not no-lib [
-			resolve/only system/contexts/user lib exports
-		]
+	; Only the selected exports? Validate them, even when not imported to user
+	; (the list is used also by DO-NEEDS for the mixins).
+	;
+	if only [
+		pairs: import-pairs module words
 	]
 
-	protect 'module/lib-base
+	; Do any imports to the user context that are necessary.
+	; The lib imports were handled earlier by LOAD-MODULE, and these
+	; are always complete; /only limits just the import to user.
+	;
+	; The console (if any) evaluates code in its own context, which may
+	; already have the words (unset), so it must be updated as well.
 
-	protect/hide 'module/lib-boot
+	targets: reduce [
+		system/contexts/user
+	]
+
+	if all [
+		object? console: attempt [system/console/current/console-ctx]
+		not same? console system/contexts/user
+	][
+		append targets console
+	]
+
+	private?: any [
+		no-lib
+		; /no-lib causes private
+
+		find query module 'options 'private
+	]
+
+	foreach target targets [
+		case [
+			; Do nothing if /no-user or no exports.
+			;
+			no-user _
+
+			only [
+				; Only the selected exports, which may be renamed.
+				; These are requested explicitly, so missing words are added.
+
+				import-words/extend target either private? [module][lib] pairs
+			]
+
+			not block? exports: query module 'exports _
+
+			empty? exports _
+
+			; If it's a private module (mixin), we must add *all* of its exports to user.
+			;
+			private? [
+				resolve/extend/only target module exports
+			]
+
+			; Unless /no-lib its exports are in lib already, so just import what we need.
+			'else [
+				resolve/only target lib exports
+			]
+		]
+	]
 
 	module
 	; module! returned
 ]
 
+unload: function [
+	"Unloads a module; removes it from the system modules and unsets its exported words."
+
+	'module [any-word! file! url! module!]
+	"Name of the module, its location, or the module itself"
+
+	; Returns the module (it lives until there is any reference to it),
+	; or none, if there is no module loaded with the given name or location.
+][
+	source: :module
+
+	case [
+		any-word? source [
+			module: select system/modules to word! source
+		]
+
+		file? source [
+			module: select system/modules any [
+				to-real-file source
+				source
+			]
+		]
+
+		url? source [
+			module: select system/modules source
+		]
+	]
+
+	unless module? :module [
+		return _
+		; not loaded (unknown, delayed, or just a known location)
+	]
+
+	if protected? module [
+		cause-error 'script 'protected _
+	]
+
+	; Unset the exported words, but only where these still hold values of this
+	; module (so values set later by somebody else, or by the user, are kept).
+	;
+	if block? exports: query module 'exports [
+		foreach context reduce [
+			lib
+			system/contexts/user
+			attempt [system/console/current/console-ctx]
+		][
+			if any [
+				object? :context
+				module? :context
+			][
+				foreach word exports [
+					if all [
+						exported: in module word
+						target: in context word
+						not protected? target
+						same? get/any exported get/any target
+					][
+						unset target
+					]
+				]
+			]
+		]
+	]
+
+	; The module may be registered using more keys (name and location).
+	;
+	keys: make block! 2
+
+	foreach [key value] system/modules [
+		if same? :value module [
+			append/only keys key
+		]
+	]
+
+	foreach key keys [
+		remove/key system/modules key
+	]
+
+	module
+]
+
 export [
-	load import
+	load import unload
 ]
 
 #test [

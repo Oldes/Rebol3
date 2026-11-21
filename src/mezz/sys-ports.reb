@@ -3,7 +3,7 @@ REBOL [
 	Title: "REBOL 3 Boot Sys: Port and Scheme Functions"
 	Rights: {
 		Copyright 2012 REBOL Technologies
-		Copyright 2012-2023 Rebol Open Source Contributors
+		Copyright 2012-2026 Rebol Open Source Contributors
 		REBOL is a trademark of REBOL Technologies
 	}
 	License: {
@@ -16,6 +16,32 @@ REBOL [
 		Any non-local words not found in those contexts WILL BE
 		UNBOUND and will error out at runtime!
 	}
+]
+
+;- Schemes provided by a module with a different name than the scheme
+;- (modules are imported on the first use of their scheme, see make-port*)
+scheme-modules: [
+	https  http
+	smtps  smtp
+	pop3s  pop3
+]
+
+import-scheme-module: function [
+	"SYS: Import a not yet imported module providing the scheme. Return TRUE on success."
+	name [word!] "Scheme name"
+][
+	module: any [select scheme-modules name  name]
+	all [
+		not module? select system/modules module ;; already imported (does not provide the scheme)
+		any [
+			block? select system/modules module  ;; embedded delayed module
+			all [                                ;; or a module file in the modules directory
+				file? dir: system/options/modules
+				exists? join dir [module system/options/default-suffix]
+			]
+		]
+		module? import (module) ;; (import does not evaluate a word)
+	]
 ]
 
 make-port*: func [
@@ -61,7 +87,14 @@ make-port*: func [
 	; Get the scheme definition:
 	unless all [
 		word? name
-		scheme: get in system/schemes name
+		any [
+			scheme: get in system/schemes name
+			;- The scheme may be provided by a module, which is imported on its first use
+			all [
+				import-scheme-module name
+				scheme: get in system/schemes name
+			]
+		]
 	][cause-error 'access 'no-scheme name]
 
 	; Create the port with the correct scheme spec:
@@ -386,12 +419,10 @@ init-schemes: func [
 	] 'file
 
 	make-scheme [
-		title: "GUI Events"
-		name: 'event
-		awake: func [event] [
-			print ["Default GUI event/awake:" event/type]
-			true
-		]
+		title: "Timer"
+		name: 'timer
+		spec: system/standard/port-spec-timer
+		awake: func [event] [true]
 	]
 
 	make-scheme [
@@ -406,7 +437,7 @@ init-schemes: func [
 		name: 'tcp
 		spec: system/standard/port-spec-net
 		info: system/standard/net-info ; for C enums
-		awake: func [event] [print ['TCP-event event/type] true]
+		awake: func [event] [true]
 	]
 
 	make-scheme [
@@ -414,7 +445,7 @@ init-schemes: func [
 		name: 'udp
 		spec: system/standard/port-spec-net
 		info: system/standard/net-info ; for C enums
-		awake: func [event] [print ['UDP-event event/type] true]
+		awake: func [event] [true]
 	]
 
 	make-scheme [
@@ -497,14 +528,18 @@ init-schemes: func [
 			if url? port/spec/ref [
 				parse port/spec/ref [
 					thru #":" 0 2 slash
-					copy path [to slash | end] skip
-					copy speed to end
+					copy path [to slash | to end]
+					opt [slash copy speed to end]
 				]
-				try/with [port/spec/path: to file! path][
-					cause-error 'access 'invalid-spec :path
+				if empty? any [path ""][
+					cause-error 'access 'invalid-spec port/spec/ref
 				]
-				try/with [port/spec/speed: to integer! speed][
-					cause-error 'access 'invalid-spec :speed
+				port/spec/path: as file! path
+				;; The speed is optional (the default one is used when missing)
+				unless empty? any [speed ""][
+					try/with [port/spec/speed: to integer! speed][
+						cause-error 'access 'invalid-spec :speed
+					]
 				]
 			]
 		]
@@ -515,7 +550,6 @@ init-schemes: func [
 
 
 	system/ports/system:   open [scheme: 'system]
-	system/ports/event:    open [scheme: 'event]
 	system/ports/input:
 	system/ports/output:   open [scheme: 'console]
 	system/ports/callback: open [scheme: 'callback]

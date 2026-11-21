@@ -200,7 +200,7 @@ sY29ouezv4Xz2PuMch5VGPP+CDqzCM4loWgV
 
 --test-- "Load PKIX data from file using PKIX codec"
 
-	--assert block? pkix: load %units/files/dhparam2048.pem
+	--assert block? pkix: load %files/dhparam2048.pem
 	--assert "DH PARAMETERS" = pkix/label
 	--assert binary? pkix/binary
 
@@ -217,17 +217,28 @@ sY29ouezv4Xz2PuMch5VGPP+CDqzCM4loWgV
 	--assert "9-Jul-2012/3:10" = mold decode 'utc-time "1207090310Z"
 	--assert "9-Jul-2012/3:10+2:00" = mold decode 'utc-time "1207090310+0200"
 
+--test-- "utc-time codec with /generalized"
+	--assert 2050-01-01/0:00 = system/codecs/utc-time/decode/generalized copy "20500101000000Z"
+	--assert 1999-12-31/23:59:59 = system/codecs/utc-time/decode/generalized copy #{31393939313233313233353935395A}
+	--assert 2026-10-27/15:41:54.5 = system/codecs/utc-time/decode/generalized copy "20261027154154.5Z"
+
+--test-- "utc-time codec century (RFC 5280)"
+	--assert 1998-06-01/12:00 = system/codecs/utc-time/decode copy "980601120000Z"
+	--assert 1950-01-01/0:00  = system/codecs/utc-time/decode copy "500101000000Z"
+	--assert 2049-12-31/23:59:59 = system/codecs/utc-time/decode copy "491231235959Z"
+	--assert 2026-10-27/16:52:47 = system/codecs/utc-time/decode copy #{3236313032373136353234375A}
+
 ===end-group===
 
 
 ===start-group=== "SSH-key codec"
 --test-- "Init RSA key from file"
-	--assert handle? try [key: decode 'ssh-key read %units/files/rebol-public.ppk]
+	--assert handle? try [key: decode 'ssh-key read %files/rebol-public.ppk]
 	release key ; don't wait on GC, release it now
 
 --test-- "Init public DH params from file"
 	--assert all [
-		handle? key: load %units/files/dhparam2048.key
+		handle? key: load %files/dhparam2048.key
 		'dhm = query key 'type
 		release key ; release it now (don't wait on GC)
 	]
@@ -236,21 +247,46 @@ sY29ouezv4Xz2PuMch5VGPP+CDqzCM4loWgV
 ===start-group=== "PPK codec"
 --test-- "Init RSA key from PPK file"
 	--assert all [
-		handle? try [key: load %units/files/rebol-private-no-pass.ppk]
+		handle? try [key: load %files/rebol-private-no-pass.ppk]
 		release key ; don't wait on GC, release it now
 	]
 
 --test-- "Init RSA key from encrypted PPK file"
 	--assert all [
-		handle? try [key: codecs/ppk/decode/password %units/files/rebol-private.ppk "Rebol"]
+		handle? try [key: codecs/ppk/decode/password %files/rebol-private.ppk "Rebol"]
 		release key ; don't wait on GC, release it now
 	]
 
 --test-- "Init public RSA key from SSH2 PPK file"
 	--assert all [
-		handle? try [key: load %units/files/rebol-public.ppk]
+		handle? try [key: load %files/rebol-public.ppk]
 		release key ; don't wait on GC, release it now
 	]
+===end-group===
+
+
+===start-group=== "random/secure"
+;@@ https://github.com/Oldes/Rebol3/issues/2935
+	--test-- "random/secure is not affected by random/seed (integer)"
+		random/seed 1 a: random/secure 1000000000
+		random/seed 1 b: random/secure 1000000000
+		--assert a <> b
+	--test-- "random/secure is not affected by random/seed (decimal)"
+		random/seed 1 a: random/secure 1.0
+		random/seed 1 b: random/secure 1.0
+		--assert a <> b
+	--test-- "random/secure is not affected by random/seed (string)"
+		random/seed 1 a: random/secure "abcdefghijklmnopqrstuvwxyz"
+		random/seed 1 b: random/secure "abcdefghijklmnopqrstuvwxyz"
+		--assert a <> b
+	--test-- "random/secure does not advance the seeded PRNG"
+		random/seed 1 a: random 1000000000
+		random/seed 1 random/secure 100 b: random 1000000000
+		--assert a = b
+	--test-- "random/seed is still reproducible"
+		random/seed 1 a: random 255
+		random/seed 1 b: random 255
+		--assert a = b
 ===end-group===
 
 
