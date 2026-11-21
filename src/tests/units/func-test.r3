@@ -98,6 +98,10 @@ Rebol [
 
 
 ===start-group=== "[throw] function attribute"
+	--test-- "FUNCTION keeps the attribute block"
+		fn-f: function [[throw] b][x: 1 do b]
+		fn-g: func [][fn-f [return 1] 2]
+		--assert 1 = fn-g
 	--test-- "[throw] - RETURN passes through to the caller"
 		tl-loop: func [[throw] count [integer!] body [block!]][loop count body]
 		tl-caller: func [][tl-loop 5 [return "caller"] "not reached"]
@@ -670,5 +674,27 @@ if any-function? :help [
 ===end-group===
 ]
 
+
+===start-group=== "delta-profile"
+if any-function? :delta-time [
+	--test-- "DT passes RETURN/EXIT to the caller"
+		dt-f1: func [][delta-time [return 1] 2]
+		--assert 1 = dt-f1
+		dt-n: 0
+		dt-f2: func [][delta-time [dt-n: 1 exit] dt-n: 100]
+		dt-f2
+		--assert dt-n = 1
+	--test-- "DT still measure"
+		--assert time?   delta-time [1 + 1]
+]
+if any-function? :delta-profile [
+	--test-- "DP passes RETURN to the caller"
+		dp-f1: func [][delta-profile [return 1] 2]
+		--assert 1 = dp-f1
+
+	--test-- "DT and DP still measure"
+		--assert object? delta-profile [1 + 1]
+]
+===end-group===
 
 ~~~end-file~~~
