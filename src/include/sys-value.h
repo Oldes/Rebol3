@@ -1100,6 +1100,7 @@ typedef struct Reb_Function {
 // closure! values only. VAL_SET clears them, so set after VAL_SET.
 enum {
 	FUNC_THROW = 0,	// RETURN/EXIT are not caught; they pass to the caller
+	FUNC_CATCH,		// errors escaping the function are reported at its call site
 };
 #define VAL_FUNC_FLAGS(v)		((v)->flags.flags.resv)
 #define VAL_FUNC_GET_FLAG(v,n)	GET_FLAG(VAL_FUNC_FLAGS(v), n)

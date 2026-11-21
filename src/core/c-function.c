@@ -181,9 +181,12 @@
 		if (ANY_WORD(val)) break; // attributes only before the first arg
 		if (!IS_BLOCK(val)) continue;
 		for (attr = VAL_BLK_DATA(val); NOT_END(attr); attr++) {
-			if (IS_WORD(attr) && VAL_WORD_CANON(attr) == SYM_THROW)
-				SET_FLAG(flags, FUNC_THROW);
+			if (!IS_WORD(attr)) continue;
+			switch (VAL_WORD_CANON(attr)) {
+			case SYM_THROW: SET_FLAG(flags, FUNC_THROW); break;
+			case SYM_CATCH: SET_FLAG(flags, FUNC_CATCH); break;
 			// other words are ignored (R2 compatibility)
+			}
 		}
 	}
 	return flags;
@@ -450,7 +453,7 @@
 
 /***********************************************************************
 **
-*/	void Do_Function(REBVAL *func)
+*/	static void Eval_Function(REBVAL *func)
 /*
 ***********************************************************************/
 {
@@ -480,7 +483,7 @@
 
 /***********************************************************************
 **
-*/	void Do_Closure(REBVAL *func)
+*/	static void Eval_Closure(REBVAL *func)
 /*
 **		Do a closure by cloning its body and rebinding it to
 **		a new frame of words/values.
@@ -521,4 +524,80 @@
 			SET_UNSET(ds);
 	}
 	else *ds = *result; // Set return value (atomic)
+}
+
+/***********************************************************************
+**
+*/	static void Blame_Caller(REBVAL *err)
+/*
+**		Relocate an error escaping a [catch] function to the
+**		function's call site (R2 behavior). DSF must be the
+**		function's frame.
+**
+***********************************************************************/
+{
+	ERROR_OBJ *error;
+
+	if (IS_THROW(err)) return; // unwinds are not relocated
+	// The stack overflow error is preallocated and shared:
+	if (VAL_ERR_OBJECT(err) == VAL_ERR_OBJECT(TASK_STACK_ERROR)) return;
+
+	error = VAL_ERR_VALUES(err);
+	Set_Block(&error->where, Make_Backtrace(0)); // starts with this function
+	error->nearest = *DSF_BACK(DSF);             // the call position
+}
+
+
+/***********************************************************************
+**
+*/	static void Do_Catch_Func(REBVAL *func, void (*eval)(REBVAL *))
+/*
+**		Evaluate a [catch] function with an error trap, so errors
+**		escaping it are reported at the call site.
+**		Only [catch] functions pay for the trap.
+**
+***********************************************************************/
+{
+	REBOL_STATE state;
+	REBVAL *err;
+	jmp_buf *Last_Halt_State = Halt_State;
+
+	PUSH_STATE(state, Saved_State);
+	if (SET_JUMP(state)) {
+		Halt_State = Last_Halt_State;
+		POP_STATE(state, Saved_State); // restores DSP and DSF (function frame)
+		DSP++;               // GC-safe slot (Make_Backtrace allocates)
+		err = DS_TOP;
+		Catch_Error(err);
+		Blame_Caller(err);
+		if (IS_THROW(err)) Throw_Break(err);
+		Throw_Error(VAL_ERR_OBJECT(err));
+	}
+	SET_STATE(state, Saved_State);
+
+	eval(func);
+
+	POP_STATE(state, Saved_State);
+}
+
+
+/***********************************************************************
+**
+*/	void Do_Function(REBVAL *func)
+/*
+***********************************************************************/
+{
+	if (VAL_FUNC_GET_FLAG(func, FUNC_CATCH)) Do_Catch_Func(func, Eval_Function);
+	else Eval_Function(func);
+}
+
+
+/***********************************************************************
+**
+*/	void Do_Closure(REBVAL *func)
+/*
+***********************************************************************/
+{
+	if (VAL_FUNC_GET_FLAG(func, FUNC_CATCH)) Do_Catch_Func(func, Eval_Closure);
+	else Eval_Closure(func);
 }

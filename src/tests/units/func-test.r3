@@ -125,6 +125,45 @@ Rebol [
 		--assert [[throw] a] = spec-of func [[throw] a][]
 ===end-group===
 
+===start-group=== "[catch] function attribute"
+	--test-- "[catch] - error is reported at the call site"
+		cd-div: func [[catch] a b][
+			if zero? b [do make error! "Cannot divide by zero"]
+			a / b
+		]
+		e: try [cd-div 10 0]
+		--assert error? e
+		--assert 'cd-div = first e/where
+		--assert 'cd-div = first e/near
+
+	--test-- "no [catch] - error is reported inside the function"
+		cd-div2: func [a b][a / b]
+		e: try [cd-div2 10 0]
+		--assert error? e
+		--assert 'a = first e/near            ; the `a / b` expression in the body
+		--assert 'cd-div2 <> first e/where    ; innermost frame is the `/` op
+
+	--test-- "[catch] - errors from nested calls are relocated too"
+		cd-div3: func [[catch] a b][a / b]
+		e: try [cd-div3 10 0]
+		--assert 'cd-div3 = first e/near
+
+	--test-- "[catch] - normal result"
+		--assert 5 = cd-div 10 2
+
+	--test-- "[catch] - RETURN is still caught by the function"
+		cd-f: func [[catch] b][do b]
+		cd-g: func [][cd-f [return 1] 2]
+		--assert 2 = cd-g
+
+	--test-- "[catch throw] - both attributes"
+		cd-f2: func [[catch throw] b][do b]
+		cd-g2: func [][cd-f2 [return 1] 2]
+		--assert 1 = cd-g2
+		e: try [cd-f2 [1 / 0]]
+		--assert 'cd-f2 = first e/near
+===end-group===
+
 
 ===start-group=== "Apply"
 
