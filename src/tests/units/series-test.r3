@@ -2420,6 +2420,19 @@ try/with [
 	--assert s = [2 3 4]
 	--assert 'x = remove-each/count n s: [1 2 3 4] [if n = 2 [break/return 'x] true]
 	--assert s = [2 3 4]
+
+--test-- "REMOVE-EACH passes RETURN and THROW"
+	re-f: does [remove-each x [1 2] [return 1] 2]
+	--assert 1 = re-f
+	--assert 3 = catch [remove-each x [1 2] [throw 3] 4]
+	--assert 5 = remove-each x [1 2] [break/return 5]
+	--assert [1 2] = remove-each x [1 2] [break]
+
+--test-- "MAP-EACH passes RETURN and THROW"
+	me-f: does [map-each x [1 2] [return 1] 2]
+	--assert 1 = me-f
+	--assert 3 = catch [map-each x [1 2] [throw 3] 4]
+	--assert 5 = map-each x [1 2] [break/return 5]
 ===end-group===
 
 

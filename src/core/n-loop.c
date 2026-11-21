@@ -533,6 +533,7 @@ cont_utf8:
 
 		if (THROWN(ds)) {
 			if ((err = Check_Error(ds)) != NOT_FOUND) {
+				if (err == 0) err = 3; // RETURN, EXIT, THROW...: pass it to the caller
 				index = rindex;
 				break;
 			}
@@ -568,7 +569,7 @@ skip_hidden: ;
 	if (mode == LM_REMOVE) {
 		// Remove hole (updates tail):
 		if (windex < index) Remove_Series(series, windex, index - windex);
-		if (err == 2) return R_TOS1;  // If BREAK/RETURN
+		if (err >= 2) return R_TOS1;  // BREAK/RETURN value, or RETURN/EXIT/THROW unwind
 		if (return_count) {
 			if (IS_UTF8_SERIES(series)) {
 				SET_INTEGER(DS_RETURN, removed_uni);
@@ -582,8 +583,8 @@ skip_hidden: ;
 		return R_ARG2;
 	}
 
-	// If map-each and not BREAK/RETURN:
-	if (mode == LM_MAP && err != 2) return R_RET;
+	// If map-each and not BREAK/RETURN or other unwind:
+	if (mode == LM_MAP && err < 2) return R_RET;
 
 	return R_TOS1; // foreach
 }
