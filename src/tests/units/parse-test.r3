@@ -1409,6 +1409,25 @@ if not error? try [str: to string! #{A032}][
 	;; none rule matches without advancing
 	--assert parse "a" [none "a"]
 	--assert parse "" [none]
+
+;@@ https://github.com/Oldes/Rebol3/issues/2375
+--test-- "parse: rule grows during parse (#2375)"
+	rule: ["a" (loop 1000 [append rule none]) "b"]
+	--assert parse "ab" rule
+--test-- "parse: rule cleared during parse (#2375)"
+	--assert not parse "abcde" rule: ["a" "b" (clear rule) "c" "d" "e"]
+--test-- "parse: rule item removed during parse (#2375)"
+	--assert logic? parse "abc" rule: ["a" (remove rule) "b" "c"]
+--test-- "parse: nested rule recycled during parse (#2375)"
+	--assert parse "abc" rule: ["a" ["b" (clear rule recycle) "c"]]
+--test-- "parse to/thru: alternatives grow during parse (#2375)"
+	--assert parse "abc" rule: [to ["c" (loop 1000 [append rule/2 none])] to end]
+--test-- "parse to: alternatives cleared during parse (#2375)"
+	alt: [quote (also "x" clear alt) | "c"]
+	--assert not parse "abc" [to alt to end]
+--test-- "parse thru: paren after match recycles alternatives (#2375)"
+	--assert parse "abc" rule: [thru ["b" (clear rule/2 recycle)] to end]
+
 ===end-group===
 
 ~~~end-file~~~

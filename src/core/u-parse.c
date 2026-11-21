@@ -49,9 +49,10 @@ typedef struct reb_parse_collect {
 
 typedef struct reb_parse_collect_save {
 	REB_PARSE_COLLECT parent; // the enclosing collect's state, restored at the end
-	REBVAL *var;   // word of COLLECT SET/INTO/AFTER, or NULL
-	REBCNT  index; // index of the variable's series, restored at the end
-	REBINT  dsp;   // DSP restored at the end (drops a nested collect's slot), or -1
+	REBVAL  var;     // copy of the word of COLLECT SET/INTO/AFTER (the rules may be modified)
+	REBFLG  has_var; // TRUE when var is used
+	REBCNT  index;   // index of the variable's series, restored at the end
+	REBINT  dsp;     // DSP restored at the end (drops a nested collect's slot), or -1
 } REB_PARSE_COLLECT_SAVE;
 
 typedef struct reb_parse {
@@ -92,7 +93,7 @@ enum parse_flags {
 #define SKIP_TO_BAR(r) while (NOT_END(r) && !IS_SAME_WORD(r, SYM_OR_BAR)) r++;
 #define IS_BLOCK_INPUT(p) (p->type >= REB_BLOCK)
 
-static REBCNT Parse_Rules_Loop(REBPARSE *parse, REBCNT index, REBVAL *rules, REBCNT depth);
+static REBCNT Parse_Rules_Loop(REBPARSE *parse, REBCNT index, REBSER *rser, REBCNT ridx, REBCNT depth);
 
 void Print_Parse_Index(REBCNT type, REBVAL *rules, REBSER *series, REBCNT index)
 {
@@ -147,9 +148,49 @@ static REBVAL *Snap_Item(REBVAL *item, REBVAL *tmp)
 	return item;
 }
 
+
 /***********************************************************************
 **
-*/	static REBFLG Parse_Series(REBVAL *val, REBVAL *rules, REBCNT flags, REBCNT depth, REB_PARSE_COLLECT *collect)
+*/	static REBVAL *Do_Paren(REBVAL *paren)
+/*
+**		Evaluate a paren found in the rules. The paren's block is a part
+**		of the rules, which can be modified by the code, so it must be
+**		protected from the GC while it is evaluated (#2375).
+**
+***********************************************************************/
+{
+	REBSER *ser = VAL_SERIES(paren);
+	REBVAL *res;
+
+	SAVE_SERIES(ser);
+	res = Do_Block_Value_Throw(paren); // might GC
+	UNSAVE_SERIES(ser);
+	return res;
+}
+
+
+/***********************************************************************
+**
+*/	static REBCNT Parse_Rules(REBPARSE *parse, REBCNT index, REBSER *rser, REBCNT ridx, REBCNT depth)
+/*
+**		Run a rule block. The block is kept from the GC while it is used,
+**		because code evaluated from the rules can drop all other references
+**		to it (#2375).
+**
+***********************************************************************/
+{
+	REBCNT n;
+
+	SAVE_SERIES(rser);
+	n = Parse_Rules_Loop(parse, index, rser, ridx, depth);
+	UNSAVE_SERIES(rser);
+	return n;
+}
+
+
+/***********************************************************************
+**
+*/	static REBFLG Parse_Series(REBVAL *val, REBSER *rser, REBCNT ridx, REBCNT flags, REBCNT depth, REB_PARSE_COLLECT *collect)
 /*
 **		Returns TRUE if the rules matched and the end of the input was reached.
 **		The input series may have been switched by a get-word or get-path,
@@ -167,7 +208,7 @@ static REBVAL *Snap_Item(REBVAL *item, REBVAL *tmp)
 	//parse.retval = NULL;
 	parse.collect = collect;
 
-	n = Parse_Rules_Loop(&parse, Parse_Index(val), rules, depth);
+	n = Parse_Rules(&parse, Parse_Index(val), rser, ridx, depth);
 	return n != NOT_FOUND && n >= SERIES_TAIL(parse.series);
 }
 
@@ -190,10 +231,14 @@ static REBVAL *Snap_Item(REBVAL *item, REBVAL *tmp)
 
 /***********************************************************************
 **
-*/	static REBVAL *Get_Parse_Value(REBVAL *item)
+*/	static REBVAL *Get_Parse_Value(REBVAL *item, REBVAL *tmp)
 /*
 **		Get the value of a word (when not a command) or path.
 **		Returns all other values as-is.
+**
+**		A path is evaluated from a copy (in tmp), because the code in
+**		the path may modify the rules the path is in (#2375). The copy
+**		is also what is returned, when the path is a function.
 **
 ***********************************************************************/
 {
@@ -201,8 +246,16 @@ static REBVAL *Snap_Item(REBVAL *item, REBVAL *tmp)
 		if (!VAL_CMD(item)) item = Get_Var(item);
 	}
 	else if (IS_PATH(item)) {
-		REBVAL *path = item;
-		if (Do_Path(&path, 0)) return item; // found a function
+		REBSER *ser = VAL_SERIES(item);
+		REBVAL *path;
+		REBVAL *func;
+
+		*tmp = *item;
+		path = tmp;
+		SAVE_SERIES(ser);
+		func = Do_Path(&path, 0);
+		UNSAVE_SERIES(ser);
+		if (func) return tmp; // found a function
 		item = DS_TOP;
 	}
 	return item;
@@ -211,35 +264,48 @@ static REBVAL *Snap_Item(REBVAL *item, REBVAL *tmp)
 
 /***********************************************************************
 **
-*/	static REBVAL *Do_Parse_Path(REBVAL *item, REBPARSE *parse, REBCNT *index)
+*/	static REBVAL *Do_Parse_Path(REBVAL *item, REBPARSE *parse, REBCNT *index, REBVAL *tmp)
 /*
 **		Handle a PATH, including get and set, that's found in a rule.
 **
+**		The path is evaluated from a copy (in tmp), because the code in
+**		the path may modify the rules the path is in (#2375). The copy
+**		is also what is returned, when the path is a function.
+**
 ***********************************************************************/
 {
-	REBVAL *path = item;
-	REBVAL tmp;
+	REBSER *ser = VAL_SERIES(item);
+	REBVAL *path;
+	REBVAL *res;
+	REBVAL val;
 
-	if (IS_PATH(item)) {
-		if (Do_Path(&path, 0)) return item; // found a function
-		item = DS_TOP;
-	}
-	else if (IS_SET_PATH(item)) {
-		Set_Series(parse->type, &tmp, parse->series);
-		VAL_INDEX(&tmp) = *index;
-		if (Do_Path(&path, &tmp)) return item; // found a function
-		return 0;
-	}
-	else if (IS_GET_PATH(item)) {
-		if (Do_Path(&path, 0)) return item; // found a function
-		item = DS_TOP;
-		// CureCode #1263 change
-		//		if (parse->type != VAL_TYPE(item) || VAL_SERIES(item) != parse->series) 
-		if (!ANY_SERIES(item)) Trap1(RE_PARSE_SERIES, path);
-		return item; // caller resets the input
-	}
+	*tmp = *item;
+	path = tmp;
 
-	return item;
+	SAVE_SERIES(ser);
+	if (IS_PATH(tmp)) {
+		if (Do_Path(&path, 0)) res = tmp; // found a function
+		else res = DS_TOP;
+	}
+	else if (IS_SET_PATH(tmp)) {
+		Set_Series(parse->type, &val, parse->series);
+		VAL_INDEX(&val) = *index;
+		res = Do_Path(&path, &val) ? tmp : 0; // 0 for the SET case
+	}
+	else if (IS_GET_PATH(tmp)) {
+		if (Do_Path(&path, 0)) res = tmp; // found a function
+		else {
+			res = DS_TOP;
+			// CureCode #1263 change
+			//		if (parse->type != VAL_TYPE(item) || VAL_SERIES(item) != parse->series) 
+			if (!ANY_SERIES(res)) Trap1(RE_PARSE_SERIES, path);
+			// caller resets the input
+		}
+	}
+	else res = tmp;
+	UNSAVE_SERIES(ser);
+
+	return res;
 }
 
 
@@ -399,6 +465,7 @@ no_result:
 	REBVAL *blk;
 	REBVAL *item;
 	REBVAL snapped;
+	REBVAL ptmp;
 	REBCNT cmd;
 	REBCNT i;
 	REBCNT len;
@@ -438,7 +505,7 @@ no_result:
 						item = ++blk; // next item is the quoted value
 						if (IS_END(item)) goto bad_target;
 						if (IS_PAREN(item)) {
-							item = Do_Block_Value_Throw(item); // might GC
+							item = Do_Paren(item); // might GC
 						}
 
 					}
@@ -449,7 +516,7 @@ no_result:
 				}
 			}
 			else if (IS_PATH(item)) {
-				item = Get_Parse_Value(item);
+				item = Get_Parse_Value(item, &ptmp);
 			}
 
 			// Try to match it:
@@ -548,11 +615,11 @@ next:		// Check for | (required if not end)
 	return NOT_FOUND;
 
 found:
-	if (IS_PAREN(blk+1)) Do_Block_Value_Throw(blk+1);
+	if (IS_PAREN(blk+1)) Do_Paren(blk+1);
 	return index;
 
 found1:
-	if (IS_PAREN(blk+1)) Do_Block_Value_Throw(blk+1);
+	if (IS_PAREN(blk+1)) Do_Paren(blk+1);
 	return index + (is_thru ? step : 0);
 
 bad_target:
@@ -622,7 +689,7 @@ bad_target:
 				i = Find_Str_Tag(series, 0, index, series->tail, 1, VAL_SERIES(item), VAL_INDEX(item), VAL_LEN(item), flags);
 			}
 			else
-				Trap1(RE_PARSE_RULE, item - 1);
+				Trap1(RE_PARSE_RULE, item);
 		}
 	}
 
@@ -654,6 +721,7 @@ bad_target:
 ***********************************************************************/
 {
 	REBVAL value;
+	REBVAL ptmp;
 	REBVAL *item = *rule;
 	REBCNT n;
 	REBPARSE newparse;
@@ -684,25 +752,25 @@ bad_target:
 			(*rule)++;
 			if (IS_END(item)) Trap1(RE_PARSE_END, item-2);
 			if (IS_PAREN(item)) {
-				item = Do_Block_Value_Throw(item); // might GC
+				item = Do_Paren(item); // might GC
 			}
 		}
 		else if (n == SYM_INTO) {
 			item = item + 1;
 			(*rule)++;
 			if (IS_END(item)) Trap1(RE_PARSE_END, item-2);
-			item = Get_Parse_Value(item); // sub-rules
+			item = Get_Parse_Value(item, &ptmp); // sub-rules
 			if (!IS_BLOCK(item)) Trap1(RE_PARSE_RULE, item-2);
 			if (!ANY_BINSTR(&value) && !ANY_BLOCK(&value)) return NOT_FOUND;
-			return Parse_Series(&value, VAL_BLK_DATA(item), parse->flags, 0, parse->collect) ? index : NOT_FOUND;
+			return Parse_Series(&value, VAL_SERIES(item), VAL_INDEX(item), parse->flags, 0, parse->collect) ? index : NOT_FOUND;
 		}
 		else if (n > 0)
 			Trap1(RE_PARSE_RULE, item);
 		else	
-			item = Get_Parse_Value(item); // variable
+			item = Get_Parse_Value(item, &ptmp); // variable
 	}
 	else if (IS_PATH(item)) {
-		item = Get_Parse_Value(item); // variable
+		item = Get_Parse_Value(item, &ptmp); // variable
 	}
 	else if (IS_SET_WORD(item) || IS_GET_WORD(item) || IS_SET_PATH(item) || IS_GET_PATH(item))
 		Trap1(RE_PARSE_RULE, item);
@@ -736,7 +804,7 @@ bad_target:
 	REBVAL *item;
 
 	// Restore the position of the variable's series (SET, INTO and AFTER):
-	if (save->var) VAL_INDEX(Get_Var(save->var)) = save->index;
+	if (save->has_var) VAL_INDEX(Get_Var(&save->var)) = save->index;
 
 	if (save->parent.block == NULL) {
 		// Top-level collect: its state stays current, so the native can return
@@ -804,7 +872,7 @@ bad_target:
 	}
 	
 	if (ANY_BINSTR(cval)) {
-		// e.g.: str: "" parse "ábc" [collect into str some [keep skip]] str
+		// e.g.: str: "" parse "abc" [collect into str some [keep skip]] str
 		Insert_String(block, index, series, begin, count, FALSE);
 		VAL_INDEX(cval) = index + count;
 		return;
@@ -814,7 +882,7 @@ bad_target:
 
 	if (IS_UTF8_SERIES(series)) {
 		if (pick) {
-			// e.g.: blk: [] parse "šbc" [collect into blk some [keep pick skip]] blk
+			// e.g.: blk: [] parse "abc" [collect into blk some [keep pick skip]] blk
 			e = begin + count;
 			// count codepoints first, so the target is expanded only once
 			for (n = 0, i = begin; i < e; n++)
@@ -828,7 +896,7 @@ bad_target:
 			VAL_INDEX(cval) = index + n;
 		}
 		else {
-			// e.g.: blk: [] parse "ábc" [collect into blk some [keep skip]] blk
+			// e.g.: blk: [] parse "abc" [collect into blk some [keep skip]] blk
 			Expand_Series(block, index, 1);
 			val = BLK_SKIP(block, index);
 			// In UTF8 series count is number of bytes and not codepoints!
@@ -895,7 +963,7 @@ bad_target:
 	block = parse->collect->block;
 	ASSERT2(block, RP_MISC); // should never happen
 
-	item = *Do_Block_Value_Throw(expr); // might GC; local copy, the result is volatile
+	item = *Do_Paren(expr); // might GC; local copy, the result is volatile
 	value = Collect_Value(parse->collect);
 	index = VAL_INDEX(value);
 	if (ANY_BLOCK(value)) {
@@ -912,15 +980,45 @@ bad_target:
 }
 
 
+// Code evaluated from the rules may modify the rule series (its data are then
+// moved, shrunk or even freed - #2375), so the current rule position is kept as
+// an offset, and `rules` is derived from the series again after each evaluation.
+// The position is clamped to the tail, so a shortened rule just ends.
+//   RULES_SAVE(n)   - remember the position, where n is the distance from `rules`
+//                     to the rule which should be processed after the evaluation
+//   RULES_RESYNC()  - restore `rules` from the remembered position
+//   PREV_RULE()     - the rule before the current one (for error messages)
+#define RULES_SAVE(n)  (ro = (REBCNT)(rules - BLK_HEAD(rser)) + (n))
+#define RULES_RESYNC() (rules = BLK_SKIP(rser, MIN(ro, SERIES_TAIL(rser))))
+#define PREV_RULE()    (rules > BLK_HEAD(rser) ? rules - 1 : rules)
+
+// Value of the current rule, which is a word or a path (the rule is not consumed):
+#define PEEK_RULE_VALUE(v) do { \
+	if (IS_PATH(rules)) { RULES_SAVE(0); (v) = Get_Parse_Value(rules, &ptmp); RULES_RESYNC(); } \
+	else (v) = Get_Parse_Value(rules, &ptmp); \
+} while (0)
+
+// Value of the current rule, which is consumed (never moves past the end):
+#define NEXT_RULE_VALUE(v) do { \
+	if (IS_PATH(rules)) { RULES_SAVE(1); (v) = Get_Parse_Value(rules, &ptmp); RULES_RESYNC(); } \
+	else { (v) = Get_Parse_Value(rules, &ptmp); if (NOT_END(rules)) rules++; } \
+} while (0)
+
 /***********************************************************************
 **
-*/	static REBCNT Parse_Rules_Loop(REBPARSE *parse, REBCNT index, REBVAL *rules, REBCNT depth)
+*/	static REBCNT Parse_Rules_Loop(REBPARSE *parse, REBCNT index, REBSER *rser, REBCNT ridx, REBCNT depth)
 /*
 ***********************************************************************/
 {
 	REBSER *series = parse->series;
+	REBVAL *rules = BLK_SKIP(rser, MIN(ridx, SERIES_TAIL(rser))); // current rule
+	REBCNT ro = 0;		// position of the rule, saved around code evaluation
 	REBVAL *item;		// current rule item
 	REBVAL *word;		// active word to be set
+	REBVAL word_val;	// copy of the word (the rules may be modified)
+	REBVAL hold_val;	// copy of the matched rule item (the rules may be modified)
+	REBVAL ptmp;		// copy of an evaluated path
+	REBSER *hold_ser;	// block of the matched rule item, kept from the GC
 	REBCNT start;		// recovery restart point
 	REBCNT i;			// temp index point
 	REBCNT begin;		// point at beginning of match
@@ -1007,7 +1105,8 @@ bad_target:
 						item = rules++;
 						if (!(IS_WORD(item) || IS_SET_WORD(item))) Trap1(RE_PARSE_VARIABLE, item);
 						if (VAL_CMD(item)) Trap1(RE_PARSE_COMMAND, item);
-						word = item;
+						word_val = *item; // a copy, the rules may be modified before it is used
+						word = &word_val;
 						continue;
 					case SYM_CAPTURE:
 						SET_FLAG(flags, PF_CAPTURE);
@@ -1065,7 +1164,7 @@ bad_target:
 						SET_FLAG(flags, PF_COLLECT);
 						Collect_Value(collect); // rebase the parent's value, if the stack moved
 						coll_save.parent = *collect;
-						coll_save.var = NULL;
+						coll_save.has_var = FALSE;
 						coll_save.index = 0;
 						coll_save.dsp = -1;
 						wrd = IS_WORD(rules) ? VAL_SYM_CANON(rules) : 0;
@@ -1078,7 +1177,8 @@ bad_target:
 							Set_Var_Series(rules, REB_BLOCK, collect->block, 0);
 							Set_Collect_Value(collect, Get_Var(rules));
 							collect->mode = SYM_SET;
-							coll_save.var = rules;
+							coll_save.var = *rules;
+							coll_save.has_var = TRUE;
 							rules++;
 						}
 						else if (wrd == SYM_INTO || wrd == SYM_AFTER) {
@@ -1098,7 +1198,8 @@ bad_target:
 							Set_Collect_Value(collect, val);
 							collect->block = VAL_SERIES(val);
 							collect->mode = wrd;
-							coll_save.var = rules;
+							coll_save.var = *rules;
+							coll_save.has_var = TRUE;
 							coll_save.index = VAL_INDEX(val);
 							if (wrd == SYM_AFTER)
 								VAL_INDEX(val) = VAL_TAIL(val);
@@ -1144,8 +1245,9 @@ bad_target:
 								Trap1(RE_PARSE_END, rules - 2);
 						}
 						if (IS_PAREN(rules)) {
+							RULES_SAVE(1); // continue after the paren
 							Parse_Keep_Expression(parse, rules);
-							rules++;
+							RULES_RESYNC();
 							continue;
 						}
 						SET_FLAG(flags, PF_KEEP);
@@ -1154,7 +1256,7 @@ bad_target:
 
 					case SYM_RETURN:
 						if (IS_PAREN(rules)) {
-							item = Do_Block_Value_Throw(rules); // might GC
+							item = Do_Paren(rules); // might GC
 							Throw_Return_Value(item);
 						}
 						SET_FLAG(flags, PF_RETURN);
@@ -1177,7 +1279,9 @@ bad_target:
 						item = rules++;
 						if (IS_END(item)) goto bad_end;
 						if (!IS_PAREN(item)) Trap1(RE_PARSE_RULE, item);
-						item = Do_Block_Value_Throw(item); // might GC
+						RULES_SAVE(0);
+						item = Do_Paren(item); // might GC
+						RULES_RESYNC();
 						if (IS_TRUE(item)) continue;
 						else {
 							index = NOT_FOUND;
@@ -1221,7 +1325,7 @@ bad_target:
 					// CureCode #1263 change
 					//if (parse->type != VAL_TYPE(item) || VAL_SERIES(item) != series)
 					//	Trap1(RE_PARSE_SERIES, rules-1);
-					if (!ANY_SERIES(item)) Trap1(RE_PARSE_SERIES, rules-1);
+					if (!ANY_SERIES(item)) Trap1(RE_PARSE_SERIES, PREV_RULE());
 reset_input:
 					index = Set_Parse_Series(parse, item);
 					series = parse->series;				
@@ -1237,7 +1341,7 @@ reset_input:
 					}
 					
 					// don't allow code like: [copy x :pos integer!]
-					if (flags != 0) Trap1(RE_PARSE_RULE, rules-1);
+					if (flags != 0) Trap1(RE_PARSE_RULE, PREV_RULE());
 					// #2269 - reset the position if we are not in the middle of any rule
 					begin = index;
 
@@ -1261,15 +1365,18 @@ reset_input:
 			}
 		}
 		else if (ANY_PATH(item)) {
-			REBVAL *path = item;
-			item = Do_Parse_Path(item, parse, &index); // index can be modified
+			RULES_SAVE(0); // code in the path may modify the rules
+			item = Do_Parse_Path(item, parse, &index, &ptmp); // index can be modified
+			RULES_RESYNC();
 			if (index > series->tail) index = series->tail;
 			if (item == 0) continue; // for SET case
-			if (IS_GET_PATH(path) && item != path) goto reset_input;
+			if (IS_GET_PATH(&ptmp) && item != &ptmp) goto reset_input;
 		}
 
 		if (IS_PAREN(item)) {
-			Do_Block_Value_Throw(item); // might GC
+			RULES_SAVE(0);
+			Do_Paren(item); // might GC
+			RULES_RESYNC();
 			if (index > series->tail) index = series->tail;
 			continue;
 		}
@@ -1278,18 +1385,20 @@ reset_input:
 		if (IS_INTEGER(item)) {	// Specify count or range count
 			SET_FLAG(flags, PF_WHILE);
 			mincount = maxcount = Int32s(item, 0);
-			item = Get_Parse_Value(rules++);
-			if (IS_END(item)) Trap1(RE_PARSE_END, rules-2);
+			NEXT_RULE_VALUE(item);
+			if (IS_END(item)) Trap1(RE_PARSE_END, PREV_RULE());
 			if (IS_INTEGER(item)) {
 				maxcount = Int32s(item, 0);
-				item = Get_Parse_Value(rules++);
-				if (IS_END(item)) Trap1(RE_PARSE_END, rules-2);
+				NEXT_RULE_VALUE(item);
+				if (IS_END(item)) Trap1(RE_PARSE_END, PREV_RULE());
 			}
 			// A paren is not a matching rule (Red compatible):
 			// evaluated once (unless max count is 0), fails unless min count is 0
 			if (IS_PAREN(item)) {
 				if (maxcount > 0) {
-					Do_Block_Value_Throw(item); // might GC
+					RULES_SAVE(0);
+					Do_Paren(item); // might GC
+					RULES_RESYNC();
 					if (index > series->tail) index = series->tail; // may affect tail
 				}
 				if (mincount > 0) index = NOT_FOUND;
@@ -1306,8 +1415,14 @@ reset_input:
 		// the entire rule has been satisfied.
 		//--------------------------------------------------------------------
 
-		item_hold = item;	// a command or literal match value
 		if (VAL_TYPE(item) <= REB_UNSET || VAL_TYPE(item) >= REB_NATIVE) goto bad_rule;
+		// The rule item is used repeatedly, but the code evaluated from the rules may
+		// modify (or drop) the rules, so it is used from a copy and its block is kept
+		// from the GC while the item is being matched:
+		hold_val = *item;
+		item_hold = &hold_val;	// a command or literal match value
+		hold_ser = IS_BLOCK(item_hold) ? VAL_SERIES(item_hold) : NULL;
+		if (hold_ser) { SAVE_SERIES(hold_ser); }
 		begin = index;		// input at beginning of match section
 		rulen = 0;			// rules consumed (do not use rule++ below)
 		i = index;
@@ -1340,16 +1455,20 @@ reset_input:
 				case SYM_TO:
 				case SYM_THRU:
 					if (IS_END(rules)) goto bad_end;
-					item = Get_Parse_Value(rules);
+					PEEK_RULE_VALUE(item);
 					rulen = 1;
+					RULES_SAVE(0);
 					i = Parse_To(parse, index, item, cmd == SYM_THRU);
+					RULES_RESYNC();
 					break;
 					
 				case SYM_QUOTE:
 					if (IS_END(rules)) goto bad_end;
 					rulen = 1;
 					if (IS_PAREN(rules)) {
-						item = Do_Block_Value_Throw(rules); // might GC
+						RULES_SAVE(0);
+						item = Do_Paren(rules); // might GC
+						RULES_RESYNC();
 					}
 					else item = rules;
 					i = (0 == Cmp_Value(BLK_SKIP(series, index), item, parse->flags & AM_FIND_CASE)) ? index+1 : NOT_FOUND;
@@ -1358,13 +1477,15 @@ reset_input:
 				case SYM_INTO:
 					if (IS_END(rules)) goto bad_end;
 					rulen = 1;
-					item = Get_Parse_Value(rules); // sub-rules
+					PEEK_RULE_VALUE(item); // sub-rules
 					if (!IS_BLOCK(item)) goto bad_rule;
 					val = BLK_SKIP(series, index);
+					RULES_SAVE(0);
 					i = (
 						(ANY_BINSTR(val) || ANY_BLOCK(val))
-						&& Parse_Series(val, VAL_BLK_DATA(item), parse->flags, depth+1, collect)
+						&& Parse_Series(val, VAL_SERIES(item), VAL_INDEX(item), parse->flags, depth+1, collect)
 					) ? index+1 : NOT_FOUND;
+					RULES_RESYNC();
 					break;
 #ifdef USE_DO_PARSE_RULE
 				case SYM_DO:
@@ -1378,8 +1499,9 @@ reset_input:
 				}
 			}
 			else if (IS_BLOCK(item)) {
-				item = VAL_BLK_DATA(item);
-				i = Parse_Rules_Loop(parse, index, item, depth+1);
+				RULES_SAVE(0);
+				i = Parse_Rules(parse, index, VAL_SERIES(item), VAL_INDEX(item), depth+1);
+				RULES_RESYNC();
 				series = parse->series; // input may have been switched in the sub-rule
 				if (parse->result) {
 					index = (parse->result > 0) ? i : NOT_FOUND;
@@ -1437,7 +1559,10 @@ reset_input:
 			//if (parse->result) {parse->result = 0; break;}
 		}
 
-		rules += rulen;
+		if (hold_ser) { UNSAVE_SERIES(hold_ser); }
+
+		// (the rules may have been shortened by the code evaluated from them)
+		if (NOT_END(rules)) rules += rulen;
 
 		//if (index > series->tail && index != NOT_FOUND) index = series->tail;
 		if (index > series->tail) index = NOT_FOUND;
@@ -1546,12 +1671,16 @@ do_modify:
 						item = rules++;
 					}
 					// CHECK FOR QUOTE!!
-					if (IS_PAREN(item)) {
-						item = Do_Block_Value_Throw(item); // might GC
-					} else {
-						item = Get_Parse_Value(item); // new value
+					if (!IS_END(item)) {
+						RULES_SAVE(0); // code in the value may modify the rules
+						if (IS_PAREN(item)) {
+							item = Do_Paren(item); // might GC
+						} else {
+							item = Get_Parse_Value(item, &ptmp); // new value
+						}
+						RULES_RESYNC();
 					}
-					if (IS_UNSET(item)) Trap1(RE_NO_VALUE, rules-1);
+					if (IS_UNSET(item)) Trap1(RE_NO_VALUE, PREV_RULE());
 					if (IS_END(item)) goto bad_end;
 					if (IS_PROTECT_SERIES(series)) Trap0(RE_PROTECTED);
 					if (IS_BLOCK_INPUT(parse)) {
@@ -1592,11 +1721,17 @@ do_modify:
 	return index;
 
 bad_rule:
-	Trap1(RE_PARSE_RULE, rules-1);
+	Trap1(RE_PARSE_RULE, PREV_RULE());
 bad_end:
-	Trap1(RE_PARSE_END, rules-1);
+	Trap1(RE_PARSE_END, PREV_RULE());
 	return 0;
 }
+
+#undef RULES_SAVE
+#undef RULES_RESYNC
+#undef PREV_RULE
+#undef PEEK_RULE_VALUE
+#undef NEXT_RULE_VALUE
 
 /***********************************************************************
 **
@@ -1641,7 +1776,7 @@ bad_end:
 	SET_STATE(state, Saved_State);
 	CLEARS(&collect);
 
-	ok = Parse_Series(val, VAL_BLK_DATA(arg), (opts & PF_CASE) ? AM_FIND_CASE : 0, 0, &collect);
+	ok = Parse_Series(val, VAL_SERIES(arg), VAL_INDEX(arg), (opts & PF_CASE) ? AM_FIND_CASE : 0, 0, &collect);
 	if (collect.mode == BLOCK_COLLECT) {
 		*DS_RETURN = *Collect_Value(&collect);
 		VAL_INDEX(DS_RETURN) = 0; // `collect keep (...)` never reaches Parse_Collect_End
@@ -1694,4 +1829,3 @@ bad_end:
 	return TRUE;
 }
 #endif
-
