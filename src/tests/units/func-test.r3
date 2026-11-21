@@ -165,6 +165,35 @@ Rebol [
 ===end-group===
 
 
+===start-group=== "USE"
+	;@@ https://github.com/Oldes/Rebol3/issues/731
+	;@@ https://github.com/Oldes/Rebol3/issues/1616
+	--test-- "USE passes RETURN to the caller"
+		use-f1: func [][use [x] [x: 1 return x + 1] 0]
+		--assert 2 = use-f1
+
+	--test-- "USE passes EXIT to the caller"
+		use-n: 0
+		use-f2: func [][use [x] [use-n: 1 exit] use-n: 100]
+		use-f2
+		--assert use-n = 1
+
+	--test-- "USE with a single word"
+		use-f3: func [][use 'x [x: 3 return x] 0]
+		--assert 3 = use-f3
+
+	--test-- "USE result and locals"
+		x: 10
+		--assert 2 = use [x] [x: 2]
+		--assert x = 10
+
+	--test-- "USE does not modify its vars block"
+		use-vars: [x]
+		use use-vars [x: 1]
+		--assert use-vars = [x]
+===end-group===
+
+
 ===start-group=== "Apply"
 
 --test-- "apply :do [:func]"
