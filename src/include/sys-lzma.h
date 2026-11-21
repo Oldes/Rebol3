@@ -134,13 +134,13 @@ typedef unsigned char Byte;
 typedef short Int16;
 typedef unsigned short UInt16;
 
-#if defined (__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
+#if (defined (__STDC_VERSION__) && __STDC_VERSION__ >= 199901L) || (defined(_MSC_VER) && _MSC_VER >= 1600)
 #include <stdint.h>
-typedef uint16_t		u16;
-typedef int32_t			i32;
-typedef uint32_t		u32;
-typedef int64_t			i64;
-typedef uint64_t		u64;
+typedef uint16_t    u16;
+typedef int32_t     i32;
+typedef uint32_t    u32;
+typedef int64_t     i64;
+typedef uint64_t    u64;
 #else
 
 #ifdef __LP64__
