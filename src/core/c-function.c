@@ -467,6 +467,7 @@
 
 	//Dump_Block(VAL_FUNC_BODY(func));
 	result = Do_Blk(VAL_FUNC_BODY(func), 0);
+	func = DSF_FUNC(DSF); // the stack could be expanded
 	ds = DS_RETURN;
 
 	if (IS_ERROR(result) && IS_RETURN(result) && !VAL_FUNC_GET_FLAG(func, FUNC_THROW)) {
@@ -513,6 +514,7 @@
 	ds = DS_RETURN;
 	SET_OBJECT(ds, body); // keep it GC safe
 	result = Do_Blk(body, 0); // GC-OK - also, result returned on DS stack
+	func = DSF_FUNC(DSF);     // the stack could be expanded
 	ds = DS_RETURN;
 
 	if (IS_ERROR(result) && IS_RETURN(result) && !VAL_FUNC_GET_FLAG(func, FUNC_THROW)) {
