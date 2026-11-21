@@ -2436,6 +2436,30 @@ try/with [
 ===end-group===
 
 
+===start-group===  "KEEP-EACH"
+;@@ https://github.com/Oldes/Rebol3/issues/2886
+--test-- "KEEP-EACH"
+	--assert did all [
+		[2 4] = keep-each x b: [1 2 3 4] [even? x]
+		b = [2 4]
+	]
+	--assert [1 2 5 6] = keep-each [a b] [1 2 3 4 5 6] [a <> 3]
+	--assert "ace" = keep-each c "abcde" [find "ace" c]
+	--assert "ěč" = keep-each c "ěščř" [find "ěč" c]
+
+--test-- "KEEP-EACH/count"
+	--assert 2 = keep-each/count x [1 2 3 4] [even? x]
+	--assert 2 = keep-each/count c "ěščř" [find "ěč" c]
+
+--test-- "KEEP-EACH with CONTINUE and BREAK"
+	--assert [1 2] = keep-each x [1 2 3] [if x = 2 [continue] x <> 3]
+	--assert [2 3 4] = keep-each x [1 2 3 4] [if x = 3 [break] x > 1]
+
+--test-- "KEEP-EACH passes RETURN"
+	ke-f: does [keep-each x [1 2] [return 1] 2]
+	--assert 1 = ke-f
+===end-group===
+
 ===start-group=== "CONTINUE in loops"
 ;@@ https://github.com/Oldes/Rebol-issues/issues/2663
 	o: clear ""

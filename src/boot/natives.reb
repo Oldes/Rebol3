@@ -284,6 +284,14 @@ remove-each: native [
 	/count {Returns removal count}
 ]
 
+keep-each: native [
+	{Keeps only values for which the block returns a truthy value. Returns the series.}
+	'word [get-word! word! block!] {Word or block of words to set each time (local)}
+	data  [series! map!] {The series to traverse (modified)}
+	body  [block!] {Block to evaluate (return TRUE to keep)}
+	/count {Returns the removal count}
+]
+
 return: native [
 	{Returns a value from a function.}
 	value [any-type!]
