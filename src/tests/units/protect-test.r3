@@ -471,4 +471,37 @@ Rebol [
 		--assert not error? try [pl-o/a: 2]
 ===end-group===
 
+===start-group=== "PROTECTED? and PROTECT with a path"
+;@@ https://github.com/Oldes/Rebol3/issues/2562
+	--test-- "protected? path into a protected scalar"
+		pp-o: object [t: 1 protect/words o: object [t: now/time]]
+		--assert protected? 'pp-o/o/t
+		--assert protected? 'pp-o/o/t/hour
+		--assert error? e: try [pp-o/o/t/hour: 0]
+		--assert not protected? 'pp-o/t
+		pp-d: 1-Jan-2020
+		protect 'pp-d
+		--assert protected? 'pp-d/year
+		unprotect 'pp-d
+		--assert not protected? 'pp-d/year
+	--test-- "protect path into a scalar"
+		pp-o: object [d: 1-Jan-2020]
+		protect 'pp-o/d/year  ;; protects the variable holding the date
+		--assert protected? 'pp-o/d
+		--assert all [error? e: try [pp-o/d/year: 2000] e/id = 'locked-word]
+		unprotect 'pp-o/d/year
+		--assert not protected? 'pp-o/d
+	--test-- "protect path not leading to a variable"
+		;; was protecting pp-o/x, because the block was skipped
+		pp-o: object [b: [1] x: 1]
+		protect 'pp-o/b/x
+		--assert not protected? 'pp-o/x
+		--assert not protected? 'pp-o/b/x
+		--assert not error? try [pp-o/x: 2]
+		;; not existing word was resolving to SELF
+		protect 'pp-o/foo
+		--assert not protected? 'pp-o/foo
+		--assert not error? try [pp-o/x: 3]
+===end-group===
+
 ~~~end-file~~~

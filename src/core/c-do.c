@@ -2152,12 +2152,18 @@ push_arg:
 /*
 **		Given a path, return a context and index for its terminal.
 **
+**		When the path continues into a value which is modified in place
+**		by setting a path (like: obj/date/year), the terminal is the
+**		variable holding that value.
+**
+**		Returns zero when the path does not lead to a variable.
+**
 ***********************************************************************/
 {
 	REBVAL *sel; // selector
 	REBVAL *val;
-	REBVAL *tmp;
 	REBSER *blk;
+	REBSER *frame;
 	REBCNT i;
 
 	if (VAL_TAIL(path) < 2) return 0;
@@ -2166,19 +2172,27 @@ push_arg:
 	if (!ANY_WORD(sel)) return 0;
 	val = Get_Var(sel);
 
+	// Like: date/year (but not a function local or self)
+	if (IS_PATH_SET_INPLACE(val)) {
+		if (VAL_WORD_INDEX(sel) <= 0) return 0;
+		*index = VAL_WORD_INDEX(sel);
+		return VAL_WORD_FRAME(sel);
+	}
+
 	sel = BLK_SKIP(blk, 1);
 	while (TRUE) {
 		//TODO: handle map! val
 		if (!ANY_OBJECT(val) || !IS_WORD(sel)) return 0;
-		i = Find_Word_Index(VAL_OBJ_FRAME(val), VAL_WORD_SYM(sel), FALSE);
+		frame = VAL_OBJ_FRAME(val);
+		i = Find_Word_Index(frame, VAL_WORD_SYM(sel), FALSE);
+		if (!i) return 0; // not found (or hidden)
 		sel++;
-		if (IS_END(sel)) {
+		val = FRM_VALUE(frame, i);
+		if (IS_END(sel) || IS_PATH_SET_INPLACE(val)) {
 			*index = i;
-			return VAL_OBJ_FRAME(val);
+			return frame;
 		}
-		tmp = VAL_OBJ_VALUE(val, i);
-		if(ANY_OBJECT(tmp))
-			val = tmp;
+		// the next selector must be in an object (checked above)
 	}
 
 	return 0; // never happens
