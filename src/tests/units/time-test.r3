@@ -187,17 +187,18 @@ Rebol [
 ===start-group=== "time! path access"
 	--test-- "time/bad-select"
 		t: 1:2:3
+		--assert error? try [t/5]
 		--assert error? try [t/foo]                  ;; unknown word
 		--assert error? try [t/("x")]                ;; unsupported select type
 	--test-- "time/hour: minute: second:"
 		t: 1:2:3
-		t/hour: 5     --assert t = 5:02:03
-		t/minute: 30  --assert t = 5:30:03
-		t/second: 10  --assert t = 5:30:10
+		t/hour: 5     --assert t = 5:02:03   --assert t/1 == 5  --assert t/hour == 5
+		t/minute: 30  --assert t = 5:30:03   --assert t/2 == 30 --assert t/minute == 30
+		t/second: 10  --assert t = 5:30:10   --assert t/3 == 10
 	--test-- "time/second: decimal"
 		t: 1:2:3
-		t/second: 1.5 --assert t = 1:02:01.5
-		t/second: 4   --assert t = 1:02:04
+		t/second: 1.5 --assert t = 1:02:01.5 --assert t/second == 1.5
+		t/second: 4   --assert t = 1:02:04   --assert t/second == 4
 	--test-- "time/minute: decimal (truncated by Int32s)"
 		t: 1:2:3
 		t/minute: 4.9 --assert t = 1:04:03
@@ -305,7 +306,7 @@ Rebol [
 	--test-- "time protect 3"
 		o: object [t: 1 protect/words o: object [t: now/time]]
 		--assert protected? 'o/o/t
-		--assert protected? 'o/o/t/hour        ;@@ <--- fails!
+		--assert protected? 'o/o/t/hour
 		--assert error? e: try [o/o/t/hour: 0]
 ===end-group===
 
