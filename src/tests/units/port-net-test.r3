@@ -169,6 +169,7 @@ Rebol [
 
 ===start-group=== "TCP full duplex"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2143
+	;@@ https://github.com/Oldes/Rebol3/issues/2308
 	--test-- "READ while a WRITE is still pending"
 		;; The READ must not overwrite the pending WRITE request.
 		big: append/dup make binary! 2000000 #{01020304} 500000
