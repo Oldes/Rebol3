@@ -331,6 +331,11 @@ load-header: function/with [
 			return 'bad-header
 		]
 
+		lit-word? :header/name [
+			;; accept also `name: 'foo` (the header is not evaluated)
+			header/name: to word! header/name
+		]
+
 		word? :header/options [
 			header/options: reduce [
 				header/options
