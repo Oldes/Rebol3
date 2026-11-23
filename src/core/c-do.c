@@ -454,6 +454,7 @@ void Trace_Arg(REBINT num, REBVAL *arg, REBVAL *path)
 	}
 	// object/(expr) case:
 	else if (IS_PAREN(path)) {
+		REBCNT type = VAL_TYPE(pvs->value); // the dispatcher was chosen for this type (#1046)
 		// The evaluation may expand (move) the data stack, so rebase
 		// the pvs pointers which may point into it:
 		REBINT o_store  = DS_OFFSET(pvs->store);
@@ -468,6 +469,9 @@ void Trace_Arg(REBINT num, REBVAL *arg, REBVAL *path)
 		DS_REBASE(pvs->setval, o_setval);
 		DS_REBASE(pvs->orig,   o_orig);
 
+		// The paren may have replaced the value (a: 0x0  a/(a: [0 0] 1)):
+		if (VAL_TYPE(pvs->value) != type && !THROWN(pvs->select))
+			Trap2(RE_INVALID_PATH, pvs->orig, pvs->path);
 	}
 	else // object/word and object/value case:
 		pvs->select = path;

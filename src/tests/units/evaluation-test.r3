@@ -218,6 +218,31 @@ Rebol [
 
 ===end-group===
 
+===start-group=== "evaluation inside a path!"
+	;@@ https://github.com/Oldes/Rebol3/issues/1046
+	--test-- "path-eval-1"
+		a: 0x0   --assert 4.0 == a/(a: 3x4 2)
+		a: 0x0   --assert error? try [a/(a: [0 0] 1)]
+		a: 0x0   --assert error? try [a/(a: [0 0] 1)/x]
+		a: [1 2] --assert error? try [a/(a: 1x2 1)]
+		a: 0x0   --assert error? try [set-path: 'a/(a: [0 0] 1) do reduce [to set-path! set-path 1]]
+	--test-- "path-eval-2"
+		o: object [a: 0x0]
+		o/a: 0x0   --assert 4.0 == o/a/(o/a: 3x4 2)
+		o/a: 0x0   --assert error? try [o/a/(o/a: [0 0] 1)]
+		o/a: 0x0   --assert error? try [o/a/(o/a: [0 0] 1)/x]
+		o/a: [1 2] --assert error? try [o/a/(o/a: 1x2 1)]
+	--test-- "path-eval-3"
+		a: b: [0x0]	c: [0x0]
+		a/(a: c 1)/x: 11
+		--assert all [
+		    a == [11x0]
+		    b == [0x0]
+		    c == [11x0]
+		]
+===end-group===
+
+
 
 ===start-group=== "with"
 	--test-- "with"
