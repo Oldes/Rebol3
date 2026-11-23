@@ -429,6 +429,30 @@ Rebol [
 		--assert complement? make bitset! bs
 		--assert not complement? copy charset "a"
 		--assert complement? first copy/deep reduce [complement charset "a"]
+
+	--test-- "issue-2515 set operations with complemented bitsets"
+	;@@ https://github.com/Oldes/Rebol3/issues/2515
+		one: make bitset! [1]
+		two: make bitset! [2]
+		--assert #(bitset! #{60})       = union one two
+		--assert #(bitset! not #{20})   = union one negate two
+		--assert #(bitset! not #{40})   = union negate one two
+		--assert #(bitset! not #{})     = union negate one negate two
+		--assert #(bitset! #{40})       = intersect one negate two
+		--assert #(bitset! #{20})       = intersect negate one two
+		--assert #(bitset! not #{60})   = intersect negate one negate two
+		--assert #(bitset! #{60})       = difference one two
+		--assert #(bitset! not #{60})   = difference one negate two
+		--assert #(bitset! #{60})       = difference negate one negate two
+		--assert #(bitset! #{})         = exclude one one
+		--assert #(bitset! #{40})       = exclude one two
+		--assert #(bitset! #{})         = exclude one negate two
+		--assert #(bitset! not #{60})   = exclude negate one two
+		--assert complement? (one or negate two)
+		--assert pick (union one negate two) 100
+		--assert #(bitset! #{40}) = one ;- operands are not modified
+		--assert pick (union negate one negate two) 100
+		--assert not pick (exclude one negate two) 100
 ===end-group===
 
 ===start-group=== "bitset issues"

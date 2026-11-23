@@ -763,7 +763,6 @@ set_bits:
 		if (!IS_BITSET(arg) && !IS_BINARY(arg))
 			Trap_Math_Args(VAL_TYPE(arg), action);
 		VAL_SERIES(value) = ser = Xandor_Bitset(action, value, arg);
-		Trim_Tail_Zeros(ser);
 		break;
 
 	default:
