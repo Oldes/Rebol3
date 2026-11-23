@@ -106,6 +106,7 @@ Rebol [
 ===end-group===
 
 ===start-group=== "Pair in path"
+	;@@ https://github.com/Oldes/Rebol3/issues/988
 	--test-- "pair in get path"
 		--assert path? p: transcode/one "img/1x1"
 		--assert 1x1 = pick p 2
