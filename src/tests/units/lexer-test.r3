@@ -96,7 +96,13 @@ Rebol [
 		--assert error? try [transcode/one {a/"b^/c"}]  ;; real line break inside
 		--assert error? try [transcode/one "a/{b}"]
 		--assert error? try [transcode/one {a/"b}]
-
+	--test-- "literal strings as path elements"
+	;@@ https://github.com/Oldes/Rebol3/issues/931
+		blk: [<a> "b" @c #d 1]
+		--assert "b" == attempt [do {blk/<a>}]
+		--assert @c  == attempt [do {blk/"b"}]
+		--assert #d  == attempt [do {blk/@c }]
+		--assert 1   == attempt [do {blk/#d }]
 ===end-group===
 
 ===start-group=== "Pair in path"
