@@ -3,7 +3,7 @@ Rebol [
 	Author:  "Oldes"
 	File:    %repl-test.r3
 	Tabs:    4
-	Needs:   quick-test
+	Needs:   [%../quick-test-module.r3]
 ]
 
 ~~~start-file~~~ "REPL"
@@ -100,7 +100,39 @@ eval-line: func[line [string!]][do console/bind-code transcode line]
 		--assert 1 = try [eval-line "repl-private"]
 ===end-group===
 
+===start-group=== "code evaluated from the console session"
+	system/console/current: console
+
+	--test-- "do string sees console words"
+		reset-console-ctx
+		try [eval-line "repl-blk: [a 2]"]
+		--assert 2 = try [eval-line "do {repl-blk/a}"]
+		--assert 2 = try [do {repl-blk/a}]
+		--assert none? ctx-value system/contexts/user 'repl-blk
+
+	--test-- "do string changes console words"
+		--assert 3 = try [eval-line "do {repl-blk: 3}"]
+		--assert 3 = ctx-value console/console-ctx 'repl-blk
+		--assert none? ctx-value system/contexts/user 'repl-blk
+
+	--test-- "do string puts new words to the user context"
+		--assert 4 = try [eval-line "do {repl-new: 4}"]
+		--assert 4 = ctx-value system/contexts/user 'repl-new
+		--assert none? ctx-value console/console-ctx 'repl-new
+		;; and the console sees it
+		--assert 4 = try [eval-line "repl-new"]
+
+	--test-- "load binds the same way"
+		--assert 3 = try [eval-line "do load {repl-blk}"]
+
+	--test-- "do string without a console"
+		system/console/current: none
+		--assert error? try [do {repl-blk/a}]
+		system/console/current: console
+===end-group===
+
+
 system/console/current: saved-console
 reset-console-ctx
 
-~~~end-file~~~
+~~~end-file~~~

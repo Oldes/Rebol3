@@ -54,6 +54,19 @@ intern: function [
 	resolve/only user-context lib index
 	; Copy only the new values into the user context
 
+	if object? console: attempt [system/console/current/console-ctx] [
+		; Words already defined in the console session must be used,
+		; else code like: `blk: [a 2] do {blk/a}` fails in the console
+
+		either block? :context [
+			bind :context console
+		][
+			if in console to word! :context [
+				context: bind :context console
+			]
+		]
+	]
+
 	:context
 ]
 
@@ -316,11 +329,6 @@ load-header: function/with [
 			]
 		][
 			return 'bad-header
-		]
-
-		lit-word? :header/name [
-			;; accept also `name: 'foo` (the header is not evaluated)
-			header/name: to word! header/name
 		]
 
 		word? :header/options [
