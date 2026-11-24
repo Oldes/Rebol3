@@ -4,6 +4,7 @@ Rebol [
 	File: 	 %func-test.r3
 	Tabs:	 4
 	Needs:   [%../quick-test-module.r3]
+	type:    private
 ]
 
 ~~~start-file~~~ "Function"
@@ -299,15 +300,16 @@ Rebol [
 		f2 arg1
 	]
 	--assert [a] = f 1 2
-	
-	;@@ https://github.com/Oldes/Rebol-issues/issues/886
+
+	;@@ https://github.com/Oldes/Rebol3/issues/1071
 	f: func[arg][p: 'arg]
-	f 1 2
-	; --assert none? context? p ; and no crash!
-	; not using above, because tests are run from `do`, so the context is not none like in console!
-	--assert same? :do context? p ; and no crash!
+	f 1
+	--assert same? :do context? p ; no crash!
+	--assert date? do has[a][now]
+
 	c: closure[a][context? 'a]
 	--assert all [object? o: c 1  o/a = 1]
+
 ===end-group===
 
 
