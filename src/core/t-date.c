@@ -768,8 +768,7 @@ set_time:
 	}
 
 	if (sym < SYM_YEAR || sym > SYM_JULIAN) {
-		//@@ https://github.com/Oldes/Rebol-issues/issues/1375
-		return (val) ? PE_BAD_SELECT : PE_NONE;
+		return PE_BAD_SELECT;
 	}
 
 	if (sym == SYM_TIMEZONE) {
@@ -855,7 +854,7 @@ set_time:
 			break;
 
 		default:
-			return PE_NONE;
+			return PE_BAD_SELECT;
 		}
 		SET_INTEGER(val, num);
 		return PE_USE;
