@@ -239,9 +239,14 @@ Rebol [
 	--test-- "hidden field in shared word list is skipped"
 		o: make object! [a: 1 h: 2]
 		c: copy o
-		c/h: 3
-		protect/hide in o 'h   ; shared word list -> hidden in both
 		--assert equal? o c
+		;; protect no longer hides the value in the prototype object
+		protect/hide in o 'h
+		--assert not equal? o c ;; not same anymore
+		--assert all [
+			[a]   = words-of o
+			[a h] = words-of c
+		]
 ===end-group===
 
 
