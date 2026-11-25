@@ -610,6 +610,11 @@ include-cipher-mode-cbc: [
 	; costs cca 1.5kB uncompressed (for AES)
 	config: MBEDTLS_CIPHER_MODE_CBC
 ]
+include-pbkdf2: [
+	core-files: %core/mbedtls/pkcs5.c
+	config: MBEDTLS_PKCS5_C
+]
+
 
 include-rsa: [
 	; costs cca 12kB uncompressed
@@ -703,6 +708,7 @@ include-cryptography: [
 	:include-rsa
 	
 	:include-cipher-mode-gcm ; By default just GCM as it is the most secure.
+	:include-pbkdf2          ; Password-Based Key Derivation Function 2
 
 	:include-codec-crt
 	:include-codec-der
@@ -1001,7 +1007,7 @@ include-rebol-bulk: [
 	:include-lz4-compression
 	:include-lzav-compression
 	:include-lzw-compression    ;= cca 2kB
-	:include-brotli-compression ;= cca 330kB
+;	:include-brotli-compression ;= cca 330kB
 	:include-crush-compression
 	:include-base36-encoding
 	:include-base85-encoding

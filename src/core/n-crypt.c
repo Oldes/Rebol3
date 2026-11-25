@@ -41,6 +41,10 @@
 #include "sys-poly1305.h"
 #endif
 
+#ifdef MBEDTLS_PKCS5_C
+#include "mbedtls/pkcs5.h"
+#endif
+
 
 static mbedtls_entropy_context entropy;
 static mbedtls_ctr_drbg_context ctr_drbg;
@@ -452,6 +456,70 @@ static mbedtls_md_type_t Sym_To_MD_Type(REBCNT sym)
 	default:            return MBEDTLS_MD_NONE;
 	}
 }
+
+/***********************************************************************
+**
+*/	REBNATIVE(pbkdf2)
+/*
+//  pbkdf2: native [
+//		"Derive a key from a password using PBKDF2 (RFC 8018) with HMAC"
+//		pass   [binary! any-string!] "Password (strings are used as UTF-8)"
+//		salt   [binary! any-string!] "Salt value"
+//		count  [integer!] "Number of iterations"
+//		length [integer!] "Requested length of the derived key in bytes"
+//		method [word!]    "HMAC digest: sha1 sha224 sha256 sha384 sha512"
+//  ]
+***********************************************************************/
+{
+#ifndef MBEDTLS_PKCS5_C
+	Trap0(RE_FEATURE_NA);
+	return R_NONE; // just to silent a warning
+#else
+	REBVAL *val_pass   = D_ARG(1);
+	REBVAL *val_salt   = D_ARG(2);
+	REBVAL *val_count  = D_ARG(3);
+	REBVAL *val_length = D_ARG(4);
+	REBVAL *val_method = D_ARG(5);
+
+	REBI64  count  = VAL_INT64(val_count);
+	REBI64  klen   = VAL_INT64(val_length);
+	REBSER *out;
+	REBINT  err;
+	mbedtls_md_type_t md_alg = Sym_To_MD_Type(VAL_WORD_CANON(val_method));
+
+	switch (md_alg) {
+	case MBEDTLS_MD_SHA1:
+#ifdef INCLUDE_SHA224
+	case MBEDTLS_MD_SHA224:
+#endif
+	case MBEDTLS_MD_SHA256:
+#ifdef INCLUDE_SHA384
+	case MBEDTLS_MD_SHA384:
+#endif
+	case MBEDTLS_MD_SHA512:
+		break;
+	default: // md5, ripemd160 and unknown words are refused
+		Trap_Arg(val_method);
+	}
+	if (count < 1 || count > 0x7FFFFFFF) Trap_Arg(val_count);
+	if (klen  < 1 || klen  > (1 << 20))  Trap_Arg(val_length); // 1 MiB sanity cap
+
+	out = Make_Binary((REBCNT)klen);
+
+	err = mbedtls_pkcs5_pbkdf2_hmac_ext(
+		md_alg, VAL_BIN_AT(val_pass), VAL_BIN_LEN(val_pass), VAL_BIN_AT(val_salt), VAL_BIN_LEN(val_salt),
+		(unsigned int)count, (uint32_t)klen, BIN_DATA(out));
+	if (err) {
+		CLEAR(BIN_DATA(out), (REBCNT)klen);
+		Free_Series(out);
+		return R_NONE;
+	}
+	SET_BINARY(D_RET, out);
+	BIN_LEN(out) = (REBCNT)klen;
+	return R_RET;
+#endif // MBEDTLS_PKCS5_C
+}
+
 /***********************************************************************
 **
 */	REBNATIVE(rsa)

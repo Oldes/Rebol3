@@ -291,4 +291,19 @@ sY29ouezv4Xz2PuMch5VGPP+CDqzCM4loWgV
 ===end-group===
 
 
+===start-group=== "Password-Based Key Derivation Function 2"
+--test-- "pbkdf2 native: RFC 6070 / sha256 vectors"
+	--assert #{0c60c80f961f0e71f3a9b524af6012062fe037a6} = pbkdf2 "password" "salt" 1 20 'sha1
+	--assert #{4b007901b765489abead49d926f721d065a429c1} = pbkdf2 "password" "salt" 4096 20 'sha1
+	--assert #{3d2eec4fe41c849b80c8d83662c0e44a8b291a964cf2f07038} = pbkdf2 "passwordPASSWORDpassword" "saltSALTsaltSALTsaltSALTsaltSALTsalt" 4096 25 'sha1
+	--assert #{c5e478d59288c841aa530db6845c4c8d962893a001ce4e11a4963873aa98134a} = pbkdf2 "password" "salt" 4096 32 'sha256
+	--assert #{ae4d0c95af6b46d32d0adff928f06dd02a303f8ef3c251dfd6e2d85a95474c43830651afcb5c862f} = pbkdf2 "password" "salt" 2 40 'sha256
+
+--test-- "pbkdf2 native: bad arguments"
+	--assert error? try [pbkdf2 "p" "s" 0 32 'sha256]
+	--assert error? try [pbkdf2 "p" "s" 1  0 'sha256]
+	--assert error? try [pbkdf2 "p" "s" 1 32 'md5]
+	--assert error? try [pbkdf2 "p" "s" 1 32 'nonsense]
+===end-group===
+
 ~~~end-file~~~
