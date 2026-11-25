@@ -4,6 +4,7 @@ Rebol [
 	File: 	 %compress-test.r3
 	Tabs:	 4
 	Needs:   [%../quick-test-module.r3]
+	type:    private
 ]
 
 ~~~start-file~~~ "Compress/Decompress"
@@ -156,10 +157,7 @@ text: {Lorem ipsum dolor sit amet, consectetur adipisici elit, sed eiusmod tempo
 
 ===start-group=== "Brotli compression / decompression"
 	--test-- "Brotli compress/decompress"
-	either error? e: try [compress "test" 'br][
-		;-- Brotli compression is not available in current build
-		--assert  'feature-na = e/id
-	][	
+	if find system/catalog/compressions 'br [
 		--assert  data = to string! decompress compress data 'br 'br
 
 		--test-- "Brotli compress/decompress while specifing level of compression"

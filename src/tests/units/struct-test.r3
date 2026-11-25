@@ -4,6 +4,7 @@ Rebol [
 	File: 	 %struct-test.r3
 	Tabs:	 4
 	Needs:   [%../quick-test-module.r3]
+	type:    private
 ]
 
 ;; Rebol values stored in a struct are reachable only from the struct's data

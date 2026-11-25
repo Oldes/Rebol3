@@ -4,6 +4,7 @@ Rebol [
 	File:    %repl-test.r3
 	Tabs:    4
 	Needs:   [%../quick-test-module.r3]
+	type:    private
 ]
 
 ~~~start-file~~~ "REPL"
@@ -135,4 +136,4 @@ eval-line: func[line [string!]][do console/bind-code transcode line]
 system/console/current: saved-console
 reset-console-ctx
 
-~~~end-file~~~
+~~~end-file~~~

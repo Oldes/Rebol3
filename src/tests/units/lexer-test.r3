@@ -4,6 +4,7 @@ Rebol [
 	File: 	 %lexer-test.r3
 	Tabs:	 4
 	Needs:   [%../quick-test-module.r3]
+	;type:    private
 ]
 
 ~~~start-file~~~ "Lexer"
@@ -98,7 +99,7 @@ Rebol [
 		--assert error? try [transcode/one {a/"b}]
 	--test-- "literal strings as path elements"
 	;@@ https://github.com/Oldes/Rebol3/issues/931
-		blk: [<a> "b" @c #d 1]
+		set 'blk [<a> "b" @c #d 1]
 		--assert "b" == attempt [do {blk/<a>}]
 		--assert @c  == attempt [do {blk/"b"}]
 		--assert #d  == attempt [do {blk/@c }]

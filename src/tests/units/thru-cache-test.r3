@@ -4,11 +4,14 @@ Rebol [
 	File: 	 %thru-cache-test.r3
 	Tabs:	 4
 	Needs:   [%../quick-test-module.r3]
+	;type:    private
 ]
 
 ~~~start-file~~~ "THRU-CACHE"
 
 if module? try [import 'thru-cache][
+probe :read-thru
+probe :exists-thru?
 ;@@ https://github.com/Oldes/Rebol-issues/issues/2554
 ===start-group=== "thru cache functions"
 	--test-- "read-thru"

@@ -71,6 +71,7 @@ dt [ ;- delta time
 		%rebin-test.r3
 		%repl-test.r3
 		%series-test.r3
+		%slice-test.r3
 		%stack-test.r3
 		%struct-test.r3
 		%task-test.r3
@@ -100,7 +101,7 @@ dt [ ;- delta time
 		;%xx-test.r3
 		;%_test.r3
 	][
-		try/with [wrap load file] func[error][
+		try/with [do file] func[error][
 			repend failed-units [file error]
 		]
 	]

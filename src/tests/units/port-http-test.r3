@@ -4,6 +4,7 @@ Rebol [
 	File: 	 %port-http-test.r3
 	Tabs:	 4
 	Needs:   [%../quick-test-module.r3]
+	type:    private
 ]
 
 ~~~start-file~~~ "port-http"
@@ -141,7 +142,7 @@ system/schemes/http/spec/timeout: 30
 		--assert ["<html><head>" {<meta name="generator" content="REBOL WIP Wiki"/>}]  = read/lines/seek/part http://rebol.com 1 2
 		; using /lines with /binary is not allowed
 		--assert all [error? e: try [read/lines/binary http://rebol.com] e/id = 'bad-refine]
-		--assert all [block? b: try [read/lines/seek http://rebol.com 2] b/1 = "<!doctype html>"]
+		--assert all [block? b: try [read/lines/seek http://rebol.com 2] b/1 = {<meta name="generator" content="REBOL WIP Wiki"/>}]
 
 	--test-- "read/string/binary"
 		--assert all [error? e: try [read/string/binary http://example.com] e/id = 'bad-refines]

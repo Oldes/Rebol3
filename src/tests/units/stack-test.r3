@@ -3,6 +3,7 @@ Rebol [
 	Author:  "Oldes"
 	File: 	 %stack-test.r3
 	Needs:   [%../quick-test-module.r3]
+	type:    private
 ]
 
 ;- Helpers for stack expansion tests

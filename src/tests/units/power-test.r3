@@ -6,6 +6,7 @@ Rebol [
 	Rights:  "Copyright (C) 2011-2017, Nenad Rakocevic & Peter W A Wood & mahengyang. All rights reserved."
 	License: "BSD-3 - https://github.com/red/red/blob/origin/BSD-3-License.txt"
 	Needs:   [%../quick-test-module.r3]
+	type:    private
 ]
 
 ~~~start-file~~~ "power"

@@ -4,6 +4,7 @@ Rebol [
 	File: 	 %fuzz-test.r3
 	Tabs:	 4
 	Needs:   [%../quick-test-module.r3 %../fuzz-module.r3]
+	type:    private
 ]
 
 ~~~start-file~~~ "FUZZ helper"

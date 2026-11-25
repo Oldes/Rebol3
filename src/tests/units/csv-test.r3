@@ -14,6 +14,7 @@ Red [
 		4. No `/header`, `/as-columns`, `/as-records`, `/flat`, `/align` and `/trim` refinements.
 		5. Rebol always quotes strings even when not necessary.
 	}
+	type:    private
 ]
 
 ~~~start-file~~~ "CSV codec"

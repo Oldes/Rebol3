@@ -7,6 +7,7 @@ Rebol [
 	License: "BSD-3 - https://github.com/red/red/blob/origin/BSD-3-License.txt"
 	Needs:   [%../quick-test-module.r3]
 	Notes:   {Taken from Red-language and ported for use in Rebol3 by Oldes}
+	;type:    private ;@@ do-object-1 would fail if loaded as a private script!
 ]
 
 ~~~start-file~~~ "evaluation"

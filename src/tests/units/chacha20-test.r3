@@ -7,6 +7,7 @@ Rebol [
 	Note: {
 		This test is deprecated as `chacha20` and `chacha20poly1305` functions
 		are removed in favour of the new `crypt` port.}
+	type:    private
 ]
 
 ~~~start-file~~~ "ChaCha20"
