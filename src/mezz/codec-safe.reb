@@ -78,7 +78,9 @@ register-codec [
 		][
 			salt: make binary! 16
 			binary/write salt [random-bytes 16]
-			keys:    derive-keys any [password ask-password] salt count
+			unless key [password: ask-password/new]
+			unless password [cause-error 'script 'need-value ['password]]
+			keys:    derive-keys password salt count
 			enc-key: keys/1
 			mac-key: keys/2
 			if ctx [repend clear ctx [salt count enc-key mac-key]]
@@ -123,6 +125,7 @@ register-codec [
 			| "1.0" (fun: :decode-v1)
 			] to end
 		][
+			unless key [password: ask-password]
 			attempt [fun data password ctx]
 		]
 	]
@@ -162,7 +165,8 @@ register-codec [
 			enc-key: ctx/3
 			mac-key: ctx/4
 		][
-			keys:    derive-keys any [password ask-password] salt count
+			unless password [return none]
+			keys:    derive-keys password salt count
 			enc-key: keys/1
 			mac-key: keys/2
 		]
@@ -192,7 +196,7 @@ register-codec [
 	decode-v1: function [
 		data     [binary!]
 		password [any-string! binary! none!]
-		ctx      [block! none!] "Not used (v1 has no key derivation)"
+		ctx      [block! none!] ;; Not used (v1 has no key derivation)
 	][
 		binary/read data [
 			SKIP 8
@@ -205,7 +209,7 @@ register-codec [
 		]
 		cipher: to word! to string! method
 
-		password: any [password ask-password]
+		unless password [return none]
 		unless binary? password [
 			password: checksum password 'sha256
 		]
@@ -230,11 +234,14 @@ register-codec [
 		output
 	]
 
-	ask-password: does [
-		any [
-			get-env  "REBOL_SAFE_PASS"
-			ask/hide "Enter SAFE Password: "
-		]
+	ask-password: func[
+		;; Returns REBOL_SAFE_PASS (when not empty) or asks for the password
+		/new ;; Ask twice when typed, as the password is used for new data
+		/local pass confirm
+	][
+		if all [pass: get-env "REBOL_SAFE_PASS" not empty? pass][return pass]
+		confirm: did new
+		lib/ask-password/:confirm "Enter SAFE Password: "
 	]
 ]
 
@@ -244,7 +251,7 @@ sys/make-scheme [
 	name: 'safe
 	lock-wait: 0:00:01 ;; how long to wait for a file locked by another port or process
 	actor: [
-		open: func [port [port!] /local spec host][
+		open: func [port [port!] /local spec host pw][
 			spec: port/spec
 			spec/ref: rejoin either/only host: select spec 'host [
 				https:// host
@@ -257,14 +264,20 @@ sys/make-scheme [
 			if %.safe <> suffix? spec/ref [
 				append spec/ref %.safe
 			]
+			;; REBOL_SAFE_PASS or a prompt (confirmed when the file is new)
+			pw: any [
+				select spec 'pass
+				either exists? spec/ref [
+					system/codecs/safe/ask-password
+				][	system/codecs/safe/ask-password/new ]
+			]
+			unless pw [
+				cause-error 'access 'cannot-open reduce [spec/ref "no password"]
+			]
 
 			port/extra: object [
 				data: none
-				pass: any [
-					select spec 'pass
-					get-env  "REBOL_SAFE_PASS"
-					ask/hide "Enter password: "
-				]
+				pass: pw
 				keys:  copy [] ;; derived key cache, so PBKDF2 runs once per salt
 				file:  port/spec/ref
 				stamp: none    ;; file modification time at our last load or save
@@ -273,12 +286,10 @@ sys/make-scheme [
 				;; A lock held by someone else fails immediately with the `locked` error,
 				;; so it is retried until LOCK-WAIT expires. Locks are released
 				;; by the OS when the process dies, so there are no stale locks.
-				lock-file: func[write? [logic!] /local deadline res][
+				lock-file: func[write [logic!] /local deadline res][
 					deadline: now/precise + system/schemes/safe/lock-wait
 					forever [
-						res: try [
-							either write? [open/read/write/lock file][open/read/lock file]
-						]
+						res: try [open/read/:write/lock file]
 						unless error? res [return res]
 						if any [
 							res/id != 'locked
@@ -417,7 +428,7 @@ sys/make-scheme [
 						]
 						lib/set [old new] new
 					][
-						old: ask/hide "Old password: "
+						old: lib/ask-password "Old password: "
 					]
 					either pass == old [
 						pass: new

@@ -279,6 +279,51 @@ user: system/user/name ;; store existing user
 ===end-group===
 
 
+===start-group=== "SAFE codec with no password"
+	bin: system/codecs/safe/encode/key/iterations [1] "x" 1000
+	--test-- "decode/key none returns none without asking"
+		--assert none? system/codecs/safe/decode/key bin none
+	--test-- "encode/key none fails without asking"
+		--assert all [
+			error? e: try [system/codecs/safe/encode/key [1] none]
+			e/id = 'need-value
+		]
+===end-group===
+
+
+===start-group=== "set-user"
+	f: %tmp-user-test.safe
+	g: %tmp-user-test.dat
+	delete f
+	delete join g %.safe
+	--test-- "user's returns stored false"
+		set-user/p/f/n tester "x" f
+		put system/user/data 'flag false
+		--assert false == user's flag
+	--test-- "wrong password keeps the current user"
+		put system/user/data 'a 1
+		--assert error? try [set-user/p/f other "wrong" f]
+		--assert @tester == system/user/name
+		--assert 1 == user's a
+	--test-- "logout saves and closes"
+		port: system/user/data
+		set-user none
+		--assert none? system/user/name
+		--assert not open? port
+		set-user/p/f tester "x" f
+		--assert 1 == user's a
+		set-user none
+	--test-- "custom file without the .safe suffix"
+		set-user/p/f/n tester "x" g
+		set-user none
+		--assert did exists? join g %.safe
+		--assert not error? try [set-user/p/f tester "x" g] ;; found without /n
+		--assert @tester == system/user/name
+		set-user none
+	delete f
+	delete join g %.safe
+===end-group===
+
 set-env "REBOL_SAFE_PASS" :temp
 set-user :user
 ]

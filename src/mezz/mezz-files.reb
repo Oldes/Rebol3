@@ -112,6 +112,21 @@ ask: func [
 	either only [wait-key/only limit][input/:hide]
 ]
 
+ask-password: func [
+	"Asks for a password without echoing the input."
+	question [series!] "Prompt to user"
+	/confirm "Ask again, until the same password is entered twice"
+	/local pass again
+][
+	forever [
+		unless pass: ask/hide question [return none] ;; cancelled
+		unless confirm [return pass]
+		unless again: ask/hide "Repeat password: " [return none]
+		if pass == again [return pass]
+		print as-purple "Passwords do not match, try again."
+	]
+]
+
 confirm: func [
 	"Confirms a user choice."
 	question [series!] "Prompt to user"

@@ -52,10 +52,7 @@ user's: func[
 	"Resolves user's data value"
 	'key /local data
 ][
-	all [
-		data: select system/user 'data
-		select :data :key
-	]
+	if data: select system/user 'data [select :data :key]
 ]
 
 su: set-user: func[
@@ -66,11 +63,11 @@ su: set-user: func[
 	/f "Use custom persistent data file location"
 	 file [file!]
 	/n "Setup a user if does not exists"
-	/local su
+	/local su port
 ][
 	su: system/user
-	if any [none? :name unset? :name] [
-		try [update su/data] ;; save changes if there are any
+	if any [none? :name unset? :name 'none == :name] [
+		if port? su/data [close su/data] ;; saves changes and releases the password
 		su/name: none
 		su/data: make map! 1
 		exit
@@ -78,10 +75,13 @@ su: set-user: func[
 
 	sys/log/info 'REBOL ["Initialize user:" as-green :name]
 
-	file: any [
-		all [file to-real-file file] ;@@ could to-real-file accept none?
+	file: either file [
+		any [to-real-file file  clean-path file]
+	][
 		rejoin [system/options/home #"." :name %.safe]
 	]
+	;; the scheme opens the file with the .safe suffix, so check the same name
+	if %.safe <> suffix? file [append file %.safe]
 	sys/log/debug 'REBOL ["Checking if exists: " as-green file]
 	unless exists? file [
 		unless n [
@@ -90,22 +90,19 @@ su: set-user: func[
 		]
 		sys/log/info 'REBOL ["Creating a new persistent storage file:" as-green file]
 	]
-	password: any [
-		password
-		get-env "REBOL_SAFE_PASS"
-		ask/hide "Enter password: "
-	]
-	
-	if port? su/data [ close su/data ]
 
-	file: split-path :file
-	su/name: either email? :name [:name][to ref! :name]
-	su/data: open [
+	file: split-path file
+	;; open first, so a failure (wrong password) keeps the current user intact;
+	;; without /p the scheme uses REBOL_SAFE_PASS or asks (twice for a new file)
+	port: open [
 		scheme: 'safe
 		pass:   password
 		path:   file/1
 		target: file/2
 	]
+	if port? su/data [ close su/data ]
+	su/name: either email? :name [:name][to ref! :name]
+	su/data: port
 ]
 
 file-checksum: function [
