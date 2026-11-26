@@ -55,6 +55,29 @@ user's: func[
 	if data: select system/user 'data [select :data :key]
 ]
 
+remember: func [
+	"Stores a value in the user's persistent data (saved on update or logout)"
+	'key [word!]
+	value [any-type!]
+][
+	unless port? system/user/data [fail "No user is logged in!"]
+	put system/user/data key :value
+]
+
+remembered: func [
+	"Returns words of the stored user's persistent data"
+][
+	either port? system/user/data [query system/user/data 'keys][copy []]
+]
+
+forget: func [
+	"Removes a value from the user's persistent data"
+	'key [word!]
+][
+	unless port? system/user/data [fail "No user is logged in!"]
+	remove/key system/user/data key
+]
+
 su: set-user: func[
 	"Initialize user's persistent data under system/user"
 	'name [word! ref! string! email! unset! none!] "User's name"

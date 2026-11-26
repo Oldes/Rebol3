@@ -327,6 +327,28 @@ user: system/user/name ;; store existing user
 		set-user/p/f "John Doe" "x" f
 		--assert "John Doe" == system/user/name
 		set-user none
+
+	--test-- "remember and forget"
+		set-user/p/f/n tester "x" f
+		remember token "abc"
+		--assert "abc" == user's token
+		forget token
+		--assert none? user's token
+	--test-- "remember without a user fails"
+		set-user none
+		--assert error? try [remember token "abc"]
+		--assert error? try [forget token]
+	--test-- "query and remembered list stored keys"
+		set-user/p/f/n tester "x" f
+		remember a 1
+		remember b 2
+		--assert did all [find remembered 'a  find remembered 'b]
+		--assert did all [find query system/user/data 'keys 'a]
+		forget a
+		--assert not find remembered 'a
+	--test-- "remembered without a user"
+		set-user none
+		--assert empty? remembered
 	delete f
 	delete join g %.safe
 ===end-group===

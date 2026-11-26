@@ -180,9 +180,10 @@ su oldes
 Store and read values:
 
 ```rebol
-put system/user/data 'github-token "ghp_xxxxx"
+remember github-token "ghp_xxxxx"
 user's github-token
 ;== "ghp_xxxxx"
+forget github-token
 ```
 
 `user's` returns `none` when the value is not stored or when no user is

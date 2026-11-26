@@ -304,6 +304,7 @@ sys/make-scheme [
 						as-red file
 					]
 				]
+				words: does [words-of data]
 				get:  func[key /local value][
 					; returned values are always copied, if possible, so
 					; they are not modified by accident from outside
@@ -445,7 +446,7 @@ sys/make-scheme [
 				sync
 
 				protect/words/hide [data pass keys load save]
-				protect/words [get set rem sync open? change-pass lock-file conflict reload overwrite]
+				protect/words [get set rem sync open? change-pass lock-file conflict reload overwrite words]
 			]
 
 			unless port/extra/open? [
@@ -485,6 +486,12 @@ sys/make-scheme [
 				password  [port/extra/change-pass :value]
 				reload    [if value [port/extra/reload]]
 				overwrite [if value [port/extra/overwrite]]
+			]
+		]
+		query: func[port field][
+			;@@ add more fields?
+			either field = 'keys [port/extra/words][
+				cause-error 'script 'invalid-arg reduce [field]
 			]
 		]
 	]
