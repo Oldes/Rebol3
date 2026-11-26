@@ -502,11 +502,16 @@ fail:
 */	DEVICE_CMD Rename_File(REBREQ *file)
 /*
 **		Rename a file or directory.
+**		An existing target file is replaced (same as rename on Posix).
 **		Note: cannot rename across file volumes.
 **
 ***********************************************************************/
 {
-	if (MoveFile((REBCHR*)(file->file.path), (REBCHR*)(file->data))) return DR_DONE;
+	if (MoveFileEx(
+		(REBCHR*)(file->file.path),
+		(REBCHR*)(file->data),
+		MOVEFILE_REPLACE_EXISTING
+	)) return DR_DONE;
 	file->error = GetLastError();
 	return DR_ERROR;
 }

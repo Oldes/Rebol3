@@ -285,6 +285,17 @@ if find [Linux macOS] system/platform [
 ===end-group===
 
 
+===start-group=== "RENAME"
+	--test-- "rename replaces an existing target file"
+		write %tmp-rename-a.txt "a"
+		write %tmp-rename-b.txt "b"
+		rename %tmp-rename-a.txt %tmp-rename-b.txt
+		--assert not exists? %tmp-rename-a.txt
+		--assert "a" == read/string %tmp-rename-b.txt
+		delete %tmp-rename-b.txt
+===end-group===
+
+
 ===start-group=== "QUERY"
 	--test-- "query file dates (some asserts may fail in CI and WSL)"
 		write %query-test "test"
