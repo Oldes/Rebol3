@@ -226,6 +226,9 @@ static BOOL Seek_File_64(REBREQ *file)
 **			calling this function.
 **		3.	REBOL clears necessary fields of file structure before
 **			calling (e.g. error and size fields).
+**		4.	With RFM_LOCK the whole file is locked using LockFileEx
+**			(non-blocking). Truncation is then done only after the lock
+**			is acquired, so a file locked by someone else is never truncated.
 **
 **		!! Confirm that /seek /append works properly.
 **
@@ -234,6 +237,7 @@ static BOOL Seek_File_64(REBREQ *file)
 	DWORD attrib = FILE_ATTRIBUTE_NORMAL;
 	DWORD access = 0;
 	DWORD create = 0;
+	BOOL truncate = FALSE;
 	HANDLE h;
 	BY_HANDLE_FILE_INFORMATION info;
 
@@ -252,7 +256,13 @@ static BOOL Seek_File_64(REBREQ *file)
 				GET_FLAG(file->modes, RFM_APPEND) ||
 				GET_FLAG(file->modes, RFM_SEEK)
 			)
-		) create = CREATE_ALWAYS;
+		) {
+			if (GET_FLAG(file->modes, RFM_LOCK)) {
+				create = OPEN_ALWAYS;
+				truncate = TRUE; // after locking
+			}
+			else create = CREATE_ALWAYS;
+		}
 		else create = OPEN_ALWAYS;
 	}
 
@@ -274,10 +284,32 @@ static BOOL Seek_File_64(REBREQ *file)
 		goto fail;
 	}
 
+	if (GET_FLAG(file->modes, RFM_LOCK)) {
+		OVERLAPPED ov = {0};
+		DWORD flags = LOCKFILE_FAIL_IMMEDIATELY;
+		if (GET_FLAGS(file->modes, RFM_WRITE, RFM_APPEND)) flags |= LOCKFILE_EXCLUSIVE_LOCK;
+		if (!LockFileEx(h, flags, 0, MAXDWORD, MAXDWORD, &ov)) {
+			file->error = (GetLastError() == ERROR_LOCK_VIOLATION) ? -RFE_LOCKED : -RFE_OPEN_FAIL;
+			CloseHandle(h);
+			goto fail;
+		}
+		// The file pointer is at 0 right after opening:
+		if (truncate && !SetEndOfFile(h)) {
+			UnlockFileEx(h, 0, MAXDWORD, MAXDWORD, &ov);
+			CloseHandle(h);
+			file->error = -RFE_OPEN_FAIL;
+			goto fail;
+		}
+	}
+
 	// Confirm that a seek-mode file is actually seekable:
 	if (GET_FLAG(file->modes, RFM_SEEK)) {
 		// Below should work because we are seeking to 0:
 		if (SetFilePointer(h, 0, 0, FILE_BEGIN) == INVALID_SET_FILE_POINTER) {
+			if (GET_FLAG(file->modes, RFM_LOCK)) {
+				OVERLAPPED ov = {0};
+				UnlockFileEx(h, 0, MAXDWORD, MAXDWORD, &ov);
+			}
 			CloseHandle(h);
 			file->error = -RFE_BAD_SEEK;
 			goto fail;
@@ -305,6 +337,8 @@ fail:
 */	DEVICE_CMD Close_File(REBREQ *file)
 /*
 **		Closes a previously opened file.
+**		A lock is released explicitly, because releasing it
+**		on close may be delayed by the system.
 **
 ***********************************************************************/
 {
@@ -313,6 +347,10 @@ fail:
 			FindClose((HANDLE)(file->handle));
 		}
 		else {
+			if (GET_FLAG(file->modes, RFM_LOCK)) {
+				OVERLAPPED ov = {0};
+				UnlockFileEx((HANDLE)(file->handle), 0, MAXDWORD, MAXDWORD, &ov);
+			}
 			CloseHandle((HANDLE)(file->handle));
 		}
 		file->handle = 0;

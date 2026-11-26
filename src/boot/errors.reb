@@ -218,7 +218,7 @@ Access: [
 
 	invalid-utf:		[{invalid Unicode encoding:} :arg1]
 	invalid-char:		[{invalid UTF-8 character:} :arg1]
-
+	locked:             [{file is locked:} :arg1]
 ]
 
 Command: [

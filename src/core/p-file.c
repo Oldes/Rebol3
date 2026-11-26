@@ -52,6 +52,7 @@
 	if (args & AM_OPEN_WRITE) SET_FLAG(file->modes, RFM_WRITE);
 	if (args & AM_OPEN_READ) SET_FLAG(file->modes, RFM_READ);
 	if (args & AM_OPEN_SEEK) SET_FLAG(file->modes, RFM_SEEK);
+	if (args & AM_OPEN_LOCK) SET_FLAG(file->modes, RFM_LOCK);
 
 	if (args & AM_OPEN_NEW) {
 		SET_FLAG(file->modes, RFM_NEW);
@@ -179,7 +180,10 @@
 {
 	if (IS_OPEN(file)) Trap1(RE_ALREADY_OPEN, path);
 
-	if (OS_Do_Device(file, RDC_OPEN) < 0) Trap_Port(RE_CANNOT_OPEN, port, file->error);
+	if (OS_Do_Device(file, RDC_OPEN) < 0) {
+		if (file->error == -RFE_LOCKED) Trap1(RE_LOCKED, path);
+		Trap_Port(RE_CANNOT_OPEN, port, file->error);
+	}
 
 	SET_OPEN(file);
 }

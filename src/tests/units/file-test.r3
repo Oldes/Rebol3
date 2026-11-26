@@ -332,4 +332,42 @@ if find [Linux macOS] system/platform [
 		delete %tmp-read-lines-utf8
 ===end-group===
 
+
+===start-group=== "open/lock"
+	f: %tmp-lock-test.txt
+	write f "abc"
+	--test-- "exclusive lock excludes other locks"
+		p1: open/write/lock f
+		--assert all [
+			error? e: try [open/read/lock f]
+			e/id = 'locked
+			e/arg1 == f
+		]
+		--assert all [
+			error? e: try [open/write/lock f]
+			e/id = 'locked
+		]
+		close p1
+	--test-- "lock is released on close"
+		--assert not error? try [p1: open/write/lock f]
+		close p1
+	--test-- "shared locks coexist, but exclude an exclusive lock"
+		p1: open/read/lock f
+		--assert not error? try [p2: open/read/lock f]
+		--assert error? try [open/write/lock f]
+		close p1
+		close p2
+	--test-- "open/new/lock does not truncate a locked file"
+		write f "abc"
+		p1: open/read/lock f
+		--assert error? try [open/new/write/lock f]
+		close p1
+		--assert "abc" == read/string f
+	--test-- "open/new/lock truncates after locking"
+		p1: open/new/write/lock f
+		close p1
+		--assert 0 == size? f
+	delete f
+===end-group===
+
 ~~~end-file~~~

@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2024 Rebol Open Source Developers
+**  Copyright 2012-2026 Rebol Open Source Developers
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -37,6 +37,7 @@ enum {
 	RFM_READONLY,
 	RFM_TRUNCATE,
 	RFM_RESEEK,			// file index has moved, reseek
+	RFM_LOCK,			// lock the file (exclusive when writing, shared when read-only)
 //	RFM_NAME_MEM,		// converted name allocated in mem
 	RFM_DIR = 16,
 	RFM_DRIVES,         // used only on Windows to get logical drives letters (read %/)
@@ -55,6 +56,7 @@ enum {
 	RFE_BAD_WRITE,		// Write failed (general)
 	RFE_DISK_FULL,		// No space on target volume
 	RFE_RESIZE_SERIES,  // Used on Posix to report, that the target series must be resized
+	RFE_LOCKED,			// File is locked by another open port or process
 };
 
 #define MAX_FILE_NAME 1022

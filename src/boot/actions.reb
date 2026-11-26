@@ -407,6 +407,7 @@ open: action [
 	/seek  {Optimize for random access}
 	/allow {Specifies protection attributes}
 		access [block!]
+	/lock  {Lock the file: exclusive for write access, shared when read-only; fails if already locked}
 ]
 
 close: action [
