@@ -24,6 +24,7 @@ dt [ ;- delta time
 		%char-test.r3
 		%codecs-test.r3
 		%codecs-test-pdf.r3
+		%codecs-test-safe.r3
 		%compare-test.r3
 		%compress-test.r3
 		%conditional-test.r3
