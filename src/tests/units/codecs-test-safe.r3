@@ -320,6 +320,13 @@ user: system/user/name ;; store existing user
 		--assert not error? try [set-user/p/f tester "x" g] ;; found without /n
 		--assert @tester == system/user/name
 		set-user none
+	--test-- "user name keeps its type unless it is a word"
+		set-user/p/f/n tester "x" f
+		--assert @tester == system/user/name
+		set-user none
+		set-user/p/f "John Doe" "x" f
+		--assert "John Doe" == system/user/name
+		set-user none
 	delete f
 	delete join g %.safe
 ===end-group===

@@ -101,7 +101,7 @@ su: set-user: func[
 		target: file/2
 	]
 	if port? su/data [ close su/data ]
-	su/name: either email? :name [:name][to ref! :name]
+	su/name: either word? :name [to ref! :name][:name]
 	su/data: port
 ]
 
