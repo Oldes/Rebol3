@@ -299,6 +299,27 @@ sY29ouezv4Xz2PuMch5VGPP+CDqzCM4loWgV
 	--assert #{c5e478d59288c841aa530db6845c4c8d962893a001ce4e11a4963873aa98134a} = pbkdf2 "password" "salt" 4096 32 'sha256
 	--assert #{ae4d0c95af6b46d32d0adff928f06dd02a303f8ef3c251dfd6e2d85a95474c43830651afcb5c862f} = pbkdf2 "password" "salt" 2 40 'sha256
 
+--test-- "pbkdf2 RFC6070 sha1"
+	--assert #{4b007901 b765489a bead49d9 26f721d0 65a429c1}
+		== pbkdf2 "password" "salt" 4096 20 'sha1
+	--assert #{3d2eec4f e41c849b 80c8d836 62c0e44a 8b291a96 4cf2f070 38}
+		== pbkdf2 "passwordPASSWORDpassword" "saltSALTsaltSALTsaltSALTsaltSALTsalt" 4096 25 'sha1
+--test-- "pbkdf2 truncated digests"
+	--assert #{d3bcf320 fd918908 eafcaa46 0faf40e2 01f6508d 4e6f3d9c 1c0abd30 dae0}
+		== pbkdf2 "password" "salt" 1000 30 'sha224
+	--assert #{39d8a4fc 9cb39479 fb78c58b f9f16f7f 9f31f208 d4506933 b0b7480c 2d4767df 65ee38cd af3096ad c7c6d395 9a86072a 9346}
+		== pbkdf2 append/dup copy "" #"x" 200 "salt" 1000 50 'sha384
+--test-- "pbkdf2 multi-block output"
+	--assert #{632c2812 e46d4604 102ba761 8e9d6d7d 2f8128f6 266b4a03 264d2a04 60b7dcb3 88b3b113 1f741bcb eb02541c 8c2e97bd 8bed62ab 6425542e 45512b73 12f440eb c6}
+		== pbkdf2 "password" "salt" 1000 65 'sha256
+	--assert #{def3e2b5 89c4e398 c92a4a88 01376122 92e18e24 ca7b2b90 ee63593c e9ce27af fee3fcf2 ff69e52e 5b757614 1cb79b50 dfb087cc d6e10a91 f9dc6c8c 45e9ba88 9f7bba08 e8159b23 30aeda67 6f5d1587 cf0981e2 6ac740ed 4134128b 41c37fe5 53d9845d 085dfb5a 3e130bfd 713ade43 f2ec6333 fa34e779 5bccd8aa 559ecda3 7d}
+		== pbkdf2 append/dup copy "" #"x" 200 "salt" 1000 129 'sha512
+--test-- "pbkdf2 long and empty password"
+	--assert #{7a376e3c 42d7a023 046642e9 868ba805 fe08a73c 53e2c489 a4a06279 d921a43e}
+		== pbkdf2 append/dup copy "" #"x" 65 "salt" 1000 32 'sha256
+	--assert #{f7ce0b65 3d2d72a4 108cf5ab e912ffdd 777616db bb27a70e 8204f3ae 2d0f6fad}
+		== pbkdf2 "" "" 1 32 'sha256
+
 --test-- "pbkdf2 native: bad arguments"
 	--assert error? try [pbkdf2 "p" "s" 0 32 'sha256]
 	--assert error? try [pbkdf2 "p" "s" 1  0 'sha256]

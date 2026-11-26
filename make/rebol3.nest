@@ -611,8 +611,7 @@ include-cipher-mode-cbc: [
 	config: MBEDTLS_CIPHER_MODE_CBC
 ]
 include-pbkdf2: [
-	core-files: %core/mbedtls/pkcs5.c
-	config: MBEDTLS_PKCS5_C
+	core-files: %core/n-pbkdf2.c
 ]
 
 
@@ -709,6 +708,7 @@ include-cryptography: [
 	
 	:include-cipher-mode-gcm ; By default just GCM as it is the most secure.
 	:include-pbkdf2          ; Password-Based Key Derivation Function 2
+	:include-cipher-chacha20
 
 	:include-codec-crt
 	:include-codec-der
@@ -732,7 +732,6 @@ include-cryptography-bulk: [
 
 	:include-cipher-aria
 	:include-cipher-camelia
-	:include-cipher-chacha20
 	:include-cipher-chachapoly
 ]
 
