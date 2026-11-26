@@ -71,6 +71,9 @@ Rebol [
 		--assert equal? ts any-type!
 		--assert typeset? load {#(typeset! [native! action! command! op! function! closure! handle! port! event! library! utype! frame! rebcode! struct!])}
 
+	--test-- "invalid typeset construction must not crash"
+		--assert error? try [load {#(typeset! [foo])}]
+		--assert error? try [mold load {#(typeset! [foo])}]
 ===end-group===
 
 
