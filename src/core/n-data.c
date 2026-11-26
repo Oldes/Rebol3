@@ -1149,6 +1149,117 @@ static int Do_Ordinal(REBVAL *ds, REBINT n)
 }
 
 
+typedef struct Reb_Type_Loop {
+	REBSER *ser;
+	struct Reb_Type_Loop *prev;
+} REB_TYPE_LOOP;
+static REBFLG Contains_Type_Loop(REBVAL *value, REBU64 types, REBFLG cycle, REB_TYPE_LOOP *loop);
+
+/***********************************************************************
+**
+*/	static REBFLG Frame_Contains_Type(REBSER *frame, REBU64 types, REBFLG cycle, REB_TYPE_LOOP *loop)
+/*
+**		Checks values of an object-like frame. Hidden values are skipped,
+**		as they are not molded either.
+**
+***********************************************************************/
+{
+	REBVAL *words = FRM_WORDS(frame);
+	REBVAL *vals  = FRM_VALUES(frame);
+	REBCNT n;
+
+	for (n = 1; n < SERIES_TAIL(frame); n++) {
+		if (VAL_GET_OPT(words + n, OPTS_HIDE)) continue;
+		if (Contains_Type_Loop(vals + n, types, cycle, loop)) return TRUE;
+	}
+	return FALSE;
+}
+
+/***********************************************************************
+**
+*/	static REBFLG Contains_Type_Loop(REBVAL *value, REBU64 types, REBFLG cycle, REB_TYPE_LOOP *loop)
+/*
+**		Returns TRUE if the value, or any value nested in it, is of one
+**		of the types. When a series is found again in the chain of series
+**		being checked (circular reference), CYCLE is returned for that branch
+**		(FALSE means: do not follow it again).
+**
+***********************************************************************/
+{
+	REBSER *ser;
+	REBVAL *val;
+	REBCNT n, tail;
+	REB_TYPE_LOOP node, *l;
+
+	if (types & TYPESET(VAL_TYPE(value))) return TRUE;
+
+	if (ANY_BLOCK(value) || IS_MAP(value) || IS_HASH(value)) {
+		ser = VAL_SERIES(value);
+	}
+	else if (ANY_OBJECT(value)) {
+		ser = VAL_OBJ_FRAME(value);
+		if (!ser) return FALSE; // error objects may not have a frame
+	}
+	else return FALSE;
+
+	// Circular reference: this series is already being checked
+	for (l = loop; l; l = l->prev) {
+		if (l->ser == ser) return cycle;
+	}
+
+	CHECK_STACK(&n);
+
+	node.ser  = ser;
+	node.prev = loop;
+
+	if (ANY_OBJECT(value)) {
+		if (Frame_Contains_Type(ser, types, cycle, &node)) return TRUE;
+		// Module header is molded too
+		if (IS_MODULE(value) && VAL_MOD_SPEC(value))
+			return Frame_Contains_Type(VAL_MOD_SPEC(value), types, cycle, &node);
+		return FALSE;
+	}
+
+	// Whole series is checked (mold/all writes it all, not only from the index)
+	tail = SERIES_TAIL(ser);
+	val  = BLK_HEAD(ser);
+
+	if (IS_MAP(value)) {
+		for (n = 0; n + 1 < tail; n += 2, val += 2) {
+			if (VAL_MAP_REMOVED(val)) continue;
+			if (Contains_Type_Loop(val,     types, cycle, &node)) return TRUE;
+			if (Contains_Type_Loop(val + 1, types, cycle, &node)) return TRUE;
+		}
+		return FALSE;
+	}
+
+	for (n = 0; n < tail; n++, val++) {
+		if (Contains_Type_Loop(val, types, cycle, &node)) return TRUE;
+	}
+	return FALSE;
+}
+
+/***********************************************************************
+**
+*/	REBNATIVE(contains_typeq)
+/*
+//	contains-type?: native [
+//		"Returns TRUE if the value, or any value nested in it, is of the given type(s)"
+//		value [any-type!]
+//		types [datatype! typeset!]
+//		/circular "Also return TRUE when the value contains itself"
+//	]
+***********************************************************************/
+{
+	REBVAL *types = D_ARG(2);
+	REBU64 bits = IS_DATATYPE(types)
+		? TYPESET(VAL_DATATYPE(types))
+		: VAL_TYPESET(types);
+
+	return Contains_Type_Loop(D_ARG(1), bits, D_REF(3) ? TRUE : FALSE, NULL) ? R_TRUE : R_FALSE;
+}
+
+
 #ifdef not_fast_enough
 /***********************************************************************
 **

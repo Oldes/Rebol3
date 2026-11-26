@@ -119,6 +119,16 @@ save: function [
 	]
 ]
 
+serializable?: func [
+	"Returns TRUE if the value can be saved using MOLD/ALL and loaded back"
+	value [any-type!]
+][
+	not contains-type?/circular :value make typeset! [
+		native! action! command! op! function! closure!
+		handle! port! event! library! utype! frame! rebcode! struct!
+	]
+]
+
 #test [
 	data: [1 1.2 10:20 "test" user@example.com [sub block]]
 	probe to string! save none []
