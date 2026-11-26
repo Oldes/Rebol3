@@ -66,6 +66,11 @@ Rebol [
 		--assert (last to-block any-type!) == (last system/catalog/datatypes)
 		--assert #(typeset! [end!]) = difference make typeset! system/catalog/datatypes any-type!
 
+	--test-- "typeset construction with all datatypes (last datatype word)"
+		--assert typeset? ts: load mold/all any-type!
+		--assert equal? ts any-type!
+		--assert typeset? load {#(typeset! [native! action! command! op! function! closure! handle! port! event! library! utype! frame! rebcode! struct!])}
+
 ===end-group===
 
 
