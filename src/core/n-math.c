@@ -674,8 +674,13 @@ enum {SINE, COSINE, TANGENT};
 				SET_MONEY(a, int_to_deci(VAL_INT64(a)));
 				goto compare;
 			}
-			else if (tb == REB_INTEGER || tb == REB_CHAR) // special negative?, zero?, ...
+			else if (tb == REB_INTEGER) // special negative?, zero?, ...
 				goto compare;
+			else if (tb == REB_CHAR) {
+				// a char sets only its 32-bit codepoint, not the whole 64-bit integer
+				SET_INTEGER(b, VAL_CHAR(b));
+				goto compare;
+			}
 			else if (tb == REB_TIME) {
 				SET_DECIMAL(a, (REBDEC)VAL_INT64(a));
 				SET_DECIMAL(b, (REBDEC)VAL_TIME(b) * NANO);
@@ -732,8 +737,15 @@ enum {SINE, COSINE, TANGENT};
 		case REB_CHAR:
 			//o: using sepparated case as I don't want to allow comparison
 			//o: with not integer numbers (money, decimal, percent)
-			if (tb == REB_INTEGER)
+			if (tb == REB_INTEGER) {
+				// an integer outside the char range is compared as an integer,
+				// not truncated to the 32 bits of a char
+				if (VAL_INT64(b) < 0 || VAL_INT64(b) > MAX_CHAR)
+					SET_INTEGER(a, VAL_CHAR(a));
+				else
+					SET_CHAR(b, VAL_INT64(b));
 				goto compare;
+			}
 			break;
 		case REB_TIME:
 			SET_DECIMAL(a, (REBDEC)VAL_TIME(a) * NANO);

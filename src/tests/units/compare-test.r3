@@ -75,6 +75,29 @@ Rebol [
 	--test-- "integer! invalid compare"
 		--assert all [error? e: try [90 < "a" ] e/id = 'invalid-compare]
 		--assert all [error? e: try [90 < 1x1 ] e/id = 'invalid-compare]
+
+	--test-- "integer! with a char! made at run time"
+		c: to char! 97
+		--assert 97 = c
+		--assert equal? 97 c
+		--assert not (97 <> c)
+		--assert 96 < c
+		--assert 98 > c
+		--assert c = 97
+		failed: copy []
+		repeat i 400 [
+			k: to char! i
+			unless all [i = k  k = i  i - 1 < k  i + 1 > k][append failed i]
+		]
+		--assert empty? failed
+
+	--test-- "char! with an integer! outside the char range"
+		--assert #"a" <> 4294967393	;= 97 + 2 ** 32
+		--assert 4294967393 <> #"a"
+		--assert #"a" < 4294967296
+		--assert #"a" > -1
+		--assert not (#"a" < -1)
+		--assert #"a" <> -1
 ===end-group===
 
 
