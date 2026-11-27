@@ -3,6 +3,7 @@ REBOL [
 	Title: "REBOL 3 Boot Base: Function Constructors"
 	Rights: {
 		Copyright 2012 REBOL Technologies
+		Copyright 2012-2026 Rebol Open Source Contributors
 		REBOL is a trademark of REBOL Technologies
 	}
 	License: {
@@ -64,10 +65,11 @@ does: func [
 
 use: func [
 	{Defines words local to a block.}
+	[throw]
 	vars [block! word!] {Local word(s) to the block}
 	body [block!] {Block to evaluate}
-][ ; !!Needs the R3 equivalent of the [throw] function attribute in the created closure!
-	apply make closure! reduce [to block! vars copy/deep body] []
+][
+	apply make closure! reduce [compose [[throw] (vars)] copy/deep body] []
 ]
 
 module: func [

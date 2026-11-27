@@ -4,6 +4,7 @@ Rebol [
 	File: 	 %integer-test.r3
 	Tabs:	 4
 	Needs:   [%../quick-test-module.r3]
+	type:    private
 ]
 
 ~~~start-file~~~ "integer"
@@ -384,6 +385,27 @@ Rebol [
 		f: 0
 		loop count [if (random a) <= b [f: f + 1]]
 		--assert (b / a) = round/to (f / count) 0.1
+
+	--test-- "random max integer"
+		--assert positive? random 0#7FFFFFFFFFFFFFFF
+		--assert positive? random/secure 0#7FFFFFFFFFFFFFFF
+	--test-- "random min integer"
+		--assert negative? random 0#8000000000000000
+		--assert negative? random/secure 0#8000000000000000
+	--test-- "random -1 (0#FFFFFFFFFFFFFFFF)"
+		--assert -1 = random 0#FFFFFFFFFFFFFFFF
+	--test-- "random above 62-bit range produces high values"
+		--assert loop 100 [if (random 0#7FFFFFFFFFFFFFFF) > 0#4000000000000000 [break/return true] false]
+	--test-- "random just above 62-bit stays in range"
+		--assert loop 1000 [
+			x: random 0#4000000000000001
+			if any [x < 1 x > 0#4000000000000001] [break/return false]
+			true
+		]
+	--test-- "random large range is reproducible with seed"
+		random/seed 1 a: random 0#7FFFFFFFFFFFFFFF
+		random/seed 1 b: random 0#7FFFFFFFFFFFFFFF
+		--assert a = b
 ===end-group===
 
 
@@ -404,6 +426,36 @@ Rebol [
 		--assert 2432902008176640000 == factorial 20
 		--assert 7.25741561530799e306 = factorial 170
 		--assert error? try [factorial 171]
+===end-group===
+
+===start-group=== "Integer overflow boundaries"
+	max-i64: 9223372036854775807
+	min-i64: -9223372036854775807 - 1
+	--test-- "i64 add overflow"
+		--assert max-i64 = (max-i64 - 1 + 1)
+		--assert error? try [max-i64 + 1]
+		--assert error? try [min-i64 + -1]
+		--assert -1 = (max-i64 + min-i64)
+	--test-- "i64 sub overflow"
+		--assert min-i64 = (-9223372036854775807 - 1)
+		--assert error? try [min-i64 - 1]
+		--assert error? try [max-i64 - -1]
+		--assert error? try [0 - min-i64]
+		--assert max-i64 = (-1 - min-i64)
+	--test-- "i64 mul overflow"
+		--assert min-i64 = (min-i64 * 1)
+		--assert min-i64 = (1 * min-i64)
+		--assert error? try [min-i64 * -1]
+		--assert error? try [-1 * min-i64]
+		--assert error? try [min-i64 * 2]
+		--assert min-i64 = (4294967296 * -2147483648)
+		--assert min-i64 = (-4294967296 * 2147483648)
+		--assert error? try [4294967296 * 2147483648]
+		--assert error? try [-4294967296 * -2147483648]
+		--assert 9223372030926249001 = (3037000499 * 3037000499)
+		--assert error? try [3037000500 * 3037000500]
+		--assert error? try [-3037000500 * 3037000500]
+		--assert 0 = (min-i64 * 0)
 ===end-group===
 
 ~~~end-file~~~

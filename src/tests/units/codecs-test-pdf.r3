@@ -4,6 +4,7 @@ Rebol [
 	File: 	 %codecs-test-pdf.r3
 	Tabs:	 4
 	Needs:   [%../quick-test-module.r3]
+	type:    private
 ]
 
 ~~~start-file~~~ "Codecs PDF"
@@ -20,7 +21,7 @@ if find codecs 'pdf [
 		%flower-from-xnview.pdf
 	][
 		--test-- join "load/save: " file
-		--assert object? try [p1: load join %units/files/ file]
+		--assert object? try [p1: load join %files/ file]
 		--assert not error?  try [save %tmp.pdf p1]
 		--assert object? try [p2: load %tmp.pdf]
 		--assert attempt [(keys-of p1/objects) = (keys-of p2/objects)]

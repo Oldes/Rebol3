@@ -4,6 +4,7 @@ Rebol [
 	File: 	 %file-test.r3
 	Tabs:	 4
 	Needs:   [%../quick-test-module.r3]
+	type:    private
 ]
 
 secure [%/ allow]
@@ -69,7 +70,24 @@ secure [%/ allow]
 
 
 ===start-group=== "to-local-file"
-
+--test-- "to-local-file with drive letter"
+	if system/platform = 'Windows [
+		--assert "c:\foo" = to-local-file %c:/foo
+		--assert "c:\foo" = to-local-file/full %c:/foo
+		--assert "c:\foo" = to-local-file/full %"c:\foo"
+		--assert "c:\"    = to-local-file/full %c:/
+		--assert "c:\foo" = to-local-file/full %/c/foo
+	]
+--test-- "file path with colon (Posix)"
+	if system/platform <> 'Windows [
+		--assert did all [
+			make-dir %x:/
+			write %x:/test.txt "ok"
+			"ok" = read/string %x:/test.txt
+			delete %x:/test.txt
+			delete %x:/
+		]
+	]
 --test-- "issue-2351"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2351
 	f: first read what-dir
@@ -108,6 +126,39 @@ if find [Linux macOS] system/platform [
 ===end-group===
 
 
+===start-group=== "home directory (~)"
+	home: dirize to-rebol-file get-env either system/platform = 'Windows ["USERPROFILE"]["HOME"]
+--test-- "to-local-file with ~"
+	--assert (to-local-file home) = to-local-file %~
+	--assert (to-local-file home) = to-local-file %~/
+	--assert (to-local-file home/foo) = to-local-file %~/foo
+	--assert "~foo" = to-local-file %~foo  ;; only %~ and %~/ are expanded
+	--assert (to-local-file/full join what-dir %~) = to-local-file/full %./~
+--test-- "query %~"
+	--assert home = query %~ 'name
+	--assert 'dir = query %~ 'type
+	--assert did exists? %~/
+--test-- "change-dir %~"
+	dir: what-dir
+	change-dir %~
+	--assert home = what-dir
+	change-dir dir
+===end-group===
+
+
+===start-group=== "invalid paths with colon"
+--test-- "colon not used as a volume separator"
+	if system/platform = 'Windows [
+		--assert all [error? e: try [read   %/c/aaa/c:/]  e/id = 'bad-file-path]
+		--assert all [error? e: try [read   %c:/aaa/c:/]  e/id = 'bad-file-path]
+		--assert all [error? e: try [read   %/c/aaa/c:x]  e/id = 'bad-file-path]
+		--assert all [error? e: try [write  %/c/aaa/c:x ""] e/id = 'bad-file-path]
+		--assert all [error? e: try [delete %/c/aaa/c:x]  e/id = 'bad-file-path]
+		--assert all [error? e: try [query  %/c/aaa/c:x 'size]  e/id = 'bad-file-path]
+	]
+===end-group===
+
+
 ===start-group=== "to-real-file"
 --test-- "On file"
 	write file: %jesterka ""
@@ -126,7 +177,7 @@ if find [Linux macOS] system/platform [
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2600
 	--assert equal? what-dir to-real-file %.
 	--assert equal? what-dir to-real-file %./
-	--assert equal? what-dir to-real-file %./units/files/../../
+	--assert equal? what-dir to-real-file %./files/../
 --test-- "to-real-file of non-existent path"
 	--assert none? to-real-file %not-existing-file
 	--assert none? to-real-file %not-existing-dir/
@@ -188,34 +239,34 @@ if find [Linux macOS] system/platform [
 ===start-group=== "WILDCARD"
 	--test-- "wildcard *"
 		--assert all [
-			block? files: wildcard %units/files/ %*.zip
+			block? files: wildcard %files/ %*.zip
 			empty? find/last/tail files/1 %.zip
 		]
-		--assert empty? wildcard %units/files/ %*.something
+		--assert empty? wildcard %files/ %*.something
 	--test-- "wildcard ?"
 		--assert all [
-			block? files: wildcard %units/files/ %issue-2186-UTF??-BE.txt
+			block? files: wildcard %files/ %issue-2186-UTF??-BE.txt
 			2 = length? files
 		]
 	--test-- "wildcard *?*"
 		--assert all [
-			block? files: wildcard %units/files/ %*2186-UTF??*.txt
+			block? files: wildcard %files/ %*2186-UTF??*.txt
 			4 = length? files
 		]
 	--test-- "read wildcard"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2443
 		--assert all [
-			block? files: try [read %units/files/issue-2186-*.txt]
+			block? files: try [read %files/issue-2186-*.txt]
 			4 = length? files
 			to logic! find files %issue-2186-UTF16-LE.txt
 		]
 		--assert all [
-			block? files: try [read %units/files/issue-2186-UTF??-BE.txt]
+			block? files: try [read %files/issue-2186-UTF??-BE.txt]
 			2 = length? files
 			to logic! find files %issue-2186-UTF32-BE.txt
 		]
 		--assert all [
-			block? files: try [read %units/files/*2186-UTF??*.txt]
+			block? files: try [read %files/*2186-UTF??*.txt]
 			4 = length? files
 			to logic! find files %issue-2186-UTF16-BE.txt
 		]
@@ -234,41 +285,89 @@ if find [Linux macOS] system/platform [
 ===end-group===
 
 
+===start-group=== "RENAME"
+	--test-- "rename replaces an existing target file"
+		write %tmp-rename-a.txt "a"
+		write %tmp-rename-b.txt "b"
+		rename %tmp-rename-a.txt %tmp-rename-b.txt
+		--assert not exists? %tmp-rename-a.txt
+		--assert "a" == read/string %tmp-rename-b.txt
+		delete %tmp-rename-b.txt
+===end-group===
+
+
 ===start-group=== "QUERY"
 	--test-- "query file dates (some asserts may fail in CI and WSL)"
 		write %query-test "test"
 		fields: [:modified :created :accessed]
-		--assert all [
-			block? probe dates1: query %query-test fields
-			date? dates1/1
-			date? dates1/2
-			date? dates1/3
-		]
+		--assert block? dates1: query %query-test fields
+		--assert date? dates1/1
+		--assert any [none? dates1/2 date? dates1/2]  ;; no birth time on some FS
+		--assert date? dates1/3
 		wait 1
-		--assert all [
-			block? probe dates2: query %query-test fields
-			dates1/1 = dates2/1
-			dates1/2 = dates2/2
-			dates1/3 = dates2/3
-		]
+		read %query-test
+		dates2: query %query-test fields
+		--assert dates1/1 = dates2/1
+		--assert dates1/2 = dates2/2
+		--assert dates1/3 <= dates2/3                 ;; noatime / WSL may not update
 		wait 1
-		read %query-test ;; should change access time
-		--assert all [
-			block? probe dates2: query %query-test fields
-			dates1/1 = dates2/1
-			dates1/2 = dates2/2
-			dates1/3 < dates2/3
-		]
-		wait 1
-		write/append %query-test "!" ;; should change modified and access times
-		--assert all [
-			block? probe dates3: query %query-test fields
-			dates2/1 < dates3/1
-			dates2/2 = dates3/2
-			dates2/3 <= dates3/3
-		]
+		write/append %query-test "!"
+		dates3: query %query-test fields
+		--assert dates2/1 < dates3/1
+		--assert dates2/2 = dates3/2                  ;; fails if created = st_ctime
+		--assert dates2/3 <= dates3/3
 		delete %query-test
 ===end-group===
 
+===start-group=== "READ/lines"
+	--test-- "read/lines with UTF-8 content"
+		write %tmp-read-lines-utf8 "Ψ^/a^/žluť^M^/x"
+		lines: read/lines %tmp-read-lines-utf8
+		--assert lines = ["Ψ" "a" "žluť" "x"]
+		--assert 1 = length? lines/1        ;; LF-terminated line
+		--assert "Ψ" = find lines/1 "Ψ"
+		--assert 4 = length? lines/3        ;; CRLF-terminated line
+		--assert "ť" = find lines/3 #"ť"
+		--assert 1 = length? lines/4        ;; unterminated remainder
+		delete %tmp-read-lines-utf8
+===end-group===
+
+
+===start-group=== "open/lock"
+	f: %tmp-lock-test.txt
+	write f "abc"
+	--test-- "exclusive lock excludes other locks"
+		p1: open/write/lock f
+		--assert all [
+			error? e: try [open/read/lock f]
+			e/id = 'locked
+			e/arg1 == f
+		]
+		--assert all [
+			error? e: try [open/write/lock f]
+			e/id = 'locked
+		]
+		close p1
+	--test-- "lock is released on close"
+		--assert not error? try [p1: open/write/lock f]
+		close p1
+	--test-- "shared locks coexist, but exclude an exclusive lock"
+		p1: open/read/lock f
+		--assert not error? try [p2: open/read/lock f]
+		--assert error? try [open/write/lock f]
+		close p1
+		close p2
+	--test-- "open/new/lock does not truncate a locked file"
+		write f "abc"
+		p1: open/read/lock f
+		--assert error? try [open/new/write/lock f]
+		close p1
+		--assert "abc" == read/string f
+	--test-- "open/new/lock truncates after locking"
+		p1: open/new/write/lock f
+		close p1
+		--assert 0 == size? f
+	delete f
+===end-group===
 
 ~~~end-file~~~

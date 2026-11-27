@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2013 REBOL Technologies
-**  Copyright 2013-2023 Rebol Open Source Developers
+**  Copyright 2013-2026 Rebol Open Source Developers
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,7 +21,7 @@
 ************************************************************************
 **
 **  Title: Device: Serial port access for Windows
-**  Author: Carl Sassenrath, Joshua Shireman, Shixin Zeng
+**  Author: Carl Sassenrath, Joshua Shireman, Shixin Zeng, Oldes
 **
 ************************************************************************
 **
@@ -134,13 +134,16 @@ static REBOOL Set_Serial_Settings(HANDLE hComm, REBREQ *req)
 
 	hComm = CreateFile(fullpath, GENERIC_READ|GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL );
 	if (hComm == INVALID_HANDLE_VALUE) {
-		req->error = -RFE_OPEN_FAIL;
+		// For example: 2 = no such device, 5 = access denied (device in use)
+		req->error = GetLastError();
 		return DR_ERROR;
 	}
 
 	if (!Set_Serial_Settings(hComm, req)) {
+		// For example: 87 = invalid parameter (unsupported settings)
+		req->error = GetLastError(); // must be before closing the handle!
 		CloseHandle(hComm);
-		req->error = -RFE_OPEN_FAIL;
+		if (!req->error) req->error = -RFE_OPEN_FAIL;
 		return DR_ERROR;
 	}
 
@@ -206,32 +209,26 @@ static REBOOL Set_Serial_Settings(HANDLE hComm, REBREQ *req)
 ***********************************************************************/
 {
 	DWORD result = 0, len = 0;
-	len = req->length - req->actual;
 	if (!req->handle) {
 		req->error = -RFE_NO_HANDLE;
 		return DR_ERROR;
 	}
 
-	if (len <= 0) return DR_DONE;
-
+	if (req->actual >= req->length) return DR_DONE;
+	len = req->length - req->actual;
 
 	if (!WriteFile(req->handle, req->data, len, &result, NULL)){
-		req->error = -RFE_BAD_WRITE;
-		return DR_ERROR;
-	}
-
-#ifdef DEBUG_SERIAL
-	printf("%p = %u %u %u %u\n", req->data, req->data[0], req->data[1], req->data[2], req->data[3]);
-	printf("write %d wrote: %lu ret: %d\n", req->length, result,  req->actual);
-#endif
-
-	if (result < 0) {
 		req->error = -RFE_BAD_WRITE;
 		OS_Signal_Device(req, EVT_ERROR);
 		return DR_ERROR;
 	}
+
+#ifdef DEBUG_SERIAL
+	printf("write %lu wrote: %lu\n", len, result);
+#endif
+
 	req->actual += result;
-	//req->data += result;
+	req->data += result; // so a retry continues with the not yet written data
 	if (req->actual >= req->length) {
 		OS_Signal_Device(req, EVT_WROTE);
 		return DR_DONE;
@@ -299,4 +296,3 @@ static DEVICE_CMD_FUNC Dev_Cmds[RDC_MAX] = {
 };
 
 DEFINE_DEV(Dev_Serial, "Serial IO", 1, Dev_Cmds, RDC_MAX, sizeof(REBREQ));
-

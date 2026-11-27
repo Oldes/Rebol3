@@ -4,6 +4,7 @@ Rebol [
 	File: 	 %func-test.r3
 	Tabs:	 4
 	Needs:   [%../quick-test-module.r3]
+	type:    private
 ]
 
 ~~~start-file~~~ "Function"
@@ -97,6 +98,107 @@ Rebol [
 ===end-group===
 
 
+===start-group=== "[throw] function attribute"
+	--test-- "FUNCTION keeps the attribute block"
+		fn-f: function [[throw] b][x: 1 do b]
+		fn-g: func [][fn-f [return 1] 2]
+		--assert 1 = fn-g
+	--test-- "[throw] - RETURN passes through to the caller"
+		tl-loop: func [[throw] count [integer!] body [block!]][loop count body]
+		tl-caller: func [][tl-loop 5 [return "caller"] "not reached"]
+		--assert "caller" = tl-caller
+
+	--test-- "[throw] - EXIT passes through to the caller"
+		tl-n: 0
+		tl-caller2: func [][tl-loop 5 [tl-n: tl-n + 1 exit] tl-n: 100]
+		tl-caller2
+		--assert tl-n = 1
+
+	--test-- "[throw] - closure (USE-like mezzanine)"
+		tl-use: func [[throw] words [block!] body [block!]][
+			apply make closure! reduce [compose [[throw] (words)] copy/deep body] []
+		]
+		tl-f3: func [][tl-use [x] [x: 1 return x + 1] 0]
+		--assert 2 = tl-f3
+
+	--test-- "no [throw] - function still catches RETURN"
+		tl-g: func [b][do b]
+		tl-f4: func [][tl-g [return 1] 2]
+		--assert 2 = tl-f4
+
+	--test-- "[throw] - spec is kept"
+		--assert [[throw] a] = spec-of func [[throw] a][]
+===end-group===
+
+===start-group=== "[catch] function attribute"
+	--test-- "[catch] - error is reported at the call site"
+		cd-div: func [[catch] a b][
+			if zero? b [do make error! "Cannot divide by zero"]
+			a / b
+		]
+		e: try [cd-div 10 0]
+		--assert error? e
+		--assert 'cd-div = first e/where
+		--assert 'cd-div = first e/near
+
+	--test-- "no [catch] - error is reported inside the function"
+		cd-div2: func [a b][a / b]
+		e: try [cd-div2 10 0]
+		--assert error? e
+		--assert 'a = first e/near            ; the `a / b` expression in the body
+		--assert 'cd-div2 <> first e/where    ; innermost frame is the `/` op
+
+	--test-- "[catch] - errors from nested calls are relocated too"
+		cd-div3: func [[catch] a b][a / b]
+		e: try [cd-div3 10 0]
+		--assert 'cd-div3 = first e/near
+
+	--test-- "[catch] - normal result"
+		--assert 5 = cd-div 10 2
+
+	--test-- "[catch] - RETURN is still caught by the function"
+		cd-f: func [[catch] b][do b]
+		cd-g: func [][cd-f [return 1] 2]
+		--assert 2 = cd-g
+
+	--test-- "[catch throw] - both attributes"
+		cd-f2: func [[catch throw] b][do b]
+		cd-g2: func [][cd-f2 [return 1] 2]
+		--assert 1 = cd-g2
+		e: try [cd-f2 [1 / 0]]
+		--assert 'cd-f2 = first e/near
+===end-group===
+
+
+===start-group=== "USE"
+	;@@ https://github.com/Oldes/Rebol3/issues/731
+	;@@ https://github.com/Oldes/Rebol3/issues/1616
+	--test-- "USE passes RETURN to the caller"
+		use-f1: func [][use [x] [x: 1 return x + 1] 0]
+		--assert 2 = use-f1
+
+	--test-- "USE passes EXIT to the caller"
+		use-n: 0
+		use-f2: func [][use [x] [use-n: 1 exit] use-n: 100]
+		use-f2
+		--assert use-n = 1
+
+	--test-- "USE with a single word"
+		use-f3: func [][use 'x [x: 3 return x] 0]
+		--assert 3 = use-f3
+
+	--test-- "USE result and locals"
+		x: 10
+		--assert 2 = use [x] [x: 2]
+		--assert x = 10
+
+	--test-- "USE does not modify its vars block"
+		use-vars: [x]
+		use use-vars [x: 1]
+		--assert use-vars = [x]
+===end-group===
+
+
 ===start-group=== "Apply"
 
 --test-- "apply :do [:func]"
@@ -125,6 +227,24 @@ Rebol [
 	--assert 3 = apply :add [1 2]
 	--assert 3 = apply :+ [1 2]
 
+===end-group===
+
+
+===start-group=== "FUNC copies its body"
+	;- In the boot, FUNC does not copy (the boot code is used only once).
+	;- The final (copying) FUNC is defined in mezz-tail.reb, which must be
+	;- evaluated as the last one (after all modules and protocols).
+	--test-- "func copies the body"
+	blk: [1 + 1]
+	fce: func [] blk
+	append blk 5
+	--assert 2 = fce
+	--assert [1 + 1] = body-of :fce
+	--test-- "funco does not copy the body"
+	blk: [1 + 1]
+	fce: funco [] blk
+	append blk 5
+	--assert 5 = fce
 ===end-group===
 
 
@@ -180,15 +300,16 @@ Rebol [
 		f2 arg1
 	]
 	--assert [a] = f 1 2
-	
-	;@@ https://github.com/Oldes/Rebol-issues/issues/886
+
+	;@@ https://github.com/Oldes/Rebol3/issues/1071
 	f: func[arg][p: 'arg]
-	f 1 2
-	; --assert none? context? p ; and no crash!
-	; not using above, because tests are run from `do`, so the context is not none like in console!
-	--assert same? :do context? p ; and no crash!
+	f 1
+	--assert same? :do context? p ; no crash!
+	--assert date? do has[a][now]
+
 	c: closure[a][context? 'a]
 	--assert all [object? o: c 1  o/a = 1]
+
 ===end-group===
 
 
@@ -533,6 +654,49 @@ Rebol [
 	--assert abc/a = 3
 	--assert obj/a = none
 
+===end-group===
+
+if any-function? :help [
+===start-group=== "HELP"
+--test-- "HELP shows function attributes"
+	--assert did all [
+		help/into use s: copy ""
+		find s "ATTRIBUTES"
+		find s "throw"
+	]
+	ha-f2: func [[catch throw] "Doc string." a][]
+	--assert did all [
+		help/into ha-f2 s: copy ""
+		find s "catch"
+		find s "throw"
+	]
+
+--test-- "HELP without attributes has no ATTRIBUTES section"
+	--assert not find help/into append copy "" "ATTRIBUTES"
+===end-group===
+]
+
+
+===start-group=== "delta-profile"
+if any-function? :delta-time [
+	--test-- "DT passes RETURN/EXIT to the caller"
+		dt-f1: func [][delta-time [return 1] 2]
+		--assert 1 = dt-f1
+		dt-n: 0
+		dt-f2: func [][delta-time [dt-n: 1 exit] dt-n: 100]
+		dt-f2
+		--assert dt-n = 1
+	--test-- "DT still measure"
+		--assert time?   delta-time [1 + 1]
+]
+if any-function? :delta-profile [
+	--test-- "DP passes RETURN to the caller"
+		dp-f1: func [][delta-profile [return 1] 2]
+		--assert 1 = dp-f1
+
+	--test-- "DT and DP still measure"
+		--assert object? delta-profile [1 + 1]
+]
 ===end-group===
 
 ~~~end-file~~~

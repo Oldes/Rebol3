@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2022 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -123,6 +123,10 @@ static REBOOL Nonblocking_Mode(SOCKET sock)
 	// Initialize Windows Socket API with given VERSION.
 	// It is ok to call twice, as long as WSACleanup twice.
 	if (WSAStartup(MAKEWORD(2, 2), &wsaData)) return DR_ERROR;
+	// Async DNS (WSAAsyncGetHost*) posts its result to the hidden window
+	// created by the event device, so it must exist before any lookup.
+	// (It is a no-op when the event device is already initialized.)
+	OS_Call_Device(RDI_EVENT, RDC_INIT);
 #endif
 	SET_FLAG(dev->flags, RDF_INIT);
 	return DR_DONE;
@@ -546,6 +550,7 @@ static REBOOL Nonblocking_Mode(SOCKET sock)
 **		Before usage:
 **			Open_Socket();
 **			Set local_port to desired port number.
+**			Set local_ip to the address to listen on (0 for all).
 **
 **		Use this instead of Connect_Socket().
 **
@@ -555,11 +560,23 @@ static REBOOL Nonblocking_Mode(SOCKET sock)
 	int len = 1;
 	SOCKAI sa;
 
-	// Setup socket address range and port:
-	Set_Addr(&sa, INADDR_ANY, sock->net.local_port);
+	// Setup socket address and port (local_ip is INADDR_ANY if not specified):
+	Set_Addr(&sa, sock->net.local_ip, sock->net.local_port);
 
-	// Allow listen socket reuse:
-	result = setsockopt(sock->socket, SOL_SOCKET, SO_REUSEADDR, (char*)(&len), sizeof(len));
+	// Do not allow other sockets to listen on the same port. Note that on
+	// Windows SO_REUSEADDR allows exactly that (also for TCP), so it uses
+	// SO_EXCLUSIVEADDRUSE instead (it can still bind a port in TIME_WAIT).
+#ifdef TO_WINDOWS
+#ifndef SO_EXCLUSIVEADDRUSE
+#define SO_EXCLUSIVEADDRUSE ((int)(~SO_REUSEADDR))
+#endif
+	result = setsockopt(sock->socket, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, (char*)(&len), sizeof(len));
+#else
+	// POSIX: allow TCP rebinding while an old connection is in TIME_WAIT.
+	// Not used for UDP, where it allows binding the same port twice.
+	result = GET_FLAG(sock->modes, RST_UDP) ? 0
+		: setsockopt(sock->socket, SOL_SOCKET, SO_REUSEADDR, (char*)(&len), sizeof(len));
+#endif
 	if (result) {
 lserr:
 		sock->error = GET_ERROR;
@@ -572,15 +589,17 @@ lserr:
 	if (result) goto lserr;
 
 	SET_FLAG(sock->state, RSM_BIND);
+	Get_Local_IP(sock);
+
+	// UDP has no connections to accept. The bound socket is ready for READ,
+	// so it must not pend in the accept state (accept() fails on it).
+	if (GET_FLAG(sock->modes, RST_UDP)) return DR_DONE;
 
 	// For TCP connections, setup listen queue:
-	if (!GET_FLAG(sock->modes, RST_UDP)) {
-		result = listen(sock->socket, SOMAXCONN);
-		if (result) goto lserr;
-		SET_FLAG(sock->state, RSM_LISTEN);
-	}
+	result = listen(sock->socket, SOMAXCONN);
+	if (result) goto lserr;
+	SET_FLAG(sock->state, RSM_LISTEN);
 
-	Get_Local_IP(sock);
 	sock->command = RDC_CREATE;	// the command done on wakeup
 
 	return DR_PEND;

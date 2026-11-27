@@ -178,48 +178,67 @@ X*/	REBSER *Prep_Bin_Str(REBVAL *val, REBCNT *index, REBCNT *length)
 **
 */  REBSER *Xandor_Bitset(REBCNT action, REBVAL *value, REBVAL *arg)
 /*
-**		Only valid for Bitsets data.
+**		Only valid for Bitsets data. Honors negation of both operands.
+**		Bytes past the tail count as 00 (or FF when negated), so the
+**		result's negation is the operation applied to the two negations.
 **
 ***********************************************************************/
 {
-		REBSER *series;
-		REBYTE *p0 = VAL_BIN_DATA(value);
-		REBYTE *p1 = VAL_BIN_DATA(arg);
-		REBYTE *p2;
-		REBCNT i;
-		REBCNT mt, t1, t0, t2;
+	REBSER *series;
+	REBYTE *p0 = VAL_BIN_DATA(value);
+	REBYTE *p1 = VAL_BIN_DATA(arg);
+	REBYTE *p2;
+	REBCNT i;
+	REBCNT t0 = VAL_LEN(value);
+	REBCNT t1 = VAL_LEN(arg);
+	REBCNT mt = MIN(t0, t1); // common part
+	REBCNT t2 = MAX(t0, t1); // result length
+	REBFLG n0 = BITS_NOT(VAL_SERIES(value)) ? TRUE : FALSE;
+	REBFLG n1 = (IS_BITSET(arg) && BITS_NOT(VAL_SERIES(arg))) ? TRUE : FALSE; // arg may be binary!
+	REBFLG nr;
+	REBYTE f0 = n0 ? 0xFF : 0; // fill/xor masks: stored byte ^ mask = real membership
+	REBYTE f1 = n1 ? 0xFF : 0;
+	REBYTE fr, a, b;
 
-		t0 = VAL_LEN(value);
-		t1 = VAL_LEN(arg);
+	// Negation of the result = the same operation on the negation flags
+	// (this also describes all bits past the tail).
+	switch (action) {
+	case A_AND: nr = n0 && n1;  break;
+	case A_OR:  nr = n0 || n1;  break;
+	case A_XOR: nr = n0 != n1;  break;
+	default:    nr = n0 && !n1; break; // EXCLUDE
+	}
+	fr = nr ? 0xFF : 0;
 
-		mt = MIN(t0, t1); // smaller array size
-		t2 = MAX(t0, t1);
+	series = Make_Binary(t2);
+	SERIES_TAIL(series) = t2;
+	BITS_NOT(series) = nr;
+	p2 = BIN_HEAD(series);
 
-		series = Make_Binary(t2);
-		SERIES_TAIL(series) = t2;
-		p2 = BIN_HEAD(series);
+	// Decode both operands to real membership (a, b), apply op,
+	// encode back to the result's stored form (^ fr).
+	// The shorter operand is extended by its fill value; only one
+	// of the two residual loops runs.
+#define XANDOR_LOOP(op) \
+	for (i = 0;  i < mt; i++) { a = p0[i] ^ f0; b = p1[i] ^ f1; p2[i] = (REBYTE)((op) ^ fr); } \
+	for (     ;  i < t0; i++) { a = p0[i] ^ f0; b = f1;         p2[i] = (REBYTE)((op) ^ fr); } \
+	for (     ;  i < t1; i++) { a = f0;         b = p1[i] ^ f1; p2[i] = (REBYTE)((op) ^ fr); }
 
-		switch (action) {
-		case A_AND:
-			for (i = 0; i < mt; i++) *p2++ = *p0++ & *p1++;
-			CLEAR(p2, t2 - mt);
-			return series;
-		case A_OR:
-			for (i = 0; i < mt; i++) *p2++ = *p0++ | *p1++;
-			break;
-		case A_XOR:
-			for (i = 0; i < mt; i++) *p2++ = *p0++ ^ *p1++;
-			break;
-		default:
-			// special bit set case EXCLUDE:
-			for (i = 0; i < mt; i++) *p2++ = *p0++ & ~*p1++;
-			if (t0 > t1) memcpy(p2, p0, t0 - t1); // residual from first only
-			return series;
-		}
+	// Dispatch once, not per byte.
+	switch (action) {
+	case A_AND: XANDOR_LOOP(a & b);  break;
+	case A_OR:  XANDOR_LOOP(a | b);  break;
+	case A_XOR: XANDOR_LOOP(a ^ b);  break;
+	default:    XANDOR_LOOP(a & ~b); break; // EXCLUDE
+	}
+#undef XANDOR_LOOP
 
-		// Copy the residual:
-		memcpy(p2, ((t0 > t1) ? p0 : p1), t2 - mt);
-		return series;
+	// Drop trailing zero bytes (same meaning as missing bytes),
+	// so results don't depend on the caller trimming.
+	while (t2 > 0 && p2[t2 - 1] == 0) t2--;
+	SERIES_TAIL(series) = t2;
+
+	return series;
 }
 
 /***********************************************************************
@@ -824,7 +843,7 @@ static REBYTE seed_str[SEED_LEN] = {
 {
 	REBSER *ser = BUF_EMIT; // GC protected (because it is emit buffer)
 	REBSER *str = VAL_SERIES(val);
-	REBCNT len = VAL_LEN(val);
+	REBCNT len = VAL_TAIL(val); // absolute end (idx is absolute too)
 	REBCNT idx = VAL_INDEX(val);
 	REBCNT start = idx;
 	REBSER *out;
@@ -837,7 +856,7 @@ static REBYTE seed_str[SEED_LEN] = {
 	while (idx < len) {
 		c = BIN_HEAD(str)[idx];
 		if (c == LF || c == CR) {
-			out = Copy_Bytes(BIN_SKIP(str, start), idx - start);
+			out = Copy_String(str, start, idx - start);
 			val = Append_Value(ser);
 			SET_STRING(val, out);
 			VAL_SET_LINE(val);

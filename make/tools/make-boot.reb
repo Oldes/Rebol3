@@ -11,7 +11,7 @@ REBOL [
 		See: http://www.apache.org/licenses/LICENSE-2.0
 	}
 	Author: "Carl Sassenrath"
-	Version: 3.21.0
+	Version: 3.22.0
 	Needs: 3.5.0
 	Purpose: {
 		A lot of the REBOL system is built by REBOL, and this program
@@ -762,7 +762,7 @@ make-obj-defs ob/ports "PORTS_" 4
 make-obj-defs ob/options "OPTIONS_" 4
 ;make-obj-defs ob/intrinsic "INTRINSIC_" 4
 make-obj-defs ob/locale "LOCALE_" 4
-make-obj-defs ob/view "VIEW_" 4
+;make-obj-defs ob/view "VIEW_" 4
 make-obj-defs ob/console "CONSOLE_" 4
 
 write-generated inc/gen-sysobj.h out
@@ -794,13 +794,22 @@ write-generated inc/reb-dialect.h out
 ;----------------------------------------------------------------------------
 
 emit-head "Event Types" %reb-evtypes.h
+emit {^/#ifndef REB_EVTYPES_H^/#define REB_EVTYPES_H^/}
 emit newline
 
+;; A reserved slot carries no name - the next named type gets an explicit
+;; value instead, the same way %types-ext.reb numbers the RXT_ enum.
 emit ["enum event_types {" newline]
+n: 0
+gap: false
 foreach field ob/catalog/event-types [
-	emit-line "EVT_" field none
+	either word? field [
+		emit-line "EVT_" either gap [rejoin [field " = " n]][field] n
+		gap: false
+	][	gap: true ]
+	++ n
 ]
-emit [tab "EVT_MAX^/"]
+emit [tab "EVT_MAX = " n lf]
 emit "};^/^/"
 
 emit ["enum event_keys {" newline]
@@ -810,6 +819,7 @@ foreach field ob/catalog/event-keys [
 ]
 emit [tab "EVK_MAX^/"]
 emit "};^/^/"
+emit {^/#endif // REB_EVTYPES_H^/}
 
 write-generated inc/reb-evtypes.h out
 
@@ -909,13 +919,14 @@ write-generated inc/gen-portmodes.h out
 
 print-info "Load Boot Mezzanine Functions - Base, Sys, Lib and Prot"
 
-;make sure that mezz-tail.reb is the last file in boot-mezz
-if all [
-	pos: find mezz-files/3 %mezz-tail.reb
-	1 <> length? pos
-][
-	append mezz-files/3 take pos
+;- mezz-tail.reb must be evaluated as the last one in boot-mezz (after all modules
+;- and protocols), because it redefines FUNC to deep copy the spec and the body.
+;- (the boot code is used only once, so functions made before it don't need copies)
+mezz-tail: none
+foreach file mezz-files/3 [
+	if find/match/last file %/mezz-tail.reb [mezz-tail: file]
 ]
+if mezz-tail [remove find mezz-files/3 mezz-tail]
 
 foreach section [boot-base boot-sys boot-mezz] [
 	set section make block! 200
@@ -927,7 +938,7 @@ foreach section [boot-base boot-sys boot-mezz] [
 			either find hdr/options 'delay [
 				compose [
 					sys/load-module/delay (
-						append
+						entab append ;; (tabs make the stored source smaller)
 						map-conv-if-needed mold/only compose/deep/only [
 							Rebol [
 								Version: (any [select hdr 'version 0.0.0])
@@ -979,7 +990,7 @@ foreach file first mezz-files [
 		either find hdr/options 'delay [
 			compose [
 				sys/load-module/delay (
-					append
+					entab append ;; (tabs make the stored source smaller)
 					map-conv-if-needed mold/only compose/deep/only [
 						Rebol [
 							Version: (any [select hdr 'version 0.0.0])
@@ -1013,6 +1024,11 @@ foreach file first mezz-files [
 		;- else hidden module is used by default (see sys-start.reb)
 		append/only append/only boot-protocols hdr code
 	]
+]
+if mezz-tail [
+	code: load-file/header mezz-tail
+	take code ;; the header
+	append boot-mezz code
 ]
 
 emit-head "Sys Context" %sysctx.h
@@ -1098,25 +1114,46 @@ boot-ops:  load-boot %ops.reb
 ;boot-script: load-boot %script.reb
 
 data: reduce sections
-data: either find [on true #(true)] select spec 'remove-docstrings [
-	mold/flat remove-docstrings data
-][	entab mold data ] ;; keep the original indentation (source is user readable)
+rebin-boot?: any [
+	did find configs 'INCLUDE_REBIN_BOOT
+	did find spec/defines "INCLUDE_REBIN_BOOT" ;; can come from command-line override
+]
+either rebin-boot? [
+	if find [on true #(true)] select spec 'remove-docstrings [
+		data: remove-docstrings data
+	]
+	write-generated gen-dir/gen-boot-code.reb mold data ;; (readable form for debugging)
 
-insert data reduce ["; Copyright (C) REBOL Technologies " now newline]
-;write-generated gen-dir/gen-boot-code.reb data
-append data make char! 0 ; scanner requires zero termination
+	;- The boot data are stored in the Rebin format (already loaded values), so the
+	;- boot does not need to scan the source code. The decoder is in src/core/u-rebin.c.
+	;- The datatypes are numbered as in the target (new-types), not as in the bootstrap.
+	import (root-dir/src/mezz/codec-rebin.reb) ;; (import does not evaluate a path)
+	;- (the result is the same as from scanning the molded block: a block with the block of sections)
+	data: encode/as 'rebin reduce [data] new-types
+	write-generated gen-dir/gen-boot-code.rebin data
+][
+	data: either find [on true #(true)] select spec 'remove-docstrings [
+		mold/flat remove-docstrings data
+	][	entab mold data ] ;; keep the original indentation (source is user readable)
 
-data: to binary! map-conv-if-needed data
+	insert data reduce ["; Copyright (C) REBOL Technologies " now newline]
+	write-generated gen-dir/gen-boot-code.reb data
+
+	data: to binary! map-conv-if-needed data
+	append data 0 ; scanner requires zero termination
+]
 comp-data: compress/level data 'zlib 9
 
 emit [
 {
 	// This array contains 4 bytes encoding a 32-bit little endian value,
-	// followed by data which is the DEFLATE-algorithm-compressed
-	// representation of the textual function specs for Rebol's native
-	// routines.  This textual representation is null-terminated.
+	// followed by data which is the DEFLATE-algorithm-compressed boot
+	// block (with the function specs for Rebol's native routines) }
+	either rebin-boot? [{in
+	// the Rebin format (see src/core/u-rebin.c).}][{as
+	// the source text (null-terminated).}] {
 	// The leading value represents the expected length of
-	// the text after it is decompressed (this is redundant with
+	// the data after it is decompressed (this is redundant with
 	// information saved by DEFLATE, but having it twice provides a
 	// redundant sanity check on the compression and decompression)
 }

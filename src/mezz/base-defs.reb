@@ -3,6 +3,7 @@ REBOL [
 	Title: "REBOL 3 Boot Base: Other Definitions"
 	Rights: {
 		Copyright 2012 REBOL Technologies
+		Copyright 2012-2026 Rebol Open Source Contributors
 		REBOL is a trademark of REBOL Technologies
 	}
 	License: {
@@ -96,7 +97,7 @@ copyable!: make typeset! [
 ]
 
 system/options/result-types: make typeset! [
-	immediate! series! bitset! image! object! map! gob! handle! struct! ;module!
+	immediate! series! bitset! image! object! map! handle! struct! ;module!
 ]
 
 ;-- Create "To-Datatype" conversion functions early in bootstrap:
@@ -155,3 +156,7 @@ quote: func [
 ] [
 	:value
 ]
+
+;- some shortcuts (aliases)
+codecs: :system/codecs 
+keys-of: :words-of ; as it sounds better when used with some objects

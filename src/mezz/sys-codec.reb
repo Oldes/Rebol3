@@ -68,21 +68,23 @@ encode: function [
 ][
 	unless all [
 		cod: select system/codecs type
-		data: either handle? try [cod/entry] [
-			; original codecs were only natives
-			if type = 'text [
-				return either binary? data [to string! data][mold/only data]
-			]
-			do-codec cod/entry 'encode data
-		][
-			either any-function? try [:cod/encode][
+		data: case [
+			; encode function is used first, because a native codec may be
+			; extended with an encoder written in Rebol (like rebin)
+			any-function? try [:cod/encode][
 				;@@ cannot use dynamic refinement, because some codecs don't have /as
 				either as [
 					cod/encode/as :data :options
 				][	cod/encode :data ]
-			][
-				cause-error 'internal 'not-done type
 			]
+			handle? try [cod/entry] [
+				; original codecs were only natives
+				if type = 'text [
+					return either binary? data [to string! data][mold/only data]
+				]
+				do-codec cod/entry 'encode data
+			]
+			'else [cause-error 'internal 'not-done type]
 		]
 	][
 		cause-error 'access 'no-codec type

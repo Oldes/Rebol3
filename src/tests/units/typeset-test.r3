@@ -4,6 +4,7 @@ Rebol [
 	File: 	 %typeset-test.r3
 	Tabs:	 4
 	Needs:   [%../quick-test-module.r3]
+	type:    private
 ]
 
 ~~~start-file~~~ "typeset"
@@ -65,6 +66,14 @@ Rebol [
 		--assert (last to-block any-type!) == (last system/catalog/datatypes)
 		--assert #(typeset! [end!]) = difference make typeset! system/catalog/datatypes any-type!
 
+	--test-- "typeset construction with all datatypes (last datatype word)"
+		--assert typeset? ts: load mold/all any-type!
+		--assert equal? ts any-type!
+		--assert typeset? load {#(typeset! [native! action! command! op! function! closure! handle! port! event! library! utype! frame! rebcode! struct!])}
+
+	--test-- "invalid typeset construction must not crash"
+		--assert error? try [load {#(typeset! [foo])}]
+		--assert error? try [mold load {#(typeset! [foo])}]
 ===end-group===
 
 

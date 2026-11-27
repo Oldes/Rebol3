@@ -4,6 +4,7 @@ Rebol [
 	File: 	 %crypt-port-camelia-test.r3
 	Tabs:	 4
 	Needs:   [%../quick-test-module.r3]
+	type:    private
 ]
 
 ~~~start-file~~~ "Crypt port (CAMELLIA)"

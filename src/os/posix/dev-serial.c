@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2013 REBOL Technologies
-**  Copyright 2013-2023 Rebol Open Source Developers
+**  Copyright 2013-2026 Rebol Open Source Developers
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -46,11 +46,19 @@
 #include <dirent.h>
 #include <errno.h>
 #include <termios.h>
+#include <poll.h>
 
 #include "reb-host.h"
 #include "host-lib.h"
 
 #define MAX_SERIAL_PATH 128
+
+// Hardware (RTS/CTS) flow control flag has different names:
+#if defined(CRTSCTS)
+#define SERIAL_RTSCTS CRTSCTS
+#elif defined(CNEW_RTSCTS)
+#define SERIAL_RTSCTS CNEW_RTSCTS
+#endif
 
 
 /***********************************************************************
@@ -59,14 +67,94 @@
 **
 ***********************************************************************/
 
+// Baud rates and their termios speed constants.
+// On Linux these constants are not equal to the numeric rates
+// (B9600 is 13), so the rate must not be used as a speed directly!
+static const struct {REBINT baud; speed_t speed;} Baud_Speeds[] = {
+	{50, B50}, {75, B75}, {110, B110}, {134, B134}, {150, B150},
+	{200, B200}, {300, B300}, {600, B600}, {1200, B1200}, {1800, B1800},
+	{2400, B2400}, {4800, B4800}, {9600, B9600}, {19200, B19200},
+	{38400, B38400},
+#ifdef B57600
+	{57600, B57600},
+#endif
+#ifdef B115200
+	{115200, B115200},
+#endif
+#ifdef B230400
+	{230400, B230400},
+#endif
+#ifdef B460800
+	{460800, B460800},
+#endif
+#ifdef B500000
+	{500000, B500000},
+#endif
+#ifdef B576000
+	{576000, B576000},
+#endif
+#ifdef B921600
+	{921600, B921600},
+#endif
+#ifdef B1000000
+	{1000000, B1000000},
+#endif
+#ifdef B1152000
+	{1152000, B1152000},
+#endif
+#ifdef B1500000
+	{1500000, B1500000},
+#endif
+#ifdef B2000000
+	{2000000, B2000000},
+#endif
+#ifdef B2500000
+	{2500000, B2500000},
+#endif
+#ifdef B3000000
+	{3000000, B3000000},
+#endif
+#ifdef B3500000
+	{3500000, B3500000},
+#endif
+#ifdef B4000000
+	{4000000, B4000000},
+#endif
+};
+
+static REBOOL Get_Baud_Speed(REBINT baud, speed_t *speed)
+{
+	// Converts the numeric baud rate to the termios speed constant.
+	// Returns FALSE when the rate is not supported.
+	size_t n;
+	if (baud <= 0) return FALSE;
+	for (n = 0; n < sizeof(Baud_Speeds) / sizeof(Baud_Speeds[0]); n++) {
+		if (Baud_Speeds[n].baud == baud) {
+			*speed = Baud_Speeds[n].speed;
+			return TRUE;
+		}
+	}
+#if B9600 == 9600
+	// Speeds are plain numbers on this system (BSD, macOS),
+	// so let the driver decide if a non-standard rate is usable.
+	*speed = (speed_t)baud;
+	return TRUE;
+#else
+	return FALSE;
+#endif
+}
+
+
 static struct termios *Get_Serial_Settings(int ttyfd)
 {
 	struct termios *attr = NULL;
 	attr= (struct termios *) MAKE_NEW(struct termios);
 	if (attr != NULL) {
         	if (tcgetattr(ttyfd,attr) == -1) {
+				int err = errno; // keep the reason of the failure
           		FREE_MEM(attr);
           		attr = NULL;
+				errno = err;
         	}
       	}
 	return attr;
@@ -77,10 +165,15 @@ static REBOOL Set_Serial_Settings(int ttyfd, REBREQ *req)
 {
 	REBINT n;
 	struct termios attr = {};
-	REBINT speed = req->serial.baud;
+	speed_t speed;
 #ifdef DEBUG_SERIAL
-	printf("setting attributes: speed %d\n", speed);
+	printf("setting attributes: speed %d\n", req->serial.baud);
 #endif
+
+	if (!Get_Baud_Speed(req->serial.baud, &speed)) {
+		errno = EINVAL;
+		return FALSE;
+	}
 
 	if (cfsetospeed(&attr, speed)!=0 || cfsetispeed(&attr, speed)!=0)
 		return FALSE;
@@ -131,19 +224,22 @@ static REBOOL Set_Serial_Settings(int ttyfd, REBREQ *req)
 			break;
 	}
 
-#ifdef CNEW_RTSCTS
-	switch (req->serial.parity) {
+	switch (req->serial.flow_control) {
 		case SERIAL_FLOW_CONTROL_HARDWARE:
-			attr.c_cflag |= CNEW_RTSCTS;
+#ifdef SERIAL_RTSCTS
+			attr.c_cflag |= SERIAL_RTSCTS;
 			break;
+#else
+			return FALSE; // not supported on this system
+#endif
 		case SERIAL_FLOW_CONTROL_SOFTWARE:
-			attr.c_cflag &= ~CNEW_RTSCTS;
+			// XON/XOFF is an input mode (attr is zeroed, so RTS/CTS is off)
+			attr.c_iflag |= IXON | IXOFF;
 			break;
 		case SERIAL_FLOW_CONTROL_NONE:
 		default:
 			break;
 	}
-#endif
 
 	// L-flags - local modes:
 	attr.c_lflag = 0; // raw, not ICANON
@@ -189,26 +285,29 @@ static REBOOL Set_Serial_Settings(int ttyfd, REBREQ *req)
 	if (path[0] != '/') { //relative path
 		strcpy(&devpath[0], "/dev/");
 		strncpy(&devpath[5], path, MAX_SERIAL_PATH-6);
+		devpath[MAX_SERIAL_PATH-1] = 0; // strncpy does not terminate a long path
 		path = &devpath[0];
 	}
 	h = open(path, O_RDWR | O_NOCTTY | O_NONBLOCK);
 	if (h < 0) {
-		req->error = -RFE_OPEN_FAIL;
+		req->error = errno; // system error code as the reason
 		return DR_ERROR;
 	}
 
-	//Getting prior atttributes:
+	// Keep prior attributes, so these may be restored on close.
+	// It fails when the device is not a terminal.
+	errno = 0;
 	req->serial.prior_attr = Get_Serial_Settings(h);
-	if (tcgetattr(h, req->serial.prior_attr)) {
+
+	if (!req->serial.prior_attr || !Set_Serial_Settings(h, req)) {
+		req->error = errno ? errno : -RFE_OPEN_FAIL;
+		if (req->serial.prior_attr) {
+			FREE_MEM(req->serial.prior_attr);
+			req->serial.prior_attr = NULL;
+		}
 		close(h);
 		return DR_ERROR;
 	}
-
-	if (!Set_Serial_Settings(h, req)) {
-		close(h);
-		req->error = -RFE_OPEN_FAIL;
-		return DR_ERROR;
-	}		
 
 	req->id = h;
 	return DR_DONE;
@@ -222,8 +321,11 @@ static REBOOL Set_Serial_Settings(int ttyfd, REBREQ *req)
 ***********************************************************************/
 {
 	if (req->id) {
-		//Warning: should free req->serial.prior_attr termios struct?
-		tcsetattr(req->id, TCSANOW, req->serial.prior_attr);
+		if (req->serial.prior_attr) {
+			tcsetattr(req->id, TCSANOW, req->serial.prior_attr);
+			FREE_MEM(req->serial.prior_attr);
+			req->serial.prior_attr = NULL;
+		}
 		close(req->id);
 		req->id = 0;
 	}
@@ -238,6 +340,7 @@ static REBOOL Set_Serial_Settings(int ttyfd, REBREQ *req)
 ***********************************************************************/
 {
 	ssize_t result = 0;
+	struct pollfd pfd;
 	if (!req->id) {
 		req->error = -RFE_NO_HANDLE;
 		return DR_ERROR;
@@ -245,13 +348,26 @@ static REBOOL Set_Serial_Settings(int ttyfd, REBREQ *req)
 
 	result = read(req->id, req->data, req->length);
 #ifdef DEBUG_SERIAL
-	printf("read %d ret: %d\n", req->length, result);
+	printf("read %d ret: %d\n", req->length, (int)result);
 #endif
 	if (result < 0) {
+		// No data yet, or interrupted by a signal; try it again later.
+		if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) return DR_PEND;
 		req->error = -RFE_BAD_READ;
 		OS_Signal_Device(req, EVT_ERROR);
 		return DR_ERROR;
 	} else if (result == 0) {
+		// There are no data, but it is also the result of reading from
+		// a device which is gone (unplugged, other side of a pty closed).
+		// (POLLNVAL is ignored as some systems cannot poll devices.)
+		pfd.fd = req->id;
+		pfd.events = POLLIN;
+		pfd.revents = 0;
+		if (poll(&pfd, 1, 0) > 0 && (pfd.revents & (POLLHUP | POLLERR))) {
+			req->error = -RFE_BAD_READ;
+			OS_Signal_Device(req, EVT_ERROR);
+			return DR_ERROR;
+		}
 		return DR_PEND;
 	} else {
 		req->actual = result;
@@ -334,11 +450,12 @@ static REBOOL Set_Serial_Settings(int ttyfd, REBREQ *req)
 		return DR_ERROR;
 	}
 
+	// Note: the error must be set, else the result is reported as a success!
 	if (mode == 1) {
-		ioctl(req->id, value ? TIOCSBRK : TIOCCBRK);
+		if (ioctl(req->id, value ? TIOCSBRK : TIOCCBRK) == -1) goto error;
 		return DR_DONE;
 	}
-	if (ioctl(req->id, TIOCMGET, &status) == -1) return DR_ERROR;
+	if (ioctl(req->id, TIOCMGET, &status) == -1) goto error;
 	if (mode == 2) {
 		// (request-to-send) signal
 		if (value) {
@@ -354,8 +471,12 @@ static REBOOL Set_Serial_Settings(int ttyfd, REBREQ *req)
 			status &= ~TIOCM_DTR;
 		}
 	}
-	if (ioctl(req->id, TIOCMSET, &status) == -1) return DR_ERROR;
+	if (ioctl(req->id, TIOCMSET, &status) == -1) goto error;
 	return DR_DONE;
+
+error:
+	req->error = errno;
+	return DR_ERROR;
 }
 
 
@@ -382,4 +503,3 @@ static DEVICE_CMD_FUNC Dev_Cmds[RDC_MAX] = {
 };
 
 DEFINE_DEV(Dev_Serial, "Serial IO", 1, Dev_Cmds, RDC_MAX, sizeof(REBREQ));
-

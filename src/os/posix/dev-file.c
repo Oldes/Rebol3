@@ -47,6 +47,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <glob.h>
+#include <sys/file.h>   // flock
 
 #include "reb-host.h"
 #include "host-lib.h"
@@ -437,12 +438,16 @@ use_stat:
 **			calling this function.
 **		3.	REBOL clears necessary fields of file structure before
 **			calling (e.g. error and size fields).
+**		4.	With RFM_LOCK the file is locked using flock (non-blocking).
+**			Truncation is then done only after the lock is acquired,
+**			so a file locked by someone else is never truncated.
 **
 ***********************************************************************/
 {
 	int modes;
 	int access = 0;
 	int h;
+	int truncate = 0;
 	char *path;
 	struct stat info;
 
@@ -464,7 +469,10 @@ use_stat:
 				GET_FLAG(file->modes, RFM_APPEND) ||
 				GET_FLAG(file->modes, RFM_SEEK)
 			)
-		) modes |= O_TRUNC;
+		) {
+			if (GET_FLAG(file->modes, RFM_LOCK)) truncate = 1; // after locking
+			else modes |= O_TRUNC;
+		}
 	}
 
 	//modes |= GET_FLAG(file->modes, RFM_SEEK) ? O_RANDOM : O_SEQUENTIAL;
@@ -480,6 +488,26 @@ use_stat:
 	if (h < 0) {
 		file->error = -RFE_OPEN_FAIL;
 		goto fail;
+	}
+
+	if (GET_FLAG(file->modes, RFM_LOCK)) {
+#ifdef LOCK_EX
+		int op = GET_FLAGS(file->modes, RFM_WRITE, RFM_APPEND) ? LOCK_EX : LOCK_SH;
+		if (flock(h, op | LOCK_NB) < 0) {
+			file->error = (errno == EWOULDBLOCK) ? -RFE_LOCKED : -RFE_OPEN_FAIL;
+			close(h);
+			goto fail;
+		}
+		if (truncate && ftruncate(h, 0) < 0) {
+			close(h); // also releases the lock
+			file->error = -RFE_OPEN_FAIL;
+			goto fail;
+		}
+#else
+		close(h);
+		file->error = -RFE_OPEN_FAIL; // locking not supported on this platform
+		goto fail;
+#endif
 	}
 
 	// Confirm that a seek-mode file is actually seekable:

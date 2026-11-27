@@ -4,6 +4,7 @@ Rebol [
 	File: 	 %unicode-test.r3
 	Tabs:	 4
 	Needs:   [%../quick-test-module.r3]
+	type:    private
 ]
 
 
@@ -334,6 +335,13 @@ Rebol [
 		--assert (unique/skip "baaččbač" 2) == "baaččb"
 		--assert (unique/skip "b🙂aččb🙂č" 2) == "b🙂aččb🙂č"
 
+	--test-- "mold/form string with invalidated index"
+		--assert all [
+			"b🙂" == swap s1: "🙂b" s2: next s1
+			{"🙂"} == mold s2
+			"🙂" == form s2
+			{#(string! "b🙂" 2)} == mold/all s2
+		]
 	--test-- "mold/part"
 		str: "═════"
 		--assert {"}   == mold/part str 1
@@ -431,6 +439,19 @@ Rebol [
 		--assert "ás" == all [s: "áb" s/2: #"s" s]
 		--assert error? try [all s: "ab" s/3: #"š"]
 
+	--test-- "file path with invalidated index"
+		swap f1: %🙂b f2: next f1 ;; f2 index is now inside of the 🙂 sequence
+		d: %dir
+		--assert %🙂/x   == f2/x
+		--assert %dir/🙂 == d/:f2
+
+	--test-- "copy of series value with index past tail"
+		--assert all [
+			f: %abcdef p: skip f 2
+			clear f
+			%/x == p/x
+		]
+===end-group===
 
 
 ===start-group=== "actions"
@@ -575,6 +596,9 @@ Rebol [
 		--assert all [(change o: "ábč" "x🙂") == "č"  o == "x🙂č"]
 		--assert all [(change o: "🙂bc" "a") == "bc"  o == "abc"]
 		--assert all [(change o: next "a🙂c" "b") == "c"  o == "bc"  "abc" == head o]
+		;; number of replaced chars must be counted including null chars
+		--assert all [(change o: "ábčd" "x^@y") == "d"  o == "x^@yd"]
+		--assert all [(change/dup o: "ábčde" "x^@" 2) == "e"  o == "x^@x^@e"]
 
 		--assert all [(change o: tail "abc" "🙂") == ""  o == "🙂" (head o) == "abc🙂"]
 		--assert all [(change o: tail "ábč" "🙂") == ""  o == "🙂" (head o) == "ábč🙂"]
@@ -609,6 +633,19 @@ Rebol [
 		--assert all [(change/part o: "éee" "🙂" 20) == ""  o == "🙂"]
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2665
 		--assert all [(change/part o: next "éeeé" "🙂" 2) == "é"  o == "🙂é"  (head o) == "é🙂é"]
+
+	--test-- "/part position with invalidated index"
+		swap s1: "🙂b" s2: next s1 ;; s2 index is now inside of the 🙂 sequence
+		--assert "b"   == copy/part s1 s2
+		--assert "b"   == head insert/part copy "" s1 s2
+		--assert "x🙂" == head change/part s1 "x" s2
+		--assert "🙂"  == head remove/part s1 s2
+	--test-- "/part position past tail of UTF-8 string"
+		--assert all [
+			s: "🙂abc" p: tail s
+			clear next s
+			"🙂" == copy/part s p
+		]
 
 	--test-- "change char!"
 		--assert all [(change o: "---" #"╔") == "--"  o == "╔--"]
@@ -872,7 +909,51 @@ Rebol [
 	--test-- "parse skip"
 		--assert parse "핕" [skip]
 
-
+	--test-- "parse string with invalidated index"
+		swap s1: "🙂b" s2: next s1 ;; s2 index is now inside of the 🙂 sequence
+		--assert parse s2 [#"🙂"]
+		--assert parse s2 ["🙂"]
+		--assert parse s1 [:s2 #"🙂"]
+		--assert parse s1 [to end :s2 #"🙂"]
+		--assert all [
+			parse s1 [to end remove s2]
+			s1 == "b"
+		]
+	--test-- "parse with invalidated index in a rule value"
+		swap s1: "🙂b" s2: next s1 ;; s2 index is now inside of the 🙂 sequence
+		--assert parse "🙂" [s2]
+		--assert parse "a🙂" [to s2 s2]
+		--assert parse "a🙂" [thru s2]
+		--assert parse "a🙂" [to [s2] s2]
+		--assert all [
+			parse s3: "a" [skip insert s2]
+			s3 == "a🙂"
+		]
+		--assert all [
+			parse s3: "ab" [skip change skip s2]
+			s3 == "a🙂"
+		]
+	--test-- "parse position invalidated by a modification from a paren"
+		--assert all [
+			parse s: "ab" [skip (poke s 1 #"🙂") #"b"]
+			s == "🙂b"
+		]
+		--assert all [
+			parse s: "ab" [skip (poke s 1 #"🙂") copy x to end]
+			x == "b"
+		]
+	--test-- "to/thru block on UTF-8 input"
+		--assert parse "🙂b"  [to [#"b"] #"b"]
+		--assert parse "🙂b"  [thru [#"🙂"] #"b"]
+		--assert parse "a🙂b" [to [#"🙂"] skip #"b"]
+		--assert parse "a🙂b" [thru ["🙂"] #"b"]
+		--assert parse "a🙂b" [to [#"x" | "🙂b"] 2 skip]
+		--assert parse "a🙂"  [thru [128578]]
+		cs: charset "š"
+		--assert parse "aš" [thru [cs]]
+		--assert parse "aš" [to [cs] skip]
+		;; must not match inside of a multi-byte char
+		--assert not parse "🙂" [to [#"^(9F)"] to end]
 ===end-group===
 
 ===start-group=== "char column (terminal) width"
@@ -975,4 +1056,105 @@ Rebol [
 		s: next s
 		--assert 0 = s/length
 ===end-group===
+
+===start-group=== "UTF-8 length, index and comparison"
+	--test-- "length? of UTF-8 string with null char"
+		;; length must be counted to the tail, not to the first null byte
+		s: "a^@č"
+		--assert 3 = length? s
+		--assert 3 = s/length
+		--assert 2 = length? next s
+		--assert 1 = length? next next s
+	--test-- "index? of UTF-8 string with null char"
+		s: "a^@č"
+		--assert 3 = index? next next s
+		--assert 4 = index? tail s
+	--test-- "comparison of UTF-8 strings with different length"
+		;; shorter string must not be equal to its longer prefix
+		--assert not equal? "č" "čx"
+		--assert not equal? "čx" "č"
+		--assert "č" < "čx"
+		--assert "čx" > "č"
+		--assert equal? "a^@č" "A^@č"
+		--assert not equal? "a^@č" "a^@"
+	--test-- "case-insensitive comparison of UTF-8 strings"
+		--assert "Č" = "č"
+		--assert "čÁ" = "Čá"
+		--assert not strict-equal? "Č" "č"
+		--assert not "Č" < "č"
+		--assert not "Č" > "č"
+		--assert "č" < "Čx"
+	--test-- "find in UTF-8 string with null char"
+		;; must not hang on the null char
+		--assert "x" == find "č^@x" #"x"
+		--assert "x" == find "č^@x" "x"
+		--assert "^@x" == find "č^@x" "^@x"
+		--assert "x" == find/tail "č^@x" "^@"
+		--assert "x" == find "č^@x" charset "x"
+		--assert "<x>" == find "č^@<x>" <x>
+		--assert "^@x^@" == find/last "č^@x^@" "^@x"
+	--test-- "insert/part from UTF-8 string with null char"
+		--assert "č^@x" == head insert/part "" "č^@xy" 3
+
+	--test-- "string with invalidated index as an argument"
+		swap s1: "🙂b" s2: next s1 ;; s2 index is now inside of the 🙂 sequence
+		--assert "a🙂" == append "a" s2
+		--assert "🙂a" == head insert "a" s2
+		--assert "🙂"  == head change "a" s2
+		--assert "🙂"  == find "a🙂" s2
+		--assert #"c"  == select "a🙂c" s2
+		--assert all [
+			swap s3: "a" s2
+			s3 == "🙂"
+			s1 == "ba"
+		]
+	--test-- "path access on string with invalidated index"
+		swap s1: "🙂b" s2: next s1 ;; s2 index is now inside of the 🙂 sequence
+		--assert #"🙂" == s2/1
+		--assert none? s2/2
+		--assert 1 == s2/length
+		--assert 4 == s2/size
+		--assert all [
+			s3: "ab"
+			s3/1: s2
+			s3 == "🙂b"
+		]
+		--assert all [
+			s2/1: #"c"
+			s1 == "bc"
+		]
+===end-group===
+
+===start-group=== "UTF-16/32 decoding with BOM"
+	--test-- "UTF-8 BOM"
+		--assert "š" == to string! #{EFBBBFC5A1}
+	--test-- "UTF-16 surrogate pairs"
+		--assert "🙂" == to string! #{FFFE3DD842DE}       ;; LE
+		--assert "🙂" == to string! #{FEFFD83DDE42}       ;; BE
+	--test-- "UTF-16 invalid surrogates"
+		--assert error? try [to string! #{FFFE3DD8}]      ;; truncated pair
+		--assert error? try [to string! #{FFFE3DD84100}]  ;; high + non-low
+		--assert error? try [to string! #{FFFE42DE}]      ;; unpaired low
+	--test-- "UTF-32"
+		--assert "🙂" == to string! #{FFFE000042F60100}   ;; LE
+		--assert "🙂" == to string! #{0000FEFF0001F642}   ;; BE
+	--test-- "UTF-32 invalid codepoints"
+		--assert error? try [to string! #{FFFE000000001100}] ;; > 10FFFF
+		--assert error? try [to string! #{FFFE000000D80000}] ;; surrogate
+===end-group===
+
+===start-group=== "UTF-8 surrogates in the middle of a string"
+	--test-- "surrogate pair with prefix and suffix"
+		--assert "a𝄢b" == to string! #{61EDA0B4EDB4A262}
+		--assert "š𝄢"  == to string! #{C5A1EDA0B4EDB4A2}
+===end-group===
+
+===start-group=== "char width above BMP"
+	--test-- "zero width (u32 table)"
+		--assert all [s: "^(E0001)" zero? s/width]
+		--assert all [s: "^(1D167)" zero? s/width]
+	--test-- "normal width (u32, not wide)"
+		--assert all [s: "^(10000)" 1 == s/width]
+===end-group===
+
 ~~~end-file~~~

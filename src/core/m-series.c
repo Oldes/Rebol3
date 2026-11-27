@@ -3,7 +3,7 @@
 **  REBOL Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -70,6 +70,11 @@
 	REBCNT x;
 
 	if (delta == 0) return;
+	ASSERT1(!IS_FIXED_SIZE(series), RP_BAD_SERIES);
+
+	// Inserting before the tail moves values, so the hash table is invalid
+	// (appending keeps it; new values are hashed when needed)
+	if (index < series->tail) DROP_SERIES_HASH(series);
 
 	// Optimized case of head insertion:
 	if (index == 0 && SERIES_BIAS(series) >= delta) {
@@ -161,7 +166,9 @@
 	series->tail += delta;
 
 	if ((SERIES_TAIL(series) + SERIES_BIAS(series)) * wide >= SERIES_TOTAL(series)) {
+#ifdef DEBUG
 		Dump_Series(series, "Overflow");
+#endif
 		ASSERT(0, RP_OVER_SERIES);
 	}
 
@@ -249,6 +256,21 @@
 	STR_TERM(series);
 }
 
+/***********************************************************************
+**
+*/	REBSER* Copy_Binary(REBSER* source)
+/*
+**		Copy binary series, without terminator.
+**
+***********************************************************************/
+{
+	REBCNT len = SERIES_TAIL(source);
+	REBSER* series = Make_Series(len, SERIES_WIDE(source), FALSE);
+
+	COPY_MEM(series->data, source->data, len * SERIES_WIDE(source));
+	SERIES_TAIL(series) = len;
+	return series;
+}
 
 /***********************************************************************
 **
@@ -258,15 +280,29 @@
 **
 ***********************************************************************/
 {
-	REBCNT len = source->tail + 1;
+	REBCNT len = SERIES_LEN(source); // with terminator
 	REBSER *series = Make_Series(len, SERIES_WIDE(source), FALSE);
 
 	COPY_MEM(series->data, source->data, len * SERIES_WIDE(source));
 	if (IS_UTF8_SERIES(source)) UTF8_SERIES(series);
-	series->tail = source->tail;
+	SERIES_TAIL(series) = SERIES_TAIL(source);
 	return series;
 }
 
+/***********************************************************************
+**
+*/	REBSER* Copy_Binary_Part(REBSER* source, REBCNT index, REBCNT length)
+/*
+**		Copy binary subseries, without space for the terminator.
+**
+***********************************************************************/
+{
+	REBSER* series = Make_Series(length, SERIES_WIDE(source), FALSE);
+
+	COPY_MEM(series->data, source->data + index * SERIES_WIDE(source), length * SERIES_WIDE(source));
+	series->tail = length;
+	return series;
+}
 
 /***********************************************************************
 **
@@ -280,10 +316,7 @@
 
 	COPY_MEM(series->data, source->data + index * SERIES_WIDE(source), (length+1) * SERIES_WIDE(source));
 	series->tail = length;
-	if (IS_UTF8_SERIES(source)) {
-
-		UTF8_SERIES(series);
-	}
+	if (IS_UTF8_SERIES(source)) UTF8_SERIES(series);
 	return series;
 }
 
@@ -297,7 +330,15 @@
 **
 ***********************************************************************/
 {
-	return Copy_Series_Part(VAL_SERIES(value), VAL_INDEX(value), VAL_LEN(value));
+	REBSER *series = VAL_SERIES(value);
+	REBCNT  tail   = SERIES_TAIL(series);
+	REBCNT  index  = VAL_INDEX(value);
+
+	// Index may be past the tail (when the series was shortened through another
+	// reference). Clip it, so the terminator is copied from the tail.
+	if (index > tail) index = tail;
+
+	return Copy_Series_Part(series, index, tail - index);
 }
 
 
@@ -343,6 +384,8 @@
 	REBYTE	*data;
 
 	if (len <= 0) return;
+
+	DROP_SERIES_HASH(series);
 
 	// Optimized case of head removal:
 	if (index == 0) {
@@ -414,6 +457,7 @@
 ***********************************************************************/
 {
 	if (series->tail == 0) return;
+	DROP_SERIES_HASH(series);
 	series->tail--;
 	CLEAR(series->data + SERIES_WIDE(series) * series->tail, SERIES_WIDE(series));
 }
@@ -448,6 +492,7 @@
 **
 ***********************************************************************/
 {
+	DROP_SERIES_HASH(series);
 	series->tail = 0;
 	if (SERIES_BIAS(series)) Reset_Bias(series);
 	CLEAR(series->data, SERIES_WIDE(series)); // re-terminate
@@ -463,6 +508,7 @@
 **
 ***********************************************************************/
 {
+	DROP_SERIES_HASH(series);
 	series->tail = 0;
 	if (SERIES_BIAS(series)) Reset_Bias(series);
 	CLEAR(series->data, SERIES_SPACE(series));
@@ -478,6 +524,7 @@
 **
 ***********************************************************************/
 {
+	DROP_SERIES_HASH(series);
 	series->tail = 0;
 	if (SERIES_BIAS(series)) Reset_Bias(series);
 	EXPAND_SERIES_TAIL(series, size);

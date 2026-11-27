@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,7 +21,7 @@
 ************************************************************************
 **
 **  Module:  n-crypt.c
-**  Summary: native functions for data sets
+**  Summary: native functions for cryptography
 **  Section: natives
 **  Author:  Oldes, Cyphre
 **  Notes:
@@ -44,6 +44,75 @@
 
 static mbedtls_entropy_context entropy;
 static mbedtls_ctr_drbg_context ctr_drbg;
+static REBOOL ctr_drbg_seeded = FALSE;
+
+static REBOOL Seed_Ctr_Drbg(void);
+
+
+/***********************************************************************
+**
+*/	void Crypt_Random_Bytes(REBYTE *dest, REBCNT length)
+/*
+**		Fills the buffer with cryptographically secure random bytes.
+**		Uses CTR-DRBG seeded from the OS entropy source, so it is
+**		completely independent of the RANDOM/SEED (PRNG) state.
+**
+***********************************************************************/
+{
+	REBCNT n;
+
+	if (!ctr_drbg_seeded && !Seed_Ctr_Drbg()) Trap0(RE_FEATURE_NA);
+
+	while (length > 0) {
+		// a single request is limited by MBEDTLS_CTR_DRBG_MAX_REQUEST
+		n = MIN(length, MBEDTLS_CTR_DRBG_MAX_REQUEST);
+		if (mbedtls_ctr_drbg_random(&ctr_drbg, dest, n) != 0)
+			Trap0(RE_FEATURE_NA);
+		dest   += n;
+		length -= n;
+	}
+}
+
+
+/***********************************************************************
+**
+*/	static REBOOL Seed_Ctr_Drbg(void)
+/*
+**		Initializes and seeds the shared CTR-DRBG from OS entropy.
+**		May be called lazily if secure random data is requested
+**		before Init_Crypt (or if the initial seeding failed).
+**
+***********************************************************************/
+{
+	const char *pers = "rebol";
+
+	if (ctr_drbg_seeded) return TRUE;
+
+	mbedtls_ctr_drbg_free(&ctr_drbg);
+	mbedtls_entropy_free(&entropy);
+	mbedtls_ctr_drbg_init(&ctr_drbg);
+	mbedtls_entropy_init(&entropy);
+
+	ctr_drbg_seeded = (0 == mbedtls_ctr_drbg_seed(
+		&ctr_drbg, mbedtls_entropy_func, &entropy,
+		(const unsigned char *)pers, strlen(pers)));
+	return ctr_drbg_seeded;
+}
+
+
+/***********************************************************************
+**
+*/	static int Crypt_Random(void *p_rng, unsigned char *output, size_t len)
+/*
+**		RNG callback for mbedtls functions. Makes sure, that the shared
+**		CTR-DRBG is seeded before it is used.
+**
+***********************************************************************/
+{
+	if (!ctr_drbg_seeded && !Seed_Ctr_Drbg())
+		return MBEDTLS_ERR_CTR_DRBG_ENTROPY_SOURCE_FAILED;
+	return mbedtls_ctr_drbg_random(p_rng, output, len);
+}
 
 
 /***********************************************************************
@@ -58,13 +127,8 @@ static mbedtls_ctr_drbg_context ctr_drbg;
 
 	mbedtls_platform_set_calloc_free(Make_Managed_CMem, Free_Managed_CMem);
 
-	mbedtls_ctr_drbg_init(&ctr_drbg);
-	mbedtls_entropy_init(&entropy);
-	const char *pers = "rebol";
+	Seed_Ctr_Drbg(); // failure is reported on first use of secure random data
 
-	mbedtls_ctr_drbg_seed(
-		&ctr_drbg, mbedtls_entropy_func, &entropy,
-		(const unsigned char *)pers, strlen(pers));
 #ifdef INCLUDE_AES_DEPRECATED
 	Register_Handle(SYM_AES,  sizeof(AES_CTX), NULL);
 #endif
@@ -250,7 +314,9 @@ static mbedtls_ctr_drbg_context ctr_drbg;
 /*
 ***********************************************************************/
 {
+	mbedtls_ctr_drbg_free(&ctr_drbg);
 	mbedtls_entropy_free(&entropy);
+	ctr_drbg_seeded = FALSE;
 }
 
 /***********************************************************************
@@ -318,6 +384,7 @@ static mbedtls_ctr_drbg_context ctr_drbg;
 {
 #ifndef INCLUDE_RSA
 	Trap0(RE_FEATURE_NA);
+	return R_NONE; // just to silent a warning
 #else
 	REBVAL *n       = D_ARG(1);
 	REBVAL *e       = D_ARG(2);
@@ -347,7 +414,7 @@ static mbedtls_ctr_drbg_context ctr_drbg;
 		if (err != 0 
 			|| mbedtls_rsa_complete(rsa_ctx) != 0
 			|| mbedtls_rsa_check_privkey(rsa_ctx) != 0 
-		) return R_NONE;
+		) goto error;
 	} else {
 		err = mbedtls_rsa_import_raw(
 			rsa_ctx,
@@ -360,48 +427,17 @@ static mbedtls_ctr_drbg_context ctr_drbg;
 		if (err != 0 
 			|| mbedtls_rsa_complete(rsa_ctx) != 0
 			|| mbedtls_rsa_check_pubkey(rsa_ctx) != 0 
-		) return R_NONE;
+		) goto error;
 	}
 	return R_RET;
+
+error:
+	// release the handle (and its mbedtls data) now; don't wait for GC
+	Free_Hob(VAL_HANDLE_CTX(ret));
+	return R_NONE;
 #endif //INCLUDE_RSA
 }
-#ifdef unused 
-static int myrand(void *rng_state, unsigned char *output, size_t len)
-{
-#if !defined(__OpenBSD__) && !defined(__NetBSD__)
-	size_t i;
 
-	if (rng_state != NULL)
-		rng_state = NULL;
-
-	for (i = 0; i < len; ++i)
-		output[i] = rand();
-#else
-	if (rng_state != NULL)
-		rng_state = NULL;
-
-	arc4random_buf(output, len);
-#endif /* !OpenBSD && !NetBSD */
-
-	return(0);
-}
-#endif
-
-/* This table is used to convert Rebol symbol values (words) to MbedTLS (3.5.1) MD types */
-static const REBYTE Map_Sym_to_MD_type[] = {
-	0x03, /* SYM_MD5        The MD5 message digest.        */
-	0x05, /* SYM_SHA1       The SHA-1 message digest.      */
-	0x08, /* SYM_SHA224     The SHA-224 message digest.    */
-	0x09, /* SYM_SHA256     The SHA-256 message digest.    */
-	0x0a, /* SYM_SHA384     The SHA-384 message digest.    */
-	0x0b, /* SYM_SHA512     The SHA-512 message digest.    */
-	0x04, /* SYM_RIPEMD-160 The RIPEMD-160 message digest. */
-	// Unused in Rebol yet:
-//	0x10, /* SYM_ The SHA3-224 message digest. */
-//	0x11, /* SYM_ The SHA3-256 message digest. */
-//	0x12, /* SYM_ The SHA3-384 message digest. */
-//	0x13  /* SYM_ The SHA3-512 message digest. */
-};
 /***********************************************************************
 **
 */	REBNATIVE(rsa)
@@ -425,6 +461,7 @@ static const REBYTE Map_Sym_to_MD_type[] = {
 {
 #ifndef INCLUDE_RSA
 	Trap0(RE_FEATURE_NA);
+	return R_NONE; // just to silent a warning
 #else
 	REBVAL *key         = D_ARG(1);
 	REBVAL *val_data    = D_ARG(2);
@@ -471,7 +508,6 @@ static const REBYTE Map_Sym_to_MD_type[] = {
 		return R_NONE;
 	}
 
-	data     = VAL_SERIES(val_data);
 	inBinary = VAL_BIN_AT(val_data);
 	inBytes  = VAL_LEN(val_data);
 
@@ -483,43 +519,44 @@ static const REBYTE Map_Sym_to_MD_type[] = {
 		else {
 			// if /hash was not used, make default to SHA256
 			hashSym = IS_NONE(val_hash) ? SYM_SHA256 : VAL_WORD_CANON(val_hash);
-			// count message digest off the input data
-			if (Message_Digest(hash, inBinary, inBytes, hashSym, &inBytes)) {
-				// map Rebol word to mbedtls_md_type_t
-				// no need to test a range as only known will pass above run
-				md_alg = Map_Sym_to_MD_type[hashSym - SYM_MD5];
-				inBinary = hash;
-			}
-			else {
-				return R_NONE;
-			}
+			md_alg = Sym_To_MD_Type(hashSym);
+			if (md_alg == MBEDTLS_MD_NONE) Trap_Arg(val_hash);
+			// count message digest off the input data (fails if excluded from this build)
+			if (!Message_Digest(hash, inBinary, inBytes, hashSym, &inBytes))
+				Trap_Arg(val_hash);
+			inBinary = hash;
 		}
 	}
 	else if (padding) {
 		hashSym = IS_NONE(val_hash) ? SYM_SHA256 : VAL_WORD_CANON(val_hash);
-		md_alg = Map_Sym_to_MD_type[hashSym - SYM_MD5];
+		md_alg = Sym_To_MD_Type(hashSym);
+		if (md_alg == MBEDTLS_MD_NONE) Trap_Arg(val_hash);
 	}
-	
+
 	mbedtls_rsa_set_padding(rsa, padding ? MBEDTLS_RSA_PKCS_V21 : MBEDTLS_RSA_PKCS_V15, md_alg);
 	if (refVerify) {
+		// signature must have exactly the key size (mbedtls reads that many bytes)
+		if (VAL_LEN(val_sign) != mbedtls_rsa_get_len(rsa)) return R_FALSE;
 		err = mbedtls_rsa_pkcs1_verify(rsa, md_alg, inBytes, inBinary, VAL_BIN_AT(val_sign));
 		return (err == 0) ? R_TRUE : R_FALSE;
 	}
 
 	//allocate new binary!
 	outBytes = (REBLEN)mbedtls_rsa_get_len(rsa);
+	// ciphertext must have exactly the key size (mbedtls reads that many bytes)
+	if (refDecrypt && inBytes != outBytes) return R_NONE;
 	data = Make_Binary(outBytes-1);
 	outBinary = BIN_DATA(data);
 
 	if (refSign) {
-		err = mbedtls_rsa_pkcs1_sign(rsa, mbedtls_ctr_drbg_random, &ctr_drbg, md_alg, inBytes, inBinary, outBinary);
+		err = mbedtls_rsa_pkcs1_sign(rsa, Crypt_Random, &ctr_drbg, md_alg, inBytes, inBinary, outBinary);
 	}
 	else if (refEncrypt) {
-		err = mbedtls_rsa_pkcs1_encrypt(rsa, mbedtls_ctr_drbg_random, &ctr_drbg, inBytes, inBinary, outBinary);
+		err = mbedtls_rsa_pkcs1_encrypt(rsa, Crypt_Random, &ctr_drbg, inBytes, inBinary, outBinary);
 	}
 	else {
 		size_t olen = 0;
-		err = mbedtls_rsa_pkcs1_decrypt(rsa, mbedtls_ctr_drbg_random, &ctr_drbg, &olen, inBinary, outBinary, outBytes);
+		err = mbedtls_rsa_pkcs1_decrypt(rsa, Crypt_Random, &ctr_drbg, &olen, inBinary, outBinary, outBytes);
 		outBytes = (REBLEN)olen;
 	}
 	if (err) goto error;
@@ -549,9 +586,7 @@ error:
 {
 	REBVAL *g        = D_ARG(1);
 	REBVAL *p        = D_ARG(2);
-	REBOOL  ref_into = D_REF(3);
-	REBVAL *val_dh   = D_ARG(4);
-	
+
 	REBINT  err = 0;
 	DHM_CTX *dhm;
 
@@ -571,7 +606,7 @@ error:
 	err = dhm_random_below(
 		&dhm->MBEDTLS_PRIVATE(X),
 		&dhm->MBEDTLS_PRIVATE(P),
-		mbedtls_ctr_drbg_random, &ctr_drbg);
+		Crypt_Random, &ctr_drbg);
 	if (err) goto error;
 
 	/*
@@ -621,9 +656,10 @@ error:
 	DHM_CTX *dhm;
 	REBLEN   gx_len, gy_len;
 	size_t   olen = 0;
+	size_t   p_len;
 
-	if (refPublic && refSecret) {
-		// only one can be used
+	if (refPublic == refSecret) {
+		// exactly one of /public or /secret must be used
 		Trap0(RE_BAD_REFINES);
 	}
 
@@ -644,9 +680,11 @@ error:
 		gy_len = VAL_SERIES(gy)->tail - VAL_INDEX(gy);
 		err = mbedtls_mpi_read_binary(&dhm->MBEDTLS_PRIVATE(GY), VAL_BIN_AT(gy), gy_len);
 		if (err) goto error;
-		out = Make_Binary(gy_len-1);
+		// the secret may be as large as P (not as the peer's key!)
+		p_len = mbedtls_dhm_get_len(dhm);
+		out = Make_Binary((REBLEN)p_len);
 		// and derive the shared secret of these 2 public parts
-		err = mbedtls_dhm_calc_secret(dhm, BIN_DATA(out), gy_len, &olen, mbedtls_ctr_drbg_random, &ctr_drbg);
+		err = mbedtls_dhm_calc_secret(dhm, BIN_DATA(out), p_len, &olen, Crypt_Random, &ctr_drbg);
 		if (err) goto error;
 		BIN_LEN(out) = (REBLEN)olen;
 	}
@@ -657,7 +695,8 @@ error:
 	return R_NONE;
 }
 
-#define ECP_GROUP_ID_VAL(v) (mbedtls_ecp_group_id)(VAL_WORD_CANON(v) - SYM_SECP192R1 + 1);
+// curve words are in the same order as mbedtls_ecp_group_id (see words.reb)
+#define ECP_GROUP_ID_VAL(v) ((mbedtls_ecp_group_id)(VAL_WORD_CANON(v) - SYM_SECP192R1 + 1))
 
 /***********************************************************************
 **
@@ -701,6 +740,9 @@ error:
 	}
 
 	if (ref_init) {
+		gid = ECP_GROUP_ID_VAL(val_curve);
+		if (gid < 1 || gid >= MBEDTLS_ECP_DP_MAX)
+			Trap_Arg(val_curve);
 		MAKE_HANDLE(val_handle, SYM_ECDH);
 	}
 	if (NOT_VALID_CONTEXT_HANDLE(val_handle, SYM_ECDH))
@@ -710,13 +752,12 @@ error:
 
 	if (ref_init) {
 		mbedtls_ecdh_init(ctx);
-		gid = ECP_GROUP_ID_VAL(val_curve);
 		err = mbedtls_ecdh_setup(ctx, gid);
 		if (err) goto error;
 		mbed = &ctx->MBEDTLS_PRIVATE(ctx).MBEDTLS_PRIVATE(mbed_ecdh);
 		err = mbedtls_ecdh_gen_public(
 			&mbed->MBEDTLS_PRIVATE(grp), &mbed->MBEDTLS_PRIVATE(d), &mbed->MBEDTLS_PRIVATE(Q),
-			mbedtls_ctr_drbg_random, &ctr_drbg);
+			Crypt_Random, &ctr_drbg);
 		if (err) goto error;
 		if (!(ref_type || ref_public || ref_secret)) return R_ARG1;
 	}
@@ -735,7 +776,7 @@ error:
 		if (Q.MBEDTLS_PRIVATE(X).MBEDTLS_PRIVATE(p) == NULL) {
 			err = mbedtls_ecdh_gen_public(
 				&mbed->MBEDTLS_PRIVATE(grp), &mbed->MBEDTLS_PRIVATE(d), &mbed->MBEDTLS_PRIVATE(Q),
-				mbedtls_ctr_drbg_random, &ctr_drbg);
+				Crypt_Random, &ctr_drbg);
 			if (err) goto error;
 		}
 		// and return it.
@@ -759,7 +800,7 @@ error:
 		);
 		if (err) goto error;
 		bin = Make_Binary(256);
-		err = mbedtls_ecdh_calc_secret(ctx, &olen, BIN_DATA(bin), SERIES_REST(bin), mbedtls_ctr_drbg_random, &ctr_drbg);
+		err = mbedtls_ecdh_calc_secret(ctx, &olen, BIN_DATA(bin), SERIES_REST(bin), Crypt_Random, &ctr_drbg);
 		if (err) goto error;
 		
 		SET_BINARY(D_RET, bin);
@@ -850,15 +891,19 @@ error:
 	mbedtls_ecdh_context_mbed *mbed;
 	mbedtls_mpi r, s;
 
+	if (ref_sign && ref_verify) Trap0(RE_BAD_REFINES);
 	if (!ref_sign && !ref_verify) ref_sign = TRUE; //using SIGN as a default action
 
 	if (IS_BINARY(val_key)) {
+		// raw binary key is only a public key (point), so it cannot be used to sign
+		if (ref_sign) Trap_Arg(val_key);
 		if (!ref_curve) Trap0(RE_MISSING_ARG);
 		gid = ECP_GROUP_ID_VAL(val_curve);
 		if (gid < 1 || gid >= MBEDTLS_ECP_DP_MAX)
 			Trap_Arg(val_curve);
 
 		ctx_ecdh = (ECDH_CTX *)malloc(sizeof(ECDH_CTX));
+		if (ctx_ecdh == NULL) return R_NONE;
 		mbedtls_ecdh_init(ctx_ecdh);
 		err = mbedtls_ecdh_setup(ctx_ecdh, gid);
 		if (err) goto failed_init;
@@ -888,11 +933,8 @@ error:
 		mbed = &ctx_ecdh->MBEDTLS_PRIVATE(ctx).private_mbed_ecdh;
 		mbedtls_mpi_init(&r);
 		mbedtls_mpi_init(&s);
-		err = mbedtls_ecp_gen_keypair(
-			&mbed->MBEDTLS_PRIVATE(grp),
-			&mbed->MBEDTLS_PRIVATE(d),
-			&mbed->MBEDTLS_PRIVATE(Q),
-			mbedtls_ctr_drbg_random, &ctr_drbg);
+		// sign with the existing private key (never generate a new one!)
+		err = mbedtls_ecp_check_privkey(&mbed->MBEDTLS_PRIVATE(grp), &mbed->MBEDTLS_PRIVATE(d));
 		if (err) goto done;
 
 		err = mbedtls_ecdsa_sign(
@@ -900,7 +942,7 @@ error:
 			&r, &s,
 			&mbed->MBEDTLS_PRIVATE(d),
 			VAL_BIN_AT(val_hash), VAL_LEN(val_hash),
-			mbedtls_ctr_drbg_random, &ctr_drbg);
+			Crypt_Random, &ctr_drbg);
 		if (err) goto done;
 
 		bin = Make_Binary(300);
@@ -918,17 +960,17 @@ error:
 		const unsigned char *end = VAL_BIN_TAIL(val_sign);
 		mbedtls_mpi_init(&r);
 		mbedtls_mpi_init(&s);
-		err = mbedtls_asn1_get_tag(&p, end, &len, MBEDTLS_ASN1_CONSTRUCTED | MBEDTLS_ASN1_SEQUENCE);
-		if (err || p + len != end) goto done;
-		if ((err = mbedtls_asn1_get_mpi(&p, end, &r)) != 0 ||
-			(err = mbedtls_asn1_get_mpi(&p, end, &s)) != 0) {
-			goto done;
-		}
-		err = mbedtls_ecdsa_verify(
-			&mbed->MBEDTLS_PRIVATE(grp),
-			VAL_BIN_AT(val_hash), VAL_LEN(val_hash),
-			&mbed->MBEDTLS_PRIVATE(Q), &r, &s);
-		if (err) goto done;
+		SET_FALSE(D_RET); // any failure below means an invalid signature
+		if (mbedtls_asn1_get_tag(&p, end, &len, MBEDTLS_ASN1_CONSTRUCTED | MBEDTLS_ASN1_SEQUENCE) != 0
+			|| p + len != end
+			|| mbedtls_asn1_get_mpi(&p, end, &r) != 0
+			|| mbedtls_asn1_get_mpi(&p, end, &s) != 0
+			|| p != end
+			|| mbedtls_ecdsa_verify(
+				&mbed->MBEDTLS_PRIVATE(grp),
+				VAL_BIN_AT(val_hash), VAL_LEN(val_hash),
+				&mbed->MBEDTLS_PRIVATE(Q), &r, &s) != 0
+		) goto done;
 		SET_TRUE(D_RET);
 	}
 
@@ -942,6 +984,3 @@ done:
 	return err ? R_NONE : R_RET;
 
 }
-
-
-

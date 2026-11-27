@@ -4,6 +4,7 @@ Rebol [
 	File: 	 %lexer-test.r3
 	Tabs:	 4
 	Needs:   [%../quick-test-module.r3]
+	type:    private
 ]
 
 ~~~start-file~~~ "Crypt mezzanine"
@@ -200,7 +201,7 @@ sY29ouezv4Xz2PuMch5VGPP+CDqzCM4loWgV
 
 --test-- "Load PKIX data from file using PKIX codec"
 
-	--assert block? pkix: load %units/files/dhparam2048.pem
+	--assert block? pkix: load %files/dhparam2048.pem
 	--assert "DH PARAMETERS" = pkix/label
 	--assert binary? pkix/binary
 
@@ -217,17 +218,28 @@ sY29ouezv4Xz2PuMch5VGPP+CDqzCM4loWgV
 	--assert "9-Jul-2012/3:10" = mold decode 'utc-time "1207090310Z"
 	--assert "9-Jul-2012/3:10+2:00" = mold decode 'utc-time "1207090310+0200"
 
+--test-- "utc-time codec with /generalized"
+	--assert 2050-01-01/0:00 = system/codecs/utc-time/decode/generalized copy "20500101000000Z"
+	--assert 1999-12-31/23:59:59 = system/codecs/utc-time/decode/generalized copy #{31393939313233313233353935395A}
+	--assert 2026-10-27/15:41:54.5 = system/codecs/utc-time/decode/generalized copy "20261027154154.5Z"
+
+--test-- "utc-time codec century (RFC 5280)"
+	--assert 1998-06-01/12:00 = system/codecs/utc-time/decode copy "980601120000Z"
+	--assert 1950-01-01/0:00  = system/codecs/utc-time/decode copy "500101000000Z"
+	--assert 2049-12-31/23:59:59 = system/codecs/utc-time/decode copy "491231235959Z"
+	--assert 2026-10-27/16:52:47 = system/codecs/utc-time/decode copy #{3236313032373136353234375A}
+
 ===end-group===
 
 
 ===start-group=== "SSH-key codec"
 --test-- "Init RSA key from file"
-	--assert handle? try [key: decode 'ssh-key read %units/files/rebol-public.ppk]
+	--assert handle? try [key: decode 'ssh-key read %files/rebol-public.ppk]
 	release key ; don't wait on GC, release it now
 
 --test-- "Init public DH params from file"
 	--assert all [
-		handle? key: load %units/files/dhparam2048.key
+		handle? key: load %files/dhparam2048.key
 		'dhm = query key 'type
 		release key ; release it now (don't wait on GC)
 	]
@@ -236,22 +248,83 @@ sY29ouezv4Xz2PuMch5VGPP+CDqzCM4loWgV
 ===start-group=== "PPK codec"
 --test-- "Init RSA key from PPK file"
 	--assert all [
-		handle? try [key: load %units/files/rebol-private-no-pass.ppk]
+		handle? try [key: load %files/rebol-private-no-pass.ppk]
 		release key ; don't wait on GC, release it now
 	]
 
 --test-- "Init RSA key from encrypted PPK file"
 	--assert all [
-		handle? try [key: codecs/ppk/decode/password %units/files/rebol-private.ppk "Rebol"]
+		handle? try [key: codecs/ppk/decode/password %files/rebol-private.ppk "Rebol"]
 		release key ; don't wait on GC, release it now
 	]
 
 --test-- "Init public RSA key from SSH2 PPK file"
 	--assert all [
-		handle? try [key: load %units/files/rebol-public.ppk]
+		handle? try [key: load %files/rebol-public.ppk]
 		release key ; don't wait on GC, release it now
 	]
 ===end-group===
 
+
+===start-group=== "random/secure"
+;@@ https://github.com/Oldes/Rebol3/issues/2935
+	--test-- "random/secure is not affected by random/seed (integer)"
+		random/seed 1 a: random/secure 1000000000
+		random/seed 1 b: random/secure 1000000000
+		--assert a <> b
+	--test-- "random/secure is not affected by random/seed (decimal)"
+		random/seed 1 a: random/secure 1.0
+		random/seed 1 b: random/secure 1.0
+		--assert a <> b
+	--test-- "random/secure is not affected by random/seed (string)"
+		random/seed 1 a: random/secure "abcdefghijklmnopqrstuvwxyz"
+		random/seed 1 b: random/secure "abcdefghijklmnopqrstuvwxyz"
+		--assert a <> b
+	--test-- "random/secure does not advance the seeded PRNG"
+		random/seed 1 a: random 1000000000
+		random/seed 1 random/secure 100 b: random 1000000000
+		--assert a = b
+	--test-- "random/seed is still reproducible"
+		random/seed 1 a: random 255
+		random/seed 1 b: random 255
+		--assert a = b
+===end-group===
+
+
+===start-group=== "Password-Based Key Derivation Function 2"
+--test-- "pbkdf2 native: RFC 6070 / sha256 vectors"
+	--assert #{0c60c80f961f0e71f3a9b524af6012062fe037a6} = pbkdf2 "password" "salt" 1 20 'sha1
+	--assert #{4b007901b765489abead49d926f721d065a429c1} = pbkdf2 "password" "salt" 4096 20 'sha1
+	--assert #{3d2eec4fe41c849b80c8d83662c0e44a8b291a964cf2f07038} = pbkdf2 "passwordPASSWORDpassword" "saltSALTsaltSALTsaltSALTsaltSALTsalt" 4096 25 'sha1
+	--assert #{c5e478d59288c841aa530db6845c4c8d962893a001ce4e11a4963873aa98134a} = pbkdf2 "password" "salt" 4096 32 'sha256
+	--assert #{ae4d0c95af6b46d32d0adff928f06dd02a303f8ef3c251dfd6e2d85a95474c43830651afcb5c862f} = pbkdf2 "password" "salt" 2 40 'sha256
+
+--test-- "pbkdf2 RFC6070 sha1"
+	--assert #{4b007901 b765489a bead49d9 26f721d0 65a429c1}
+		== pbkdf2 "password" "salt" 4096 20 'sha1
+	--assert #{3d2eec4f e41c849b 80c8d836 62c0e44a 8b291a96 4cf2f070 38}
+		== pbkdf2 "passwordPASSWORDpassword" "saltSALTsaltSALTsaltSALTsaltSALTsalt" 4096 25 'sha1
+--test-- "pbkdf2 truncated digests"
+	--assert #{d3bcf320 fd918908 eafcaa46 0faf40e2 01f6508d 4e6f3d9c 1c0abd30 dae0}
+		== pbkdf2 "password" "salt" 1000 30 'sha224
+	--assert #{39d8a4fc 9cb39479 fb78c58b f9f16f7f 9f31f208 d4506933 b0b7480c 2d4767df 65ee38cd af3096ad c7c6d395 9a86072a 9346}
+		== pbkdf2 append/dup copy "" #"x" 200 "salt" 1000 50 'sha384
+--test-- "pbkdf2 multi-block output"
+	--assert #{632c2812 e46d4604 102ba761 8e9d6d7d 2f8128f6 266b4a03 264d2a04 60b7dcb3 88b3b113 1f741bcb eb02541c 8c2e97bd 8bed62ab 6425542e 45512b73 12f440eb c6}
+		== pbkdf2 "password" "salt" 1000 65 'sha256
+	--assert #{def3e2b5 89c4e398 c92a4a88 01376122 92e18e24 ca7b2b90 ee63593c e9ce27af fee3fcf2 ff69e52e 5b757614 1cb79b50 dfb087cc d6e10a91 f9dc6c8c 45e9ba88 9f7bba08 e8159b23 30aeda67 6f5d1587 cf0981e2 6ac740ed 4134128b 41c37fe5 53d9845d 085dfb5a 3e130bfd 713ade43 f2ec6333 fa34e779 5bccd8aa 559ecda3 7d}
+		== pbkdf2 append/dup copy "" #"x" 200 "salt" 1000 129 'sha512
+--test-- "pbkdf2 long and empty password"
+	--assert #{7a376e3c 42d7a023 046642e9 868ba805 fe08a73c 53e2c489 a4a06279 d921a43e}
+		== pbkdf2 append/dup copy "" #"x" 65 "salt" 1000 32 'sha256
+	--assert #{f7ce0b65 3d2d72a4 108cf5ab e912ffdd 777616db bb27a70e 8204f3ae 2d0f6fad}
+		== pbkdf2 "" "" 1 32 'sha256
+
+--test-- "pbkdf2 native: bad arguments"
+	--assert error? try [pbkdf2 "p" "s" 0 32 'sha256]
+	--assert error? try [pbkdf2 "p" "s" 1  0 'sha256]
+	--assert error? try [pbkdf2 "p" "s" 1 32 'md5]
+	--assert error? try [pbkdf2 "p" "s" 1 32 'nonsense]
+===end-group===
 
 ~~~end-file~~~

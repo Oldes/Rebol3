@@ -400,7 +400,7 @@ static struct digest {
 	if (D_REF(2)) parent = VAL_OBJ_FRAME(D_ARG(3));
 
 	frame = Construct_Object(parent, VAL_BLK_DATA(value), D_REF(4));
-	SET_OBJECT(D_RET, frame);
+	SET_OBJECT(DS_RETURN, frame); // stack may have been expanded, so not D_RET
 
 	return R_RET;
 }

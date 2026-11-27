@@ -4,6 +4,7 @@ Rebol [
 	File: 	 %bitset-test.r3
 	Tabs:	 4
 	Needs:   [%../quick-test-module.r3]
+	type:    private
 ]
 
 ~~~start-file~~~ "bitset"
@@ -332,6 +333,22 @@ Rebol [
 		--assert find ABC ["AB" "CB"]
 		--assert not find ABC ["AB" "CBX"]
 
+	--test-- "bitset check with UTF-8 string"
+		bs: charset "aš🙂"
+		--assert find bs "š"
+		--assert find bs "🙂a"
+		--assert not find bs "šx"
+		--assert find/any bs "xš"
+		--assert not find/any bs "xy"
+		--assert pick bs "🙂"
+		;; must not match single bytes of a multi-byte char
+		--assert not find/any (charset "^(C5)") "š"
+	--test-- "bitset with string having invalidated index"
+		swap s1: "🙂b" s2: next s1 ;; s2 index is now inside of the 🙂 sequence
+		--assert find (charset "🙂") s2
+		--assert (charset "🙂") == make bitset! s2
+		--assert find (append make bitset! 0 s2) #"🙂"
+
 ===end-group===
 
 
@@ -404,6 +421,39 @@ Rebol [
 		--assert not strict-equal? b complement b
 		--assert not same? b complement b
 
+	--test-- "copy of complemented bitset"
+		bs: complement charset "a"
+		--assert complement? copy bs
+		--assert bs == copy bs
+		--assert not find copy bs #"a"
+		--assert find copy bs #"b"
+		--assert complement? make bitset! bs
+		--assert not complement? copy charset "a"
+		--assert complement? first copy/deep reduce [complement charset "a"]
+
+	--test-- "issue-2515 set operations with complemented bitsets"
+	;@@ https://github.com/Oldes/Rebol3/issues/2515
+		one: make bitset! [1]
+		two: make bitset! [2]
+		--assert #(bitset! #{60})       = union one two
+		--assert #(bitset! not #{20})   = union one negate two
+		--assert #(bitset! not #{40})   = union negate one two
+		--assert #(bitset! not #{})     = union negate one negate two
+		--assert #(bitset! #{40})       = intersect one negate two
+		--assert #(bitset! #{20})       = intersect negate one two
+		--assert #(bitset! not #{60})   = intersect negate one negate two
+		--assert #(bitset! #{60})       = difference one two
+		--assert #(bitset! not #{60})   = difference one negate two
+		--assert #(bitset! #{60})       = difference negate one negate two
+		--assert #(bitset! #{})         = exclude one one
+		--assert #(bitset! #{40})       = exclude one two
+		--assert #(bitset! #{})         = exclude one negate two
+		--assert #(bitset! not #{60})   = exclude negate one two
+		--assert complement? (one or negate two)
+		--assert pick (union one negate two) 100
+		--assert #(bitset! #{40}) = one ;- operands are not modified
+		--assert pick (union negate one negate two) 100
+		--assert not pick (exclude one negate two) 100
 ===end-group===
 
 ===start-group=== "bitset issues"

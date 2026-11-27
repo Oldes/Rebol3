@@ -6,6 +6,7 @@ Rebol [
 	Needs:   [%../quick-test-module.r3]
 	Rights:  "Copyright (C) 2011-2015 Red Foundation. All rights reserved."
 	License: "BSD-3 - https://github.com/red/red/blob/origin/BSD-3-License.txt"
+	type:    private
 ]
 
 ~~~start-file~~~ "load"
@@ -81,8 +82,51 @@ Rebol [
 		code: {return 3^/rebol [length: 2] 1 2}
 		--assert 3 = try [do code] ;; when the input is string, the header is not evaluated
 		--assert 1 = try [do to binary! code] ;; only when it is binary value
-		--assert [lib-local a] = words-of import {rebol [length: 5] a: 1 b: 2 print "evil code"}
-		--assert [lib-local a] = words-of import/check {rebol [length: 5 checksum: #{E9A16FDEC8FF093599E2AA10C30D2D98D1C541C5}] a: 1 b: 2 print "evil code"} #{E9A16FDEC8FF093599E2AA10C30D2D98D1C541C5}
+		--assert [a] = words-of import {rebol [length: 5] a: 1 b: 2 print "evil code"}
+		--assert [a] = words-of import/check {rebol [length: 5 checksum: #{E9A16FDEC8FF093599E2AA10C30D2D98D1C541C5}] a: 1 b: 2 print "evil code"} #{E9A16FDEC8FF093599E2AA10C30D2D98D1C541C5}
+
+	--test-- "Loading embedded Rebol data"
+	;@@ https://github.com/Oldes/Rebol3/issues/2800
+		--assert parse load/header "[Rebol [] 1 2]"      [object! integer! integer!]
+		--assert parse load/header "[Rebol [] 1 2] 3"    [object! integer! integer!]
+		--assert parse load/header "0^/[Rebol [] 1 2] 3" [object! integer! integer!]
+		--assert parse load/header #{92AF0A5B5265626F6C205B5D203120325D03} [object! integer! integer!]
+		--assert [1 2] = load "0^/[Rebol [] 1 2] 3"
+		--assert [1 2] = load/as #{92AF0A5B5265626F6C205B5D203120325D03} 'unbound
+
+	--test-- "Compressed script with data after its end"
+		bin: compress to binary! "1 2" 'zlib
+		sum: #{3C28D037E32CD30EEFD8183A83153083CCED6CB7} ; SHA1 of the uncompressed body
+		;- block-embedded script (script encoded compression only)
+		--assert [1 2] = load ajoin ["[Rebol [options: [compress]] " mold bin "] 3"]
+		--assert [1 2] = load ajoin ["[Rebol [options: [compress] checksum: " mold sum "] " mold bin "] 3"]
+		--assert all [
+			error? e: try [load ajoin ["[Rebol [options: [compress] checksum: #{00}] " mold bin "] 3"]]
+			e/id = 'bad-checksum
+		]
+		;- length-specified script
+		src: save/length/header none [1 2] [options: [compress]]
+		--assert [1 2] = load src
+		--assert [1 2] = load append copy src " 3 4"
+		--assert [a] = words-of import (append save/length/header none [a: 1] [type: module options: [compress]] " b: 2")
+
+	--test-- "Invalid script compression"
+		--assert all [
+			error? e: try [load "Rebol [options: [compress]] 1 2"]
+			e/id = 'bad-compress
+		]
+		--assert all [
+			error? e: try [load "Rebol [options: [compress]] #{00010203}"]
+			e/id = 'bad-compress
+		]
+		--assert all [
+			error? e: try [load "[Rebol [options: [compress]] 1 2] 3"]
+			e/id = 'bad-compress
+		]
+		--assert all [
+			error? e: try [import "Rebol [type: module options: [compress]] 1 2"]
+			e/id = 'bad-compress
+		]
 
 	--test-- "issue-858"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/858
@@ -102,7 +146,7 @@ Rebol [
 	--test-- "issue-2302"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/2302
 		--assert all [
-			error? e: try [load %units/files/invalid-decimal.r]
+			error? e: try [load %files/invalid-decimal.r]
 			e/near = "(line 4) 4line"
 		]
 

@@ -13,16 +13,23 @@ register-codec [
 	decode: function [
 		"Converts DER/BER UTC-time data to Rebol date! value"
 		utc [binary! string!]
+		/generalized "Input is GeneralizedTime (4-digit year)"
 	][
 		ch_digits: charset [#"0" - #"9"]
+		ch_19xx:   charset [#"5" - #"9"]
+		century: either generalized [[2 ch_digits]][[
+			;; RFC 5280: YY >= 50 is 19YY, YY < 50 is 20YY
+			and ch_19xx insert "19" | insert "20"
+		]]
 		parse utc [
-			insert "20"
+			  century
 			  2 ch_digits   insert #"-"
 			  2 ch_digits   insert #"-"
 			  2 ch_digits   insert #"/"
 			  2 ch_digits   insert #":"
 			  2 ch_digits   insert #":" 
 			[ 2 ch_digits | insert #"0"] ;seconds
+			opt [#"." some ch_digits]    ;fraction (GeneralizedTime only)
 			[
 				remove #"Z" end
 				|

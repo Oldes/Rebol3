@@ -590,7 +590,7 @@
                          0))
 
 /** Check if the curve of given family is Weierstrass elliptic curve. */
-#define PSA_ECC_FAMILY_IS_WEIERSTRASS(family) ((family & 0xc0) == 0)
+#define PSA_ECC_FAMILY_IS_WEIERSTRASS(family) (((family) & 0xc0) == 0)
 
 /** SEC Koblitz curves over prime fields.
  *
@@ -1760,8 +1760,7 @@
  * \warning     Calling psa_asymmetric_decrypt() with this algorithm as a
  *              parameter is considered an inherently dangerous function
  *              (CWE-242). Unless it is used in a side channel free and safe
- *              way (eg. implementing the TLS protocol as per 7.4.7.1 of
- *              RFC 5246), the calling code is vulnerable.
+ *              way, the calling code is vulnerable.
  *
  */
 #define PSA_ALG_RSA_PKCS1V15_CRYPT              ((psa_algorithm_t) 0x07000200)

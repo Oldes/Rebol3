@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2025 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -69,6 +69,19 @@ Special internal defines used by RT, not Host-Kit developers:
 #include REBOL_OPTIONS_FILE
 #endif
 
+#ifdef TO_WASM
+// The nest file defines the TO_ define of the build machine too
+// (for example TO_LINUX), which does not apply to the browser.
+#undef TO_LINUX
+#undef TO_MACOS
+#undef TO_WINDOWS
+#undef TO_OPENBSD
+#undef TO_FREEBSD
+#undef TO_NETBSD
+#undef TO_DRAGONFLYBSD
+#undef TO_HAIKU
+#endif
+
 #define MIN_DICT 16 // Maximum number of keys in a map withouth hashing
 
 //* Common *************************************************************
@@ -112,7 +125,6 @@ Special internal defines used by RT, not Host-Kit developers:
 #define INLINE __inline			// name used for it
 
 #ifdef REB_VIEW
-#define HAS_WIDGET_GOB			// supports it
 // use native image codecs only in VIEW version so far
 #if !defined(INCLUDE_IMAGE_OS_CODEC)
 #define INCLUDE_IMAGE_OS_CODEC
@@ -208,6 +220,15 @@ Special internal defines used by RT, not Host-Kit developers:
 #ifdef TO_DRAGONFLYBSD			// DragonFlyBSD
 #undef INCLUDE_MIDI_DEVICE      // Not implemented!
 #define USE_SETENV 
+#endif
+
+#ifdef TO_WASM					// WebAssembly (Emscripten), browser
+#undef INCLUDE_MIDI_DEVICE      // Not implemented!
+#define USE_SETENV
+#define USE_OLD_PIPE			// pipe2 is not available
+#define HAS_SMART_CONSOLE		// no terminal, host-readline.c not used
+#define NO_DL_LIB				// no loading of shared libraries
+#define NO_NETWORK_DEVICES		// no sockets in the browser
 #endif
 
 #ifdef TO_AMIGA					// Target for OS4

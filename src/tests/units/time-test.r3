@@ -4,11 +4,38 @@ Rebol [
 	File: 	 %time-test.r3
 	Tabs:	 4
 	Needs:   [%../quick-test-module.r3]
+	type:    private
 ]
 
 
 
 ~~~start-file~~~ "TIME"
+
+===start-group=== "construction syntax - time!"
+	--test-- "#(time! time)"
+		--assert 1:2:3 = load "#(time! 1:2:3)"
+	--test-- "#(time! string)"
+		--assert 1:2:3 = load {#(time! "1:2:3")}
+		--assert error? try [load {#(time! "abc")}]          ;; Scan_Time fails
+	--test-- "#(time! integer/decimal)"
+		--assert 0:0:10  = load "#(time! 10)"
+		--assert 0:0:1.5 = load "#(time! 1.5)"
+	--test-- "#(time! block)"
+		--assert 1:0:0    = load "#(time! [1])"
+		--assert 1:2:0    = load "#(time! [1 2])"
+		--assert 1:2:3    = load "#(time! [1 2 3])"
+		--assert 1:2:3.5  = load "#(time! [1 2 3.5])"
+		--assert -1:2:3   = load "#(time! [-1 2 3])"
+	--test-- "#(time! invalid) - NO_TIME branch"
+		--assert error? try [load "#(time! foo)"]            ;; unsupported type
+		--assert error? try [load "#(time! [])"]             ;; empty block
+		--assert error? try [load "#(time! [a])"]            ;; non-integer hours
+		--assert error? try [load "#(time! [1 a])"]          ;; non-integer minutes
+		--assert error? try [load "#(time! [1 -2])"]         ;; negative minutes
+		--assert error? try [load "#(time! [1 2 -3])"]       ;; negative seconds
+		--assert error? try [load "#(time! [1 2 a])"]        ;; bad seconds type
+		--assert error? try [load "#(time! [1 2 3 4])"]      ;; block too long
+===end-group===
 
 ===start-group=== "time"
 	--test-- "round time"
@@ -158,22 +185,130 @@ Rebol [
 ===end-group===
 
 
+===start-group=== "time! path access"
+	--test-- "time/bad-select"
+		t: 1:2:3
+		--assert error? try [t/5]
+		--assert error? try [t/foo]                  ;; unknown word
+		--assert error? try [t/("x")]                ;; unsupported select type
+	--test-- "time/hour: minute: second:"
+		t: 1:2:3
+		t/hour: 5     --assert t = 5:02:03   --assert t/1 == 5  --assert t/hour == 5
+		t/minute: 30  --assert t = 5:30:03   --assert t/2 == 30 --assert t/minute == 30
+		t/second: 10  --assert t = 5:30:10   --assert t/3 == 10
+	--test-- "time/second: decimal"
+		t: 1:2:3
+		t/second: 1.5 --assert t = 1:02:01.5 --assert t/second == 1.5
+		t/second: 4   --assert t = 1:02:04   --assert t/second == 4
+	--test-- "time/minute: decimal (truncated by Int32s)"
+		t: 1:2:3
+		t/minute: 4.9 --assert t = 1:04:03
+	--test-- "time/x: none"
+		t: 1:2:3
+		t/hour: none   --assert t = 0:02:03
+		t/minute: none --assert t = 0:00:03
+		t/second: none --assert t = 0:00:00
+	--test-- "time/integer: value"
+		t: 1:2:3
+		t/1: 7  --assert t = 7:02:03
+		t/2: 8  --assert t = 7:08:03
+		t/3: 9  --assert t = 7:08:09
+		--assert error? try [t/4: 1]               ;; PE_BAD_SELECT in set branch
+	--test-- "time/x: invalid"
+		t: 1:2:3
+		--assert error? try [t/hour: "x"]          ;; PE_BAD_SET
+		--assert error? try [t/hour: -1]           ;; Int32s min 0
+		--assert error? try [t/second: -1.5]       ;; Trap_Range
+		--assert t = 1:2:3
+===end-group===
 
-;===start-group=== "time protect"
-;	;@@ https://github.com/Oldes/Rebol-issues/issues/2416
-;	--test-- "time protect 1"
-;		t: now/time protect 't
-;		--assert error? e: try [t/hour: 0]
-;		--assert e/id = 'locked-word
-;	--test-- "time protect 2"
-;		protect/words o: object [t: now/time]
-;		--assert error? e: try [o/t/hour: 0]
-;		--assert e/id = 'locked-word
-;	--test-- "time protect 3"
-;		o: object [t: 1 protect/words o: object [t: now/time]]
-;		--assert protected? 'o/o/t
-;		--assert protected? 'o/o/t/hour        ;@@ <--- fails!
-;		--assert error? e: try [o/o/t/hour: 0] ;@@ <--- fails!
-;===end-group===
+
+===start-group=== "time! actions"
+	--test-- "time + time"
+		--assert 3:00 = (1:00 + 2:00)
+	--test-- "time / time"
+		--assert 2.0 = (3:00 / 1:30)
+		--assert error? try [1:00 / 0:00]
+	--test-- "remainder time time"
+		--assert 1:00 = remainder 3:00 2:00
+		--assert error? try [remainder 1:00 0:00]
+	--test-- "remainder time integer"
+		--assert 0:00:01   = remainder 1:00:05 2
+		--assert 0:00:00.5 = remainder 0:00:02.5 1
+	--test-- "time * integer overflow"
+		t: 1:00
+		--assert error? try [loop 100 [t: t * 2]]
+	--test-- "time - decimal"
+		--assert 0:59:59.5 = (1:00 - 0.5)
+	--test-- "time * decimal"
+		--assert 1:30 = (1:00 * 1.5)
+	--test-- "time / decimal"
+		--assert 1:00 = (1:30 / 1.5)
+		--assert error? try [1:00 / 0.0]
+	--test-- "time + date"
+		--assert 1-Jan-2000/1:00 = (1:00 + 1-Jan-2000)
+	--test-- "odd? / even?"
+		--assert odd?  1:00:01
+		--assert even? 1:00:02
+		--assert not even? 1:00:01
+	--test-- "negate / absolute"
+		--assert -1:00 = negate 1:00
+		--assert  1:00 = absolute -1:00
+		--assert  1:00 = absolute 1:00
+	--test-- "round (no /to)"
+		--assert 1:00:02 = round 1:00:01.5
+	--test-- "round/to invalid scale"
+		--assert error? try [round/to 1:00 $1]
+	--test-- "random/seed time"
+		--assert unset? random/seed 1:00
+	--test-- "pick time"
+		--assert 1 = pick 1:2:3 1
+		--assert 3 = pick 1:2:3 3
+	--test-- "unsupported unary action"
+		--assert error? try [reflect 1:2:3 'spec]
+===end-group===
+
+
+===start-group=== "time! scanning"
+	--test-- "AM/PM"
+		--assert  1:00    = to time! "1:00AM"
+		--assert 13:00    = to time! "1:00PM"
+		--assert 13:00    = to time! "1:00pm"
+		--assert  0:30    = to time! "12:30AM"
+		--assert 12:30    = to time! "12:30PM"
+		--assert 13:02:03 = to time! "1:2:3PM"
+		--assert error? try [to time! "13:00PM"]       ;; hour > 12 with meridian
+	--test-- "MM:SS.DD mode"
+		--assert 0:01:30.5 = to time! "1:30.5"
+		--assert 0:01:30.5 = to time! "1:30,5"
+		--assert 0:01:30.5 = load "1:30.5"
+		--assert error? try [to time! "1:30.5AM"]      ;; no AM/PM in MM:SS mode
+	--test-- "HH:MM with zero fraction"
+		--assert 1:30 = to time! "1:30.0"               ;; part4 == 0 -> HH:MM mode
+	--test-- "invalid parts"
+		--assert error? try [to time! "99999999999:00"] ;; part1 > MAX_HOUR
+		--assert error? try [to time! "1:"]             ;; missing minutes
+		--assert error? try [to time! "1:-5"]           ;; negative minutes
+		--assert error? try [to time! "1:2:"]           ;; missing seconds
+		--assert error? try [to time! "1:2:-3"]         ;; negative seconds
+		--assert error? try [to time! "--1:23"]
+===end-group===
+
+===start-group=== "time protect"
+	;@@ https://github.com/Oldes/Rebol-issues/issues/2416
+	--test-- "time protect 1"
+		t: now/time protect 't
+		--assert error? e: try [t/hour: 0]
+		--assert e/id = 'locked-word
+	--test-- "time protect 2"
+		protect/words o: object [t: now/time]
+		--assert error? e: try [o/t/hour: 0]
+		--assert e/id = 'locked-word
+	--test-- "time protect 3"
+		o: object [t: 1 protect/words o: object [t: now/time]]
+		--assert protected? 'o/o/t
+		--assert protected? 'o/o/t/hour
+		--assert error? e: try [o/o/t/hour: 0]
+===end-group===
 
 ~~~end-file~~~

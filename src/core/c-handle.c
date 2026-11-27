@@ -3,7 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
-**  Copyright 2012-2024 Rebol Open Source Contributors
+**  Copyright 2012-2026 Rebol Open Source Contributors
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -141,6 +141,9 @@
 	hob->index = idx;
 	hob->flags = HANDLE_CONTEXT;
 	hob->sym   = sym;
+	// The node comes from the pool uncleared, so it may still point to the
+	// series of a previously freed handle, which GC would keep marking.
+	hob->series = NULL;
 	USE_HOB(hob);
 	//printf("HOB %p made mem: %p\n", hob, hob->data);
 	return hob;

@@ -111,7 +111,7 @@
 			sym = VAL_WORD_SYM(block);
 			if (VAL_WORD_FRAME(block)) { // Get word value
 				val = Get_Var(block);
-			} else if (sym < REB_MAX) { // Accept datatype word
+			} else if (sym <= REB_MAX) { // Accept datatype word
 				TYPE_SET(value, VAL_WORD_SYM(block)-1);
 				continue;
 			} // Special typeset symbols:
@@ -139,9 +139,12 @@
 /*
 ***********************************************************************/
 {
+	REBVAL tmp;
+
 	if (!IS_BLOCK(data)) return FALSE;
 
-	if (!Make_Typeset(VAL_BLK(data), out, TRUE)) return FALSE;
+	if (!Make_Typeset(VAL_BLK(data), &tmp, TRUE)) return FALSE;
+	VAL_TYPESET(out) = VAL_TYPESET(&tmp);
 	VAL_SET(out, REB_TYPESET);
 
 	return TRUE;

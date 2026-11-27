@@ -19,7 +19,7 @@ to-tuple: to-time: to-date: to-binary: to-string: to-file: to-email: to-url: to-
 to-bitset: to-image: to-vector: to-block: to-paren:
 to-path: to-set-path: to-get-path: to-lit-path: to-map: to-datatype: to-typeset:
 to-word: to-set-word: to-get-word: to-lit-word: to-ref: to-refinement: to-issue:
-to-command: to-closure: to-function: to-object: to-module: to-error: to-port: to-gob:
+to-command: to-closure: to-function: to-object: to-module: to-error: to-port:
 to-event: to-hash:
 	none
 

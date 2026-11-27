@@ -4,6 +4,7 @@ Rebol [
 	File: 	 %compare-test.r3
 	Tabs:	 4
 	Needs:   [%../quick-test-module.r3]
+	type:    private
 ]
 
 ~~~start-file~~~ "COMPARE"
@@ -74,6 +75,29 @@ Rebol [
 	--test-- "integer! invalid compare"
 		--assert all [error? e: try [90 < "a" ] e/id = 'invalid-compare]
 		--assert all [error? e: try [90 < 1x1 ] e/id = 'invalid-compare]
+
+	--test-- "integer! with a char! made at run time"
+		c: to char! 97
+		--assert 97 = c
+		--assert equal? 97 c
+		--assert not (97 <> c)
+		--assert 96 < c
+		--assert 98 > c
+		--assert c = 97
+		failed: copy []
+		repeat i 400 [
+			k: to char! i
+			unless all [i = k  k = i  i - 1 < k  i + 1 > k][append failed i]
+		]
+		--assert empty? failed
+
+	--test-- "char! with an integer! outside the char range"
+		--assert #"a" <> 4294967393	;= 97 + 2 ** 32
+		--assert 4294967393 <> #"a"
+		--assert #"a" < 4294967296
+		--assert #"a" > -1
+		--assert not (#"a" < -1)
+		--assert #"a" <> -1
 ===end-group===
 
 
@@ -224,6 +248,22 @@ Rebol [
 		--assert     strict-equal? [[1]] [[1]]
 		--assert not strict-equal? [[1]] [(1)]
 
+	--test-- "block comparison respects length"
+		--assert not [1 2] = [1 2 0 0]
+		--assert not [1 2 0 0] = [1 2]
+		--assert not [1 2] == [1 2 0 0]
+		--assert [1 2] <> [1 2 0 0]
+		--assert [1 2] < [1 2 0 0]
+		--assert [1 2 0 0] > [1 2]
+		--assert [1 2] <= [1 2]
+		--assert [1 2] = [1 2]
+		--assert not [] = [1]
+		--assert [] < [1]
+		--assert not (next [1 2 3]) = [2 3 4]
+		--assert (next [1 2 3]) = [2 3]
+		--assert not 'a/b = 'a/b/c
+		--assert none? find/only [[1 2 3]] [1 2]
+		--assert not equal? make hash! [1 2] make hash! [1 2 0 0]
 ===end-group===
 
 

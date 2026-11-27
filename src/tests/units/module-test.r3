@@ -3,7 +3,8 @@ Rebol [
 	Author:  "Peter W A Wood, Oldes"
 	File: 	 %module-test.r3
 	Tabs:	 4
-	Needs:   quick-test
+	Needs:   %../quick-test-module.r3
+	;Type:    private
 ]
 system/options/quiet: false
 system/options/log/rebol: 4
@@ -18,11 +19,11 @@ modules-dir: system/options/modules
 	--test-- "hidden"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1696
 		--assert all [
-			[lib-local a] = words-of m: module [] [a: 1]
+			[a] = words-of m: module [] [a: 1]
 			m/a = 1
 		]
 		--assert all [
-			[lib-local b] = words-of m: module [] [hidden a: 1 b: does[a + 1]]
+			[b] = words-of m: module [] [hidden a: 1 b: does[a + 1]]
 			error? try [m/a]
 			m/b = 2
 		]
@@ -141,6 +142,10 @@ modules-dir: system/options/modules
 			error? err: try [module [type: :print][]]
 			err/id = 'wrong-type
 		]
+		--assert all [
+			error? err: try [module compose [type: (:print)][]]
+			err/id = 'wrong-type
+		]
 	--test-- "make module! integer!" ; not allowed
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1551
 	;@@ https://github.com/Oldes/Rebol-issues/issues/926
@@ -199,22 +204,66 @@ myfunc: func [arg [string!]][reverse arg]
 	--assert "cba" = myfunc "abc"
 	delete modules-dir/mymodule.reb
 
-;;; This test would fail as the module needs itself! It should be detected, but it isn't yet.
-;;	write %mymodule2.reb {
-;; Rebol [
-;;     type: module
-;;     name: mymodule2
-;;     exports: [myfunc2]
-;;     needs: [%mymodule2.reb]
-;; ]
-;; print "mymodule2 imported"
-;; myfunc2: func [arg [string!]][reverse arg]
-;; }
-;; 	import 'mymodule2
-;; 	import 'mymodule2
-;; 	import %mymodule2.reb ;-- no crash
-;; 	--assert "cba" = myfunc2 "abc"
-;; 	delete %mymodule2.reb
+	--test-- "module needs itself"
+	;@@ https://github.com/Oldes/Rebol3/issues/1108
+		write modules-dir/needs-self.reb {
+Rebol [
+    type: module
+    name: needs-self
+    needs: [needs-self] ;<--- recursion!
+]
+export needs-self-value: 1
+}
+		--assert all [
+			error? e: try [import 'needs-self]
+			e/id = 'recursive-needs
+			e/arg1 = 'needs-self
+		]
+		--assert all [ ;; the failed import must not leave any trace
+			error? e: try [import 'needs-self]
+			e/id = 'recursive-needs
+			none? find system/modules 'needs-self
+		]
+		;; the same, when the module is referenced using its file
+		write modules-dir/needs-self.reb ajoin [
+			{Rebol [type: module name: needs-self needs: [} mold modules-dir/needs-self.reb {]]}
+		]
+		--assert all [
+			error? e: try [import (modules-dir/needs-self.reb)]
+			e/id = 'recursive-needs
+		]
+		;; unnamed module is recognized by its location
+		write modules-dir/needs-self.reb ajoin [
+			{Rebol [type: module needs: [} mold modules-dir/needs-self.reb {]]}
+		]
+		--assert all [
+			error? e: try [import (modules-dir/needs-self.reb)]
+			e/id = 'recursive-needs
+		]
+		delete modules-dir/needs-self.reb
+
+	--test-- "modules needing each other"
+	;@@ https://github.com/Oldes/Rebol3/issues/1108
+		write modules-dir/needs-a.reb {Rebol [type: module name: needs-a needs: [needs-b]] export needs-a-value: 1}
+		write modules-dir/needs-b.reb {Rebol [type: module name: needs-b needs: [needs-a]] export needs-b-value: 2}
+		--assert all [
+			error? e: try [import 'needs-a]
+			e/id = 'recursive-needs
+			e/arg1 = 'needs-a
+			none? find system/modules 'needs-a
+			none? find system/modules 'needs-b
+		]
+		;; once the cycle is removed, the modules may be imported
+		write modules-dir/needs-b.reb {Rebol [type: module name: needs-b] export needs-b-value: 2}
+		--assert all [
+			module? try [import 'needs-a]
+			module? system/modules/needs-a
+			module? system/modules/needs-b
+			system/modules/needs-a/needs-a-value = 1
+			system/modules/needs-b/needs-b-value = 2
+		]
+		delete modules-dir/needs-a.reb
+		delete modules-dir/needs-b.reb
 
 	--test-- "import to user context"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1680
@@ -324,8 +373,7 @@ probe all [
 		--assert module? m: try [import/version (m-1687) 1.0.0]
 		--assert all [
 			;@@ https://github.com/Oldes/Rebol-wishes/issues/13
-			object? m/lib-local
-			empty?  m/lib-local ; because there was no import in this module
+			none? in m 'lib-local ; because there was no import in this module
 		]
 
 	--test-- "import/check"
@@ -354,20 +402,18 @@ probe all [
 		--assert unset? :system/contexts/user/issue-1721-a
 		--assert system/contexts/user/issue-1721-b = 2
 
-system/options/modules: %units/files/
+system/options/modules: clean-path %files/ ;; must be absolute, as modules are evaluated in their directories
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1694
 	--test-- "import needs word!"
 		import 'test-needs-name
 		--assert true? test-needs-name-result
 	--test-- "import needs file!"
-		;- at this moment files imported from other file
-		;- does not use parent file's location!
-		m: import %units/files/test-needs-file.reb
+		;; file in the needs of an imported file is relative to that file
+		m: import %files/test-needs-file.reb
 		--assert true? test-needs-file-result
 		--assert all [
 			;@@ https://github.com/Oldes/Rebol-wishes/issues/13
-			object? m/lib-local
-			m/lib-local/test-needs-file-value = 42 ; value imported from the inner module
+			none? in m 'lib-local ; the local import library is not visible from outside
 		]
 
 	--test-- "import needs url!"
@@ -379,16 +425,788 @@ system/options/modules: modules-dir
 
 	--test-- "lib-local"
 	;@@ https://github.com/Oldes/Rebol-wishes/issues/13
-		--assert same? lib-local system/contexts/user
+		;; module with private imports has them available as `lib-local`...
+		m: module/mixin [][
+			x: 1
+			get-local: does [lib-local/x]
+			get-words: does [words-of lib-local]
+		] object [x: 42 y: 2]
+		--assert 1  = m/x
+		--assert 42 = m/get-local
+		--assert [x y] = m/get-words
+		;; ...but only for its own code
+		--assert [x get-local get-words] = words-of m
+		--assert none? in m 'lib-local
+		--assert error? try [m/lib-local]
+		--assert [x: get-local: get-words:] = extract body-of m 2
+		;; module without private imports does not have it at all
+		m: module [][get-local: does [lib-local]]
+		--assert [get-local] = words-of m
+		--assert error? try [m/get-local]
 
 	--test-- "do module from file"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1203
-		do %units/files/test-1203.reb
 		--assert all [
-			object? o: system/modules/test-1203/f
+			function? fn: do %files/test-1203.reb ;; result of the module's body
+			object? o: fn                         ;; system/script at the time, when the module was evaluated
 			o/title = "test-1203"
 			system/script/title <> "test-1203"
 		]
+
+	--test-- "do module file"
+	;@@ https://github.com/Oldes/Rebol3/issues/2915
+		system/user/data/test-do: copy []
+		write %test-do-module.reb {
+Rebol [type: module name: test-do-module exports: [test-do-value]]
+append system/user/data/test-do 'init
+test-do-value: 1
+1 + 2
+}
+		--assert 3 = try [do %test-do-module.reb] ;; result of the module's body
+		--assert 3 = try [do %test-do-module.reb] ;; and it is evaluated every time
+		--assert [init init] = system/user/data/test-do
+		--assert all [ ;; the module is isolated: it is not registered and nothing is exported
+			none? select system/modules 'test-do-module
+			none? in lib 'test-do-value
+			unset? get/any in system/contexts/user 'test-do-value
+		]
+		write %test-do-module.reb {
+Rebol [type: module name: test-do-module exports: [test-do-value]]
+test-do-value: 2
+}
+		--assert 2 = try [do %test-do-module.reb]
+		;; IMPORT is the way to get the module and to have it registered
+		--assert all [
+			module? m: try [import %test-do-module.reb]
+			same? m select system/modules 'test-do-module
+			2 = lib/test-do-value
+			2 = get/any in system/contexts/user 'test-do-value
+		]
+		;; DO of the already imported module still evaluates it as an isolated one
+		--assert all [
+			2 = try [do %test-do-module.reb]
+			same? m select system/modules 'test-do-module
+		]
+		delete %test-do-module.reb
+
+	--test-- "module file as a command line script"
+		;; unlike with DO, the module is imported, so it may be used from the console (--halt)
+		;- using the legacy REPL, because it accepts a piped input
+		write %test-cli-module.reb {
+Rebol [type: module name: test-cli-module exports: [test-cli-value]]
+test-cli-value: 42
+print "module evaluated"
+}
+		o: copy ""
+		call/wait/shell/input/output reform [
+			to-local-file system/options/boot "--legacy-repl --halt" %test-cli-module.reb
+		] {print ["result:" test-cli-value module? select system/modules 'test-cli-module  same? :test-cli-value :lib/test-cli-value]^/quit^/} o
+		--assert did find o "module evaluated"
+		--assert did find o "result: 42 true true"
+		;; unnamed module is not registered and its exports are only in the user's context
+		write %test-cli-module.reb {
+Rebol [type: module exports: [test-cli-value]]
+test-cli-value: 42
+}
+		o: copy ""
+		call/wait/shell/input/output reform [
+			to-local-file system/options/boot "--legacy-repl --halt" %test-cli-module.reb
+		] {print ["result:" test-cli-value none? in lib 'test-cli-value]^/quit^/} o
+		--assert did find o "result: 42 true"
+		delete %test-cli-module.reb
+
+	--test-- "--import option"
+	;@@ https://github.com/Oldes/Rebol3/issues/1394
+		;; the module is imported before any other code (--do or the script)
+		;; and its file is relative to the directory, where Rebol was started
+		make-dir %test-1394/
+		write %test-1394/pre.reb {
+Rebol [type: module name: test-1394 exports: [test-1394-value]]
+test-1394-value: 42
+}
+		write %test-1394/script.reb {
+Rebol []
+prin ["script:" test-1394-value module? select system/modules 'test-1394]
+}
+		o: copy ""
+		call/wait/shell/output reform [
+			to-local-file system/options/boot {--import test-1394/pre.reb --do "prin [{do:} test-1394-value]"}
+		] o
+		--assert did find o "do: 42"
+		;; the script is evaluated from its own directory, but the import is still relative to the starting one
+		o: copy ""
+		call/wait/shell/output reform [
+			to-local-file system/options/boot {--import test-1394/pre.reb test-1394/script.reb}
+		] o
+		--assert did find o "script: 42 true"
+		delete %test-1394/pre.reb
+		delete %test-1394/script.reb
+		delete %test-1394/
+
+	--test-- "import/only"
+	;@@ https://github.com/Oldes/Rebol3/issues/2283
+		write modules-dir/test-2283.reb {Rebol [type: module name: test-2283 exports: [test-2283-a test-2283-b]] test-2283-a: 1 test-2283-b: 2}
+		unset in system/contexts/user 'test-2283-a
+		unset in system/contexts/user 'test-2283-b
+		--assert all [
+			module? try [import/only test-2283 [test-2283-a]]
+			1 = get/any in system/contexts/user 'test-2283-a
+			unset? get/any in system/contexts/user 'test-2283-b
+			2 = lib/test-2283-b ;; lib always gets all exports
+		]
+		--assert all [
+			error? e: try [import/only test-2283 [test-2283-x]]
+			e/id = 'not-exported
+			e/arg1 = 'test-2283
+			e/arg2 = 'test-2283-x
+		]
+		--assert all [ ;; empty block imports nothing
+			module? try [import/only test-2283 []]
+			unset? get/any in system/contexts/user 'test-2283-b
+		]
+		;; private module
+		write modules-dir/test-2283-p.reb {Rebol [type: module name: test-2283-p options: [private] exports: [test-2283-pa test-2283-pb]] test-2283-pa: 1 test-2283-pb: 2}
+		unset in system/contexts/user 'test-2283-pa
+		unset in system/contexts/user 'test-2283-pb
+		--assert all [
+			module? try [import/only test-2283-p [test-2283-pb]]
+			unset? get/any in system/contexts/user 'test-2283-pa
+			2 = get/any in system/contexts/user 'test-2283-pb
+			none? in lib 'test-2283-pb
+		]
+		;; /only is not used with a block of modules
+		--assert error? try [import/only [test-2283] [test-2283-a]]
+
+	--test-- "needs with selected exports"
+	;@@ https://github.com/Oldes/Rebol3/issues/2283
+		;; module needing a private module gets only the selected words
+		--assert all [
+			module? m: try [import {Rebol [type: module needs: [test-2283-p [test-2283-pa]]] export get-local: does [words-of lib-local]}]
+			[test-2283-pa] = m/get-local
+		]
+		--assert all [
+			error? e: try [import {Rebol [type: module needs: [test-2283-p [nope]]]}]
+			e/id = 'not-exported
+		]
+		;; in a block of modules, which is the needs dialect too
+		unset in system/contexts/user 'test-2283-pa
+		unset in system/contexts/user 'test-2283-pb
+		--assert all [
+			block? try [import [test-2283 [] test-2283-p [test-2283-pa]]]
+			1 = get/any in system/contexts/user 'test-2283-pa
+			unset? get/any in system/contexts/user 'test-2283-pb
+		]
+
+	--test-- "import/only with renamed exports"
+	;@@ https://github.com/Oldes/Rebol3/issues/2283
+		;; `new-name: word` imports the export under a new name
+		unset in system/contexts/user 'test-2283-a
+		unset in system/contexts/user 'test-2283-b
+		unset in system/contexts/user 'test-2283-my-b
+		--assert all [
+			module? try [import/only test-2283 [test-2283-a test-2283-my-b: test-2283-b]]
+			1 = get/any in system/contexts/user 'test-2283-a
+			2 = get/any in system/contexts/user 'test-2283-my-b
+			unset? get/any in system/contexts/user 'test-2283-b
+			none? in lib 'test-2283-my-b ;; lib keeps the original names
+		]
+		unset in system/contexts/user 'test-2283-pa
+		unset in system/contexts/user 'test-2283-my-pa
+		--assert all [ ;; private module
+			module? try [import/only test-2283-p [test-2283-my-pa: test-2283-pa]]
+			1 = get/any in system/contexts/user 'test-2283-my-pa
+			unset? get/any in system/contexts/user 'test-2283-pa
+		]
+		;; the console has its own context, where the words may already exist (unset)
+		;; because these were used in the same input as the import
+		saved: system/console/current
+		ctx: make object! 3
+		foreach word [test-2283-c-a test-2283-c-b test-2283-c-pa] [append ctx word] ;; unset words
+		system/console/current: object [console-ctx: ctx]
+		--assert all [
+			module? try [import/only test-2283 [test-2283-c-a: test-2283-a]]
+			module? try [import/only test-2283-p [test-2283-c-pa: test-2283-pa]]
+			module? try [import/only test-2283 [test-2283-c-new: test-2283-b]]
+			1 = get/any in ctx 'test-2283-c-a
+			1 = get/any in ctx 'test-2283-c-pa
+			2 = get/any in ctx 'test-2283-c-new ;; added, when missing
+		]
+		system/console/current: saved
+		--assert all [ ;; renamed word must be an export too
+			error? e: try [import/only test-2283 [test-2283-my-x: test-2283-x]]
+			e/id = 'not-exported
+		]
+		--assert all [ ;; set-word must be followed by the exported word
+			error? e: try [import/only test-2283 [test-2283-my-x:]]
+			e/id = 'invalid-arg
+		]
+		;; renamed in the needs of a module (also from a public module, which is otherwise used from lib)
+		--assert all [
+			module? m: try [import {
+Rebol [type: module needs: [test-2283-p [x-pa: test-2283-pa] test-2283 [x-b: test-2283-b]]]
+export get-values: does [reduce [x-pa x-b]]
+export get-local: does [words-of lib-local]
+}]
+			[1 2] = m/get-values
+			[x-pa x-b] = m/get-local
+		]
+
+		delete modules-dir/test-2283.reb
+		delete modules-dir/test-2283-p.reb
+
+	--test-- "needs with a variable for the module"
+		write %test-needs-var.reb {Rebol [type: module] hello: does ["hello"]}
+		write %test-needs-var-2.reb {Rebol [type: module name: test-needs-var-2 exports: [test-needs-var-x]] test-needs-var-x: 2}
+		;; in a block of modules (the needs dialect), the variables are set in the user's context
+		--assert all [
+			block? b: try [import [test-needs-var-1: %test-needs-var.reb  test-needs-var-2: %test-needs-var-2.reb]]
+			module? m: get/any in system/contexts/user 'test-needs-var-1
+			same? m b/1
+			"hello" = m/hello
+			same? b/2 get/any in system/contexts/user 'test-needs-var-2
+			same? b/2 system/modules/test-needs-var-2
+		]
+		;; in a script's header
+		write %test-needs-var-3.reb {Rebol [needs: [test-needs-var-3: %test-needs-var.reb]] test-needs-var-3/hello}
+		--assert "hello" = try [do %test-needs-var-3.reb]
+		;; in a module, the variable is local (not exported and not in lib)
+		--assert all [
+			module? m: try [import {Rebol [type: module needs: [v: %test-needs-var.reb]] export f: does [v/hello]}]
+			"hello" = m/f
+			none? in m 'v
+			none? in lib 'v
+		]
+		;; also in an isolated module
+		--assert all [
+			module? m: try [import {Rebol [type: module options: [isolate] needs: [v: %test-needs-var.reb]] export f: does [v/hello]}]
+			"hello" = m/f
+		]
+		;; combined with other parts of the dialect
+		--assert all [
+			error? e: try [import [test-needs-var-4: %test-needs-var-2.reb 9.0.0]]
+			e/id = 'needs
+		]
+		--assert all [
+			block? try [import [test-needs-var-4: %test-needs-var-2.reb [test-needs-var-x]]]
+			same? system/modules/test-needs-var-2 get/any in system/contexts/user 'test-needs-var-4
+		]
+		delete %test-needs-var.reb
+		delete %test-needs-var-2.reb
+		delete %test-needs-var-3.reb
+
+	--test-- "system/script of an imported module"
+		;; the module's code is evaluated in the directory of its file, with its own system/script
+		make-dir %test-script/
+		write %test-script/module.reb {
+Rebol [type: module name: test-script-module title: "Test script" needs: [%helper.reb]]
+info: reduce [system/script/title  system/script/header/name  system/script/path  what-dir  helper-value]
+fail?: false
+if fail? [1 / 0]
+}
+		write %test-script/helper.reb {Rebol [type: module name: test-script-helper exports: [helper-value]] helper-value: 42}
+		dir: what-dir
+		script: system/script
+		--assert all [
+			module? m: try [import %test-script/module.reb]
+			"Test script" = m/info/1
+			'test-script-module = m/info/2
+			m/info/3 = to-real-file %test-script/
+			m/info/4 = to-real-file %test-script/
+			42 = m/info/5 ;; its needs are relative to the module's file
+			dir = what-dir ;; restored
+			same? script system/script
+		]
+		;; restored also when the module fails
+		write %test-script/failing.reb {Rebol [type: module name: test-script-failing] change-dir %/ 1 / 0}
+		--assert all [
+			error? try [import %test-script/failing.reb]
+			dir = what-dir
+			same? script system/script
+		]
+		delete %test-script/module.reb
+		delete %test-script/helper.reb
+		delete %test-script/failing.reb
+		delete %test-script/
+
+	--test-- "import/isolate"
+	;@@ https://github.com/Oldes/Rebol3/issues/1981
+		;; same as the `isolate` option in the module's header
+		repend lib ['test-isolate-lib-value 1]
+		write %test-isolate.reb {
+Rebol [type: module name: test-isolate]
+change-it: does [test-isolate-lib-value: 2]
+change-it
+}
+		--assert all [
+			module? m: try [import/isolate %test-isolate.reb]
+			did find query m 'options 'isolate
+			1 = lib/test-isolate-lib-value ;; the module has its own copy of the word
+			2 = m/test-isolate-lib-value
+		]
+		--assert error? try [import/no-share %test-isolate.reb] ;; the old name is not available
+		delete %test-isolate.reb
+
+	--test-- "module stopped using quit or halt"
+		;; module, which does not finish its code, is not imported
+		write %test-stopped.reb {
+Rebol [type: module name: test-stopped exports: [test-stopped-value]]
+test-stopped-value: 1
+quit
+}
+		--assert all [
+			error? e: try [import %test-stopped.reb]
+			e/id = 'module-stopped
+			e/arg1 = 'test-stopped
+			e/arg2 = 'quit
+			none? select system/modules 'test-stopped
+			none? in lib 'test-stopped-value
+			not system/state/quit? ;; so the console does not quit
+		]
+		write %test-stopped.reb {
+Rebol [type: module name: test-stopped]
+quit/return 5
+}
+		--assert all [
+			error? e: try [import %test-stopped.reb]
+			e/id = 'module-stopped
+			e/arg2 = 'quit
+			none? select system/modules 'test-stopped ;; it was registered as an integer!
+		]
+		write %test-stopped.reb {
+Rebol [type: module name: test-stopped]
+halt
+}
+		--assert all [
+			error? e: try [import %test-stopped.reb]
+			e/id = 'module-stopped
+			e/arg2 = 'halt
+			none? select system/modules 'test-stopped
+		]
+		;; unnamed module is reported using its location
+		write %test-stopped.reb {
+Rebol [type: module]
+halt
+}
+		--assert all [
+			error? e: try [import %test-stopped.reb]
+			e/id = 'module-stopped
+			e/arg1 = to-real-file %test-stopped.reb
+		]
+		;; the module is not on the list of modules being made, so it may be imported later
+		write %test-stopped.reb {
+Rebol [type: module name: test-stopped]
+export test-stopped-value: 2
+}
+		--assert all [
+			module? try [import %test-stopped.reb]
+			2 = lib/test-stopped-value
+		]
+		;; DO is not changed, it evaluates the module like a script
+		write %test-stopped.reb {
+Rebol [type: module]
+quit/return 5
+}
+		--assert 5 = try [do %test-stopped.reb]
+		system/state/quit?: false
+		delete %test-stopped.reb
+
+	--test-- "do module file with and without the isolate option"
+		;; DO does not force the isolation, it is the module's header, which decides
+		repend lib ['test-do-lib-value 1]
+		write %test-do-module.reb {
+Rebol [type: module]
+change-it: does [test-do-lib-value: 2]
+change-it
+}
+		--assert 2 = try [do %test-do-module.reb]
+		--assert 2 = lib/test-do-lib-value ;; not isolated module shares words with lib
+		write %test-do-module.reb {
+Rebol [type: module options: [isolate]]
+change-it: does [test-do-lib-value: 3]
+change-it
+}
+		--assert 3 = try [do %test-do-module.reb]
+		--assert 2 = lib/test-do-lib-value ;; isolated module has its own copies
+		delete %test-do-module.reb
+
+===end-group===
+
+===start-group=== "import of already imported modules"
+	--test-- "import by name of a module with a different name"
+	;@@ https://github.com/Oldes/Rebol3/issues/1362
+	;@@ https://github.com/Oldes/Rebol3/issues/1900
+		write modules-dir/test-1900.reb {Rebol [type: module name: test-1900-spoof] export test-1900-value: 1}
+		--assert all [
+			module? m: try [import 'test-1900]
+			'test-1900 = select spec-of m 'name ;; renamed to the requested name
+			same? m select system/modules 'test-1900
+			none? find system/modules 'test-1900-spoof
+		]
+		delete modules-dir/test-1900.reb
+
+	--test-- "import by name of an unnamed module"
+	;@@ https://github.com/Oldes/Rebol3/issues/1900
+		system/user/data/test-1900: copy []
+		write modules-dir/test-1900-unnamed.reb {Rebol [type: module] append system/user/data/test-1900 'init}
+		--assert all [
+			module? m: try [import 'test-1900-unnamed]
+			'test-1900-unnamed = select spec-of m 'name ;; it gets the requested name
+			same? m try [import 'test-1900-unnamed]     ;; so it is not loaded again
+			[init] = system/user/data/test-1900
+		]
+		delete modules-dir/test-1900-unnamed.reb
+
+	--test-- "import file! of already imported named module"
+	;@@ https://github.com/Oldes/Rebol3/issues/1360
+		system/user/data/test-1360: copy []
+		repend lib ['test-1360-own 'mine] ;; value, which is in lib before the module is imported
+		write modules-dir/test-1360.reb {
+Rebol [type: module name: test-1360 version: 1.0.0]
+append system/user/data/test-1360 1.0.0
+export test-1360-value: 1
+export test-1360-own: 1
+export test-1360-gone: 1
+}
+		--assert all [
+			module? m: try [import 'test-1360]
+			same? m try [import (modules-dir/test-1360.reb)] ;; the existing module is reused
+			[1.0.0] = system/user/data/test-1360             ;; and its code is not evaluated again
+		]
+
+	--test-- "import of an older version of already imported module"
+	;@@ https://github.com/Oldes/Rebol3/issues/1361
+		write modules-dir/test-1360-old.reb {
+Rebol [type: module name: test-1360 version: 0.5.0]
+append system/user/data/test-1360 0.5.0
+export test-1360-value: 0
+export test-1360-old-value: 0
+}
+		--assert all [
+			same? m try [import (modules-dir/test-1360-old.reb)] ;; the newer module is used instead
+			same? m select system/modules 'test-1360
+			[1.0.0] = system/user/data/test-1360                 ;; the older one is not even made
+			1 = lib/test-1360-value
+			none? in lib 'test-1360-old-value
+		]
+
+	--test-- "import of a newer version of already imported module"
+		--assert all [ ;; state before the upgrade
+			1 = lib/test-1360-value
+			1 = lib/test-1360-gone
+			'mine = lib/test-1360-own ;; lib's own value was not replaced by the export
+			none? in lib 'test-1360-added
+		]
+		write modules-dir/test-1360-new.reb {
+Rebol [type: module name: test-1360 version: 2.0.0]
+append system/user/data/test-1360 2.0.0
+export test-1360-value: 2
+export test-1360-own: 2
+export test-1360-added: 2
+}
+		--assert all [
+			module? o: try [import (modules-dir/test-1360-new.reb)]
+			not same? m o
+			same? o select system/modules 'test-1360
+			2.0.0 = select spec-of o 'version
+			[1.0.0 2.0.0] = system/user/data/test-1360
+		]
+		--assert all [ ;; exports of the older version are replaced in lib
+			2 = lib/test-1360-value
+			2 = lib/test-1360-added   ;; new export is added
+			'mine = lib/test-1360-own ;; lib's own value is still not touched
+			1 = lib/test-1360-gone    ;; value, which is not exported anymore, stays
+		]
+		--assert all [ ;; importing the newer version again changes nothing
+			same? o try [import (modules-dir/test-1360-new.reb)]
+			[1.0.0 2.0.0] = system/user/data/test-1360
+			2 = lib/test-1360-value
+		]
+		delete modules-dir/test-1360.reb
+		delete modules-dir/test-1360-old.reb
+		delete modules-dir/test-1360-new.reb
+
+	--test-- "import of an older module! value"
+	;@@ https://github.com/Oldes/Rebol3/issues/1358
+		m: module [name: test-1358 version: 1.0.0][export test-1358-value: 1]
+		o: module [name: test-1358 version: 0.5.0][export test-1358-value: 0]
+		--assert same? m try [import (m)]
+		--assert all [ ;; the given value cannot be silently replaced by the newer one
+			error? e: try [import (o)]
+			e/id = 'newer-module
+			e/arg1 = 'test-1358
+			e/arg2 = 1.0.0
+		]
+		--assert all [
+			same? m select system/modules 'test-1358
+			1 = lib/test-1358-value
+		]
+		--assert all [ ;; but it still may be imported without touching the lib
+			same? o try [import/no-lib (o)]
+			same? m select system/modules 'test-1358
+			1 = lib/test-1358-value
+		]
+		;; when a module value of the same version is imported, the existing one is used
+		o: module [name: test-1358 version: 1.0.0][export test-1358-value: 3]
+		--assert same? m try [import (o)]
+		;; an older module is recognized also when it has the same content as the newer one
+		o: module [name: test-1358 version: 0.5.0][export test-1358-value: 1]
+		--assert all [
+			equal? m o
+			error? e: try [import (o)]
+			e/id = 'newer-module
+		]
+		--assert same? o try [import/no-lib (o)]
+
+	--test-- "import/version of already imported module"
+		--assert module? try [import/version 'test-1360 2.0.0]
+		--assert all [
+			error? e: try [import/version 'test-1360 2.0.1]
+			e/id = 'needs
+		]
+
+	--test-- "import/check of already imported module"
+	;@@ https://github.com/Oldes/Rebol3/issues/1359
+		s: save/header none [export test-1359-value: 1] [type: module name: test-1359 checksum: true]
+		c: select first load/header s 'checksum
+		write modules-dir/test-1359.reb s
+		--assert module? m: try [import/check 'test-1359 c]
+		--assert same? m try [import/check 'test-1359 c] ;; the saved checksum is used
+		--assert same? m try [import 'test-1359]
+		--assert all [
+			error? e: try [import/check 'test-1359 #{00}]
+			e/id = 'invalid-check
+		]
+		--assert all [ ;; a module without a checksum can never pass the check
+			error? e: try [import/check 'test-1360 c]
+			e/id = 'invalid-check
+		]
+		--assert same? m try [import/check (m) c]       ;; also when used as a value
+		delete modules-dir/test-1359.reb
+		;; delayed module
+		s: save/header none [export test-1359-delayed-value: 1] [type: module name: test-1359-delayed checksum: true]
+		c: select first load/header s 'checksum
+		--assert [test-1359-delayed #(none)] = copy/part sys/load-module/delay s 2
+		--assert all [
+			error? e: try [import/check 'test-1359-delayed #{00}]
+			e/id = 'invalid-check
+		]
+		--assert module? try [import/check 'test-1359-delayed c]
+
+	--test-- "import of an unnamed module"
+	;@@ https://github.com/Oldes/Rebol3/issues/1363
+		system/user/data/test-1363: copy []
+		write modules-dir/test-1363.reb {Rebol [type: module] append system/user/data/test-1363 'init export test-1363-value: 1}
+		--assert all [
+			module? m: try [import (modules-dir/test-1363.reb)]
+			none? select spec-of m 'name
+			none? in lib 'test-1363-value                 ;; its exports are not in lib,
+			1 = system/contexts/user/test-1363-value      ;; but in the context, which requested it
+		]
+		--assert all [ ;; it is registered using its location, so it is not made again
+			same? m select system/modules to-real-file modules-dir/test-1363.reb
+			same? m try [import (modules-dir/test-1363.reb)]
+			[init] = system/user/data/test-1363
+		]
+		--assert all [ ;; DO is the way, how to evaluate it again
+			1 = try [do modules-dir/test-1363.reb]
+			[init init] = system/user/data/test-1363
+			same? m select system/modules to-real-file modules-dir/test-1363.reb
+		]
+		delete modules-dir/test-1363.reb
+
+	--test-- "system/modules"
+		--assert map? system/modules
+		;; imported module is registered using its name and also its location
+		system/user/data/test-modules: copy []
+		write modules-dir/test-modules.reb {Rebol [type: module name: test-modules version: 1.0.0] append system/user/data/test-modules 'init}
+		--assert all [
+			module? m: try [import 'test-modules]
+			same? m select system/modules 'test-modules
+			same? m select system/modules to-real-file modules-dir/test-modules.reb
+			same? m system/modules/test-modules
+			same? m try [import (modules-dir/test-modules.reb)]
+			[init] = system/user/data/test-modules
+		]
+		;; /version and /check are still validated, when the module is found using its location
+		--assert all [
+			error? e: try [import/version (modules-dir/test-modules.reb) 2.0.0]
+			e/id = 'needs
+		]
+		--assert all [
+			error? e: try [import/check (modules-dir/test-modules.reb) #{00}]
+			e/id = 'invalid-check
+		]
+		;; when the module is replaced by its newer version, the old location is not used anymore
+		write modules-dir/test-modules-new.reb {Rebol [type: module name: test-modules version: 2.0.0] append system/user/data/test-modules 'new}
+		--assert all [
+			module? o: try [import (modules-dir/test-modules-new.reb)]
+			not same? m o
+			same? o select system/modules 'test-modules
+			same? o try [import (modules-dir/test-modules.reb)] ;; the newer one is used instead
+			[init new] = system/user/data/test-modules
+		]
+		;; module imported using /no-lib is not registered using its name, but it is not made again
+		system/user/data/test-modules: copy []
+		write modules-dir/test-modules-no-lib.reb {Rebol [type: module name: test-modules-no-lib] append system/user/data/test-modules 'init}
+		--assert all [
+			module? m: try [import/no-lib (modules-dir/test-modules-no-lib.reb)]
+			none? select system/modules 'test-modules-no-lib
+			same? m try [import/no-lib (modules-dir/test-modules-no-lib.reb)]
+			same? m try [import (modules-dir/test-modules-no-lib.reb)]
+			same? m select system/modules 'test-modules-no-lib ;; now it is registered also by its name
+			[init] = system/user/data/test-modules
+		]
+		delete modules-dir/test-modules.reb
+		delete modules-dir/test-modules-new.reb
+		delete modules-dir/test-modules-no-lib.reb
+
+===end-group===
+
+===start-group=== "embedded extensions"
+	;@@ https://github.com/Oldes/Rebol3/issues/1901
+	;- these tests need a build, which includes the embedded extensions (like Rebol/Bulk)
+
+	if block? select system/modules 'xtest [
+		--test-- "delayed embedded extension"
+			;; it is registered, but not made, until it is imported
+			--assert all [
+				object? first select system/modules 'xtest ;; its header
+				find select first select system/modules 'xtest 'options 'delay
+				none? in lib 'xtest
+			]
+			--assert all [
+				module? m: try [import 'xtest]
+				same? m select system/modules 'xtest
+				same? m try [import 'xtest]
+				did find query m 'options 'extension
+			]
+			--assert all [ ;; its exports are in lib now
+				any-function? get in m 'xtest
+				same? get in m 'xtest get in lib 'xtest
+			]
+			--assert all [ ;; internal values are protected
+				protected? in m 'lib-base
+				none? in m 'lib-boot
+			]
+	]
+
+	if module? m: select system/modules 'easing [
+		--test-- "embedded extension imported on boot"
+			options: query m 'options
+			--assert all [
+				find options 'extension
+				not find options 'delay
+				same? m try [import 'easing]
+			]
+			--assert all [ ;; its exports are in lib (or only in the user context, when private)
+				[tween] = select spec-of m 'exports
+				any-function? get in m 'tween
+				same? get in m 'tween get in either find options 'private [
+					system/contexts/user
+				][	lib ] 'tween
+			]
+			--assert all [ ;; internal values are protected also when loaded on boot
+				protected? in m 'lib-base
+				none? in m 'lib-boot
+			]
+	]
+
+	;; any private extension loaded on boot must export only to the user context
+	foreach [name m] system/modules [
+		if all [
+			module? :m
+			options: query m 'options
+			find options 'extension
+			find options 'private
+			block? exports: query m 'exports
+		][
+			--test-- join "private embedded extension " name
+			foreach word exports [
+				--assert all [
+					not same? get/any in m word get/any in lib word ;; not in lib
+					same? get/any in m word get/any in system/contexts/user word
+				]
+			]
+		]
+	]
+
+===end-group===
+
+===start-group=== "unload"
+	--test-- "unload module"
+		system/user/data/test-unload: copy []
+		write modules-dir/test-unload.reb {
+Rebol [type: module name: test-unload]
+append system/user/data/test-unload 'init
+export test-unload-a: 1
+export test-unload-b: 2
+}
+		--assert all [
+			module? m: try [import 'test-unload]
+			1 = lib/test-unload-a
+			1 = system/contexts/user/test-unload-a
+			2 = system/contexts/user/test-unload-b
+		]
+		lib/test-unload-b: 'changed ;; lib's value is not the module's value anymore
+		--assert same? m try [unload 'test-unload]
+		--assert all [ ;; it is not registered anymore (using its name and its location)
+			none? select system/modules 'test-unload
+			none? select system/modules to-real-file modules-dir/test-unload.reb
+		]
+		--assert all [ ;; exported values are unset in lib and in the user's context...
+			unset? get/any in lib 'test-unload-a
+			unset? get/any in system/contexts/user 'test-unload-a
+			unset? get/any in system/contexts/user 'test-unload-b
+			'changed = lib/test-unload-b ;; ...unless there is already a different value
+		]
+		--assert 1 = m/test-unload-a ;; the module itself is still usable, when referenced
+		unset in lib 'test-unload-b
+		;; the module may be imported again
+		--assert all [
+			module? o: try [import 'test-unload]
+			not same? m o
+			[init init] = system/user/data/test-unload
+			1 = lib/test-unload-a
+			2 = lib/test-unload-b
+		]
+		;; a protected module is not unloaded
+		protect o
+		--assert all [
+			error? e: try [unload 'test-unload]
+			e/id = 'protected
+			same? o select system/modules 'test-unload
+			1 = lib/test-unload-a
+		]
+		unprotect o
+		;; unload using the module value
+		--assert same? o try [unload (o)]
+		--assert none? select system/modules 'test-unload
+		;; unload of something what is not loaded
+		--assert none? try [unload 'test-unload]
+		--assert none? try [unload 'test-unload-unknown]
+		;; a module value is accepted even when it is not registered (anymore)
+		--assert same? o try [unload (o)]
+		;; so also exports of a module, which was never registered, may be removed
+		o: module [][export test-unload-d: 4]
+		import (o)
+		--assert 4 = system/contexts/user/test-unload-d
+		--assert same? o try [unload (o)]
+		--assert unset? get/any in system/contexts/user 'test-unload-d
+		delete modules-dir/test-unload.reb
+
+	--test-- "unload unnamed module"
+		write modules-dir/test-unload.reb {Rebol [type: module] export test-unload-c: 3}
+		--assert all [
+			module? m: try [import (modules-dir/test-unload.reb)]
+			3 = system/contexts/user/test-unload-c
+			same? m select system/modules to-real-file modules-dir/test-unload.reb
+		]
+		--assert all [ ;; using its location
+			same? m try [unload (modules-dir/test-unload.reb)]
+			none? select system/modules to-real-file modules-dir/test-unload.reb
+			unset? get/any in system/contexts/user 'test-unload-c
+		]
+		delete modules-dir/test-unload.reb
 
 ===end-group===
 
@@ -396,17 +1214,284 @@ system/options/modules: modules-dir
 	--test-- "issue-1005"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1005
 		m: module [] [a: 1 2]
-		--assert [lib-local: #(object![]) a: 1] = body-of m
-		--assert [lib-local a] = keys-of m
-		--assert [#(object![]) 1] = values-of m
+		--assert [a: 1] = body-of m
+		--assert [a] = keys-of m
+		--assert [1] = values-of m
 		m: module [exports: [a]] [a: 1 2]
-		--assert [lib-local: #(object![]) a: 1] = body-of m
-		--assert [lib-local a] = keys-of m
-		--assert [#(object![]) 1] = values-of m
+		--assert [a: 1] = body-of m
+		--assert [a] = keys-of m
+		--assert [1] = values-of m
+
+	--test-- "mold module!"
+	;@@ https://github.com/Oldes/Rebol3/issues/1169
+	;@@ https://github.com/Oldes/Rebol3/issues/1183
+		;; module is molded as its spec (only used fields) and its body (not hidden words)
+		m: module [title: "my-module" name: test-1169 version: 1.2.3][export a: 1 b: 2 hidden c: 3]
+		--assert (mold/flat m) = {make module! [[version: 1.2.3 title: "my-module" name: 'test-1169 type: 'module exports: [a]] [a: 1 b: 2]]}
+		--assert (mold/all/flat m) = {#(module! [[version: 1.2.3 title: "my-module" name: test-1169 type: module exports: [a]] [a: 1 b: 2]])}
+		--assert (mold m) = {make module! [
+    [
+        version: 1.2.3
+        title: "my-module"
+        name: 'test-1169
+        type: 'module
+        exports: [a]
+    ]
+    [
+        a: 1
+        b: 2
+    ]
+]}
+		--assert (mold/flat module [][]) = {make module! [[version: 0.0.0 title: "Untitled" type: 'module] []]}
+		--assert (mold/flat reduce [m 1]) = ajoin [#"[" mold/flat m " 1]"]
+		;; module referencing itself
+		m: module [][me: none]
+		m/me: m
+		--assert (mold/flat m) = {make module! [[version: 0.0.0 title: "Untitled" type: 'module] [me: make module! [[version: 0.0.0 title: "Untitled" type: 'module] [...]]]]}
+		;; but there is no construction syntax for it
+		--assert all [
+			error? e: try [mold/all m]
+			e/id = 'recursive-value
+			e/arg1 = module!
+		]
+
+	--test-- "construct module!"
+	;@@ https://github.com/Oldes/Rebol3/issues/1169
+		m: module [title: "my-module" name: test-1169 version: 1.2.3 options: [private]][export a: 1 b: 2 hidden c: 3]
+		--assert all [
+			module? o: try [load mold/all m]
+			not same? o m
+			(mold/all o) = (mold/all m)
+			"my-module" = title-of o
+			'test-1169  = select spec-of o 'name
+			[private]   = select spec-of o 'options
+			[a]         = select spec-of o 'exports
+			[a b] = words-of o ;; hidden words are not molded, so these are lost
+			1 = o/a
+		]
+		;; nothing is evaluated, when the module is constructed
+		--assert all [
+			module? o: try [load "#(module! [[title: reverse {ab}] [a: 1 + 1]])"]
+			'reverse = select spec-of o 'title
+			1 = o/a
+		]
+		;; missing type is set
+		--assert all [
+			module? o: try [load "#(module! [[] []])"]
+			'module = select spec-of o 'type
+		]
+		;; spec and body blocks are required and important fields of the spec are validated
+		foreach src [
+			"#(module! [])"
+			"#(module! [a: 1])"
+			"#(module! [[title: {x}]])"
+			"#(module! [[] [] []])"
+			"#(module! [[name: {x}] []])"
+			"#(module! [[type: 1] []])"
+			"#(module! [[version: 1] []])"
+			"#(module! [[options: private] []])"
+		][
+			--assert all [
+				error? e: try [load src]
+				e/id = 'malconstruct
+			]
+		]
+		;; module may be also made from its (not serialized) molded form
+		--assert all [
+			module? o: try [do mold m]
+			not same? o m
+			(mold o) = (mold m)
+		]
+
+	--test-- "more modules in one source"
+	;@@ https://github.com/Oldes/Rebol3/issues/2051
+		;; load-module returns also the end of the script, so the next one may be loaded
+		bin: to binary! {
+[Rebol [type: module name: test-2051-a] export test-2051-a-value: 1]
+[Rebol [type: module name: test-2051-b] export test-2051-b-value: 2]
+not a script
+}
+		names: copy []
+		while [all [bin find-script bin]] [
+			set [name: mod: bin:] sys/load-module bin ;; not using `module` as it is a function!
+			append names name
+		]
+		--assert [test-2051-a test-2051-b] = names
+		--assert all [
+			1 = lib/test-2051-a-value
+			2 = lib/test-2051-b-value
+		]
+		;; length-specified scripts
+		bin: join save/length/header none [export test-2051-c-value: 3] [type: module name: test-2051-c]
+		          save/length/header none [export test-2051-d-value: 4] [type: module name: test-2051-d]
+		names: copy []
+		while [all [bin find-script bin]] [
+			set [name: mod: bin:] sys/load-module bin ;; not using `module` as it is a function!
+			append names name
+		]
+		--assert [test-2051-c test-2051-d] = names
+		--assert all [
+			3 = lib/test-2051-c-value
+			4 = lib/test-2051-d-value
+		]
+		;; a source with only one script ends at its tail
+		--assert all [
+			block? r: sys/load-module "Rebol [type: module name: test-2051-e] 1"
+			module? r/2
+			tail? r/3
+		]
+		;; other sources do not have any end
+		--assert none? third sys/load-module 'test-2051-e
+		;; there is no block of sources (use import with a block)
+		--assert all [
+			error? e: try [sys/load-module [test-2051-e]]
+			e/id = 'expect-arg
+		]
+
+	--test-- "query module"
+		m: module [title: "Query test" name: test-query version: 1.2.3 options: [private]][export a: 1 title: "own"]
+		--assert "Query test" = query m 'title ;; header's field, even when the module has the same word
+		--assert 'test-query  = query m 'name
+		--assert 1.2.3        = query m 'version
+		--assert [private]    = query m 'options
+		--assert [a]          = query m 'exports
+		--assert none?          query m 'checksum
+		--assert [name: test-query version: 1.2.3] = query m [name version]
+		--assert [test-query 1.2.3] = query m [:name :version]
+		--assert all [
+			block? f: query m none
+			did find f 'name
+			did find f 'exports
+		]
+		--assert all [ ;; whole header as a new object
+			object? o: query m object!
+			not same? o spec-of m
+			o/name = 'test-query
+			o/exports = [a]
+		]
+		--assert all [
+			error? e: try [query m 'foo]
+			e/id = 'cannot-use
+		]
+		;; module without exports
+		m: module [][a: 1]
+		--assert none? query m 'exports
+		--assert none? query m 'name
+		--assert "Untitled" = query m 'title
+
+	--test-- "issue-1764"
+	;@@ https://github.com/Oldes/Rebol3/issues/1764
+		;; context of a module's word provides the module's header (it is a feature)
+		m: module [title: "Test 1764"][a: 1]
+		o: context? in m 'a
+		--assert same? spec-of o spec-of m
+		--assert "Test 1764" = select spec-of o 'title
+		--assert none? spec-of make object! [a: 1] ;; ordinary object has no spec
 
 	--test-- "issue-1708"
 	;@@ https://github.com/Oldes/Rebol-issues/issues/1708
 		--assert none? find system/modules module [] []
+
+===end-group===
+
+===start-group=== "Protected header of a registered module"
+	--test-- "header fields used by the module system are protected"
+	;@@ https://github.com/Oldes/Rebol-issues/issues/1767
+		m: module [title: "Test 1767" name: test-1767 version: 1.0.0][export test-1767-value: 1]
+		o: spec-of m
+		;; not protected until the module is registered
+		--assert not error? try [o/version: 1.0.1]
+		--assert same? m import (m)
+		--assert same? o spec-of m
+		--assert all [error? e: try [o/name: 'spoof]       e/id = 'locked-word]
+		--assert all [error? e: try [o/version: 9.9.9]     e/id = 'locked-word]
+		--assert all [error? e: try [o/checksum: #{00}]    e/id = 'locked-word]
+		--assert all [error? e: try [o/options: [private]] e/id = 'locked-word]
+		--assert all [error? e: try [o/exports: []]        e/id = 'locked-word]
+		--assert all [error? e: try [o/type: 'script]      e/id = 'locked-word]
+		--assert all [error? e: try [append o/exports 'x]  e/id = 'protected]
+		--assert all [
+			'test-1767 = query m 'name
+			1.0.1 = query m 'version
+			[test-1767-value] = query m 'exports
+			same? m select system/modules 'test-1767
+		]
+	--test-- "other header fields are not protected"
+		--assert not error? try [o/title: "New title"]
+		--assert "New title" = title-of m
+		--assert not error? try [o/author: "Somebody"]
+	--test-- "unregistered headers are not affected"
+		;; headers share the word list of the standard header
+		m2: module [title: "Test 1767b"][]
+		o2: spec-of m2
+		--assert not error? try [o2/name: 'any-name]
+		--assert not error? try [o2/version: 2.0.0]
+		--assert not protected? in system/standard/header 'name
+		--assert not protected? in system/standard/header 'options
+	--test-- "registered module with protected header can be imported again"
+		--assert same? m import 'test-1767
+		--assert same? m import (m)
+		--assert same? m import/isolate 'test-1767
+		--assert none? query m 'options
+	--test-- "registered modules of the system are protected"
+		--assert all [
+			module? help: select system/modules 'help
+			error? try [put spec-of help 'name 'spoof]
+			'help = query help 'name
+		]
+
+===end-group===
+
+===start-group=== "Type: private scripts"
+	--test-- "do of a private script"
+	;@@ https://github.com/Oldes/Rebol3/discussions/164
+		--assert block? r: do %files/test-private-script.reb
+		--assert 'private = r/1
+		--assert 42 = r/2              ;; needed module is available in the script
+		--assert 1 = r/3               ;; its words are in its own context
+		--assert 2 = r/3
+		--assert r/4                   ;; system/script/path is set
+		--assert not attempt [get in system/contexts/user 'private-script-counter]
+		--assert not attempt [get in system/contexts/user 'private-script-value]
+		--assert not attempt [get in lib 'private-script-counter]
+	--test-- "private script is evaluated every time"
+		--assert block? r2: do %files/test-private-script.reb
+		--assert 1 = r2/3              ;; new context, so new counter
+		--assert 3 = r/3               ;; the old one is untouched
+		--assert none? select system/modules to-real-file %files/test-private-script.reb
+	--test-- "private script binds all its words like a regular script"
+		--assert all [
+			block? r: do %files/test-private-script-binding.reb
+			r = reduce [native! 'b 3 "abc" "local" native!]
+		]
+		--assert not attempt [get in system/contexts/user 'nested]
+		--assert native? :lib/checksum
+
+	--test-- "private script cannot be imported"
+		--assert all [
+			error? e: try [import %files/test-private-script.reb]
+			e/id = 'private-script
+		]
+		--assert all [
+			error? e: try [import {Rebol [type: module needs: [%files/test-private-script.reb]] 1}]
+			e/id = 'private-script
+		]
+		--assert none? select system/modules to-real-file %files/test-private-script.reb
+
+===end-group===
+
+
+===start-group=== "Module name in the header"
+	--test-- "lit-word name of a delayed module"
+		;; the header is not evaluated, so `name: 'foo` must be accepted too (prot-tls uses it)
+		--assert 'test-lit-name = first sys/load-module/delay {Rebol [name: 'test-lit-name type: module options: [delay]] 1}
+		--assert block? select system/modules 'test-lit-name
+		--assert module? m: import 'test-lit-name
+		--assert 'test-lit-name = query m 'name
+	--test-- "lit-word name of a module"
+		--assert module? m: import {Rebol [name: 'test-lit-name-2 type: module] 1}
+		--assert 'test-lit-name-2 = query m 'name
+		--assert same? m select system/modules 'test-lit-name-2
 
 ===end-group===
 

@@ -3,6 +3,7 @@
 **  REBOL [R3] Language Interpreter and Run-time Environment
 **
 **  Copyright 2012 REBOL Technologies
+**  Copyright 2012-2026 Rebol Open Source Developers
 **  REBOL is a trademark of REBOL Technologies
 **
 **  Licensed under the Apache License, Version 2.0 (the "License");
@@ -165,11 +166,39 @@
 
 /***********************************************************************
 **
+*/	static REBYTE Get_Func_Spec_Flags(REBSER *spec)
+/*
+**		Collect R2-style function attributes from a block placed
+**		before the first argument: [[throw] "doc" arg ...]
+**
+***********************************************************************/
+{
+	REBVAL *val;
+	REBVAL *attr;
+	REBYTE flags = 0;
+
+	for (val = BLK_HEAD(spec); NOT_END(val); val++) {
+		if (ANY_WORD(val)) break; // attributes only before the first arg
+		if (!IS_BLOCK(val)) continue;
+		for (attr = VAL_BLK_DATA(val); NOT_END(attr); attr++) {
+			if (!IS_WORD(attr)) continue;
+			switch (VAL_WORD_CANON(attr)) {
+			case SYM_THROW: SET_FLAG(flags, FUNC_THROW); break;
+			case SYM_CATCH: SET_FLAG(flags, FUNC_CATCH); break;
+			// other words are ignored (R2 compatibility)
+			}
+		}
+	}
+	return flags;
+}
+
+/***********************************************************************
+**
 */	void Make_Native(REBVAL *value, REBSER *spec, REBFUN func, REBINT type)
 /*
 ***********************************************************************/
 {
-	//Print("Make_Native: %s spec %d", Get_Sym_Name(type+1), SERIES_TAIL(spec));
+	//Debug_Fmt("Make_Native: %s spec %d", Get_Sym_Name(type+1), SERIES_TAIL(spec));
 	VAL_FUNC_SPEC(value) = spec;
 	VAL_FUNC_ARGS(value) = Check_Func_Spec(spec);
 	VAL_FUNC_CODE(value) = func;
@@ -212,6 +241,8 @@
 	else return FALSE;
 
 	VAL_SET(value, type);
+	if (type == REB_FUNCTION || type == REB_CLOSURE)
+		VAL_FUNC_FLAGS(value) = Get_Func_Spec_Flags(VAL_FUNC_SPEC(value));
 
 	if (type == REB_OP) {
 		// make sure that there are exactly 2 args
@@ -252,6 +283,7 @@
 		if (IS_BLOCK(spec)) {
 			VAL_FUNC_SPEC(value) = VAL_SERIES(spec);
 			VAL_FUNC_ARGS(value) = Check_Func_Spec(VAL_SERIES(spec));
+			VAL_FUNC_FLAGS(value) = Get_Func_Spec_Flags(VAL_SERIES(spec));
 		} else {
 			if (!IS_STAR(spec)) return FALSE;
 			VAL_FUNC_ARGS(value) = Copy_Block(VAL_FUNC_ARGS(value), 0);
@@ -421,7 +453,7 @@
 
 /***********************************************************************
 **
-*/	void Do_Function(REBVAL *func)
+*/	static void Eval_Function(REBVAL *func)
 /*
 ***********************************************************************/
 {
@@ -435,9 +467,10 @@
 
 	//Dump_Block(VAL_FUNC_BODY(func));
 	result = Do_Blk(VAL_FUNC_BODY(func), 0);
+	func = DSF_FUNC(DSF); // the stack could be expanded
 	ds = DS_RETURN;
 
-	if (IS_ERROR(result) && IS_RETURN(result)) {
+	if (IS_ERROR(result) && IS_RETURN(result) && !VAL_FUNC_GET_FLAG(func, FUNC_THROW)) {
 		// Value below is kept safe from GC because no-allocation is
 		// done between point of SET_THROW and here.
 		if (VAL_ERR_VALUE(result))
@@ -451,7 +484,7 @@
 
 /***********************************************************************
 **
-*/	void Do_Closure(REBVAL *func)
+*/	static void Eval_Closure(REBVAL *func)
 /*
 **		Do a closure by cloning its body and rebinding it to
 **		a new frame of words/values.
@@ -472,6 +505,8 @@
 	// Copy stack frame args as the closure object (one extra at head)
 	frame = Copy_Values(BLK_SKIP(DS_Series, DS_ARG_BASE), SERIES_TAIL(VAL_FUNC_ARGS(func)));
 	SET_FRAME(BLK_HEAD(frame), 0, VAL_FUNC_ARGS(func));
+	// The frame uses the function's word list, so it must not be modified:
+	SHARE_SERIES(VAL_FUNC_ARGS(func));
 
 	// Rebind the body to the new context (deeply):
 	Rebind_Block(VAL_FUNC_ARGS(func), frame, BLK_HEAD(body), REBIND_TYPE);
@@ -479,9 +514,10 @@
 	ds = DS_RETURN;
 	SET_OBJECT(ds, body); // keep it GC safe
 	result = Do_Blk(body, 0); // GC-OK - also, result returned on DS stack
+	func = DSF_FUNC(DSF);     // the stack could be expanded
 	ds = DS_RETURN;
 
-	if (IS_ERROR(result) && IS_RETURN(result)) {
+	if (IS_ERROR(result) && IS_RETURN(result) && !VAL_FUNC_GET_FLAG(func, FUNC_THROW)) {
 		// Value below is kept safe from GC because no-allocation is
 		// done between point of SET_THROW and here.
 		if (VAL_ERR_VALUE(result))
@@ -490,4 +526,80 @@
 			SET_UNSET(ds);
 	}
 	else *ds = *result; // Set return value (atomic)
+}
+
+/***********************************************************************
+**
+*/	static void Blame_Caller(REBVAL *err)
+/*
+**		Relocate an error escaping a [catch] function to the
+**		function's call site (R2 behavior). DSF must be the
+**		function's frame.
+**
+***********************************************************************/
+{
+	ERROR_OBJ *error;
+
+	if (IS_THROW(err)) return; // unwinds are not relocated
+	// The stack overflow error is preallocated and shared:
+	if (VAL_ERR_OBJECT(err) == VAL_ERR_OBJECT(TASK_STACK_ERROR)) return;
+
+	error = VAL_ERR_VALUES(err);
+	Set_Block(&error->where, Make_Backtrace(0)); // starts with this function
+	error->nearest = *DSF_BACK(DSF);             // the call position
+}
+
+
+/***********************************************************************
+**
+*/	static void Do_Catch_Func(REBVAL *func, void (*eval)(REBVAL *))
+/*
+**		Evaluate a [catch] function with an error trap, so errors
+**		escaping it are reported at the call site.
+**		Only [catch] functions pay for the trap.
+**
+***********************************************************************/
+{
+	REBOL_STATE state;
+	REBVAL *err;
+	jmp_buf *Last_Halt_State = Halt_State;
+
+	PUSH_STATE(state, Saved_State);
+	if (SET_JUMP(state)) {
+		Halt_State = Last_Halt_State;
+		POP_STATE(state, Saved_State); // restores DSP and DSF (function frame)
+		DSP++;               // GC-safe slot (Make_Backtrace allocates)
+		err = DS_TOP;
+		Catch_Error(err);
+		Blame_Caller(err);
+		if (IS_THROW(err)) Throw_Break(err);
+		Throw_Error(VAL_ERR_OBJECT(err));
+	}
+	SET_STATE(state, Saved_State);
+
+	eval(func);
+
+	POP_STATE(state, Saved_State);
+}
+
+
+/***********************************************************************
+**
+*/	void Do_Function(REBVAL *func)
+/*
+***********************************************************************/
+{
+	if (VAL_FUNC_GET_FLAG(func, FUNC_CATCH)) Do_Catch_Func(func, Eval_Function);
+	else Eval_Function(func);
+}
+
+
+/***********************************************************************
+**
+*/	void Do_Closure(REBVAL *func)
+/*
+***********************************************************************/
+{
+	if (VAL_FUNC_GET_FLAG(func, FUNC_CATCH)) Do_Catch_Func(func, Eval_Closure);
+	else Eval_Closure(func);
 }

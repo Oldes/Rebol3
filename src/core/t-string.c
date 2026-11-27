@@ -240,6 +240,14 @@ static REBSER *make_string(REBVAL *arg, REBOOL make, REBCNT type)
 	return ser;
 }
 
+static void snap_index(REBVAL *val)
+{
+	// Index may be inside of a multi-byte sequence, when the series
+	// was modified through another reference. Snap it to the char start.
+	if (ANY_STR(val) && VAL_INDEX(val) < VAL_TAIL(val))
+		VAL_INDEX(val) = Val_Str_Index(val);
+}
+
 REBSER *Make_Binary_BE64(REBVAL *arg)
 {
 	REBSER *ser = Make_Binary(9);
@@ -285,7 +293,7 @@ static REBSER *make_binary(REBVAL *arg, REBOOL make)
 	// MAKE/TO BINARY! <vector!>
 	case REB_VECTOR:
 		// result is in little-endian!
-		ser = Copy_Bytes(VAL_DATA(arg), VAL_LEN(arg) * VAL_VEC_WIDTH(arg));
+		ser = Copy_Bytes(VAL_DATA(arg), VAL_LEN(arg) * VAL_VEC_WIDE(arg));
 		break;
 
 	case REB_BLOCK:
@@ -348,6 +356,17 @@ static REBSER *make_binary(REBVAL *arg, REBOOL make)
 	*out = *data++;
 	VAL_SET(out, type);
 	i = IS_INTEGER(data) ? Int32(data) - 1 : 0;
+	if (type != REB_BINARY && IS_UTF8_SERIES(VAL_SERIES(out))) {
+		// The index is in chars, convert it to bytes.
+		const REBYTE *bin = VAL_BIN_HEAD(out);
+		REBCNT tail = VAL_TAIL(out);
+		REBCNT pos = 0;
+		while (i > 0 && pos < tail) {
+			pos += UTF8_Next_Char_Size(bin, pos);
+			i--;
+		}
+		i = pos;
+	}
 	if (i > VAL_TAIL(out)) i = VAL_TAIL(out); // clip it
 	VAL_INDEX(out) = i;
 	return TRUE;
@@ -605,6 +624,8 @@ static const cmp_func sfunc_table[2][2][2][2] = {
 ***********************************************************************/
 {
 	REBCNT len;
+	REBINT stack = DSP;
+	REBSER *series = VAL_SERIES(string);
 	REBCNT skip = 1;
 	REBCNT size = 1;
 	REBSER *args;
@@ -693,18 +714,11 @@ static const cmp_func sfunc_table[2][2][2][2] = {
 		stable_sort((void*)str_bin, len, size * wide, sfunc);
 	}
 	if (wide == 4) {
-		UTF32_To_UTF8(VAL_SERIES(string), str_bin, len*4*skip, OS_LITTLE_ENDIAN);
+		UTF32_To_UTF8(series, str_bin, len*4*skip, OS_LITTLE_ENDIAN);
 	}
 
-	DS_DROP; // Stored skip or offset
-	if (ANY_FUNC(compv)) {
-		// Stored comparator and flags are not needed anymore
-		DS_DROP;
-		DS_DROP;
-	}
-	else if (IS_INTEGER(compv)) {
-		DS_DROP; // Stored flags
-	}
+	// The comparator may have moved the stack; do not inspect compv here.
+	DSP = stack;
 }
 
 FORCE_INLINE
@@ -747,6 +761,19 @@ FORCE_INLINE
 	REBINT i;
 	REBINT c;
 	REBSER *ser = VAL_SERIES(data);
+	REBVAL snapped;
+
+	// Index may be inside of a multi-byte sequence (invalidated by a modification
+	// made through another reference), use a value with a valid index instead.
+	if (ANY_STR(data) && VAL_INDEX(data) < VAL_TAIL(data)) {
+		n = Val_Str_Index(data);
+		if (n != VAL_INDEX(data)) {
+			snapped = *data;
+			VAL_INDEX(&snapped) = n;
+			data = &snapped;
+		}
+		n = 0;
+	}
 
 	if (IS_INTEGER(pvs->select) || IS_DECIMAL(pvs->select)) {
 		i = Int32(pvs->select);
@@ -765,11 +792,10 @@ FORCE_INLINE
 	else if (IS_WORD(pvs->select)) {
 		REBU32  len;
 		REBSER* ser  = VAL_SERIES(pvs->value);
-		REBCNT  idx  = VAL_INDEX(pvs->value);
+		REBCNT  idx  = Val_Str_Index(pvs->value); // clipped to tail and snapped
 		REBCNT  tail = VAL_TAIL(pvs->value);
-		REBYTE* data = VAL_BIN_DATA(pvs->value);
+		REBYTE* data = BIN_SKIP(ser, idx);
 		REBCNT  word = VAL_WORD_CANON(pvs->select);
-		if (idx > tail) idx = tail;
 
 		if (pvs->setval) {
 			switch (word) {
@@ -801,7 +827,7 @@ FORCE_INLINE
 		switch (word) {
 		case SYM_LENGTH:
 			len = IS_UTF8_SERIES(ser)
-				? Length_As_UTF8_Code_Points(data)
+				? UTF8_Length(data, tail - idx)
 				: tail - idx;
 			break;
 		case SYM_WIDTH:
@@ -863,8 +889,9 @@ FORCE_INLINE
 	}
 	else if (ANY_BINSTR(val)) {
 		// for example: s: "abc" s/2: "xyz" s == "axc"
-		if (VAL_INDEX(val) >= VAL_TAIL(val)) return PE_BAD_SET;
-		c = GET_UTF8_CHAR(VAL_SERIES(val), VAL_INDEX(val));
+		REBCNT vidx = Val_Str_Index(val);
+		if (vidx >= VAL_TAIL(val)) return PE_BAD_SET;
+		c = GET_UTF8_CHAR(VAL_SERIES(val), vidx);
 	}
 	else
 		return PE_BAD_SELECT;
@@ -893,12 +920,25 @@ FORCE_INLINE
 	REBSER *ser;
 	REB_MOLD mo = {0};
 	REBCNT n;
-	REBUNI c = 0;
+	REBU32 c = 0;
 	REBSER *arg;
+	REBVAL *val = pvs->value;
+	REBVAL snapped;
 
 	if (pvs->setval) return PE_BAD_SET;
 
-	ser = Copy_Series_Value(pvs->value);
+	// Index may be inside of a multi-byte sequence (invalidated by a modification
+	// made through another reference), use a value with a valid index instead.
+	if (VAL_INDEX(val) < VAL_TAIL(val)) {
+		n = Val_Str_Index(val);
+		if (n != VAL_INDEX(val)) {
+			snapped = *val;
+			VAL_INDEX(&snapped) = n;
+			val = &snapped;
+		}
+	}
+
+	ser = Copy_Series_Value(val);
 
 	n = SERIES_TAIL(ser);
 	if (n > 0) c = GET_ANY_CHAR(ser, n-1);
@@ -906,7 +946,7 @@ FORCE_INLINE
 
 	if (ANY_STR(pvs->select)) {
 		arg = VAL_SERIES(pvs->select);
-		n = VAL_INDEX(pvs->select);
+		n = Val_Str_Index(pvs->select); // clipped to tail and snapped
 	}
 	else {
 		Reset_Mold(&mo);
@@ -944,6 +984,12 @@ FORCE_INLINE
 		return T_Port(ds, action);
 	}
 
+	// A width-changing modification made through another reference may leave
+	// the index inside of a multi-byte sequence. Snap it back to the char start.
+	if (ANY_STR(value) && IS_UTF8_SERIES(VAL_SERIES(value))) {
+		snap_index(value);
+	}
+
 	len = Do_Series_Action(action, value, arg);
 	if (len >= 0) return len;
 
@@ -965,7 +1011,7 @@ FORCE_INLINE
 	case A_APPEND:
 	case A_INSERT:
 	case A_CHANGE:
-		//Modify_String(action, value, arg);
+		snap_index(arg);
 		// Length of target (may modify index): (arg can be anything)
 		len = Partial1((action == A_CHANGE) ? value : arg, DS_ARG(AN_LENGTH));
 		index = VAL_INDEX(value);
@@ -984,6 +1030,7 @@ FORCE_INLINE
 		ret = ALL_FIND_REFS;
 find:
 		args = Find_Refines(ds, ret);
+		snap_index(arg);
 
 		if (IS_BINARY(value)) {
 			args |= AM_FIND_CASE;
@@ -1093,6 +1140,7 @@ pick_it:
 
 	case A_TAKE:
 		ser = VAL_SERIES(value);
+		if (IS_FIXED_SIZE(ser)) Trap0(RE_FIXED_SIZED_SERIES);
 		if (D_REF(ARG_TAKE_ALL)) {
 			if (tail <= index) goto empty_str;
 			len = tail - index;
@@ -1103,15 +1151,19 @@ pick_it:
 			if (D_REF(ARG_TAKE_LAST) && IS_UTF8_SERIES(ser)) {
 				// special case for Unicode when taking from the tail
 				REBINT range;
+				REBLEN idx = VAL_INDEX(value);
 				if (IS_INTEGER(part) || IS_DECIMAL(part)) {
-					range = MIN(UTF8_Index_To_Position(BIN_SKIP(ser, VAL_INDEX(value)), tail), Int32(part));
+					range = MIN((int)UTF8_Length(BIN_SKIP(ser, idx), tail - idx), Int32(part));
 				}
 				else {
 					// part provided as a series position
 					if (VAL_SERIES(part) != VAL_SERIES(value))
 						Trap1(RE_INVALID_PART, part);
-					range = UTF8_Index_To_Position(BIN_SKIP(ser, VAL_INDEX(value)), tail)
-						  - UTF8_Index_To_Position(BIN_SKIP(ser, VAL_INDEX(value)), VAL_INDEX(part));
+					// number of chars from the part position to the tail
+					REBLEN pidx = VAL_INDEX(part);
+					if (pidx < idx)  pidx = idx;
+					if (pidx > tail) pidx = tail;
+					range = UTF8_Length(BIN_SKIP(ser, pidx), tail - pidx);
 				}
 				index = UTF8_Skip(ser, tail, -range);
 				if (index == UNKNOWN) index = 0; // e.g.: take/part/last "abc" 100
@@ -1158,6 +1210,7 @@ pick_it:
 		return R_RET;
 
 	case A_CLEAR:
+		if (IS_FIXED_SIZE_VALUE(value)) Trap0(RE_FIXED_SIZED_SERIES);
 		if (index < tail) {
 			if (index == 0) Reset_Series(VAL_SERIES(value));
 			else {
@@ -1220,8 +1273,10 @@ pick_it:
 			(args & (AM_TRIM_HEAD | AM_TRIM_LINES | AM_TRIM_ALL | AM_TRIM_WITH)))
 		)
 			Trap0(RE_BAD_REFINES);
-		if (IS_BINARY(value))
+		if (IS_BINARY(value)) {
+			if (IS_FIXED_SIZE_VALUE(value)) Trap0(RE_FIXED_SIZED_SERIES);
 			Trim_Binary(VAL_SERIES(value), VAL_INDEX(value), VAL_LEN(value), args, D_ARG(ARG_TRIM_STR));
+		}
 		else
 			Trim_String(VAL_SERIES(value), VAL_INDEX(value), VAL_LEN(value), args, D_ARG(ARG_TRIM_STR));
 		break;
@@ -1229,6 +1284,7 @@ pick_it:
 	case A_SWAP:
 		if (VAL_TYPE(value) != VAL_TYPE(arg)) Trap0(RE_NOT_SAME_TYPE);
 		if (IS_PROTECT_SERIES(VAL_SERIES(arg))) Trap0(RE_PROTECTED);
+		snap_index(arg);
 		if (index < tail && VAL_INDEX(arg) < VAL_TAIL(arg))
 			swap_chars(value, arg);
 		// Trap_Range(arg);  // ignore range error
@@ -1250,6 +1306,7 @@ pick_it:
 			D_REF(10),	// reverse
 			(D_REF(11) || IS_BINARY(value)) // unstable
 		);
+		value = DS_ARG(1); // the comparator may have moved the data stack
 		break;
 
 	case A_RANDOM:

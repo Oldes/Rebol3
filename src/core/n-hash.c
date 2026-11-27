@@ -61,7 +61,7 @@ REBCNT MurmurHash3_x86_32(const void* key, int len, REBCNT seed)
 	case 2: k1 ^= tail[1] << 8;
 	case 1: k1 ^= tail[0];
 		k1 *= MURMUR_HASH_3_X86_32_C1;
-		k1  = ROTL32(k1, 16);
+		k1  = ROTL32(k1, 15);
 		k1 *= MURMUR_HASH_3_X86_32_C2;
 		h1 ^= k1;
 	};
@@ -100,7 +100,9 @@ FORCE_INLINE
 ***********************************************************************/
 {
 	//return ((hash % len) + idx) % len; // linear
-	return ((hash % len) + 1 * idx + 3 * idx * idx) % len; // quadratric
+	// computed in 64 bits, so the sequence is exact (same as the incremental
+	// PROBE_START/PROBE_NEXT macros in sys-hash.h)
+	return (REBCNT)(((REBU64)(hash % len) + idx + 3 * (REBU64)idx * idx) % len); // quadratic
 	//return ((hash % len) + idx * (1 + (hash % (len - 1)))) % len; // double hashing
 }
 
@@ -129,33 +131,92 @@ FORCE_INLINE
 		return 2 + VAL_LOGIC(val);
 
 	case REB_INTEGER:
-	case REB_DECIMAL: // depends on INT64 sharing the DEC64 bits
 		return fmix32((REBCNT)(VAL_INT64(val) >> 32) ^ ((REBCNT)VAL_INT64(val)));
+
+	case REB_DECIMAL:
+	case REB_PERCENT: {
+		// -0.0 is equal to 0.0 and all NaNs are equal, so normalize them first
+		REBDEC d = VAL_DECIMAL(val) + 0.0; // -0.0 => 0.0
+		REBI64 bits;
+		if (d != d) bits = 0x7FF8000000000000LL; // any NaN => canonical NaN
+		else memcpy(&bits, &d, sizeof(bits));
+		return fmix32((REBCNT)(bits >> 32) ^ ((REBCNT)bits));
+	}
 
 	case REB_CHAR: // hashed always as lowercased
 		if ((ret = VAL_CHAR(val)) < UNICODE_CASES) ret = LO_CASE(ret);
-		return ret = (((REBCNT)ret * 506832829L) >> 18);
+		return fmix32(ret); // (multiply and shift by 18 gave only 14 bits)
 
-	case REB_MONEY:
-		return VAL_ALL_BITS(val)[0] ^ VAL_ALL_BITS(val)[1] ^ VAL_ALL_BITS(val)[2];
+	case REB_MONEY: {
+		// Deci values are unnormalized ($1 = $1.0 = $1.00, $0 = -$0), so hash
+		// a canonical form: significand without trailing decimal zeros
+		deci d = VAL_DECI(val);
+		REBCNT m[3], q[3], k1, h1 = 0;
+		REBINT e = d.e;
+		REBU64 r;
+		REBINT i;
+		m[0] = d.m0; m[1] = d.m1; m[2] = d.m2;
+		if ((m[0] | m[1] | m[2]) == 0) return 0; // any zero
+		while (e < 127) {
+			// divide the significand by 10, if it is exact
+			for (r = 0, i = 2; i >= 0; i--) {
+				r = (r << 32) | m[i];
+				q[i] = (REBCNT)(r / 10);
+				r %= 10;
+			}
+			if (r != 0) break;
+			m[0] = q[0]; m[1] = q[1]; m[2] = q[2];
+			e++;
+		}
+		k1 = m[0]; bmix(&h1, &k1);
+		k1 = m[1]; bmix(&h1, &k1);
+		k1 = m[2]; bmix(&h1, &k1);
+		k1 = ((REBCNT)d.s << 8) | ((REBCNT)e & 0xff); bmix(&h1, &k1);
+		return fmix32(h1);
+	}
 
 	case REB_TIME:
-	case REB_DATE:
-		ret = (REBCNT)(VAL_TIME(val) ^ (VAL_TIME(val) / SEC_SEC));
-		if (IS_DATE(val)) ret ^= VAL_DATE(val).bits;
+	case REB_DATE: {
+		// Date without time is compared as midnight (see Cmp_Time)
+		REBI64 t = VAL_TIME(val);
+		if (t == NO_TIME) t = 0;
+		ret = (REBCNT)(t ^ (t / SEC_SEC));
+		if (IS_DATE(val)) {
+			// Dates are stored in UTC and compared without the zone,
+			// so the zone must not be part of the hash
+			REBDAT date = VAL_DATE(val);
+			date.date.zone = 0;
+			ret ^= date.bits;
+		}
 		return ret;
+	}
 
-	case REB_TUPLE:
-		if (VAL_TUPLE_LEN(val) <= 4)
-			return fmix32(VAL_UNT32(val));
-		// else..
-		return Hash_Binary(VAL_TUPLE(val), VAL_TUPLE_LEN(val));
+	case REB_TUPLE: {
+		// Tuples are compared as zero padded (1.2.3 = 1.2.3.0),
+		// so trailing zeros must not be part of the hash
+		REBCNT len = VAL_TUPLE_LEN(val);
+		REBYTE *tp = VAL_TUPLE(val);
+		while (len > 0 && tp[len - 1] == 0) len--;
+		return Hash_Binary(tp, len);
+	}
 
-	case REB_PAIR:
-		return VAL_ALL_BITS(val)[0] ^ VAL_ALL_BITS(val)[1];
+	case REB_PAIR: {
+		// Mix both coordinates (plain XOR made all NxN pairs hash to 0
+		// and AxB same as BxA); adding 0.0 normalizes -0.0 to 0.0
+		float f;
+		REBCNT k1, h1 = 0;
+		f = VAL_PAIR_X(val) + 0.0f; memcpy(&k1, &f, 4); bmix(&h1, &k1);
+		f = VAL_PAIR_Y(val) + 0.0f; memcpy(&k1, &f, 4); bmix(&h1, &k1);
+		return fmix32(h1);
+	}
+
+	case REB_TYPESET: {
+		REBU64 ts = VAL_TYPESET(val);
+		return fmix32((REBCNT)(ts >> 32) ^ ((REBCNT)ts));
+	}
 
 	case REB_DATATYPE:
-		return CRC_Word(Get_Sym_Name(VAL_DATATYPE(val) + 1), UNKNOWN);
+		return fmix32(VAL_DATATYPE(val) + 1); // no need to compute CRC of the type's name
 
 //	case REB_HANDLE:
 //		return (REBCNT)VAL_HANDLE_I32(val); //TODO: this is not valid for context handles!
@@ -164,23 +225,37 @@ FORCE_INLINE
 	return fmix32(VAL_TYPE(val));
 }
 
+#define MAX_HASH_DEPTH 32 // max depth of nested blocks used for the hash
+
 /***********************************************************************
 **
-*/	REBCNT Hash_Block_Value(REBVAL *block)
+*/	static REBCNT Hash_Block_Loop(REBVAL *block, REBSER **parents, REBCNT depth)
 /*
 **		Return a case insensitive hash value for the block.
+**		Parents are series of the blocks being hashed (to detect circularity).
+**		A nested block which is one of the parents, or which is too deep,
+**		contributes only with its type.
 **
 ***********************************************************************/
 {
-	REBCNT k1, h1 = 0;
+	REBCNT k1, h1 = 0, n;
 	REBVAL *data = VAL_BLK_DATA(block);
 	REBLEN len = VAL_LEN(block);
+
+	parents[depth] = VAL_SERIES(block);
 
 	k1 = VAL_TYPE(block);
 	bmix(&h1, &k1);
 
-	while (NZ(VAL_TYPE(data))) {
-		k1 = Hash_Value(data++);
+	for (; NZ(VAL_TYPE(data)); data++) {
+		if (ANY_BLOCK(data)) {
+			k1 = VAL_TYPE(data);
+			if (depth + 1 < MAX_HASH_DEPTH) {
+				for (n = 0; n <= depth && parents[n] != VAL_SERIES(data); n++);
+				if (n > depth) k1 = Hash_Block_Loop(data, parents, depth + 1);
+			}
+		}
+		else k1 = Hash_Value(data);
 		bmix(&h1, &k1);
 	}
 	h1 ^= len;
@@ -191,39 +266,109 @@ FORCE_INLINE
 
 /***********************************************************************
 **
-*/	REBCNT Hash_String_Value(REBVAL* val)
+*/	REBCNT Hash_Block_Value(REBVAL *block)
 /*
-**		Return a case insensitive hash value for the string value.
+**		Return a case insensitive hash value for the block.
+**		Safe for circular blocks.
 **
 ***********************************************************************/
 {
-	REBYTE* bin;
-	REBUNI* uni;
-	REBLEN  len;
-	REBCNT  n, ch;
+	REBSER *parents[MAX_HASH_DEPTH];
+	return Hash_Block_Loop(block, parents, 0);
+}
+
+/***********************************************************************
+**
+*/	static void Hash_Codepoint(REBCNT ch, REBCNT *hash, REBCNT *acc, REBCNT *n)
+/*
+**		Adds a lowercased codepoint, as UTF-8 bytes, to the string hash state.
+**		Bytes are collected in `acc` and mixed by 4 (like Murmur3 blocks).
+**
+***********************************************************************/
+{
+	REBYTE b[4];
+	REBCNT i, len;
+
+	if (ch < UNICODE_CASES) ch = (REBCNT)LO_CASE(ch);
+	if (ch < 0x80) {
+		b[0] = (REBYTE)ch; len = 1;
+	} else if (ch < 0x800) {
+		b[0] = (REBYTE)(0xC0 | (ch >> 6));
+		b[1] = (REBYTE)(0x80 | (ch & 0x3F)); len = 2;
+	} else if (ch < 0x10000) {
+		b[0] = (REBYTE)(0xE0 | (ch >> 12));
+		b[1] = (REBYTE)(0x80 | ((ch >> 6) & 0x3F));
+		b[2] = (REBYTE)(0x80 | (ch & 0x3F)); len = 3;
+	} else {
+		b[0] = (REBYTE)(0xF0 | (ch >> 18));
+		b[1] = (REBYTE)(0x80 | ((ch >> 12) & 0x3F));
+		b[2] = (REBYTE)(0x80 | ((ch >> 6) & 0x3F));
+		b[3] = (REBYTE)(0x80 | (ch & 0x3F)); len = 4;
+	}
+	for (i = 0; i < len; i++) {
+		*acc |= (REBCNT)b[i] << (8 * *n);
+		if (++*n == 4) {
+			bmix(hash, acc);
+			*acc = 0;
+			*n = 0;
+		}
+	}
+}
+
+/***********************************************************************
+**
+*/	REBCNT Hash_String_Value(REBVAL* val)
+/*
+**		Return a case insensitive hash value for the string value.
+**		The hash is computed from the lowercased text encoded as UTF-8,
+**		so it is the same for ASCII, UTF-8 and wide strings.
+**		The length used is the number of codepoints.
+**
+***********************************************************************/
+{
+	const REBYTE *bin;
+	REBLEN  len, i;
+	REBLEN  count;
 	REBCNT  hash = 0;
+	REBCNT  acc = 0; // collected bytes
+	REBCNT  n = 0;   // number of collected bytes
 
 	if (BYTE_SIZE(VAL_SERIES(val))) {
 		bin = VAL_BIN_DATA(val);
 		len = VAL_TAIL(val) - VAL_INDEX(val);
-		for (n = 0; n < len; n++) {
-			ch = (REBCNT)LO_CASE(*bin++);
-			bmix(&hash, &ch);
+		if (IS_UTF8_SERIES(VAL_SERIES(val))) {
+			REBLEN bytes = len;
+			for (count = 0; bytes > 0; bin++, count++) {
+				// UTF8_Decode_Codepoint modifies bin and bytes
+				Hash_Codepoint(UTF8_Decode_Codepoint(&bin, &bytes), &hash, &acc, &n);
+			}
+		}
+		else {
+			// Bytes (ASCII); 4 ASCII chars are mixed at once when aligned
+			for (i = 0; i < len; ) {
+				if (n == 0 && i + 4 <= len && ((bin[i] | bin[i+1] | bin[i+2] | bin[i+3]) & 0x80) == 0) {
+					acc = (REBCNT)LO_CASE(bin[i])
+						| ((REBCNT)LO_CASE(bin[i+1]) << 8)
+						| ((REBCNT)LO_CASE(bin[i+2]) << 16)
+						| ((REBCNT)LO_CASE(bin[i+3]) << 24);
+					bmix(&hash, &acc);
+					acc = 0;
+					i += 4;
+				}
+				else Hash_Codepoint(bin[i++], &hash, &acc, &n);
+			}
+			count = len;
 		}
 	}
 	else {
-		uni = VAL_UNI_DATA(val);
+		REBUNI *uni = VAL_UNI_DATA(val);
 		len = Val_Series_Len(val);
-		for (n = 0; n < len; n++) {
-			ch = (REBCNT)(*uni++);
-			if (ch < UNICODE_CASES)
-				ch = (REBCNT)LO_CASE(ch);
-			bmix(&hash, &ch);
-		}
+		for (i = 0; i < len; i++) Hash_Codepoint(uni[i], &hash, &acc, &n);
+		count = len;
 	}
-	hash ^= len;
-	hash = fmix32(hash);
-	return hash;
+	if (n > 0) bmix(&hash, &acc);
+	hash ^= count;
+	return fmix32(hash);
 }
 
 FORCE_INLINE
@@ -316,4 +461,3 @@ FORCE_INLINE
 
 	return hser;
 }
-

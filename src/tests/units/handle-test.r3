@@ -4,6 +4,7 @@ Rebol [
 	File: 	 %handle-test.r3
 	Tabs:	 4
 	Needs:   [%../quick-test-module.r3]
+	type:    private
 ]
 
 ;@@ https://github.com/Oldes/Rebol-issues/issues/1868
@@ -163,6 +164,44 @@ if all [
 	close-window w2
 	set [h1 h2 h3 h4 w1 w2 blk u d n m] none
 ] ;<- if all []
+===end-group===
+
+
+===start-group=== "handle! pick/select"
+	--test-- "select/pick on bincode handle"
+		b: binary/write 16 [ui8 1 ui8 2]
+		--assert #{0102} = select b 'buffer
+		--assert #{0102} = pick b 'buffer
+		--assert 'bincode = select b 'type
+		--assert none? select b 'not-a-field
+		--assert error? try [pick b 1]
+	--test-- "result is the context's buffer (not a copy)"
+		b: binary 16
+		binary/write b #{0102}
+		buf: select b 'buffer
+		binary/write b #{03}
+		--assert #{010203} = head buf
+===end-group===
+
+
+===start-group=== "release"
+	--test-- "released context is not reused while referenced"
+		b: binary 16
+		c: b                    ;; another value naming the same context
+		--assert release b
+		;; The released context must stay allocated while `c` refers to it.
+		;; It used to go straight back to the pool, so the next handle got
+		;; it and `c` named a live, unrelated handle.
+		d: binary 16
+		--assert not equal? c d
+		;; A collection keeps it too, because `c` still refers to it...
+		recycle
+		e: binary 16
+		--assert not equal? c e
+		;; ...and both values still name the same (released) context.
+		--assert equal? b c
+		set [b c d e] none
+		recycle
 ===end-group===
 
 ~~~end-file~~~

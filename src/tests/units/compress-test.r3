@@ -4,6 +4,7 @@ Rebol [
 	File: 	 %compress-test.r3
 	Tabs:	 4
 	Needs:   [%../quick-test-module.r3]
+	type:    private
 ]
 
 ~~~start-file~~~ "Compress/Decompress"
@@ -131,21 +132,32 @@ text: {Lorem ipsum dolor sit amet, consectetur adipisici elit, sed eiusmod tempo
 		--assert  #{74657374} = decompress compress/part tail data   'gzip -4 'gzip
 
 	--test-- "GZIP codec"
-		--assert  binary? alice: load %units/files/alice29.txt.gz
+		--assert  binary? alice: load %files/alice29.txt.gz
 		--assert  #{37A087D23C8709E97AA45ECE662FAF3D07006A58} = checksum alice 'sha1
-		--assert  file? save %units/files/tmp.gz alice
-		--assert  binary? alice: load %units/files/tmp.gz
+		--assert  file? save %files/tmp.gz alice
+		--assert  binary? alice: load %files/tmp.gz
 		--assert  #{37A087D23C8709E97AA45ECE662FAF3D07006A58} = checksum alice 'sha1
-		delete %units/files/tmp.gz
+		delete %files/tmp.gz
 		
+	--test-- "decompress of data with high compression ratio (buffer resizing)"
+		bin: append/dup copy #{} 0 1000000
+		--assert bin = decompress compress bin 'deflate 'deflate
+		--assert bin = decompress compress bin 'zlib 'zlib
+		--assert bin = decompress compress bin 'gzip 'gzip
+		bin: #{41}
+		--assert bin = decompress compress bin 'zlib 'zlib
+
+	--test-- "reused deflate decompressor works after a failure"
+		--assert error? try [decompress #{0102030405} 'zlib]
+		--assert #{41} = decompress compress #{41} 'zlib 'zlib
+		--assert error? try [decompress #{0102030405} 'gzip]
+		--assert #{41} = decompress compress #{41} 'gzip 'gzip
 ===end-group===
+
 
 ===start-group=== "Brotli compression / decompression"
 	--test-- "Brotli compress/decompress"
-	either error? e: try [compress "test" 'br][
-		;-- Brotli compression is not available in current build
-		--assert  'feature-na = e/id
-	][	
+	if find system/catalog/compressions 'br [
 		--assert  data = to string! decompress compress data 'br 'br
 
 		--test-- "Brotli compress/decompress while specifing level of compression"

@@ -83,6 +83,10 @@ extern void Close_StdIO(void);
 
 static struct termios settings_original;
 static struct termios settings_raw;
+static struct termios settings_startup; // terminal state before any change, restored at exit
+static int Has_Startup_Settings = 0;
+static int Paste_Mode_On = 0;           // bracketed paste mode was enabled
+static int Echo_Hidden = 0;             // console echo was turned off (ESC[8m)
 struct pollfd poller;
 
 //#define DEBUG_STDIO
@@ -196,12 +200,28 @@ static void Close_StdIO_Local(void)
 	}
 }
 
+static void Restore_Console_At_Exit(void) {
+	// Registered with atexit() so the terminal is restored also when
+	// the process ends without Quit_IO (e.g. OS_Crash -> exit).
+	// Does not free anything, so it's safe after a corrupted state.
+	if (Paste_Mode_On) {
+		if (write(Std_Out, "\e[?2004l", 8)) {}
+		Paste_Mode_On = 0;
+	}
+	if (Echo_Hidden) {
+		if (write(Std_Out, "\x1B[28m", 5)) {}
+		Echo_Hidden = 0;
+	}
+	if (Has_Startup_Settings)
+		tcsetattr(Std_Inp, TCSADRAIN, &settings_startup);
+}
+
 static int Parse_CSI_Sequence(REBEVT *evt, REBYTE *c) {
 	// CSI sequences start with ESC [ and are followed by parameter bytes,
 	// an optional intermediate byte, and a final byte.
 	// Reference: https://invisible-island.net/xterm/ctlseqs/ctlseqs.html
 
-	evt->type = EVT_CONTROL;
+	evt->type = EVT_NAMED_KEY;
 	if (!READ_BYTE(&c[1])) return DR_ERROR;
 
 	// Single-byte final sequences ESC [ <final>
@@ -369,7 +389,7 @@ static int Parse_SS3_Sequence(REBEVT *evt, REBYTE *c) {
 	// addition to CSI sequences depending on their keypad mode (DECCKM).
 	// Reference: https://invisible-island.net/xterm/ctlseqs/ctlseqs.html
 	if (!READ_BYTE(&c[1])) return DR_ERROR;
-	evt->type = EVT_CONTROL;
+	evt->type = EVT_NAMED_KEY;
 	switch (c[1]) {
 	// Arrow keys (sent instead of CSI sequences in application cursor key mode)
 	case 'A': evt->data = EVK_UP;    return DR_DONE; // ESC O A
@@ -414,7 +434,7 @@ static int Parse_SS3_Sequence(REBEVT *evt, REBYTE *c) {
 #undef READ_BYTE
 
 static int Parse_Escape_Sequence(REBEVT *evt, REBYTE *c) {
-	evt->type = EVT_CONTROL;
+	evt->type = EVT_NAMED_KEY;
 
 	if (poll(&poller, 1, 0) <= 0) {
 		evt->data = EVK_ESCAPE;
@@ -444,7 +464,7 @@ static int Parse_Escape_Sequence(REBEVT *evt, REBYTE *c) {
 	}
 	if (c[0] >= 0x01 && c[0] < 0x20) {
 		// Alt+control: ESC ^A = Alt+Ctrl+A, etc.
-		evt->type = EVT_CONTROL;
+		evt->type = EVT_NAMED_KEY;
 		evt->data = c[0];
 		SET_FLAG(evt->flags, EVF_ALT);
 		SET_FLAG(evt->flags, EVF_CONTROL);
@@ -486,7 +506,7 @@ static int Read_Key_Event(REBEVT *evt) {
 		// plain ASCII
 		// Normalize backspace
 		if (c[0] == 0x7F || c[0] == 0x08) {
-			evt->type = EVT_CONTROL;
+			evt->type = EVT_NAMED_KEY;
 			evt->data = EVK_BACKSPACE;
 			if (c[0] != settings_original.c_cc[VERASE])
 				SET_FLAG(evt->flags, EVF_CONTROL);
@@ -575,8 +595,14 @@ static int Read_Key_Event(REBEVT *evt) {
 	if (!GET_FLAG(req->modes, RDM_NULL)) {
 
 #ifndef HAS_SMART_CONSOLE
-		if (isatty(Std_Inp))
-			Term_IO = Init_Terminal();
+		if (isatty(Std_Inp)) {
+			// Store the original state only once (Open_IO may be called again after Quit_IO)
+			if (!Has_Startup_Settings && 0 == tcgetattr(Std_Inp, &settings_startup)) {
+				Has_Startup_Settings = 1;
+				atexit(Restore_Console_At_Exit);
+			}
+ 			Term_IO = Init_Terminal();
+		}
 #endif
 		//printf("%x\r\n", req->handle);
 	}
@@ -735,7 +761,7 @@ static int Read_Key_Event(REBEVT *evt) {
 
 				// Map parsed event back to req->key
 				req->key.flags = evt.flags;
-				if (evt.type == EVT_CONTROL) {
+				if (evt.type == EVT_NAMED_KEY) {
 					req->key.uchar = 0;
 					req->key.virtu = evt.data;
 				} else {
@@ -843,6 +869,7 @@ static int Read_Key_Event(REBEVT *evt) {
 					req->error = errno;
 					return DR_ERROR;
 				}
+				Echo_Hidden = !value;
 			}
 			break;
 		case MODE_CONSOLE_LINE:
@@ -853,6 +880,7 @@ static int Read_Key_Event(REBEVT *evt) {
 				if(!GET_FLAG(req->modes, RDM_CGI)) {
 					// Set bracketed paste mode - https://cirw.in/blog/bracketed-paste
 					write(Std_Out, value ? "\e[?2004l" : "\e[?2004h", 8);
+					Paste_Mode_On = !value;
 				}
 			}
 			// Turn autopolling on when not in the line mode (required for async key reading).

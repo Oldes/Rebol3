@@ -4,6 +4,7 @@ Rebol [
 	File: 	 %poly1305-test.r3
 	Tabs:	 4
 	Needs:   [%../quick-test-module.r3]
+	type:    private
 ]
 
 ~~~start-file~~~ "Poly1305 mmessage authentication"

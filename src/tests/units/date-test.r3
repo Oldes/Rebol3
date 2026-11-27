@@ -4,6 +4,7 @@ Rebol [
 	File: 	 %date-test.r3
 	Tabs:	 4
 	Needs:   [%../quick-test-module.r3]
+	type:    private
 ]
 
 ~~~start-file~~~ "date"
@@ -151,16 +152,16 @@ Rebol [
 
 	--test-- "issue 1375"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/1375
-		; none instead of error for an out-of-range ordinal selector
 		d: now
-		--assert none? try [d/0]
-		--assert none? try [d/-1]
-		--assert none? try [d/100]
+		--assert all [error? e: try [d/0] e/id = 'invalid-path]
+		--assert all [error? e: try [d/-1] e/id = 'invalid-path]
+		--assert all [error? e: try [d/100] e/id = 'invalid-path]
 		; consistent with time:
 		t: now/time
-		--assert none? try [t/0]
-		--assert none? try [t/-1]
-		--assert none? try [t/100]
+		--assert all [error? e: try [t/0] e/id = 'invalid-path]
+		--assert all [error? e: try [t/-1] e/id = 'invalid-path]
+		--assert all [error? e: try [t/100] e/id = 'invalid-path]
+		--assert all [error? e: try [t/foo] e/id = 'invalid-path]
 
 	--test-- "issue-1412"
 		;@@ https://github.com/Oldes/Rebol-issues/issues/1412

@@ -136,3 +136,17 @@ extern int ecdsa_verify_restartable(mbedtls_ecp_group *grp,
 	const mbedtls_mpi *r, const mbedtls_mpi *s,
 	mbedtls_ecdsa_restart_ctx *rs_ctx);
 
+/* Maps a Rebol hash word to an mbedtls MD type; MBEDTLS_MD_NONE if unsupported */
+static inline mbedtls_md_type_t Sym_To_MD_Type(REBCNT sym)
+{
+	switch (sym) {
+	case SYM_MD5:       return MBEDTLS_MD_MD5;
+	case SYM_SHA1:      return MBEDTLS_MD_SHA1;
+	case SYM_SHA224:    return MBEDTLS_MD_SHA224;
+	case SYM_SHA256:    return MBEDTLS_MD_SHA256;
+	case SYM_SHA384:    return MBEDTLS_MD_SHA384;
+	case SYM_SHA512:    return MBEDTLS_MD_SHA512;
+	case SYM_RIPEMD160: return MBEDTLS_MD_RIPEMD160;
+	default:            return MBEDTLS_MD_NONE;
+	}
+}

@@ -953,9 +953,14 @@ chk_neg:
 	blk = Make_Block(len*2);
 
 	str = start;
-	while (NZ(n = (REBCNT)LEN_STR(str)) && NZ(eq = FIND_CHR(str+1, '='))) {
-		Set_Series(REB_STRING, Append_Value(blk), Copy_OS_Str(str, eq-str));
-		Set_Series(REB_STRING, Append_Value(blk), Copy_OS_Str(eq+1, n-(eq-str)-1));
+	while (NZ(n = (REBCNT)LEN_STR(str))) {
+		// Search from the second char, as on Windows there are entries like: =C:=C:\dir
+		eq = FIND_CHR(str+1, '=');
+		// Skip entries without the separator (don't stop on them)
+		if (eq) {
+			Set_Series(REB_STRING, Append_Value(blk), Copy_OS_Str(str, eq-str));
+			Set_Series(REB_STRING, Append_Value(blk), Copy_OS_Str(eq+1, n-(eq-str)-1));
+		}
 		str += n + 1; // next
 	}
 

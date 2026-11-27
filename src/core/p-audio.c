@@ -74,7 +74,7 @@
 				req->data = VAL_BIN_DATA(data);
 				req->length = VAL_TAIL(data) - VAL_INDEX(data);
 				if (IS_VECTOR(data)) {
-					req->length *= VAL_VEC_WIDTH(data); // length in raw bytes
+					req->length *= VAL_VEC_WIDE(data); // length in raw bytes
 				}
 			}
 			else break;
@@ -91,7 +91,7 @@
 
 			if (IS_VECTOR(arg)) {
 				// length in raw bytes
-				req->length *= VAL_VEC_WIDTH(arg);
+				req->length *= VAL_VEC_WIDE(arg);
 			}
 		}
 

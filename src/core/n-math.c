@@ -674,8 +674,13 @@ enum {SINE, COSINE, TANGENT};
 				SET_MONEY(a, int_to_deci(VAL_INT64(a)));
 				goto compare;
 			}
-			else if (tb == REB_INTEGER || tb == REB_CHAR) // special negative?, zero?, ...
+			else if (tb == REB_INTEGER) // special negative?, zero?, ...
 				goto compare;
+			else if (tb == REB_CHAR) {
+				// a char sets only its 32-bit codepoint, not the whole 64-bit integer
+				SET_INTEGER(b, VAL_CHAR(b));
+				goto compare;
+			}
 			else if (tb == REB_TIME) {
 				SET_DECIMAL(a, (REBDEC)VAL_INT64(a));
 				SET_DECIMAL(b, (REBDEC)VAL_TIME(b) * NANO);
@@ -732,8 +737,15 @@ enum {SINE, COSINE, TANGENT};
 		case REB_CHAR:
 			//o: using sepparated case as I don't want to allow comparison
 			//o: with not integer numbers (money, decimal, percent)
-			if (tb == REB_INTEGER)
+			if (tb == REB_INTEGER) {
+				// an integer outside the char range is compared as an integer,
+				// not truncated to the 32 bits of a char
+				if (VAL_INT64(b) < 0 || VAL_INT64(b) > MAX_CHAR)
+					SET_INTEGER(a, VAL_CHAR(a));
+				else
+					SET_CHAR(b, VAL_INT64(b));
 				goto compare;
+			}
 			break;
 		case REB_TIME:
 			SET_DECIMAL(a, (REBDEC)VAL_TIME(a) * NANO);
@@ -1083,7 +1095,7 @@ static REBDEC lerp_decimal(REBDEC s, REBDEC e, REBDEC t) {
 /*
 //	clamp: native [
 //		{Restricts a value to be within the specified minimum-maximum range}
-//		value   [number! tuple! pair! money!] "Value to clamp"
+//		value   [number! tuple! pair! money! vector!] "Value to clamp (a vector is modified)"
 //		minimum [number! tuple! pair! money!] "Lower bound"
 //		maximum [number! tuple! pair! money!] "Upper bound"
 //	]
@@ -1092,6 +1104,12 @@ static REBDEC lerp_decimal(REBDEC s, REBDEC e, REBDEC t) {
 	REBVAL* val  = D_ARG(1);
 	REBVAL* vmin = D_ARG(2);
 	REBVAL* vmax = D_ARG(3);
+	if (IS_VECTOR(val)) {
+		if (!IS_NUMBER(vmin)) Trap_Arg(vmin);
+		if (!IS_NUMBER(vmax)) Trap_Arg(vmax);
+		Clamp_Vector(val, vmin, vmax);
+		return R_ARG1;
+	}
 	if (VAL_TYPE(vmin) != VAL_TYPE(val)) Trap2(RE_TYPE_MISMATCH, val, vmin);
 	if (VAL_TYPE(vmax) != VAL_TYPE(val)) Trap2(RE_TYPE_MISMATCH, val, vmax);
 	switch (VAL_TYPE(val)) {
@@ -1121,6 +1139,7 @@ static REBDEC lerp_decimal(REBDEC s, REBDEC e, REBDEC t) {
 				b[i] = (REBYTE)MAX(lo, MIN(hi, b[i]));
 			}
 			break;
+
 		}
 	}
 	return R_ARG1;

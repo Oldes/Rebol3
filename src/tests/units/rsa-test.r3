@@ -4,6 +4,7 @@ Rebol [
 	File: 	 %rsa-test.r3
 	Tabs:	 4
 	Needs:   [%../quick-test-module.r3]
+	type:    private
 ]
 
 ~~~start-file~~~ "RSA"
@@ -73,6 +74,13 @@ Rebol [
 		--assert [type] = words-of key-pri
 		--assert 'rsa = query key-pri 'type
 
+	--test-- "Init RSA keys with invalid values"
+		;invalid keys are released immediately and NONE is returned
+		--assert none? rsa-init #{00} ko/e
+		--assert none? rsa-init ko/n #{}
+		--assert none? rsa-init/private ko/n ko/e ko/d ko/q ko/q ;<-- p is wrong
+		--assert none? rsa-init/private ko/n ko/e ko/d ko/p #{00}
+
 	;-- note: you could use key-pri only as it contains the public properties too
 	;-- the key-pub is there just to simulate situation, where user have only the public parts
 	bin-data: #{41686F6A21}
@@ -86,6 +94,13 @@ Rebol [
 		--assert bin-data = rsa/decrypt key-pri secret 
 		--assert    none?   rsa/decrypt key-pub secret ;because private key is needed
 
+	--test-- "RSA decrypt with input of wrong length"
+		;ciphertext must have exactly the key size
+		--assert none? rsa/decrypt key-pri copy/part secret 10
+		--assert none? rsa/decrypt key-pri #{}
+		--assert none? rsa/decrypt key-pri join secret #{00}
+		--assert none? rsa/decrypt/oaep key-pri join secret #{00}
+
 	--test-- "RSA signing (PKCS#1 v1.5)"
 		;signing needs private parts in the key
 		--assert binary? sign-hash: rsa/sign key-pri bin-data
@@ -95,6 +110,12 @@ Rebol [
 		;you can use both keys for verification (only the public parts are used)
 		--assert rsa/verify key-pub bin-data sign-hash
 		--assert rsa/verify key-pri bin-data sign-hash
+
+	--test-- "RSA verify with signature of wrong length"
+		;signature must have exactly the key size
+		--assert not rsa/verify key-pub bin-data copy/part sign-hash 10
+		--assert not rsa/verify key-pub bin-data #{}
+		--assert not rsa/verify key-pub bin-data join sign-hash #{00}
 
 	;- With RSA-OAEP (Optimal Asymmetric Encryption Padding) Probabilistic Signature Scheme
 	--test-- "RSA-OAEP encrypt"
@@ -123,6 +144,22 @@ Rebol [
 		;both signatures should be valid
 		--assert rsa/verify/pss key-pub bin-data signature2
 		--assert rsa/verify/pss key-pri bin-data signature2
+
+	--test-- "RSA sign/verify with supported hashes"
+		foreach h [md5 sha1 sha224 sha256 sha384 sha512] [
+			--assert binary? sig: rsa/sign/hash key-pri bin-data h
+			--assert rsa/verify/hash key-pub bin-data sig h
+		]
+
+	--test-- "RSA sign/verify with unsupported hash"
+		--assert error? try [rsa/sign/hash key-pri bin-data 'xxh3]
+		--assert error? try [rsa/sign/hash key-pri bin-data 'crc32]
+		--assert error? try [rsa/sign/hash key-pri bin-data 'sha3-256]
+		--assert error? try [rsa/verify/hash key-pub bin-data sign-hash 'md4]
+
+	--test-- "RSA-OAEP with unsupported hash"
+		--assert error? try [rsa/encrypt/oaep/hash key-pub bin-data 'foo]
+		--assert error? try [rsa/encrypt/oaep/hash key-pub bin-data 'xxh64]
 
 
 	--test-- "RSA key release"
@@ -156,14 +193,14 @@ Rebol [
 ===start-group=== "RSA initialization using codecs"
 	--test-- "RSA sign/verify using external file"
 	; Bob has data, which wants to sign, so it's clear, that nobody modifies them
-	data: read %units/files/apiserver.crt
+	data: read %files/apiserver.crt
 	; Bob uses private key which keeps secret...
-	--assert handle? try [private-key: load %units/files/rebol-private-no-pass.ppk]
+	--assert handle? try [private-key: load %files/rebol-private-no-pass.ppk]
 	; .. and signs data with specified message digest algorithm
 	--assert binary? signature: rsa/sign/hash private-key data 'SHA512
 
 	; than sends data and its signature to Eve, who have his public key, even using some unsecure way
-	--assert handle? try [public-key: load %units/files/rebol-public.ppk]
+	--assert handle? try [public-key: load %files/rebol-public.ppk]
 	; Eve uses the key to verify the received data using its signature and hash
 	--assert rsa/verify/hash public-key data signature 'SHA512
 	; so she knows, that data were not modified
@@ -175,14 +212,12 @@ Rebol [
 
 ===start-group=== "RSA initialization from file"
 	--test-- "RSA private key from OpenSSL format (RSA PRIVATE KEY)"
-	--assert handle? try [private-key: load %units/files/rebol-private-no-pass.key]
+	--assert handle? try [private-key: load %files/rebol-private-no-pass.key]
 	release private-key
 	--test-- "RSA private key from OpenSSL x509 format (PRIVATE KEY)"
 	; openssl req -new -newkey rsa:4096 -x509 -sha256 -days 365 -nodes -out MyCertificate.crt -keyout MyKey.key
-	--assert handle? try [private-key: load %units/files/MyKey.key]
+	--assert handle? try [private-key: load %files/MyKey.key]
 	release private-key
 ===end-group===
-
-
 
 ~~~end-file~~~

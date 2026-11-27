@@ -14,6 +14,7 @@ REBOL [
 
 dt: delta-time: function [
 	{Delta-time - returns the time it takes to evaluate the block.}
+	[throw]
 	block [block!]
 ][
 	; force GC, so there is less chance that it is fired in `do block`
@@ -25,6 +26,7 @@ dt: delta-time: function [
 
 dp: delta-profile: func [
 	{Delta-profile of running a specific block.}
+	[throw]
 	block [block!]
 	/only "Don't call recycle"
 	/local start end adjust

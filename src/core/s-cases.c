@@ -902,7 +902,7 @@ static const REBUNI Char_Cases[] = {
 	0, 0
 };
 
-#ifdef _DEBUG
+#ifdef DEBUG
 /*
  * Debug helpers to easily find location of issues like
  * https://github.com/Oldes/Rebol-issues/issues/2476

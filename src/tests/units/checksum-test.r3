@@ -4,6 +4,7 @@ Rebol [
 	File: 	 %checksum-test.r3
 	Tabs:	 4
 	Needs:   [%../quick-test-module.r3]
+	type:    private
 ]
 
 ~~~start-file~~~ "Checksum"
@@ -407,7 +408,23 @@ if find system/catalog/checksums 'xxh128 [
 		--assert sum1 = port/data
 		close port
 ]
-
+if all [
+	find system/catalog/checksums 'xxh32
+	find system/catalog/checksums 'xxh64
+][
+	--test-- "checksum port xxh32/xxh64 - streaming matches one-shot (state reset)"
+		foreach len [100 800] [
+			data: append/dup copy #{} #{0102030405060708} len / 8
+			foreach method [xxh32 xxh64] [
+				p: open join checksum:// method
+				write p copy/part data 10
+				write p copy/part skip data 10 50
+				write p skip data 60
+				--assert equal? read p checksum data method
+				close p
+			]
+		]
+]
 
 	--test-- "checksum-write-refinements"
 		port: open checksum://
@@ -477,22 +494,22 @@ AF45D2E376484031617F78D2B58A6B1B9C7EF464F5A01B47E42EC3736322445E
 
 ===start-group=== "file-checksum"
 	--test-- "file-checksum with small file"
-	--assert (file-checksum %units/files/pdf-maker-doc.pdf 'md5)    == #{6F782354D64B0B09CF103A9A129E1137}
-	--assert (file-checksum %units/files/pdf-maker-doc.pdf 'sha1)   == #{A598B252C045ABF94EE5F034798B384056C57086}
-	--assert (file-checksum %units/files/pdf-maker-doc.pdf 'sha256) == #{FA24645FE45C06DEB31DEC0B4478718A3ABE3F8C923A3B720B5564DAA2C9FC0F}
+	--assert (file-checksum %files/pdf-maker-doc.pdf 'md5)    == #{6F782354D64B0B09CF103A9A129E1137}
+	--assert (file-checksum %files/pdf-maker-doc.pdf 'sha1)   == #{A598B252C045ABF94EE5F034798B384056C57086}
+	--assert (file-checksum %files/pdf-maker-doc.pdf 'sha256) == #{FA24645FE45C06DEB31DEC0B4478718A3ABE3F8C923A3B720B5564DAA2C9FC0F}
 	--test-- "file-checksum with bigger file"
 	--assert binary? file-checksum system/options/boot 'md5 ;; not testing result, because the binary changes.
 
 	--test-- "checksum file!"
 	;; when file argument is used with the `checksum` native, then above `file-checksum` function is used
-	--assert (checksum %units/files/pdf-maker-doc.pdf 'md5)    == #{6F782354D64B0B09CF103A9A129E1137}
-	--assert (checksum %units/files/pdf-maker-doc.pdf 'sha1)   == #{A598B252C045ABF94EE5F034798B384056C57086}
-	--assert (checksum %units/files/pdf-maker-doc.pdf 'sha256) == #{FA24645FE45C06DEB31DEC0B4478718A3ABE3F8C923A3B720B5564DAA2C9FC0F}
+	--assert (checksum %files/pdf-maker-doc.pdf 'md5)    == #{6F782354D64B0B09CF103A9A129E1137}
+	--assert (checksum %files/pdf-maker-doc.pdf 'sha1)   == #{A598B252C045ABF94EE5F034798B384056C57086}
+	--assert (checksum %files/pdf-maker-doc.pdf 'sha256) == #{FA24645FE45C06DEB31DEC0B4478718A3ABE3F8C923A3B720B5564DAA2C9FC0F}
 
 	--test-- "checksum file! with refines"
 	;; refines are not supported
-	--assert all [error? e: try [checksum/part %units/files/pdf-maker-doc.pdf 'md5 1] e/id = 'bad-refines]
-	--assert all [error? e: try [checksum/with %units/files/pdf-maker-doc.pdf 'md5 1] e/id = 'bad-refines]
+	--assert all [error? e: try [checksum/part %files/pdf-maker-doc.pdf 'md5 1] e/id = 'bad-refines]
+	--assert all [error? e: try [checksum/with %files/pdf-maker-doc.pdf 'md5 1] e/id = 'bad-refines]
 ===end-group===
 
 

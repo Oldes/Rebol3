@@ -51,7 +51,7 @@ do*: func [
 	mark [word!]
 	"Variable updated with new block position"
 
-	/local body file spec current-path header saved-script is-module
+	/local body file spec current-path header saved-script is-module result
 ][
 	; This code is only called for urls, files, and strings.
 	; DO of functions, blocks, paths, and other do-able types is done in the
@@ -77,7 +77,8 @@ do*: func [
 		; Get the header and advance 'data to the code position
 		; object or none
 
-		is-module: 'module = select header 'type
+		is-module: find [module private] select header 'type
+		; Type: private is a script evaluated in its own (module) context
 		; data is a block! here, with the header object in the first position back
 	]
 
@@ -140,7 +141,7 @@ do*: func [
 		; Print out the script info
 		;
 		log/info 'REBOL [
-			pick ["Module:" "Script:"] is-module
+			pick ["Module:" "Script:"] 'module = select header 'type
 			mold select header 'title
 			"Version:" select header 'version
 			"Date:"	   select header 'date
@@ -150,7 +151,11 @@ do*: func [
 			; Eval the block or make the module, returned
 
 			either is-module [
-				; Import the module and set the var
+				; The script is evaluated as an isolated module: it is made
+				; every time, it is not registered in the system modules
+				; and nothing is exported from it (not even to the user
+				; context). The result is the result of its body.
+				; Use IMPORT to get the module and its exports.
 
 				spec: reduce [
 					header
@@ -158,15 +163,16 @@ do*: func [
 					do-needs/no-user header
 				]
 
-				also
-				import (
-					catch/quit [
-						make module! spec
-					]
-				)
+				set/any 'result catch/quit [
+					make-module*/result spec 'result
+					:result
+				]
+
 				if mark [
 					set mark tail body
 				]
+
+				:result
 			][
 				do-needs header
 				; Load the script requirements
@@ -203,6 +209,12 @@ make-module*: func [
 	spec [block!]
 	"As [spec-block body-block opt-mixins-object]"
 
+	/result
+	"Provides also the result of the body evaluation"
+
+	var [word!]
+	"Variable set to the result"
+
 	/local body context mixins hidden words
 ][
 	set [spec body mixins] spec
@@ -221,8 +233,8 @@ make-module*: func [
 		spec object!
 		body block!
 		mixins [object! none!]
-		spec/name [any-word! none!]
-		spec/type [any-word! none!]
+		spec/name [word! lit-word! none!]
+		spec/type [word! lit-word! none!]
 		spec/version [tuple! none!]
 		spec/options [block! none!]
 	]
@@ -232,18 +244,19 @@ make-module*: func [
 	context: make object! 7
 	; arbitrary starting size
 
-	either find spec/options 'extension [
+	if find spec/options 'extension [
 		bind/new [
 			lib-base
 			; specific runtime values MUST BE FIRST
 
 			lib-file
-			lib-local
 			words
 		] context
-	][
+	]
+
+	if object? mixins [
 		append context 'lib-local
-		; local import library for the module
+		; local import library, only for a module with private imports
 	]
 
 	if spec/name [
@@ -329,7 +342,11 @@ make-module*: func [
 		bind/new hidden context
 	]
 
-	either find spec/options 'isolate [
+	either any [
+		find spec/options 'isolate
+		'private = spec/type
+		; A private script binds like a regular script, just to its own context
+	][
 		bind/new body context
 		; All words of the module body are module variables
 
@@ -355,10 +372,12 @@ make-module*: func [
 
 	bind body context
 
-	context/lib-local: any [
-		; always set, always overrides
-		mixins
-		make object! 0
+	if object? mixins [
+		context/lib-local: mixins
+		; always overrides
+
+		protect/hide in context 'lib-local
+		; internal value, available only to the code of the module
 	]
 
 	if block? hidden [
@@ -369,7 +388,25 @@ make-module*: func [
 		spec context
 	]
 
-	do body
+	either result [
+		set/any var do body
+	][
+		do body
+	]
+
+	if find spec/options 'extension [
+		; Internal values of an extension (set by its body above),
+		; not to be changed or seen from outside.
+		; Done here, so it is the same for extensions loaded on boot.
+
+		if in context 'lib-base [
+			protect in context 'lib-base
+		]
+
+		if in context 'lib-boot [
+			protect/hide in context 'lib-boot
+		]
+	]
 
 	;print ["Module created" spec/name spec/version]
 
